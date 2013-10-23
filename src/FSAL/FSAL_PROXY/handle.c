@@ -1912,6 +1912,18 @@ static fsal_status_t pxy_open(struct fsal_obj_handle *obj_hdl,
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
+static fsal_openflags_t
+pxy_status(struct fsal_obj_handle *obj_hdl)
+{
+	struct pxy_obj_handle *ph;
+
+	if (!obj_hdl)
+		return FSAL_O_CLOSED;
+
+	ph = container_of(obj_hdl, struct pxy_obj_handle, obj);
+	return ph->openflags;
+}
+
 static fsal_status_t pxy_read(struct fsal_obj_handle *obj_hdl,
 			      const struct req_op_context *opctx,
 			      uint64_t offset, size_t buffer_size, void *buffer,
@@ -2049,6 +2061,7 @@ void pxy_handle_ops_init(struct fsal_obj_ops *ops)
 	ops->handle_is = pxy_handle_is;
 	ops->handle_digest = pxy_handle_digest;
 	ops->handle_to_key = pxy_handle_to_key;
+	ops->status = pxy_status;
 }
 
 #ifdef _HANDLE_MAPPING
