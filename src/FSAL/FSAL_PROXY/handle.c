@@ -1590,7 +1590,7 @@ static fsal_status_t pxy_do_readdir(const struct req_op_context *opctx,
 	*eof = rdok->reply.eof;
 
 	for (e4 = rdok->reply.entries; e4; e4 = e4->nextentry) {
-		struct attrlist attr;
+		struct attrlist attr = {0};
 		char name[MAXNAMLEN + 1];
 
 		/* UTF8 name does not include trailing 0 */
@@ -1738,7 +1738,7 @@ static fsal_status_t pxy_setattrs(struct fsal_obj_handle *obj_hdl,
 	struct pxy_obj_handle *ph;
 	char fattr_blob[FATTR_BLOB_SZ];
 	GETATTR4resok *atok;
-	struct attrlist attrs_after;
+	struct attrlist attrs_after = {0};
 
 #define FSAL_SETATTR_NB_OP_ALLOC 3
 	nfs_argop4 argoparray[FSAL_SETATTR_NB_OP_ALLOC];
@@ -1801,7 +1801,7 @@ static fsal_status_t pxy_unlink(struct fsal_obj_handle *dir_hdl,
 	nfs_resop4 resoparray[FSAL_UNLINK_NB_OP_ALLOC];
 	GETATTR4resok *atok;
 	char fattr_blob[FATTR_BLOB_SZ];
-	struct attrlist dirattr;
+	struct attrlist dirattr = {0};
 
 	if (!dir_hdl || !name || !opctx)
 		return fsalstat(ERR_FSAL_FAULT, EINVAL);
