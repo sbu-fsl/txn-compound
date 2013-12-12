@@ -78,8 +78,14 @@ fsal_status_t cryptfs_read(struct fsal_obj_handle * obj_hdl,
 	fsal_status_t ret = next_ops.obj_ops->read(obj_hdl, opctx, offset, buffer_size,
 				      buffer, read_amount, end_of_file);
 
-	// TODO: Check success
-	cryptfs_decrypt(offset, buffer_size, buffer);
+	if(FSAL_IS_ERROR(ret)) {
+		return ret;
+	}
+
+	fsal_status_t retd = cryptfs_decrypt(offset, buffer_size, buffer);
+	if(FSAL_IS_ERROR(retd)) {
+		return retd;
+	}
 
 #if 0
 	/* Decrypt - POC */
@@ -90,6 +96,7 @@ fsal_status_t cryptfs_read(struct fsal_obj_handle * obj_hdl,
 		byte ++;
 	}
 #endif
+
 	return ret;
 }
 
@@ -104,8 +111,11 @@ fsal_status_t cryptfs_write(struct fsal_obj_handle * obj_hdl,
 {
 	LogDebug(COMPONENT_FSAL, "offset = %lu, buffer_size = %lu", offset, buffer_size);
 
-	// TODO: Check success
-	cryptfs_encrypt(offset, buffer_size, buffer);
+	fsal_status_t ret = cryptfs_encrypt(offset, buffer_size, buffer);
+
+	if(FSAL_IS_ERROR(ret)) {
+		return ret;
+	}
 
 #if 0
 	/* Encrypt - POC */
@@ -116,6 +126,7 @@ fsal_status_t cryptfs_write(struct fsal_obj_handle * obj_hdl,
 		byte ++;
 	}
 #endif
+
 	return next_ops.obj_ops->write(obj_hdl, opctx, offset, buffer_size,
 				       buffer, write_amount, fsal_stable);
 }
