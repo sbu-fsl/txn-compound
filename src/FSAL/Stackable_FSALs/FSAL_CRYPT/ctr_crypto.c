@@ -6,11 +6,16 @@
 #include "ctr_crypto.h"
 #include <rpc/des_crypt.h>
 
+/** Number of of 8-byte units in block */
 #define BLOCK_SIZE_UINT64	(BLOCK_SIZE_BYTES/sizeof(uint64_t))
+
+/** Block number that an offset belongs to */
 #define BLOCK_ALIGN_MASK	(0xffffffffffffffff << BLOCK_SIZE_LOG2)
+#define BLOCK_COUNT(a)		((a) >> BLOCK_SIZE_LOG2)
+
+/** Offset within a block */
 #define BLOCK_OFFSET_MASK	(~BLOCK_ALIGN_MASK)
 #define BLOCK_OFFSET(a)		((a) & BLOCK_OFFSET_MASK)
-#define BLOCK_COUNT(a)		((a) >> BLOCK_SIZE_LOG2)
 
 /**
  * 8-byte key
