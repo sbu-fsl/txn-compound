@@ -33,7 +33,17 @@ uint64_t g_nonce[BLOCK_SIZE_UINT64] =  {
 	0x87ba65fd1a797c78, 0x21a8e54e023f1119 
 };
 
-static void block_msg_for_counter(uint64_t *nonce, uint64_t counter) {
+/**
+ * @brief Generate counter block
+ *
+ * Generate counter block by combining nonce with count.
+ * Counter block is updated in nonce.
+ * Note: Size of block is BLOCK_SIZE_BYTES.
+ *
+ * @param[in, out] nonce Nonce of size BLOCK_SIZE_BYTES. Output counter block.
+ * @param[in]      count Count of block of size BLOCK_SIZE_BYTES
+ */
+static void counter_block(uint64_t *nonce, uint64_t count) {
 
 	if(nonce == NULL)
 		return;
@@ -42,11 +52,23 @@ static void block_msg_for_counter(uint64_t *nonce, uint64_t counter) {
 	int i;
 
 	for(i = 0; i < BLOCK_SIZE_UINT64; i ++) {
-		(*bytes8) ^= counter;
+		(*bytes8) ^= count;
 		bytes8 ++;
 	}
 }
 
+/**
+ * @brief Perform DES encryption of a block message
+ *
+ * Block is of size BLOCK_SIZE_BYTES
+ *
+ * @param[in]      key  8-byte key for DES encryption
+ * @param[in, out] data Message of size BLOCK_SIZE_BYTES to be encrypted.
+ *                      Output encrypted message.
+ *
+ * @retval CRYPTFS_CRYPTO_NO_ERR No error, encryption successful
+ * @retval CRYPTFS_CRYPTO_ERROR  Error occurred during encryption.
+ */
 static int des_crypt_block_msg(char *key, uint64_t *data) {
 
 	if(key == NULL || data == NULL)
@@ -64,6 +86,49 @@ static int des_crypt_block_msg(char *key, uint64_t *data) {
 	return ret;
 }
 
+/**
+ * @brief XOR plaintext with encrypted message block
+ *
+ * XOR operation is done as follows (2 cases):
+ * (1) All of plaintext data is XORed:
+ *
+ * <- BLOCK_SIZE_BYTES ->
+ * +--------------------+
+ * |           |     |  | msg
+ * +-----------+-----+--+
+ * <- offset ->| XOR |
+ *             +-----+
+ *             |/////| ciphertext data
+ *             +-----+
+ *             <----->
+ *             datalen
+ *
+ * XORed bytes(size of ciphertext): datalen
+ *
+ * (2) Part of plaintext data is XORed:
+ *
+ * <- BLOCK_SIZE_BYTES ->
+ * +--------------------+
+ * |           |        | msg
+ * +-----------+--------+
+ * <- offset ->|  XOR   |
+ *             +--------+-----------+
+ *             |////////|           |
+ *             +--------+-----------+
+ *             <-------->
+ *             ciphertext
+ *
+ *             <----- datalen ------>
+ *
+ * XORed bytes (size of ciphertext): (BLOCK_SIZE_BYTES - offset)
+ *
+ * @param[in, out] data    Plaintext data input. Ciphertext data output
+ * @param[in]      msg     Message for XORing with plaintext
+ * @param[in]      offset  Offset of plaintext
+ * @param[in]      datalen Length of plaintext data
+ *
+ * @return Number of bytes XORed (size of ciphertext output)
+ */
 static int plaintext_xor_enc_msg(char *data, char *msg, uint64_t offset, uint64_t datalen) {
 
 	if(data == NULL || msg == NULL)
@@ -92,6 +157,13 @@ static int plaintext_xor_enc_msg(char *data, char *msg, uint64_t offset, uint64_
 	return byte_count;
 }
 
+/**
+ * @brief Initialize counter block with nonce (initialization vector)
+ *
+ * g_nonce is the nonce (initialization vector) and is of size BLOCK_SIZE_BYTES.
+ *
+ * @param[out] msg Initialization vector is output here.
+ */
 static void initialize_block_msg(char *msg) {
 
 	if(msg == NULL)
@@ -117,8 +189,8 @@ static int ctr_crypt(char *key, char *data, uint64_t datalen, uint64_t offset) {
 	while(remain_bytes > 0) {
 
 		initialize_block_msg((char*)msg);
-		block_msg_for_counter(msg, BLOCK_COUNT(curr_offset));
-		if(des_crypt_block_msg((char*)&g_key, msg) != CRYPTFS_CRYPTO_NO_ERR)
+		counter_block(msg, BLOCK_COUNT(curr_offset));
+		if(des_crypt_block_msg(key, msg) != CRYPTFS_CRYPTO_NO_ERR)
 			return CRYPTFS_CRYPTO_ERROR;
 
 		int bytes = plaintext_xor_enc_msg(data_ptr, (char*)msg, curr_offset, remain_bytes);

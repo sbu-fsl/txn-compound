@@ -1,4 +1,4 @@
-/* NULLFS methods for handles
+/* CRYPTFS methods for handles
  */
 
 #include "fsal_handle_syscalls.h"
@@ -26,7 +26,7 @@ struct next_ops {
 };
 
 /*
- * NULLFS internal export
+ * CRYPTFS internal export
  */
 struct cryptfs_fsal_export {
 	struct fsal_export export;
@@ -43,7 +43,7 @@ fsal_status_t cryptfs_create_handle(struct fsal_export *exp_hdl,
 				   struct fsal_obj_handle **handle);
 
 /*
- * NULLFS internal object handle
+ * CRYPTFS internal object handle
  * handle is a pointer because
  *  a) the last element of file_handle is a char[] meaning variable len...
  *  b) we cannot depend on it *always* being last or being the only
