@@ -172,6 +172,21 @@ static void initialize_block_msg(char *msg) {
 	memcpy((void*)msg, (void*)g_nonce, BLOCK_SIZE_BYTES);
 }
 
+/**
+ * @brief Do encryption in counter (CTR) mode
+ *
+ * Perform encryption of 'data' of length 'datalen' assuming it is at an
+ * 'offset' using 'key' and initialization vector obtained from
+ * initialize_block_msg()
+ *
+ * @param[in]      key     Key used for encryption
+ * @param[in, out] data    Input plaintext. Ouput ciphertext.
+ * @param[in]      datalen Length of plaintext
+ * @param[in]      offset  Offset of data in file
+ *
+ * @retval CRYPTFS_CRYPTO_NO_ERR No error, encryption successful
+ * @retval CRYPTFS_CRYPTO_ERROR  Error occurred during encryption.
+ */
 static int ctr_crypt(char *key, char *data, uint64_t datalen, uint64_t offset) {
 
 	if(key == NULL || data == NULL)
