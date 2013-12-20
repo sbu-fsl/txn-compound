@@ -1,4 +1,4 @@
-\documentclass[11pt, journal, twocolumn, twoside]{IEEEtran}
+\documentclass[10pt, journal, twocolumn, twoside]{IEEEtran}
 
 \usepackage{url}
 \usepackage{graphicx}
@@ -52,9 +52,22 @@ FSAL might help implement features in a cleaner way.
 Stackable FSAL was explored by implementing a basic file-encrypting
 stackable file system in NFS Ganesha version 2.0.
 
+\section{Background}
+The NFSv4 Security Proxy project involved security features - antivirus, logging,
+and filtering based on policy. Implementation was done at development stages of
+NFS Ganesha version 2.0. To match the latest version of NFS Ganesha, the security proxy project
+had to be ported.
+
+Implementation was done in NFSv4 protocol layer introduced difficulty in porting --
+changes in NFSv4 operations rename, open, and close had modifications in the way
+access mode was checked. TODO: What exactly is change.
+
+Implementing in NFSv4 layer also makes it inflexible. Irrespective of whether FSAL\_PROXY
+is used, these features are present. Using stackable FSAL module is a solution.
+
 \section{Project Design}
-In order to design stackable file system in NFS Ganesha, an overview of NFS
-Ganesha is discussed first.
+In order to design stackable file system, an overview of NFS
+Ganesha architecture is discussed first.
 
 \subsection{FSAL - File System Abstraction Layer}
 There are several types of file systems supported by Ganesha. The FSAL is an
@@ -65,17 +78,17 @@ Each module can be configured using special key-value pairs in
 configuration file that is parsed by NFS Ganesha. For instance, FSAL\_PROXY
 required Srv\_Addr to be defined in configuration file.
 
-\subsubsection{PROXY FSAL}
-This is an abstraction that implements proxy machine between a client and a
-server. FSAL\_PROXY uses NFSv4. Figure \ref{fsalProxyArch} shows how requests
-from clients are handled by FSAL\_PROXY by contacting server.
-
 \begin{figure*}[!btp]
   \centering
   \psfig{figure=figs/ganesha-proxy-overview.eps, width=\textwidth}
   \caption{Architecture of FSAL\_PROXY}
   \label{fsalProxyArch}
 \end{figure*}
+
+\subsubsection{PROXY FSAL}
+This is an abstraction that implements proxy machine between a client and a
+server. FSAL\_PROXY uses NFSv4. Figure \ref{fsalProxyArch} shows how requests
+from clients are handled by FSAL\_PROXY by contacting server.
 
 \begin{enumerate}
 \item Init module invokes config parser %1
@@ -106,18 +119,18 @@ mentioned in EXPORT block. In this case PROXY. %6
 \item svc\_sendreply() to client %25
 \end{enumerate}
 
-\subsubsection{Stackable FSAL}
-Every EXPORT block in config file has a FS\_Specific entry that is passed to create\_export()
-function of FSAL of the export entry. The FS\_Specific entry is again an FSAL name. This
-opens possibilities for using the FS\_Specific for stacking on top of a particular FSAL.
-Figure \ref{fsalStackArch} shows architecture and working of a  general stackable FSAL.
-
 \begin{figure}[!btp]
   \centering
   \psfig{figure=figs/ganesha-stackable-fsal.eps, width=0.5\textwidth}
   \caption{Architecture of Stackable FSAL}
   \label{fsalStackArch}
 \end{figure}
+
+\subsubsection{Stackable FSAL}
+Every EXPORT block in config file has a FS\_Specific entry that is passed to create\_export()
+function of FSAL of the export entry. The FS\_Specific entry is again an FSAL name. This
+opens possibilities for using the FS\_Specific for stacking on top of a particular FSAL.
+Figure \ref{fsalStackArch} shows architecture and working of a  general stackable FSAL.
 
 \begin{enumerate}
 \item Config file parsed %1
@@ -130,6 +143,53 @@ Figure \ref{fsalStackArch} shows architecture and working of a  general stackabl
 \item Response from FS\_Specific FSAL handler %8
 \item Response passed back to client %9
 \end{enumerate}
+
+\begin{figure*}[!bth]
+  \centering
+  \psfig{figure=figs/ganesha-crypt-proxy-stack.eps, width=\textwidth}
+  \caption{Architecture of CRYPTFS stacked on PROXY}
+  \label{fsalCryptArch}
+\end{figure*}
+
+\subsection{CRYPTFS Stackable file system}
+CRYPTFS is a stackable FSAL module that secures data using cryptography. CRYPTFS when used in a proxy machine
+encrypts data that is written to server and decrypts data when read from server. Architecture of CRYPTFS in proxy
+is as shown in figure \ref{fsalCryptArch}.
+
+Control flow is similar to a general stackable FSAL. All operations are merely wrappers that call underlying PROXY FSAL
+except read and write. Write involved DES encryption in counter mode (see figure \ref{fsalCryptEncrypt}) and read involves
+decryption (see figure \ref{fsalCryptDecrypt}).
+
+\begin{figure}[!btp]
+  \centering
+  \psfig{figure=figs/ganesha-crypt-ctr-encrypt.eps, width=0.5\textwidth}
+  \caption{Encryption in CRYPTFS}
+  \label{fsalCryptEncrypt}
+\end{figure}
+
+\begin{figure}[!btp]
+  \centering
+  \psfig{figure=figs/ganesha-crypt-ctr-decrypt.eps, width=0.5\textwidth}
+  \caption{Decryption in CRYPTFS}
+  \label{fsalCryptDecrypt}
+\end{figure}
+
+\section{Conclusion}
+\begin{itemize}
+\item To use stackable FSAL for a NFSv4 Security features can be implemented by using a File Handle to
+File Name Map in stackable FSAL. After digging cache inode data structures, I think they are right
+that file name cannot be retrieved from file handle. Needs to be seen if there are other ways of
+doing this (possibly using cache inode data structures).
+\item The existing restriction on FSAL Stackable to have only one underlying file system can be
+worked around by compromising on flexibility (yet to be checked). Also, I think it's worth
+exploring a change in config parsing to allow multiple layers. Further investigation needs to be
+done on this.
+\item Implementation of CRYPTFS has some performance improvements that I have identified. Also,
+impact on performance by inclusion of CRYPTFS stackable file system is yet to be
+measured.
+\item Performance of NFS Ganesha Proxy with different ports of communication with server and client machines
+is also worth study.
+\end{itemize}
 
 \section*{Acknowledgment}
 Ming Chen has been extremely supportive through the duration of work on NFS Ganesha and Stackable FS.
