@@ -119,6 +119,18 @@ Figure \ref{fsalStackArch} shows architecture and working of a  general stackabl
   \label{fsalStackArch}
 \end{figure}
 
+\begin{enumerate}
+\item Config file parsed %1
+\item EXPORT block corresponds to Stackable FSAL. Stackable FSAL's create\_export() is called with a parameter FS\_Specific. %2
+\item FS\_Specific is another FSAL module. It's create\_export() method is called. %3
+\item Handlers of FS\_Specific FSAL is returned %4
+\item Stackable FSAL handlers are registered for the export entry %5
+\item When a client request comes, Stackable FSAL handler is called %6
+\item After performing its own operation, FS\_Specific FSAL's handler is called %7
+\item Response from FS\_Specific FSAL handler %8
+\item Response passed back to client %9
+\end{enumerate}
+
 \section*{Acknowledgment}
 Ming Chen has been extremely supportive through the duration of work on NFS Ganesha and Stackable FS.
 
