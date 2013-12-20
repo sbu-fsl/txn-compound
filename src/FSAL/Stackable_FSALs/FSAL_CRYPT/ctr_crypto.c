@@ -60,6 +60,10 @@ static void counter_block(uint64_t *nonce, uint64_t count) {
 		(*bytes8) ^= count;
 		bytes8 ++;
 	}
+
+	// TODO: Counter block is unique for count if initialization vector is
+	// constant. Performance can be improved by storing results rather than
+	// computing each time.
 }
 
 /**
