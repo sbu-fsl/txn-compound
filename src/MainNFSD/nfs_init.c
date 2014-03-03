@@ -820,6 +820,29 @@ static void nfs_Init(const nfs_start_info_t *p_start_info)
 			 "Unable to initialize LRU subsystem: %d.", rc);
 	}
 
+	/*
+	 * Initialize idmapper before exports_pkginit().
+	 *
+	 * This works around a bug happening in proxy FSAL, which perform
+	 * idmapper operation during nfs_Init(), when uname_tree is not
+	 * initialized yet.
+	 *
+	 * The calling stack is
+	 *  nfs_Init() -> exports_pkginit() -> foreach_gsh_export() ->
+	 *  init_export() -> nfs_export_get_root_entry() ->
+	 *  pxy_lookup_path() -> pxy_lookup_impl() -> pxy_make_object() ->
+	 *  nfs4_Fattr_To_FSAL_attr() -> Fattr4_To_FSAL_attr() ->
+	 *  decode_owner() -> name2uid() -> name2id() ->
+	 *  idmapper_lookup_by_uname() -> avltree_lookup()
+	 *
+	 * The problem is solved if we do idmapper_init() first.
+	 */
+	LogEvent(COMPONENT_INIT, "Initializing ID Mapper.");
+	if (!idmapper_init())
+		LogFatal(COMPONENT_INIT, "Failed initializing ID Mapper.");
+	else
+		LogEvent(COMPONENT_INIT, "ID Mapper successfully initialized.");
+
 	/* finish the job with exports by caching the root entries
 	 */
 	exports_pkginit();
