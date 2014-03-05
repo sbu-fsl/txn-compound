@@ -1,4 +1,6 @@
 /**
+ * vim:expandtab:shiftwidth=8:tabstop=8:
+ *
  * @file  ctr_crypto.c
  * @brief Encrypt and decrypt data
  */
@@ -197,18 +199,16 @@ static void initialize_block_msg(char *msg) {
  * @retval CRYPTFS_CRYPTO_ERROR  Error occurred during encryption.
  */
 static int ctr_crypt(char *key, char *data, uint64_t datalen, uint64_t offset) {
+	uint64_t msg[8];
+	uint64_t remain_bytes = datalen;
+	uint64_t curr_offset = offset;
+	char *data_ptr = data;
 
 	if(key == NULL || data == NULL)
 		return CRYPTFS_CRYPTO_ERROR;
 
 	if(datalen == 0)
 		return CRYPTFS_CRYPTO_NO_ERR;
-
-	int i;
-	uint64_t msg[8];
-	uint64_t remain_bytes = datalen;
-	uint64_t curr_offset = offset;
-	char *data_ptr = data;
 
 	while(remain_bytes > 0) {
 

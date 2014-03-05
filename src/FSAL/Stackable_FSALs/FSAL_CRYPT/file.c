@@ -49,8 +49,8 @@ extern struct next_ops next_ops;
  */
 
 fsal_status_t cryptfs_open(struct fsal_obj_handle *obj_hdl,
-			  const struct req_op_context *opctx,
-			  fsal_openflags_t openflags)
+			   const struct req_op_context *opctx,
+			   fsal_openflags_t openflags)
 {
 	return next_ops.obj_ops->open(obj_hdl, opctx, openflags);
 }
@@ -69,11 +69,10 @@ fsal_openflags_t cryptfs_status(struct fsal_obj_handle * obj_hdl)
  */
 
 fsal_status_t cryptfs_read(struct fsal_obj_handle * obj_hdl,
-			  const struct req_op_context * opctx, uint64_t offset,
-			  size_t buffer_size, void *buffer,
-			  size_t * read_amount, bool * end_of_file)
+			   const struct req_op_context * opctx, uint64_t offset,
+			   size_t buffer_size, void *buffer,
+			   size_t * read_amount, bool * end_of_file)
 {
-
 	LogDebug(COMPONENT_FSAL, "buffer_size = %d", buffer_size);
 	fsal_status_t ret = next_ops.obj_ops->read(obj_hdl, opctx, offset, buffer_size,
 				      buffer, read_amount, end_of_file);
@@ -87,16 +86,6 @@ fsal_status_t cryptfs_read(struct fsal_obj_handle * obj_hdl,
 		return retd;
 	}
 
-#if 0
-	/* Decrypt - POC */
-	char *byte = (char*)buffer;
-	int count;
-	for(count = 0; count < buffer_size; count ++) {
-		*byte -= 1;
-		byte ++;
-	}
-#endif
-
 	return ret;
 }
 
@@ -105,9 +94,9 @@ fsal_status_t cryptfs_read(struct fsal_obj_handle * obj_hdl,
  */
 
 fsal_status_t cryptfs_write(struct fsal_obj_handle * obj_hdl,
-			   const struct req_op_context * opctx, uint64_t offset,
-			   size_t buffer_size, void *buffer,
-			   size_t * write_amount, bool * fsal_stable)
+			    const struct req_op_context * opctx, uint64_t offset,
+			    size_t buffer_size, void *buffer,
+			    size_t * write_amount, bool * fsal_stable)
 {
 	LogDebug(COMPONENT_FSAL, "offset = %lu, buffer_size = %lu", offset, buffer_size);
 
@@ -137,7 +126,7 @@ fsal_status_t cryptfs_write(struct fsal_obj_handle * obj_hdl,
  */
 
 fsal_status_t cryptfs_commit(struct fsal_obj_handle * obj_hdl,	/* sync */
-			    off_t offset, size_t len)
+			     off_t offset, size_t len)
 {
 	return next_ops.obj_ops->commit(obj_hdl, offset, len);
 }
@@ -149,10 +138,10 @@ fsal_status_t cryptfs_commit(struct fsal_obj_handle * obj_hdl,	/* sync */
  */
 
 fsal_status_t cryptfs_lock_op(struct fsal_obj_handle * obj_hdl,
-			     const struct req_op_context * opctx, void *p_owner,
-			     fsal_lock_op_t lock_op,
-			     fsal_lock_param_t * request_lock,
-			     fsal_lock_param_t * conflicting_lock)
+			      const struct req_op_context * opctx, void *p_owner,
+			      fsal_lock_op_t lock_op,
+			      fsal_lock_param_t * request_lock,
+			      fsal_lock_param_t * conflicting_lock)
 {
 	return next_ops.obj_ops->lock_op(obj_hdl, opctx, p_owner, lock_op,
 					 request_lock, conflicting_lock);
@@ -176,7 +165,7 @@ fsal_status_t cryptfs_close(struct fsal_obj_handle * obj_hdl)
  */
 
 fsal_status_t cryptfs_lru_cleanup(struct fsal_obj_handle * obj_hdl,
-				 lru_actions_t requests)
+				  lru_actions_t requests)
 {
 	return next_ops.obj_ops->lru_cleanup(obj_hdl, requests);
 }

@@ -1,4 +1,6 @@
-/* CRYPTFS methods for handles
+/*
+ * vim:expandtab:shiftwidth=8:tabstop=8:
+ * CRYPTFS methods for handles
  */
 
 #include "fsal_handle_syscalls.h"
