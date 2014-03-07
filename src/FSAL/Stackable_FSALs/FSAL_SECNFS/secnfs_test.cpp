@@ -17,7 +17,7 @@ using CryptoPP::AutoSeededRandomPool;
 #include <cryptopp/aes.h>
 using CryptoPP::AES;
 
-const int MSG_SIZE = 4096;
+const int MSG_SIZE = 40960;
 
 #define EXPECT_OKAY(x) EXPECT_EQ(x, SECNFS_OKAY)
 
@@ -73,5 +73,19 @@ TEST_F(EncryptTest, BlockByBlock) {
                 incr_ctr(&myiv, SECNFS_KEY_LENGTH, 1);
 
                 EXPECT_SAME(plain + i * AES::BLOCKSIZE, block, AES::BLOCKSIZE);
+        }
+}
+
+TEST_F(EncryptTest, RandomOffsets) {
+        const int size = 1024;
+        byte block[size];
+
+        for (int i = 0; i < 10; ++i) {
+                uint32_t offset = prng.GenerateWord32(0, MSG_SIZE - size);
+                offset &= ~(AES::BLOCKSIZE - 1);  // round by BLOCKSIZE
+
+                EXPECT_OKAY(secnfs_decrypt(key, iv, offset, size,
+                                           cipher + offset, block));
+                EXPECT_SAME(block, plain + offset, size);
         }
 }

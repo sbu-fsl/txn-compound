@@ -26,6 +26,9 @@ typedef enum {
         SECNFS_CRYPTO_ERROR = 1,
 } secnfs_s;
 
+/*
+ * @brief Increase the counter.
+ */
 inline secnfs_key_t *incr_ctr(secnfs_key_t *iv, unsigned size, int incr) {
         uint8_t *ctr = iv->bytes;
         int i = size - 1;

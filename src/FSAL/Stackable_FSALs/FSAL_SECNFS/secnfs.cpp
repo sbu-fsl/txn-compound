@@ -19,9 +19,17 @@ using CryptoPP::AES;
 #include <cryptopp/ccm.h>
 using CryptoPP::CTR_Mode;
 
+#include <assert.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/*
+ * @brief Check if n is aligned by the encryption block size
+ */
+static int is_block_aligned(uint64_t n) { return !(n & (AES::BLOCKSIZE - 1)); }
+
 
 secnfs_s secnfs_encrypt(secnfs_key_t key,
                         secnfs_key_t iv,
@@ -30,7 +38,9 @@ secnfs_s secnfs_encrypt(secnfs_key_t key,
                         void *plain,
                         void *buffer)
 {
-        incr_ctr(&iv, SECNFS_KEY_LENGTH, offset);
+        assert(is_block_aligned(offset) && is_block_aligned(size));
+
+        incr_ctr(&iv, SECNFS_KEY_LENGTH, offset / AES::BLOCKSIZE);
 
         try {
                 CTR_Mode< AES >::Encryption e;

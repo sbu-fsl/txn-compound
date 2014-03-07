@@ -127,16 +127,6 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
 		return secnfs_to_fsal_status(ret);
 	}
 
-#if 0
-	/* Encrypt - POC */
-	char *byte = (char*)buffer;
-	int count;
-	for(count = 0; count < buffer_size; count ++) {
-		*byte += 1;
-		byte ++;
-	}
-#endif
-
 	return next_ops.obj_ops->write(obj_hdl, opctx, offset, buffer_size,
 				       buffer, write_amount, fsal_stable);
 }
