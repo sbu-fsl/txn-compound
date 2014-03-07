@@ -10,7 +10,7 @@ endif(COMMAND cmake_policy)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules/")
 
-project(nfs-ganesha C)
+project(nfs-ganesha)
 
 # Project versioning
 set(GANESHA_MAJOR_VERSION 2)

@@ -1,0 +1,7 @@
+Required packages
+=================
+1. crypto++ 5.6.2
+
+2. googletest
+Set GOOGLE_TEST env variable to googletest directory, or change GTEST in
+CMakeLists.txt accordingly.
