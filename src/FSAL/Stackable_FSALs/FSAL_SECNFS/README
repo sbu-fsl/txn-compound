@@ -5,3 +5,5 @@ Required packages
 2. googletest
 Set GOOGLE_TEST env variable to googletest directory, or change GTEST in
 CMakeLists.txt accordingly.
+
+3. google protocol buffer 2.5.0 (or up)

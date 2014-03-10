@@ -1,0 +1,11 @@
+package secnfs;
+
+message KeyFile {
+	required string signature = 1;
+	repeated KeyBlock key_blocks = 2;
+}
+
+message KeyBlock {
+	required string proxy_name = 1;
+	required string encrypted_key = 2;
+}

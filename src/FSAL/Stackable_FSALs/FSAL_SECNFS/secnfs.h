@@ -26,6 +26,7 @@ typedef enum {
         SECNFS_CRYPTO_ERROR = 1,
 } secnfs_s;
 
+
 /*
  * @brief Increase the counter.
  */

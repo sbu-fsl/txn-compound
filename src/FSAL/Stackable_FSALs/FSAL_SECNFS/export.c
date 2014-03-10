@@ -250,22 +250,21 @@ fsal_status_t secnfs_create_export(struct fsal_module *fsal_hdl,
 	fsal_status_t expres;
 	struct fsal_module *fsal_stack;
 
-	/* We use the parameter passed as a string in fs_specific to know which FSAL is to be loaded */
+        /* We use the parameter passed as a string in fs_specific to know which
+         * FSAL is to be loaded */
 	fsal_stack = lookup_fsal(fs_specific);
 	if (fsal_stack == NULL) {
 		LogMajor(COMPONENT_FSAL,
-			 "secnfs_create_export: failed to lookup for FSAL %s",
-			 fs_specific);
+			 "failed to lookup for FSAL %s", fs_specific);
 		return fsalstat(ERR_FSAL_INVAL, EINVAL);
 	}
 
-	expres =
-	    fsal_stack->ops->create_export(fsal_stack, export_path, fs_specific,
-					   exp_entry, NULL, up_ops, export);
+        expres = fsal_stack->ops->create_export(fsal_stack, export_path,
+                        fs_specific, exp_entry, NULL, up_ops, export);
 
 	if (FSAL_IS_ERROR(expres)) {
 		LogMajor(COMPONENT_FSAL,
-			 "secnfs_create_export: failed to call create_export on underlying FSAL %s",
+			 "failed to call create_export on underlying FSAL %s",
 			 fs_specific);
 		return expres;
 	}
