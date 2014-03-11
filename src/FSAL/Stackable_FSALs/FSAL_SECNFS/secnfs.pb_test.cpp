@@ -14,8 +14,9 @@
 using secnfs::KeyFile;
 using secnfs::KeyBlock;
 
-static void verify(const KeyFile &f1, const KeyFile &f2) {
+static void VerifyKeyFile(const KeyFile &f1, const KeyFile &f2) {
         EXPECT_EQ(f1.signature(), f2.signature());
+        EXPECT_EQ(f1.creator(), f2.creator());
         EXPECT_EQ(f1.key_blocks_size(), f2.key_blocks_size());
         for (int i = 0; i < f1.key_blocks_size(); ++i) {
                 const KeyBlock &b1 = f1.key_blocks(i);
@@ -28,6 +29,7 @@ static void verify(const KeyFile &f1, const KeyFile &f2) {
 TEST(KeyFileTest, Basic) {
         // create a key_file.
         KeyFile file1;
+        file1.set_creator("nfs4sec");
         file1.set_signature("mysignature");
 
         KeyBlock* block = file1.add_key_blocks();
@@ -47,6 +49,5 @@ TEST(KeyFileTest, Basic) {
         KeyFile file2;
         std::ifstream input("/tmp/key_file.txt");
         EXPECT_TRUE(file2.ParseFromIstream(&input));
-        EXPECT_EQ(file1.signature(), file2.signature());
-        verify(file1, file2);
+        VerifyKeyFile(file1, file2);
 }
