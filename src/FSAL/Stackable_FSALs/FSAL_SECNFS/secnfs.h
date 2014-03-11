@@ -44,6 +44,7 @@ inline secnfs_key_t *incr_ctr(secnfs_key_t *iv, unsigned size, int incr) {
 	return iv;
 }
 
+
 /**
  * @brief Encrypt buffer contents
  *
@@ -81,6 +82,51 @@ secnfs_s secnfs_decrypt(secnfs_key_t key,
                         uint64_t size,
                         void *cipher,
                         void *buffer);
+
+
+/**
+ * SECNFS context.
+ */
+typedef struct {
+        uint32_t size;      /*!< size of context */
+        void *data;         /*!< context data */
+} secnfs_context_t;
+
+
+/**
+ * @brief Create SECNFS context.
+ *
+ * @param[out] context  SECNFS context.
+ *
+ * The caller should use secnfs_destroy_context to free the returned context.
+ *
+ * @return SECNFS_OKAY on success.
+ */
+secnfs_s secnfs_create_context(secnfs_context_t *context);
+
+
+/**
+ * @brief Destroy SECNFS context.
+ *
+ * @param[in]  context   SECNFS context.
+ */
+void secnfs_destroy_context(secnfs_context_t *context);
+
+
+/**
+ * @brief Create new key file.
+ *
+ * @param[out]  fek     File Encryption Key
+ * @param[out]  iv      Initialization vector
+ * @param[out]  keyfile KeyFile data
+ *
+ * The caller is the owner of all returned data and should free them properly.
+ *
+ * @return SECNFS_OKAY on success.
+ */
+secnfs_s secnfs_create_keyfile(secnfs_key_t *fek,
+                               secnfs_key_t *iv,
+                               void *keyfile);
 
 
 #ifdef __cplusplus

@@ -19,7 +19,20 @@ using CryptoPP::AES;
 #include <cryptopp/ccm.h>
 using CryptoPP::CTR_Mode;
 
+#include <cryptopp/osrng.h>
+using CryptoPP::AutoSeededRandomPool;
+
+#include <cryptopp/rsa.h>
+using CryptoPP::RSA;
+
 #include <assert.h>
+
+namespace secnfs {
+struct Context {
+        RSA::PrivateKey *psk_pri;    /*!< Proxy Sign Key (private) */
+        RSA::PublicKey *psk_pub;     /*!< Proxy Sign Key (private) */
+};
+};
 
 #ifdef __cplusplus
 extern "C" {
@@ -67,6 +80,38 @@ secnfs_s secnfs_decrypt(secnfs_key_t key,
                         void *cipher,
                         void *buffer) {
         return secnfs_encrypt(key, iv, offset, size, cipher, buffer);
+}
+
+
+secnfs_s secnfs_create_context(secnfs_context_t *secnfs_context) {
+        secnfs::Context *context = new secnfs::Context();
+
+        AutoSeededRandomPool rnd;
+        RSA::PrivateKey *rsa_pri = new RSA::PrivateKey();
+        rsa_pri->GenerateRandomWithKeySize(rnd, 3072);
+        RSA::PublicKey *rsa_pub = new RSA::PublicKey(*rsa_pri);
+
+        context->psk_pri = rsa_pri;
+        context->psk_pub = rsa_pub;
+        secnfs_context->data = context;
+
+        return SECNFS_OKAY;
+}
+
+
+void secnfs_destroy_context(secnfs_context_t *secnfs_context) {
+        secnfs::Context *context = static_cast<secnfs::Context *>(
+                        secnfs_context->data);
+        delete context->psk_pub;
+        delete context->psk_pri;
+        delete context;
+}
+
+
+secnfs_s secnfs_create_keyfile(secnfs_key_t *fek,
+                               secnfs_key_t *iv,
+                               void *keyfile) {
+        // TODO: generate key file based on list of proxies.
 }
 
 

@@ -40,6 +40,7 @@
 #include "nlm_list.h"
 #include "FSAL/fsal_init.h"
 #include "secnfs_methods.h"
+#include "secnfs.h"
 
 /* SECNFS FSAL module private storage
  */
@@ -164,6 +165,8 @@ fsal_status_t secnfs_create_export(struct fsal_module * fsal_hdl,
 static struct secnfs_fsal_module SECNFS;
 struct next_ops next_ops;
 
+static struct secnfs_context_t secnfs_context;
+
 /* linkage to the exports and handle ops initializers
  */
 
@@ -173,9 +176,8 @@ MODULE_INIT void secnfs_init(void)
 	int retval;
 	struct fsal_module *myself = &SECNFS.fsal;
 
-	retval =
-	    register_fsal(myself, myname, FSAL_MAJOR_VERSION,
-			  FSAL_MINOR_VERSION);
+	retval = register_fsal(myself, myname, FSAL_MAJOR_VERSION,
+			       FSAL_MINOR_VERSION);
 	if (retval != 0) {
 		fprintf(stderr, "SECNFS module failed to register");
 		return;
@@ -183,6 +185,10 @@ MODULE_INIT void secnfs_init(void)
 	myself->ops->create_export = secnfs_create_export;
 	myself->ops->init_config = init_config;
 	init_fsal_parameters(&SECNFS.fsal_info);
+
+        if (secnfs_create_context(&secnfs_context) != SECNFS_OKAY) {
+                fprintf(stderr, "SECNFS failed to initialize secnfs_context");
+        }
 }
 
 MODULE_FINI void secnfs_unload(void)
@@ -194,4 +200,6 @@ MODULE_FINI void secnfs_unload(void)
 		fprintf(stderr, "SECNFS module failed to unregister");
 		return;
 	}
+
+        secnfs_destroy_context(secnfs_context);
 }
