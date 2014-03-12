@@ -39,7 +39,7 @@ set(test_LIB
   ${PROTOBUF_LIBRARIES}
 )
 
-set(test_SRC
+set(secnfs_SRC
   secnfs.cpp
   context.cpp
   secure_proxy.cpp
@@ -48,17 +48,16 @@ set(test_SRC
   ${ProtoHeaders}
 )
 
-add_executable(secnfs_test secnfs_test.cpp ${test_SRC})
-target_link_libraries(secnfs_test ${test_LIB})
-add_test(NAME secnfs_test COMMAND secnfs_test)
+function(add_unittest TestName)
+  add_executable(${TestName} "${TestName}.cpp" ${secnfs_SRC})
+  target_link_libraries(${TestName} ${test_LIB})
+  add_test(NAME ${TestName} COMMAND ${TestName})
+endfunction(add_unittest)
 
-add_executable(secnfs.pb_test secnfs.pb_test.cpp ${ProtoSources} ${ProtoHeaders})
-target_link_libraries(secnfs.pb_test ${test_LIB})
-add_test(NAME secnfs.pb_test COMMAND secnfs.pb_test)
-
-add_executable(secnfs_lib_test secnfs_lib_test.cpp secnfs_lib.cpp)
-target_link_libraries(secnfs_lib_test ${test_LIB})
-add_test(NAME secnfs_lib_test COMMAND secnfs_lib_test)
+add_unittest(secnfs_test)
+add_unittest(context_test)
+add_unittest(secnfs.pb_test)
+add_unittest(secnfs_lib_test)
 
 ########### next target ###############
 
@@ -70,9 +69,7 @@ SET(fsalsecnfs_LIB_SRCS
    main.c
    export.c
    fsal_convert.c
-   secnfs_lib.cpp
-   context.cpp
-   secnfs.cpp
+   ${secnfs_SRC}
 )
 
 add_library(fsalsecnfs SHARED ${fsalsecnfs_LIB_SRCS})

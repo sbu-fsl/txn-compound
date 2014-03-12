@@ -19,7 +19,7 @@ namespace secnfs {
 const int RSAKeyLength = 3072;
 
 inline bool IsSamePrivateKey(const RSA::PrivateKey &k1,
-                              const RSA::PrivateKey &k2) {
+                             const RSA::PrivateKey &k2) {
         return k1.GetModulus() == k2.GetModulus() &&
                 k1.GetPublicExponent() == k2.GetPublicExponent() &&
                 k1.GetPrivateExponent() == k2.GetPrivateExponent();
@@ -27,7 +27,7 @@ inline bool IsSamePrivateKey(const RSA::PrivateKey &k1,
 
 
 inline bool IsSamePublicKey(const RSA::PublicKey &k1,
-                             const RSA::PublicKey &k2) {
+                            const RSA::PublicKey &k2) {
         return k1.GetModulus() == k2.GetModulus() &&
                 k1.GetPublicExponent() == k2.GetPublicExponent();
 }
