@@ -2,7 +2,7 @@
  * vim:expandtab:shiftwidth=8:tabstop=8:
  *
  * @file  secnfs.h
- * @brief Encrypt and decrypt data
+ * @brief SecureProxy
  */
 
 #ifndef H_SECNFS_PROXY

@@ -6,6 +6,9 @@
  */
 
 #include "secnfs.h"
+#include "context.h"
+#include "secnfs_lib.h"
+
 #include <iostream>
 
 #include <cryptopp/filters.h>
@@ -22,20 +25,38 @@ using CryptoPP::CTR_Mode;
 #include <cryptopp/rsa.h>
 using CryptoPP::RSA;
 
+using namespace secnfs;
+
 #include <assert.h>
+
+static inline Context *get_context(secnfs_context_t *secnfs_context) {
+        return static_cast<Context *>(secnfs_context->data);
+}
+
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+secnfs_key_t *incr_ctr(secnfs_key_t *iv, unsigned size, int incr) {
+        uint8_t *ctr = iv->bytes;
+        int i = size - 1;
+        int carry = incr;
+
+	for (; carry && i >= 0; --i) {
+		carry += ctr[i];
+		ctr[i] = carry & 0xFF;
+		carry >>= 8;
+	}
+
+	return iv;
+}
+
+
 /*
  * @brief Check if n is aligned by the encryption block size
  */
 static int is_block_aligned(uint64_t n) { return !(n & (AES::BLOCKSIZE - 1)); }
-
-static inline secnfs::Context *get_context(secnfs_context_t *secnfs_context) {
-        return static_cast<secnfs::Context *>(secnfs_context->data);
-}
 
 secnfs_s secnfs_encrypt(secnfs_key_t key,
                         secnfs_key_t iv,
@@ -77,13 +98,13 @@ secnfs_s secnfs_decrypt(secnfs_key_t key,
 
 
 secnfs_s secnfs_create_context(secnfs_context_t *secnfs_context) {
-        secnfs_context->data = new secnfs::Context();
+        secnfs_context->data = new Context();
         return SECNFS_OKAY;
 }
 
 
 void secnfs_destroy_context(secnfs_context_t *secnfs_context) {
-        secnfs::Context *context = get_context(secnfs_context);
+        Context *context = get_context(secnfs_context);
         delete context;
 }
 

@@ -46,6 +46,10 @@ add_executable(secnfs.pb_test secnfs.pb_test.cpp ${ProtoSources} ${ProtoHeaders}
 target_link_libraries(secnfs.pb_test ${test_LIB} ${PROTOBUF_LIBRARIES})
 add_test(NAME secnfs.pb_test COMMAND secnfs.pb_test)
 
+add_executable(secnfs_lib_test secnfs_lib_test.cpp secnfs_lib.cpp)
+target_link_libraries(secnfs_lib_test ${test_LIB})
+add_test(NAME secnfs_lib_test COMMAND secnfs_lib_test)
+
 ########### next target ###############
 
 SET(fsalsecnfs_LIB_SRCS
@@ -57,6 +61,8 @@ SET(fsalsecnfs_LIB_SRCS
    export.c
    secnfs.cpp
    fsal_convert.c
+   context.cpp
+   secnfs_lib.cpp
 )
 
 add_library(fsalsecnfs SHARED ${fsalsecnfs_LIB_SRCS})

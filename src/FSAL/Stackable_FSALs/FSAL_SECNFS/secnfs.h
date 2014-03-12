@@ -30,20 +30,7 @@ typedef enum {
 /*
  * @brief Increase the counter.
  */
-inline secnfs_key_t *incr_ctr(secnfs_key_t *iv, unsigned size, int incr) {
-        uint8_t *ctr = iv->bytes;
-        int i = size - 1;
-        int carry = incr;
-
-	for (; carry && i >= 0; --i) {
-		carry += ctr[i];
-		ctr[i] = carry & 0xFF;
-		carry >>= 8;
-	}
-
-	return iv;
-}
-
+secnfs_key_t *incr_ctr(secnfs_key_t *iv, unsigned size, int incr);
 
 /**
  * @brief Encrypt buffer contents

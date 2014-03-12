@@ -15,12 +15,21 @@ using std::string;
 using CryptoPP::AutoSeededRandomPool;
 
 using secnfs::Context;
+using secnfs::EncodeKey;
+using secnfs::DecodeKey;
 
 static void VerifyPrivateKey(const RSA::PrivateKey &k1,
                              const RSA::PrivateKey &k2) {
         EXPECT_EQ(k1.GetModulus(), k2.GetModulus());
         EXPECT_EQ(k1.GetPublicExponent(), k2.GetPublicExponent());
         EXPECT_EQ(k1.GetPrivateExponent(), k2.GetPrivateExponent());
+}
+
+
+TEST(KeyCodingTest, Basic) {
+        AutoSeededRandomPool rnd;
+        RSA::PrivateKey key;
+        key.GenerateRandomWithKeySize(rnd, 3072);
 }
 
 
