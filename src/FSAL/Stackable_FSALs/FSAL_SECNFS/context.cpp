@@ -9,6 +9,7 @@
 #include "secnfs.pb.h"
 
 #include <fstream>
+#include <assert.h>
 
 #include <cryptopp/osrng.h>
 using CryptoPP::AutoSeededRandomPool;
@@ -35,7 +36,7 @@ void Context::AddProxy(const SecureProxy &proxy) {
 void Context::Load(const std::string &filename) {
         SecureContextConfig config;
         std::ifstream input(filename.c_str());
-        config.ParseFromIstream(&input);
+        assert(config.ParseFromIstream(&input));
 
         name_ = config.name();
         DecodeKey(&(key_pair_.pri_), config.pri_key());
@@ -57,6 +58,8 @@ void Context::Unload(const std::string &filename) {
         config.set_name(name_);
         EncodeKey(key_pair_.pri_, config.mutable_pri_key());
         EncodeKey(key_pair_.pub_, config.mutable_pub_key());
+        assert(config.pri_key().length() > 0);
+        assert(config.pub_key().length() > 0);
 
         for (size_t i = 0; i < proxies_.size(); ++i) {
                 const SecureProxy &p = proxies_[i];
@@ -66,7 +69,8 @@ void Context::Unload(const std::string &filename) {
         }
 
         std::ofstream output(filename.c_str());
-        config.SerializeToOstream(&output);
+        assert(config.SerializeToOstream(&output));
+        output.close();
 }
 
 };

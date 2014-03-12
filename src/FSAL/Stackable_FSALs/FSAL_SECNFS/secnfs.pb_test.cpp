@@ -11,8 +11,7 @@
 #include <iostream>
 #include <fstream>
 
-using secnfs::KeyFile;
-using secnfs::KeyBlock;
+using namespace secnfs;
 
 static void VerifyKeyFile(const KeyFile &f1, const KeyFile &f2) {
         EXPECT_EQ(f1.signature(), f2.signature());
@@ -42,7 +41,7 @@ TEST(KeyFileTest, Basic) {
 
         // save key_file.
         std::ofstream output("/tmp/key_file.txt");
-        file1.SerializeToOstream(&output);
+        EXPECT_TRUE(file1.SerializeToOstream(&output));
         output.close();
 
         // read the key_file and verify.
@@ -50,4 +49,28 @@ TEST(KeyFileTest, Basic) {
         std::ifstream input("/tmp/key_file.txt");
         EXPECT_TRUE(file2.ParseFromIstream(&input));
         VerifyKeyFile(file1, file2);
+}
+
+
+TEST(SecureContextConfigTest, Basic) {
+        SecureContextConfig config;
+        config.set_name("secure-context");
+        config.set_pub_key("pub-key");
+        config.set_pri_key("pri-key");
+
+        KeyBlock *block = config.add_proxies();
+        block->set_proxy_name("proxy1");
+        block->set_encrypted_key("key");
+
+        std::ofstream output("/tmp/secure_context.txt");
+        EXPECT_TRUE(config.SerializeToOstream(&output));
+        output.close();
+
+        SecureContextConfig config_copy;
+        std::ifstream input("/tmp/secure_context.txt");
+        EXPECT_TRUE(config_copy.ParseFromIstream(&input));
+
+        EXPECT_EQ(config.name(), config_copy.name());
+        EXPECT_EQ(config.pub_key(), config_copy.pub_key());
+        EXPECT_EQ(config.pri_key(), config_copy.pri_key());
 }

@@ -2,18 +2,18 @@ package secnfs;
 
 message KeyFile {
   required string creator = 1;
-	required string signature = 2;
+	required bytes signature = 2;
 	repeated KeyBlock key_blocks = 3;
 }
 
 message KeyBlock {
 	required string proxy_name = 1;
-	required string encrypted_key = 2;
+	required bytes encrypted_key = 2;
 }
 
 message SecureContextConfig {
   required string name = 1;
-  required string pub_key = 2;
-  required string pri_key = 3;
+  required bytes pub_key = 2;
+  required bytes pri_key = 3;
   repeated KeyBlock proxies = 4;
 }

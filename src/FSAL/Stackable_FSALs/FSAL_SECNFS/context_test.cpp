@@ -23,15 +23,15 @@ TEST(ContextTest, Basic) {
 
         AutoSeededRandomPool rnd;
         RSA::PrivateKey pri_key;
-        pri_key.GenerateRandomWithKeySize(rnd, 3072);
+        pri_key.GenerateRandomWithKeySize(rnd, RSAKeyLength);
 
         context.AddProxy(SecureProxy("proxy1", pri_key));
         context.AddProxy(SecureProxy("proxy2", pri_key));
 
-        const string filename = "secure-context-test.conf";
+        const string filename = "/tmp/secure-context-test.conf";
         context.Unload(filename);
 
-        Context new_context;
+        Context new_context(true);
         new_context.Load(filename);
 
         EXPECT_EQ(context.name_, new_context.name_);
