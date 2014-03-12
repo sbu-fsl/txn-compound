@@ -36,14 +36,24 @@ set(test_LIB
 	gtest_main
 	cryptopp
 	pthread
+  ${PROTOBUF_LIBRARIES}
 )
 
-add_executable(secnfs_test secnfs_test.cpp secnfs.cpp)
+set(test_SRC
+  secnfs.cpp
+  context.cpp
+  secure_proxy.cpp
+  secnfs_lib.cpp
+  ${ProtoSources}
+  ${ProtoHeaders}
+)
+
+add_executable(secnfs_test secnfs_test.cpp ${test_SRC})
 target_link_libraries(secnfs_test ${test_LIB})
 add_test(NAME secnfs_test COMMAND secnfs_test)
 
 add_executable(secnfs.pb_test secnfs.pb_test.cpp ${ProtoSources} ${ProtoHeaders})
-target_link_libraries(secnfs.pb_test ${test_LIB} ${PROTOBUF_LIBRARIES})
+target_link_libraries(secnfs.pb_test ${test_LIB})
 add_test(NAME secnfs.pb_test COMMAND secnfs.pb_test)
 
 add_executable(secnfs_lib_test secnfs_lib_test.cpp secnfs_lib.cpp)
@@ -59,10 +69,10 @@ SET(fsalsecnfs_LIB_SRCS
    secnfs_methods.h
    main.c
    export.c
-   secnfs.cpp
    fsal_convert.c
-   context.cpp
    secnfs_lib.cpp
+   context.cpp
+   secnfs.cpp
 )
 
 add_library(fsalsecnfs SHARED ${fsalsecnfs_LIB_SRCS})

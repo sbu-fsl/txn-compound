@@ -8,6 +8,8 @@
 #include "context.h"
 #include "secnfs.pb.h"
 
+#include <fstream>
+
 #include <cryptopp/osrng.h>
 using CryptoPP::AutoSeededRandomPool;
 
@@ -32,7 +34,7 @@ void Context::AddProxy(const SecureProxy &proxy) {
 
 void Context::Load(const std::string &filename) {
         SecureContextConfig config;
-        std::ifstream input(filename);
+        std::ifstream input(filename.c_str());
         config.ParseFromIstream(&input);
 
         name_ = config.name();
@@ -40,11 +42,11 @@ void Context::Load(const std::string &filename) {
         DecodeKey(&(key_pair_.pub_), config.pub_key());
 
         proxies_.resize(config.proxies_size());
-        for (size_t i = 0; i < proxies_; ++i) {
-                const SecureProxy &p = proxies_[i];
+        for (size_t i = 0; i < proxies_.size(); ++i) {
+                SecureProxy &p = proxies_[i];
                 const KeyBlock &block = config.proxies(i);
-                p->name_ = block->proxy_name();
-                DecodeKey(&(p->key_), block->encrypted_key());
+                p.name_ = block.proxy_name();
+                DecodeKey(&(p.key_), block.encrypted_key());
         }
 }
 
@@ -56,14 +58,14 @@ void Context::Unload(const std::string &filename) {
         EncodeKey(key_pair_.pri_, config.mutable_pri_key());
         EncodeKey(key_pair_.pub_, config.mutable_pub_key());
 
-        for (size_t i = 0; i < proxies_; ++i) {
+        for (size_t i = 0; i < proxies_.size(); ++i) {
                 const SecureProxy &p = proxies_[i];
                 KeyBlock *block = config.add_proxies();
-                block->set_proxy_name(p->name_);
-                EncodeKey(p->key_, block->mutable_encrypted_key());
+                block->set_proxy_name(p.name_);
+                EncodeKey(p.key_, block->mutable_encrypted_key());
         }
 
-        std::ofstream output(filename);
+        std::ofstream output(filename.c_str());
         config.SerializeToOstream(&output);
 }
 
