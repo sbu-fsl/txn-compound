@@ -29,8 +29,8 @@ using namespace secnfs;
 
 #include <assert.h>
 
-static inline Context *get_context(secnfs_context_t *secnfs_context) {
-        return static_cast<Context *>(secnfs_context->data);
+static inline Context *get_context(secnfs_context_t *context) {
+        return static_cast<Context *>(context->data);
 }
 
 
@@ -97,15 +97,14 @@ secnfs_s secnfs_decrypt(secnfs_key_t key,
 }
 
 
-secnfs_s secnfs_create_context(secnfs_context_t *secnfs_context) {
-        secnfs_context->data = new Context();
+secnfs_s secnfs_create_context(secnfs_context_t *context) {
+        context->data = new Context();
         return SECNFS_OKAY;
 }
 
 
-void secnfs_destroy_context(secnfs_context_t *secnfs_context) {
-        Context *context = get_context(secnfs_context);
-        delete context;
+void secnfs_destroy_context(secnfs_context_t *context) {
+        delete get_context(context);
 }
 
 

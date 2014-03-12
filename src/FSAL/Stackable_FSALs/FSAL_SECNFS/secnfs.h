@@ -79,6 +79,8 @@ typedef struct {
         void *data;         /*!< context data */
 } secnfs_context_t;
 
+extern secnfs_context_t secnfs_context;
+
 
 /**
  * @brief Create SECNFS context.

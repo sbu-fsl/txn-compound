@@ -19,6 +19,9 @@ using CryptoPP::RSA;
 
 namespace secnfs {
 
+// FIXME make the file configurable
+const std::string SecNFSContextPath  = "/etc/secnfs-context.conf";
+
 /**
  * Secure Proxy Context.
  */
@@ -36,6 +39,8 @@ public:
 
         void Load(const std::string &filename);
         void Unload(const std::string &filename);
+
+        void GenerateKeyFile(secnfs_key_t *key, secnfs_key_t *iv, KeyFile *kf);
 };
 
 };

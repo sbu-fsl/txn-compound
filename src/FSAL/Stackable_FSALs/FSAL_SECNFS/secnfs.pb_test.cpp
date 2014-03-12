@@ -16,6 +16,7 @@ using namespace secnfs;
 static void VerifyKeyFile(const KeyFile &f1, const KeyFile &f2) {
         EXPECT_EQ(f1.signature(), f2.signature());
         EXPECT_EQ(f1.creator(), f2.creator());
+        EXPECT_EQ(f1.iv(), f2.iv());
         EXPECT_EQ(f1.key_blocks_size(), f2.key_blocks_size());
         for (int i = 0; i < f1.key_blocks_size(); ++i) {
                 const KeyBlock &b1 = f1.key_blocks(i);
@@ -29,6 +30,7 @@ TEST(KeyFileTest, Basic) {
         // create a key_file.
         KeyFile file1;
         file1.set_creator("nfs4sec");
+        file1.set_iv("initvector");
         file1.set_signature("mysignature");
 
         KeyBlock* block = file1.add_key_blocks();
@@ -62,7 +64,7 @@ TEST(SecureContextConfigTest, Basic) {
         block->set_proxy_name("proxy1");
         block->set_encrypted_key("key");
 
-        std::ofstream output("/tmp/secure_context.txt");
+        std::ofstream output("/tmp/secure_context_config.txt");
         EXPECT_TRUE(config.SerializeToOstream(&output));
         output.close();
 

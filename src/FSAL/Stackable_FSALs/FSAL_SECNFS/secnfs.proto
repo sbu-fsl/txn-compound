@@ -2,8 +2,9 @@ package secnfs;
 
 message KeyFile {
   required string creator = 1;
-	required bytes signature = 2;
+  required bytes iv = 2;
 	repeated KeyBlock key_blocks = 3;
+	optional bytes signature = 4;
 }
 
 message KeyBlock {

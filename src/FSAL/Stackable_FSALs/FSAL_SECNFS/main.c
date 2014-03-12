@@ -165,7 +165,7 @@ fsal_status_t secnfs_create_export(struct fsal_module * fsal_hdl,
 static struct secnfs_fsal_module SECNFS;
 struct next_ops next_ops;
 
-static secnfs_context_t secnfs_context;
+secnfs_context_t secnfs_context;
 
 /* linkage to the exports and handle ops initializers
  */
@@ -186,9 +186,9 @@ MODULE_INIT void secnfs_init(void)
 	myself->ops->init_config = init_config;
 	init_fsal_parameters(&SECNFS.fsal_info);
 
-        /*if (secnfs_create_context(&secnfs_context) != SECNFS_OKAY) {*/
-                /*fprintf(stderr, "SECNFS failed to initialize secnfs_context");*/
-        /*}*/
+        if (secnfs_create_context(&secnfs_context) != SECNFS_OKAY) {
+                fprintf(stderr, "SECNFS failed to initialize secnfs_context");
+        }
 }
 
 MODULE_FINI void secnfs_unload(void)
@@ -201,5 +201,5 @@ MODULE_FINI void secnfs_unload(void)
 		return;
 	}
 
-        /*secnfs_destroy_context(secnfs_context);*/
+        secnfs_destroy_context(&secnfs_context);
 }
