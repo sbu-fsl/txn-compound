@@ -58,7 +58,7 @@ struct secnfs_fsal_module {
 	struct fsal_module fsal;
 	struct fsal_staticfsinfo_t fs_info;
 	fsal_init_info_t fsal_info;
-	/* secnfsfs_specific_initinfo_t specific_info;  placeholder */
+	secnfs_info_t secnfs_info;
 };
 
 const char myname[] = "SECNFS";
@@ -165,8 +165,6 @@ fsal_status_t secnfs_create_export(struct fsal_module * fsal_hdl,
 static struct secnfs_fsal_module SECNFS;
 struct next_ops next_ops;
 
-secnfs_context_t secnfs_context;
-
 /* linkage to the exports and handle ops initializers
  */
 
@@ -186,8 +184,8 @@ MODULE_INIT void secnfs_init(void)
 	myself->ops->init_config = init_config;
 	init_fsal_parameters(&SECNFS.fsal_info);
 
-        if (secnfs_create_context(&secnfs_context) != SECNFS_OKAY) {
-                fprintf(stderr, "SECNFS failed to initialize secnfs_context");
+        if (secnfs_create_context(&SECNFS.secnfs_info) != SECNFS_OKAY) {
+                fprintf(stderr, "SECNFS failed to initialize secnfs_info");
         }
 }
 
@@ -201,5 +199,5 @@ MODULE_FINI void secnfs_unload(void)
 		return;
 	}
 
-        secnfs_destroy_context(&secnfs_context);
+        secnfs_destroy_context(&SECNFS.secnfs_info);
 }

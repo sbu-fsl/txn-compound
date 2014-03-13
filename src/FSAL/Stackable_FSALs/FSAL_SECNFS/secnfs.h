@@ -76,11 +76,9 @@ secnfs_s secnfs_decrypt(secnfs_key_t key,
  * SECNFS context.
  */
 typedef struct {
-        uint32_t size;      /*!< size of context */
-        void *data;         /*!< context data */
-} secnfs_context_t;
-
-extern secnfs_context_t secnfs_context;
+        uint32_t context_size;          /*!< size of context */
+        void *context;                  /*!< context data */
+} secnfs_info_t;
 
 
 /**
@@ -92,7 +90,7 @@ extern secnfs_context_t secnfs_context;
  *
  * @return SECNFS_OKAY on success.
  */
-secnfs_s secnfs_create_context(secnfs_context_t *context);
+secnfs_s secnfs_create_context(secnfs_info_t *info);
 
 
 /**
@@ -100,7 +98,7 @@ secnfs_s secnfs_create_context(secnfs_context_t *context);
  *
  * @param[in]  context   SECNFS context.
  */
-void secnfs_destroy_context(secnfs_context_t *context);
+void secnfs_destroy_context(secnfs_info_t *info);
 
 
 /**
@@ -116,7 +114,7 @@ void secnfs_destroy_context(secnfs_context_t *context);
  *
  * @return SECNFS_OKAY on success.
  */
-secnfs_s secnfs_create_keyfile(secnfs_context_t *context,
+secnfs_s secnfs_create_keyfile(secnfs_info_t *info,
                                secnfs_key_t **fek,
                                secnfs_key_t **iv,
                                void **keyfile,

@@ -11,7 +11,7 @@ typedef struct secnfs_file_handle_ {
         struct fsal_obj_handle kf_handle;   /*< handle of KeyFile */
         secnfs_key_t fk;                    /*< file symmetric key */
         secnfs_key_t iv;                    /*< initialization vector */
-        secnfs_context_t *context;          /*< secnfs context */
+        secnfs_info_t *info;                /*< secnfs info */
 } secnfs_file_handle_t;
 
 struct secnfs_exp_handle_ops {

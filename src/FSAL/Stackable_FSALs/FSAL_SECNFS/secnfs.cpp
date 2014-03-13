@@ -31,8 +31,8 @@ using namespace secnfs;
 
 #include <assert.h>
 
-static inline Context *get_context(secnfs_context_t *context) {
-        return static_cast<Context *>(context->data);
+static inline Context *get_context(secnfs_info_t *info) {
+        return static_cast<Context *>(info->context);
 }
 
 
@@ -99,8 +99,10 @@ secnfs_s secnfs_decrypt(secnfs_key_t key,
 }
 
 
-secnfs_s secnfs_create_context(secnfs_context_t *context) {
-        context->data = new Context();
+secnfs_s secnfs_create_context(secnfs_info_t *info) {
+        info->context = new Context();
+        info->context_size = sizeof(Context);
+        assert(info->context);
         return SECNFS_OKAY;
 }
 
@@ -110,19 +112,19 @@ static inline secnfs_key_t *new_secnfs_key() {
 }
 
 
-void secnfs_destroy_context(secnfs_context_t *context) {
-        delete get_context(context);
+void secnfs_destroy_context(secnfs_info_t *info) {
+        delete get_context(info);
 }
 
 
-secnfs_s secnfs_create_keyfile(secnfs_context_t *context,
+secnfs_s secnfs_create_keyfile(secnfs_info_t *info,
                                secnfs_key_t **fek,
                                secnfs_key_t **iv,
                                void **keyfile,
                                int *kf_len) {
         *fek = new_secnfs_key();
         *iv = new_secnfs_key();
-        Context *ctx = get_context(context);
+        Context *ctx = get_context(info);
 
         KeyFile kf;
         ctx->GenerateKeyFile((*fek)->bytes, (*iv)->bytes,
