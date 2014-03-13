@@ -68,9 +68,13 @@ TEST_F(ContextTest, GenerateKeyFileCorrectly) {
 TEST_F(ContextTest, TestCacheMap) {
         string key("Hello"), value("World");
         std::pair<std::string, std::string> item(key, value);
-        Context::hash_entry result;
-        EXPECT_TRUE(context_.map_.insert(result, item));
-        //Context::hash_entry item;
-        //EXPECT_TRUE(context_.map_.find(item, key));
-        //EXPECT_EQ(item->second, value);
+
+        {
+                Context::hash_entry result;
+                EXPECT_TRUE(context_.map_.insert(result, item));
+        }
+
+        Context::hash_entry entry;
+        EXPECT_TRUE(context_.map_.find(entry, key));
+        EXPECT_EQ(entry->second, value);
 }

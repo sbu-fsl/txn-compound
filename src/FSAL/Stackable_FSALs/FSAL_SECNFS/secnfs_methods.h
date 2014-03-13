@@ -3,11 +3,15 @@
  * SECNFS methods for handles
  */
 
+#include "secnfs.h"
 #include "fsal_handle_syscalls.h"
 struct secnfs_fsal_obj_handle;
 
 typedef struct secnfs_file_handle_ {
-	int nothing;
+        struct fsal_obj_handle kf_handle;   /*< handle of KeyFile */
+        secnfs_key_t fk;                    /*< file symmetric key */
+        secnfs_key_t iv;                    /*< initialization vector */
+        secnfs_context_t *context;          /*< secnfs context */
 } secnfs_file_handle_t;
 
 struct secnfs_exp_handle_ops {

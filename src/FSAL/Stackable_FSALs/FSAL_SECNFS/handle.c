@@ -41,11 +41,26 @@
 #include <os/subr.h>
 
 extern struct next_ops next_ops;
-/* helpers
- */
 
-/* handle methods
- */
+/************************* helpers **********************/
+
+static struct secnfs_fsal_obj_handle *alloc_handle()
+{
+	struct secnfs_fsal_obj_handle *hdl;
+	fsal_status_t st;
+
+        hdl = gsh_calloc(1, (sizeof(struct secnfs_fsal_obj_handle) +
+                             sizeof(secnfs_file_handle_t)));
+	if (hdl == NULL)
+		return NULL;
+
+	hdl->handle = (secnfs_file_handle_t *) &hdl[1];
+
+        return hdl;
+}
+
+
+/************************* handle methods **********************/
 
 /* lookup
  * deprecated NULL parent && NULL path implies root handle
