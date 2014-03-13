@@ -14,14 +14,6 @@
 #include <cryptopp/osrng.h>
 using CryptoPP::AutoSeededRandomPool;
 
-#include <cryptopp/rsa.h>
-using CryptoPP::RSAES_OAEP_SHA_Encryptor;
-
-#include <cryptopp/filters.h>
-using CryptoPP::PK_EncryptorFilter;
-using CryptoPP::StringSource;
-using CryptoPP::StringSink;
-
 namespace secnfs {
 
 // TODO accept option
@@ -84,26 +76,21 @@ void Context::Unload(const std::string &filename) {
 }
 
 
-void Context::GenerateKeyFile(secnfs_key_t *key, secnfs_key_t *iv, KeyFile *kf)
+void Context::GenerateKeyFile(byte *key, byte *iv, int len, KeyFile *kf)
 {
         AutoSeededRandomPool prng;
-        prng.GenerateBlock(key->bytes, SECNFS_KEY_LENGTH);
-        prng.GenerateBlock(iv->bytes, SECNFS_KEY_LENGTH);
+        prng.GenerateBlock(key, len);
+        prng.GenerateBlock(iv, len);
 
-        kf->set_iv(static_cast<char *>(iv->bytes));
+        kf->set_iv(reinterpret_cast<char *>(iv));
 
         for (size_t i = 0; i < proxies_.size(); ++i) {
                 const SecureProxy &p = proxies_[i];
                 KeyBlock *block = kf->add_key_blocks();
                 block->set_proxy_name(p.name_);
 
-                std::string *encrypted_key = block->mutable_encrypted_key();
-
-                RSAES_OAEP_SHA_Encryptor e(p.key_);
-                StringSource ss1(key->bytes, true,
-                        new PK_EncryptorFilter(prng, e,
-                                new StringSink(*encrypted_key)));
-
+                RSAEncrypt(p.key_, reinterpret_cast<char *>(key),
+                           block->mutable_encrypted_key());
         }
 }
 

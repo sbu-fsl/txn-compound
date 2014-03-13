@@ -10,6 +10,7 @@
 
 #include "secnfs_lib.h"
 #include "secure_proxy.h"
+#include "secnfs.pb.h"
 
 #include <vector>
 #include <string>
@@ -40,7 +41,8 @@ public:
         void Load(const std::string &filename);
         void Unload(const std::string &filename);
 
-        void GenerateKeyFile(secnfs_key_t *key, secnfs_key_t *iv, KeyFile *kf);
+        // key, and iv should be terminated by '\0'.
+        void GenerateKeyFile(byte *key, byte *iv, int len, KeyFile *kf);
 };
 
 };

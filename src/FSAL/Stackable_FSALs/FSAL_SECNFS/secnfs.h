@@ -9,6 +9,7 @@
 #define H_SECNFS
 
 #include <stdint.h>
+#include <stdlib.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -16,7 +17,7 @@ extern "C" {
 
 #define SECNFS_KEY_LENGTH 16
 
-typedef struct { uint8_t bytes[SECNFS_KEY_LENGTH]; } secnfs_key_t;
+typedef struct { uint8_t bytes[SECNFS_KEY_LENGTH + 1]; } secnfs_key_t;
 
 /**
  * Status codes of SECNFS.
@@ -105,17 +106,21 @@ void secnfs_destroy_context(secnfs_context_t *context);
 /**
  * @brief Create new key file.
  *
+ * @param[in]   context SECNFS Context
  * @param[out]  fek     File Encryption Key
  * @param[out]  iv      Initialization vector
  * @param[out]  keyfile KeyFile data
+ * @param[out]  kf_len  Length of KeyFile data
  *
  * The caller is the owner of all returned data and should free them properly.
  *
  * @return SECNFS_OKAY on success.
  */
-secnfs_s secnfs_create_keyfile(secnfs_key_t *fek,
-                               secnfs_key_t *iv,
-                               void *keyfile);
+secnfs_s secnfs_create_keyfile(secnfs_context_t *context,
+                               secnfs_key_t **fek,
+                               secnfs_key_t **iv,
+                               void **keyfile,
+                               int *kf_len);
 
 
 #ifdef __cplusplus

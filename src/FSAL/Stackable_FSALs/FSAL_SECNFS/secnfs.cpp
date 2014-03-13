@@ -6,10 +6,12 @@
  */
 
 #include "secnfs.h"
+#include "secnfs.pb.h"
 #include "context.h"
 #include "secnfs_lib.h"
 
 #include <iostream>
+#include <string>
 
 #include <cryptopp/filters.h>
 using CryptoPP::ArraySource;
@@ -103,15 +105,37 @@ secnfs_s secnfs_create_context(secnfs_context_t *context) {
 }
 
 
+static inline secnfs_key_t *new_secnfs_key() {
+        return static_cast<secnfs_key_t*>(calloc(1, sizeof(secnfs_key_t)));
+}
+
+
 void secnfs_destroy_context(secnfs_context_t *context) {
         delete get_context(context);
 }
 
 
-secnfs_s secnfs_create_keyfile(secnfs_key_t *fek,
-                               secnfs_key_t *iv,
-                               void *keyfile) {
-        // TODO: generate key file based on list of proxies.
+secnfs_s secnfs_create_keyfile(secnfs_context_t *context,
+                               secnfs_key_t **fek,
+                               secnfs_key_t **iv,
+                               void **keyfile,
+                               int *kf_len) {
+        *fek = new_secnfs_key();
+        *iv = new_secnfs_key();
+        Context *ctx = get_context(context);
+
+        KeyFile kf;
+        ctx->GenerateKeyFile((*fek)->bytes, (*iv)->bytes,
+                             SECNFS_KEY_LENGTH, &kf);
+
+        std::string kf_buf;
+        assert(kf.SerializeToString(&kf_buf));
+
+        *kf_len = kf_buf.length();
+        *keyfile = malloc(*kf_len);
+        memcpy(*keyfile, kf_buf.c_str(), *kf_len);
+
+        return SECNFS_OKAY;
 }
 
 

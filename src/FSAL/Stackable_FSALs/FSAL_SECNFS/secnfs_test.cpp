@@ -28,7 +28,7 @@ protected:
         virtual void SetUp() {
                 prng_.GenerateBlock(key_.bytes, SECNFS_KEY_LENGTH);
                 prng_.GenerateBlock(iv_.bytes, SECNFS_KEY_LENGTH);
-                prng_.GenerateBlock(plain_, sizeof(plain_));
+                prng_.GenerateBlock(plain_, MSG_SIZE);
                 ASSERT_EQ(secnfs_encrypt(key_, iv_, 0, MSG_SIZE, plain_,
                                          cipher_), SECNFS_OKAY);
         }

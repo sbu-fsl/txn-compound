@@ -10,8 +10,16 @@
 using CryptoPP::AutoSeededRandomPool;
 
 #include <cryptopp/filters.h>
+using CryptoPP::PK_EncryptorFilter;
+using CryptoPP::PK_DecryptorFilter;
 using CryptoPP::StringSink;
+using CryptoPP::StringSource;
 using CryptoPP::StringStore;
+
+
+#include <cryptopp/rsa.h>
+using CryptoPP::RSAES_OAEP_SHA_Decryptor;
+using CryptoPP::RSAES_OAEP_SHA_Encryptor;
 
 namespace secnfs {
 
@@ -48,6 +56,26 @@ void EncodeKey(const RSAFunction& key, std::string *result) {
 
 void DecodeKey(RSAFunction *key, const std::string &code) {
         key->BERDecode(StringStore(code).Ref());
+}
+
+
+void RSAEncrypt(const RSA::PublicKey &pub_key, const std::string &plain,
+                std::string *cipher) {
+        AutoSeededRandomPool prng;
+        RSAES_OAEP_SHA_Encryptor e(pub_key);
+        StringSource ss(plain, true,
+                new PK_EncryptorFilter(prng, e,
+                        new StringSink(*cipher)));
+}
+
+
+void RSADecrypt(const RSA::PrivateKey &pri_key, const std::string &cipher,
+                std::string *recovered) {
+        AutoSeededRandomPool prng;
+        RSAES_OAEP_SHA_Decryptor d(pri_key);
+        StringSource ss(cipher, true,
+                new PK_DecryptorFilter(prng, d,
+                        new StringSink(*recovered)));
 }
 
 };

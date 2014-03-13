@@ -56,6 +56,14 @@ void EncodeKey(const RSAFunction &key, std::string *result);
 
 void DecodeKey(RSAFunction *key, const std::string &result);
 
+
+void RSAEncrypt(const RSA::PublicKey &pub_key, const std::string &plain,
+                std::string *cipher);
+
+
+void RSADecrypt(const RSA::PrivateKey &pri_key, const std::string &cipher,
+                std::string *recovered);
+
 };
 
 #endif

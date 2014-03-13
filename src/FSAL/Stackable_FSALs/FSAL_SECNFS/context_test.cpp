@@ -4,7 +4,9 @@
  * Test context.cpp
  */
 
+#include "secnfs.h"
 #include "context.h"
+#include "secnfs_lib.h"
 #include "secure_proxy.h"
 
 #include <string>
@@ -22,15 +24,15 @@ protected:
         ContextTest() : context_(true) {}
         virtual void SetUp() {
                 context_.name_ = "context-test";
-                RSA::PrivateKey pri_key;
-                pri_key.GenerateRandomWithKeySize(prng_, RSAKeyLength);
+                rsa_pri_key_.GenerateRandomWithKeySize(prng_, RSAKeyLength);
 
-                context_.AddProxy(SecureProxy("proxy1", pri_key));
-                context_.AddProxy(SecureProxy("proxy2", pri_key));
+                context_.AddProxy(SecureProxy("proxy1", rsa_pri_key_));
+                context_.AddProxy(SecureProxy("proxy2", rsa_pri_key_));
         }
 
         AutoSeededRandomPool prng_;
         Context context_;
+        RSA::PrivateKey rsa_pri_key_;
 };
 
 
@@ -47,5 +49,17 @@ TEST_F(ContextTest, Basic) {
 
 
 TEST_F(ContextTest, GenerateKeyFileCorrectly) {
+        byte key[SECNFS_KEY_LENGTH + 1] = {0};
+        byte iv[SECNFS_KEY_LENGTH + 1] = {0};
+        KeyFile kf;
 
+        context_.GenerateKeyFile(key, iv, SECNFS_KEY_LENGTH, &kf);
+
+        string file_key(reinterpret_cast<char *>(key));
+        for (size_t i = 0; i < kf.key_blocks_size(); ++i) {
+                const KeyBlock &kb = kf.key_blocks(i);
+                string recovered_key;
+                RSADecrypt(rsa_pri_key_, kb.encrypted_key(), &recovered_key);
+                EXPECT_EQ(recovered_key, file_key);
+        }
 }

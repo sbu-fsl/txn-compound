@@ -28,3 +28,12 @@ TEST(KeyCodingTest, Basic) {
 
         EXPECT_EQ(kp, kp_copy);
 }
+
+
+TEST(RSACrypto, Basic) {
+        RSAKeyPair kp;
+        string plain = "RSACrypto", cipher, recovered;
+        RSAEncrypt(kp.pub_, plain, &cipher);
+        RSADecrypt(kp.pri_, cipher, &recovered);
+        EXPECT_EQ(plain, recovered);
+}
