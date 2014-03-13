@@ -60,10 +60,10 @@
  * struct private_obj_handle
  * {
  *         [private stuff]
- *         struct fsal_obj_handle *pub;
+ *         struct fsal_obj_handle pub;
  * }
  *
- * fsal_getattr(struct fsal_obj_handle handle_pub)
+ * fsal_getattr(struct fsal_obj_handle *handle_pub)
  * {
  *         struct private_obj_handle *handle;
  *
@@ -186,7 +186,7 @@
  * stored or looked up in the cache.
  *
  * The invariant to be maintained is that given an @c fsal_obj_handle,
- * fh, extract_handle(digest_handle(fh)) = handle_to_key(fh).
+ * fh, extract_handle(handle_digest(fh)) = handle_to_key(fh).
  *
  * History and Details
  * ===================
@@ -209,7 +209,7 @@
  *    it doesn't matter a whit. The client treats the whole protocol
  *    handle (including what is in the opaque) as an opaque token.
  *
- * 2. The purpose of the @c export_id in the protocol "handle" is to
+ * 2. The purpose of the @c export in the protocol "handle" is to
  *    locate the FSAL that knows what is inside the opaque.  The @c
  *    extract_handle is an export method for that purpose.  It should
  *    be able to take the protocol handle opaque and translate it into
