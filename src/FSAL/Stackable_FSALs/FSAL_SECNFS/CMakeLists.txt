@@ -31,11 +31,15 @@ add_library(gtest "${GTEST}/src/gtest-all.cc")
 
 add_library(gtest_main "${GTEST}/src/gtest_main.cc")
 
+find_library(TBB_LIB tbb "/usr/local/lib64/tbb/")
+message(STATUS "tbb library: " ${TBB_LIB})
+
 set(test_LIB
 	gtest
 	gtest_main
 	cryptopp
 	pthread
+  ${TBB_LIB}
   ${PROTOBUF_LIBRARIES}
 )
 

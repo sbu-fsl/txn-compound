@@ -18,10 +18,25 @@
 #include <cryptopp/rsa.h>
 using CryptoPP::RSA;
 
+#include <tbb/concurrent_hash_map.h>
+
 namespace secnfs {
 
 // FIXME make the file configurable
 const std::string SecNFSContextPath  = "/etc/secnfs-context.conf";
+
+struct CacheCompare {
+        static size_t hash(const std::string &key) {
+                 size_t h = 0;
+                 for (const char* s = key.c_str(); *s; ++s)
+                         h = (h*17)^*s;
+                 return h;
+        }
+
+        static bool equal(const std::string &k1, const std::string &k2) {
+                return k1 == k2;
+        }
+};
 
 /**
  * Secure Proxy Context.
@@ -33,6 +48,10 @@ public:
 
         std::string name_;              /*!< name of current proxy */
         RSAKeyPair key_pair_;           /*!< RSA key pair */
+
+        tbb::concurrent_hash_map<std::string, std::string, CacheCompare> map_;
+        typedef tbb::concurrent_hash_map<std::string, std::string,
+                                         CacheCompare>::accessor hash_entry;
 
         // We use vector because we do not expect a lot of proxies.
         std::vector<SecureProxy> proxies_;      /*!< list of proxies */
