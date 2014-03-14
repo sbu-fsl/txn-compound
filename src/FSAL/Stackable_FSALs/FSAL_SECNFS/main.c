@@ -106,29 +106,74 @@ struct fsal_staticfsinfo_t *secnfs_staticinfo(struct fsal_module *hdl)
 /* Module methods
  */
 
-/* init_config
+
+static int secnfs_init_params(const char *key, const char *val,
+			      fsal_init_info_t *info, const char *name)
+{
+        struct secnfs_fsal_module *secnfs = container_of(
+                        info, struct secnfs_fsal_module, fsal_info);
+        secnfs_info_t *secnfs_info = &secnfs->secnfs_info;
+
+        if (!strcasecmp(key, "Context_Config_File")) {
+                strncpy(secnfs_info->config_filepath, val, MAXPATHLEN);
+        } if (!strcasecmp(key, "Create_If_No_Conifig")) {
+                secnfs_info->create_if_no_config = str_to_bool(val);
+        } else {
+		LogCrit(COMPONENT_CONFIG, "Unknown key: %s in %s", key, name);
+		return 1;
+        }
+
+        return 0;
+}
+
+
+static int validate_conf_params(const secnfs_info_t *info)
+{
+	fsal_status_t st;
+        if (!info->config_filepath) {
+                LogCrit(COMPONENT_CONFIG, "'Context_Config_File' not set");
+                return 0;
+        }
+
+        if (!access(info->config_filepath, F_OK)
+                        && !info->create_if_no_config) {
+                LogCrit(COMPONENT_CONFIG, "cannot access '%s'",
+                        info->config_filepath);
+                return 0;
+        }
+
+        return 1;
+}
+
+
+/*
  * must be called with a reference taken (via lookup_fsal)
  */
-
 static fsal_status_t init_config(struct fsal_module *fsal_hdl,
 				 config_file_t config_struct)
 {
 	struct secnfs_fsal_module *secnfs_me =
 	    container_of(fsal_hdl, struct secnfs_fsal_module, fsal);
-	fsal_status_t fsal_status;
+        secnfs_info_t *info = &(secnfs_me->secnfs_info);
+	fsal_status_t st;
 
 	secnfs_me->fs_info = default_posix_info;	/* get a copy of the defaults */
 
-	fsal_status =
-	    fsal_load_config(fsal_hdl->ops->get_name(fsal_hdl), config_struct,
-			     &secnfs_me->fsal_info, &secnfs_me->fs_info, NULL);
-
-	if (FSAL_IS_ERROR(fsal_status))
-		return fsal_status;
 	/* if we have fsal specific params, do them here
 	 * fsal_hdl->name is used to find the block containing the
 	 * params.
 	 */
+        st = fsal_load_config(fsal_hdl->ops->get_name(fsal_hdl), config_struct,
+                              &secnfs_me->fsal_info, &secnfs_me->fs_info,
+                              secnfs_init_params);
+	if (FSAL_IS_ERROR(st))
+		return st;
+
+        if (!validate_conf_params(&secnfs_me->secnfs_info)) {
+                st.major = ERR_FSAL_INVAL;
+                st.minor = SECNFS_WRONG_CONFIG;
+                return st;
+        }
 
 	display_fsinfo(&secnfs_me->fs_info);
 	LogFullDebug(COMPONENT_FSAL,

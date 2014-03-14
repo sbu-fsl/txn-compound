@@ -22,9 +22,6 @@ using CryptoPP::RSA;
 
 namespace secnfs {
 
-// FIXME make the file configurable
-const std::string SecNFSContextPath  = "/etc/secnfs-context.conf";
-
 struct CacheCompare {
         static size_t hash(const std::string &key) {
                  size_t h = 0;
@@ -43,7 +40,7 @@ struct CacheCompare {
  */
 class Context {
 public:
-        Context(bool create = false);
+        Context(const char *config_filepath, bool create = false);
         ~Context();
 
         std::string name_;              /*!< name of current proxy */

@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <sys/param.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,7 +26,19 @@ typedef struct { uint8_t bytes[SECNFS_KEY_LENGTH + 1]; } secnfs_key_t;
 typedef enum {
         SECNFS_OKAY = 0,
         SECNFS_CRYPTO_ERROR = 1,
+        SECNFS_WRONG_CONFIG,
 } secnfs_s;
+
+
+/**
+ * SECNFS context.
+ */
+typedef struct {
+        uint32_t context_size;          /*!< size of context */
+        void *context;                  /*!< context data */
+        char config_filepath[MAXPATHLEN + 1];
+        unsigned create_if_no_config : 1;
+} secnfs_info_t;
 
 
 /*
@@ -70,15 +83,6 @@ secnfs_s secnfs_decrypt(secnfs_key_t key,
                         uint64_t size,
                         void *cipher,
                         void *buffer);
-
-
-/**
- * SECNFS context.
- */
-typedef struct {
-        uint32_t context_size;          /*!< size of context */
-        void *context;                  /*!< context data */
-} secnfs_info_t;
 
 
 /**

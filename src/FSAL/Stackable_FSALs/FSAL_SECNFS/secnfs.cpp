@@ -100,7 +100,7 @@ secnfs_s secnfs_decrypt(secnfs_key_t key,
 
 
 secnfs_s secnfs_create_context(secnfs_info_t *info) {
-        info->context = new Context();
+        info->context = new Context(info->config_filepath);
         info->context_size = sizeof(Context);
         assert(info->context);
         return SECNFS_OKAY;

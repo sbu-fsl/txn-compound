@@ -65,13 +65,13 @@ static struct secnfs_fsal_obj_handle *alloc_handle()
 /* lookup
  * deprecated NULL parent && NULL path implies root handle
  */
-
 static fsal_status_t lookup(struct fsal_obj_handle *parent,
 			    const struct req_op_context *opctx,
 			    const char *path, struct fsal_obj_handle **handle)
 {
 	return next_ops.obj_ops->lookup(parent, opctx, path, handle);
 }
+
 
 static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
 			    const struct req_op_context *opctx,

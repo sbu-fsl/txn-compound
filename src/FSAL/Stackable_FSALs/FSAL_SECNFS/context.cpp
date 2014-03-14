@@ -17,17 +17,15 @@ using CryptoPP::AutoSeededRandomPool;
 namespace secnfs {
 
 // TODO accept option
-Context::Context(bool create) : key_pair_(create) {
+Context::Context(const char *filepath, bool create) : key_pair_(create) {
         if (!create) {
                 // TODO check existence of the file
-                Load(SecNFSContextPath);
+                Load(filepath);
         }
 }
 
 
-Context::~Context() {
-        Unload(SecNFSContextPath);
-}
+Context::~Context() {}
 
 
 void Context::AddProxy(const SecureProxy &proxy) {

@@ -19,9 +19,11 @@ using CryptoPP::AutoSeededRandomPool;
 
 using namespace secnfs;
 
+const char *SecNFSContextPath = "/etc/secnfs-context.conf";
+
 class ContextTest : public ::testing::Test {
 protected:
-        ContextTest() : context_(true) {}
+        ContextTest() : context_(SecNFSContextPath, true) {}
         virtual void SetUp() {
                 context_.name_ = "context-test";
                 rsa_pri_key_.GenerateRandomWithKeySize(prng_, RSAKeyLength);
@@ -40,7 +42,7 @@ TEST_F(ContextTest, Basic) {
         const string filename = "/tmp/secure-context-test.conf";
         context_.Unload(filename);
 
-        Context new_context(true);
+        Context new_context(filename.c_str(), true);
         new_context.Load(filename);
 
         EXPECT_EQ(context_.name_, new_context.name_);
