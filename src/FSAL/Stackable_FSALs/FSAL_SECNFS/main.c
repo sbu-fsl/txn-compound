@@ -119,7 +119,7 @@ static int secnfs_init_params(const char *key, const char *val,
         } if (!strcasecmp(key, "Create_If_No_Context")) {
                 secnfs_info->create_if_no_context = str_to_bool(val);
         } if (!strcasecmp(key, "Name")) {
-                strncpy(secnfs_info->secnfs_name, val, MAXNAMLEN);
+                strncpy(secnfs_info->secnfs_name, val, MAXPATHLEN);
         } else {
 		LogCrit(COMPONENT_CONFIG, "Unknown key: %s in %s", key, name);
 		return 1;

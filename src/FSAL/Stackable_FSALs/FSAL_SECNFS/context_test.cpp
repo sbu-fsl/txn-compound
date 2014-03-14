@@ -41,7 +41,9 @@ TEST_F(ContextTest, Basic) {
         const string filename = "/tmp/secure-context-test.conf";
         context_.Unload(filename);
 
-        Context new_context(filename.c_str(), true);
+        secnfs_info_t info;
+        strncpy(info.secnfs_name, context_.name_.c_str(), MAXPATHLEN);
+        Context new_context(&info, true);
         new_context.Load(filename);
 
         EXPECT_EQ(context_.name_, new_context.name_);
