@@ -17,10 +17,10 @@ using CryptoPP::AutoSeededRandomPool;
 namespace secnfs {
 
 // TODO accept option
-Context::Context(const char *filepath, bool create) : key_pair_(create) {
+Context::Context(const secnfs_info_t *secnfs_info, bool create)
+                : name_(secnfs_info->secnfs_name), key_pair_(create) {
         if (!create) {
-                // TODO check existence of the file
-                Load(filepath);
+                Load(secnfs_info->context_cache_file);
         }
 }
 
@@ -38,7 +38,8 @@ void Context::Load(const std::string &filename) {
         std::ifstream input(filename.c_str());
         assert(config.ParseFromIstream(&input));
 
-        name_ = config.name();
+        assert(name_ == config.name());
+
         DecodeKey(&(key_pair_.pri_), config.pri_key());
         DecodeKey(&(key_pair_.pub_), config.pub_key());
 

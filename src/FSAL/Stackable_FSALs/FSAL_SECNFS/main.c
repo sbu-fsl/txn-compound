@@ -114,10 +114,12 @@ static int secnfs_init_params(const char *key, const char *val,
                         info, struct secnfs_fsal_module, fsal_info);
         secnfs_info_t *secnfs_info = &secnfs->secnfs_info;
 
-        if (!strcasecmp(key, "Context_Config_File")) {
-                strncpy(secnfs_info->config_filepath, val, MAXPATHLEN);
-        } if (!strcasecmp(key, "Create_If_No_Conifig")) {
-                secnfs_info->create_if_no_config = str_to_bool(val);
+        if (!strcasecmp(key, "Context_Cache_File")) {
+                strncpy(secnfs_info->context_cache_file, val, MAXPATHLEN);
+        } if (!strcasecmp(key, "Create_If_No_Context")) {
+                secnfs_info->create_if_no_context = str_to_bool(val);
+        } if (!strcasecmp(key, "Name")) {
+                strncpy(secnfs_info->secnfs_name, val, MAXNAMLEN);
         } else {
 		LogCrit(COMPONENT_CONFIG, "Unknown key: %s in %s", key, name);
 		return 1;
@@ -130,15 +132,15 @@ static int secnfs_init_params(const char *key, const char *val,
 static int validate_conf_params(const secnfs_info_t *info)
 {
 	fsal_status_t st;
-        if (!info->config_filepath) {
-                LogCrit(COMPONENT_CONFIG, "'Context_Config_File' not set");
+        if (!info->context_cache_file) {
+                LogCrit(COMPONENT_CONFIG, "'Context_Cache_File' not set");
                 return 0;
         }
 
-        if (!access(info->config_filepath, F_OK)
-                        && !info->create_if_no_config) {
+        if (!access(info->context_cache_file, F_OK)
+                        && !info->create_if_no_context) {
                 LogCrit(COMPONENT_CONFIG, "cannot access '%s'",
-                        info->config_filepath);
+                        info->context_cache_file);
                 return 0;
         }
 
@@ -169,11 +171,8 @@ static fsal_status_t init_config(struct fsal_module *fsal_hdl,
 	if (FSAL_IS_ERROR(st))
 		return st;
 
-        if (!validate_conf_params(&secnfs_me->secnfs_info)) {
-                st.major = ERR_FSAL_INVAL;
-                st.minor = SECNFS_WRONG_CONFIG;
-                return st;
-        }
+        if (!validate_conf_params(&secnfs_me->secnfs_info))
+                return fsalstat(ERR_FSAL_INVAL, SECNFS_WRONG_CONFIG);
 
 	display_fsinfo(&secnfs_me->fs_info);
 	LogFullDebug(COMPONENT_FSAL,

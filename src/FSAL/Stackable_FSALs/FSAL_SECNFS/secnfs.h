@@ -36,8 +36,9 @@ typedef enum {
 typedef struct {
         uint32_t context_size;          /*!< size of context */
         void *context;                  /*!< context data */
-        char config_filepath[MAXPATHLEN + 1];
-        unsigned create_if_no_config : 1;
+        char context_cache_file[MAXPATHLEN + 1];
+        char secnfs_name[MAXNAMLEN + 1];       /*!< secnfs unique name */
+        unsigned create_if_no_context : 1;
 } secnfs_info_t;
 
 

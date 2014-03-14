@@ -8,6 +8,7 @@
 #ifndef H_SECNFS_CONTEXT
 #define H_SECNFS_CONTEXT
 
+#include "secnfs.h"
 #include "secnfs_lib.h"
 #include "secure_proxy.h"
 #include "secnfs.pb.h"
@@ -40,11 +41,12 @@ struct CacheCompare {
  */
 class Context {
 public:
-        Context(const char *config_filepath, bool create = false);
+        Context(const secnfs_info_t *secnfs_info, bool create = false);
         ~Context();
 
         std::string name_;              /*!< name of current proxy */
         RSAKeyPair key_pair_;           /*!< RSA key pair */
+        secnfs_info_t *secnfs_info_;
 
         tbb::concurrent_hash_map<std::string, std::string, CacheCompare> map_;
         typedef tbb::concurrent_hash_map<std::string, std::string,

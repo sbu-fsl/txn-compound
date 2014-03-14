@@ -19,11 +19,9 @@ using CryptoPP::AutoSeededRandomPool;
 
 using namespace secnfs;
 
-const char *SecNFSContextPath = "/etc/secnfs-context.conf";
-
 class ContextTest : public ::testing::Test {
 protected:
-        ContextTest() : context_(SecNFSContextPath, true) {}
+        ContextTest() : context_(&secnfs_info_, true) {}
         virtual void SetUp() {
                 context_.name_ = "context-test";
                 rsa_pri_key_.GenerateRandomWithKeySize(prng_, RSAKeyLength);
@@ -32,6 +30,7 @@ protected:
                 context_.AddProxy(SecureProxy("proxy2", rsa_pri_key_));
         }
 
+        secnfs_info_t secnfs_info_;
         AutoSeededRandomPool prng_;
         Context context_;
         RSA::PrivateKey rsa_pri_key_;
