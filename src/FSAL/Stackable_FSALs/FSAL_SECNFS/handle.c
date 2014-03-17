@@ -44,17 +44,20 @@ extern struct next_ops next_ops;
 
 /************************* helpers **********************/
 
-static struct secnfs_fsal_obj_handle *alloc_handle()
+static struct secnfs_fsal_obj_handle *alloc_handle(struct fsal_export *exp,
+                                                   object_file_type_t type)
 {
 	struct secnfs_fsal_obj_handle *hdl;
 	fsal_status_t st;
 
-        hdl = gsh_calloc(1, (sizeof(struct secnfs_fsal_obj_handle) +
-                             sizeof(secnfs_file_handle_t)));
-	if (hdl == NULL)
-		return NULL;
+        hdl = gsh_calloc(1, sizeof(*hdl));
+        if (hdl == NULL)
+                return NULL;
 
-	hdl->handle = (secnfs_file_handle_t *) &hdl[1];
+        if (fsal_obj_handle_init(&hdl->obj_handle, exp, type)) {
+                gsh_free(hdl);
+                return NULL;
+        }
 
         return hdl;
 }
@@ -231,7 +234,22 @@ static void handle_to_key(struct fsal_obj_handle *obj_hdl,
 
 static fsal_status_t release(struct fsal_obj_handle *obj_hdl)
 {
-	return next_ops.obj_ops->release(obj_hdl);
+        struct secnfs_fsal_obj_handle *secnfs_hdl = secnfs_handle(obj_hdl);
+        struct fsal_obj_handle *next_hdl;
+        int retval;
+
+        next_hdl = secnfs_hdl->next_handle;
+
+        retval = fsal_obj_handle_uninit(obj_hdl);
+        if (retval != 0) {
+                LogCrit(COMPONENT_FSAL,
+                        "Tried to release busy handle @ %p with %d refs",
+                        obj_hdl, obj_hdl->refs);
+                return fsalstat(ERR_FSAL_DELAY, EBUSY);
+        }
+
+        gsh_free(secnfs_hdl);
+	return next_ops.obj_ops->release(next_hdl);
 }
 
 void secnfs_handle_ops_init(struct fsal_obj_ops *ops)
@@ -303,11 +321,33 @@ fsal_status_t secnfs_lookup_path(struct fsal_export *exp_hdl,
  * Ideas and/or clever hacks are welcome...
  */
 
-fsal_status_t secnfs_create_handle(struct fsal_export * exp_hdl,
-				    const struct req_op_context * opctx,
-				    struct gsh_buffdesc * hdl_desc,
-				    struct fsal_obj_handle ** handle)
+fsal_status_t secnfs_create_handle(struct fsal_export *exp,
+				    const struct req_op_context *opctx,
+				    struct gsh_buffdesc *hdl_desc,
+				    struct fsal_obj_handle **handle)
 {
-	return next_ops.exp_ops->create_handle(exp_hdl, opctx, hdl_desc,
-					       handle);
+        fsal_status_t st;
+        struct fsal_obj_handle *next_hdl;
+        secnfs_fsal_obj_handle *secnfs_hdl;
+        struct secnfs_fsal_export *secnfs_exp = secnfs_export(exp);
+
+        st = next_ops.exp_ops->create_handle(exp->next_export, opctx,
+                                             hdl_desc, &next_hdl);
+        if (FSAL_IS_ERROR(st)) {
+                LogMajor(COMPONENT_FSAL, "cannot create next handle");
+                return st;
+        }
+
+        secnfs_hdl = alloc_handle(exp, next_hdl->type);
+        if (!secnfs_hdl) {
+                LogMajor(COMPONENT_FSAL, "cannot allocate secnfs handle");
+                next_ops.obj_ops->release(next_hdl);
+                return fsalstat(ERR_FSAL_NOMEM, ENOMEM);
+        }
+
+        secnfs_hdl->next_handle = next_hdl;
+
+        *handle = secnfs_hdl;
+
+        return st;
 }

@@ -1,6 +1,9 @@
 /*
  * vim:expandtab:shiftwidth=8:tabstop=8:
  *
+ * Copyright (C) Stony Brook University, 2014
+ * Author: Ming Chen, v.mingchen@gmail.com
+ *
  * Copyright (C) Panasas Inc., 2011
  * Author: Jim Lieb jlieb@panasas.com
  *
@@ -207,6 +210,9 @@ fsal_status_t secnfs_create_export(struct fsal_module * fsal_hdl,
  */
 
 static struct secnfs_fsal_module SECNFS;
+
+/* TODO make it a per-export variable? Then, we need to call fsal_export_init
+ * to initialize each struct next_ops. */
 struct next_ops next_ops;
 
 /* linkage to the exports and handle ops initializers
