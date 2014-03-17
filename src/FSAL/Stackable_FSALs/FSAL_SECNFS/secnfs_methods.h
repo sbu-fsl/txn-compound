@@ -7,23 +7,7 @@
 #include "fsal_handle_syscalls.h"
 struct secnfs_fsal_obj_handle;
 
-typedef struct secnfs_file_handle_ {
-        struct fsal_obj_handle kf_handle;   /*< handle of KeyFile */
-        secnfs_key_t fk;                    /*< file symmetric key */
-        secnfs_key_t iv;                    /*< initialization vector */
-        secnfs_info_t *info;                /*< secnfs info */
-} secnfs_file_handle_t;
-
-struct secnfs_exp_handle_ops {
-	int (*vex_open_by_handle) (struct fsal_export * exp,
-				   secnfs_file_handle_t * fh, int openflags,
-				   fsal_errors_t * fsal_error);
-	int (*vex_name_to_handle) (int fd, const char *name,
-				   secnfs_file_handle_t * fh);
-	int (*vex_fd_to_handle) (int fd, secnfs_file_handle_t * fh);
-	int (*vex_readlink) (struct secnfs_fsal_obj_handle *, fsal_errors_t *);
-};
-
+/* TODO replace this with something like 'struct secnfs_export'. */
 struct next_ops {
 	struct export_ops *exp_ops;	/*< Vector of operations */
 	struct fsal_obj_ops *obj_ops;	/*< Shared handle methods vector */
@@ -36,6 +20,7 @@ struct next_ops {
  */
 struct secnfs_fsal_export {
 	struct fsal_export export;
+        struct fsal_export *next_export;
 };
 
 fsal_status_t secnfs_lookup_path(struct fsal_export *exp_hdl,
@@ -50,36 +35,17 @@ fsal_status_t secnfs_create_handle(struct fsal_export *exp_hdl,
 
 /*
  * SECNFS internal object handle
- * handle is a pointer because
- *  a) the last element of file_handle is a char[] meaning variable len...
- *  b) we cannot depend on it *always* being last or being the only
- *     variable sized struct here...  a pointer is safer.
- * wrt locks, should this be a lock counter??
- * AF_UNIX sockets are strange ducks.  I personally cannot see why they
- * are here except for the ability of a client to see such an animal with
- * an 'ls' or get rid of one with an 'rm'.  You can't open them in the
- * usual file way so open_by_handle_at leads to a deadend.  To work around
- * this, we save the args that were used to mknod or lookup the socket.
+ *
+ * KeyFile is appended to the data file.
  */
-
 struct secnfs_fsal_obj_handle {
-	struct fsal_obj_handle obj_handle;
-	secnfs_file_handle_t *handle;
-	union {
-		struct {
-			int fd;
-			fsal_openflags_t openflags;
-		} file;
-		struct {
-			unsigned char *link_content;
-			int link_size;
-		} symlink;
-		struct {
-			secnfs_file_handle_t *dir;
-			char *name;
-		} unopenable;
-	} u;
+        struct fsal_obj_handle obj_handle;
+        struct fsal_obj_handle *next_handle;    /*< handle of next layer */
+        secnfs_key_t fk;                        /*< file symmetric key */
+        secnfs_key_t iv;                        /*< initialization vector */
+        secnfs_info_t *info;                    /*< secnfs info */
 };
+
 
 int secnfs_fsal_open(struct secnfs_fsal_obj_handle *, int, fsal_errors_t *);
 int secnfs_fsal_readlink(struct secnfs_fsal_obj_handle *, fsal_errors_t *);
