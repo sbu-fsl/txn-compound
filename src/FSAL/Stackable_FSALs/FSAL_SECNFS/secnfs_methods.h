@@ -46,14 +46,26 @@ struct secnfs_fsal_obj_handle {
         secnfs_info_t *info;                    /*< secnfs info */
 };
 
-static inline struct secnfs_fsal_obj_handle* secnfs_handle(
-                struct fsal_obj_handle *handle) {
+static inline struct secnfs_fsal_obj_handle*
+secnfs_handle(struct fsal_obj_handle *handle)
+{
         return container_of(handle, struct secnfs_fsal_obj_handle, obj_handle);
 }
 
-static inline struct secnfs_fsal_export* secnfs_export(
-                struct fsal_export *export) {
+static inline struct secnfs_fsal_export*
+secnfs_export(struct fsal_export *export)
+{
         return container_of(export, struct secnfs_fsal_export, export);
+}
+
+static inline struct fsal_obj_handle* next_handle(struct fsal_obj_handle *hdl)
+{
+        return secnfs_handle(hdl)->next_handle;
+}
+
+static inline struct fsal_export* next_export(struct fsal_export *exp)
+{
+        return secnfs_export(exp)->next_export;
 }
 
 int secnfs_fsal_open(struct secnfs_fsal_obj_handle *, int, fsal_errors_t *);
