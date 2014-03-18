@@ -202,9 +202,7 @@ static fsal_status_t readsymlink(struct fsal_obj_handle *obj_hdl,
 				 struct gsh_buffdesc *link_content,
 				 bool refresh)
 {
-        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
-
-        return next_ops.obj_ops->readlink(hdl->next_handle, opctx,
+        return next_ops.obj_ops->readlink(next_handle(obj_hdl), opctx,
                                           link_content, refresh);
 }
 
@@ -214,9 +212,7 @@ static fsal_status_t linkfile(struct fsal_obj_handle *obj_hdl,
 			      struct fsal_obj_handle *destdir_hdl,
 			      const char *name)
 {
-        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
-
-        return next_ops.obj_ops->link(hdl->next_handle, opctx,
+        return next_ops.obj_ops->link(next_handle(obj_hdl), opctx,
                                       destdir_hdl, name);
 }
 
@@ -236,10 +232,8 @@ static fsal_status_t read_dirents(struct fsal_obj_handle *dir_hdl,
                                   fsal_cookie_t *whence, void *dir_state,
                                   fsal_readdir_cb cb, bool *eof)
 {
-        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(dir_hdl);
-
-        return next_ops.obj_ops->readdir(hdl->next_handle, opctx, whence,
-                                         dir_state, cb, eof);
+        return next_ops.obj_ops->readdir(next_handle(dir_hdl), opctx,
+                                         whence, dir_state, cb, eof);
 }
 
 
@@ -249,20 +243,17 @@ static fsal_status_t renamefile(struct fsal_obj_handle *olddir_hdl,
 				struct fsal_obj_handle *newdir_hdl,
 				const char *new_name)
 {
-        struct secnfs_fsal_obj_handle *olddir = secnfs_handle(olddir_hdl);
-        struct secnfs_fsal_obj_handle *newdir = secnfs_handle(newdir_hdl);
-
-        return next_ops.obj_ops->rename(olddir->next_handle, opctx, old_name,
-                                        newdir->next_handle, new_name);
+        return next_ops.obj_ops->rename(next_handle(olddir_hdl),
+                                        opctx, old_name,
+                                        next_handle(newdir_hdl),
+                                        new_name);
 }
 
 
 static fsal_status_t getattrs(struct fsal_obj_handle *obj_hdl,
 			      const struct req_op_context *opctx)
 {
-        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
-
-        return next_ops.obj_ops->getattrs(hdl->next_handle, opctx);
+        return next_ops.obj_ops->getattrs(next_handle(obj_hdl), opctx);
 }
 
 
@@ -273,9 +264,7 @@ static fsal_status_t setattrs(struct fsal_obj_handle *obj_hdl,
 			      const struct req_op_context *opctx,
 			      struct attrlist *attrs)
 {
-        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
-
-        return next_ops.obj_ops->setattrs(hdl->next_handle, opctx, attrs);
+        return next_ops.obj_ops->setattrs(next_handle(obj_hdl), opctx, attrs);
 }
 
 
@@ -286,9 +275,7 @@ static fsal_status_t file_unlink(struct fsal_obj_handle *dir_hdl,
 				 const struct req_op_context *opctx,
 				 const char *name)
 {
-        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
-
-        return next_ops.obj_ops->unlink(hdl->next_handle, opctx, name);
+        return next_ops.obj_ops->unlink(next_handle(obj_hdl), opctx, name);
 }
 
 
@@ -302,10 +289,8 @@ static fsal_status_t handle_digest(const struct fsal_obj_handle *obj_hdl,
 				   fsal_digesttype_t output_type,
 				   struct gsh_buffdesc *fh_desc)
 {
-        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
-
-        return next_ops.obj_ops->handle_digest(hdl->next_handle, output_type,
-                                               fh_desc);
+        return next_ops.obj_ops->handle_digest(next_handle(obj_hdl),
+                                               output_type, fh_desc);
 }
 
 
@@ -318,9 +303,7 @@ static fsal_status_t handle_digest(const struct fsal_obj_handle *obj_hdl,
 static void handle_to_key(struct fsal_obj_handle *obj_hdl,
 			  struct gsh_buffdesc *fh_desc)
 {
-        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
-
-        return next_ops.obj_ops->handle_to_key(hdl->next_handle, fh_desc);
+        return next_ops.obj_ops->handle_to_key(next_handle(obj_hdl), fh_desc);
 }
 
 
