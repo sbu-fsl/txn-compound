@@ -78,7 +78,7 @@ static fsal_status_t make_handle_from_next(struct fsal_export *exp,
                                            struct fsal_obj_handle *next_hdl,
                                            struct fsal_obj_handle **handle)
 {
-        secnfs_fsal_obj_handle *secnfs_hdl;
+        struct secnfs_fsal_obj_handle *secnfs_hdl;
 
         secnfs_hdl = alloc_handle(exp, &next_hdl->attributes);
         if (!secnfs_hdl) {
@@ -90,7 +90,7 @@ static fsal_status_t make_handle_from_next(struct fsal_export *exp,
         }
 
         secnfs_hdl->next_handle = next_hdl;
-        *handle = secnfs_hdl;
+        *handle = &secnfs_hdl->obj_handle;
 
         return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
@@ -275,7 +275,7 @@ static fsal_status_t file_unlink(struct fsal_obj_handle *dir_hdl,
 				 const struct req_op_context *opctx,
 				 const char *name)
 {
-        return next_ops.obj_ops->unlink(next_handle(obj_hdl), opctx, name);
+        return next_ops.obj_ops->unlink(next_handle(dir_hdl), opctx, name);
 }
 
 
@@ -289,7 +289,9 @@ static fsal_status_t handle_digest(const struct fsal_obj_handle *obj_hdl,
 				   fsal_digesttype_t output_type,
 				   struct gsh_buffdesc *fh_desc)
 {
-        return next_ops.obj_ops->handle_digest(next_handle(obj_hdl),
+        struct fsal_obj_handle *hdl = (struct fsal_obj_handle *)obj_hdl;
+
+        return next_ops.obj_ops->handle_digest(next_handle(hdl),
                                                output_type, fh_desc);
 }
 

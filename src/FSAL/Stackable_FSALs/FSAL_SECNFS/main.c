@@ -45,9 +45,6 @@
 #include "secnfs_methods.h"
 #include "secnfs.h"
 
-/* SECNFS FSAL module private storage
- */
-
 /* defined the set of attributes supported with POSIX */
 #define SECNFS_SUPPORTED_ATTRIBUTES (                                       \
           ATTR_TYPE     | ATTR_SIZE     |                  \
@@ -57,6 +54,8 @@
           ATTR_CTIME    | ATTR_MTIME    | ATTR_SPACEUSED | \
           ATTR_CHGTIME  )
 
+
+/* SECNFS FSAL module private storage */
 struct secnfs_fsal_module {
 	struct fsal_module fsal;
 	struct fsal_staticfsinfo_t fs_info;
@@ -95,8 +94,7 @@ static struct fsal_staticfsinfo_t default_posix_info = {
 	.xattr_access_rights = 0400,	/* root=RW, owner=R */
 };
 
-/* private helper for export object
- */
+/************** private helper for export object *******************/
 
 struct fsal_staticfsinfo_t *secnfs_staticinfo(struct fsal_module *hdl)
 {
@@ -106,9 +104,7 @@ struct fsal_staticfsinfo_t *secnfs_staticinfo(struct fsal_module *hdl)
 	return &myself->fs_info;
 }
 
-/* Module methods
- */
-
+/************************ Module methods **************************/
 
 static int secnfs_init_params(const char *key, const char *val,
 			      fsal_init_info_t *info, const char *name)
@@ -159,7 +155,6 @@ static fsal_status_t init_config(struct fsal_module *fsal_hdl,
 {
 	struct secnfs_fsal_module *secnfs_me =
 	    container_of(fsal_hdl, struct secnfs_fsal_module, fsal);
-        secnfs_info_t *info = &(secnfs_me->secnfs_info);
 	fsal_status_t st;
 
 	secnfs_me->fs_info = default_posix_info;	/* get a copy of the defaults */

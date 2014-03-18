@@ -5,7 +5,6 @@
 
 #include "secnfs.h"
 #include "fsal_handle_syscalls.h"
-struct secnfs_fsal_obj_handle;
 
 /* TODO replace this with something like 'struct secnfs_export'. */
 struct next_ops {

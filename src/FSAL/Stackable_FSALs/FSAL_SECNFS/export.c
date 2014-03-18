@@ -241,7 +241,7 @@ fsal_status_t secnfs_create_export(struct fsal_module *fsal_hdl,
                                    const char *export_path,
                                    const char *fs_specific,
                                    struct exportlist *exp_entry,
-                                   struct fsal_module *next_fsal,
+                                   struct fsal_module *unused,
                                    struct fsal_up_vector *up_ops,
                                    struct fsal_export **export)
 {
@@ -295,13 +295,14 @@ fsal_status_t secnfs_create_export(struct fsal_module *fsal_hdl,
         memcpy(next_ops.ds_ops, next_exp->ds_ops, sizeof(struct fsal_ds_ops));
         next_ops.up_ops = up_ops;
 
-        secnfs_export_ops_init(exp->export->ops);
-        secnfs_handle_ops_init(exp->export->obj_ops);
+        secnfs_export_ops_init(exp->export.ops);
+        secnfs_handle_ops_init(exp->export.obj_ops);
         exp->export.up_ops = up_ops;
+
         exp->next_export = next_exp;
         *export = &exp->export;
 
-        return fsalstat(ERR_FSAL_NO_ERROR, 0);
+        return st;
 
 error_out:
         gsh_free(exp);
