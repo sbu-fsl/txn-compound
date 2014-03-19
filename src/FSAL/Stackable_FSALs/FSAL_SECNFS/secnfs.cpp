@@ -5,6 +5,7 @@
  * @brief Encrypt and decrypt data
  */
 
+#include <sys/stat.h>
 #include "secnfs.h"
 #include "secnfs.pb.h"
 #include "context.h"
@@ -100,9 +101,25 @@ secnfs_s secnfs_decrypt(secnfs_key_t key,
 
 
 secnfs_s secnfs_create_context(secnfs_info_t *info) {
-        info->context = new Context(info);
+        int ret;
+        struct stat st;
+        Context *ctx = new Context(info);
+
+        assert(ctx);
+
+        ret = ::stat(info->context_cache_file, &st);
+        if (ret == 0) {
+                ctx->Load(info->context_cache_file);
+        } else if (ret == ENOENT) {
+                assert(info->create_if_no_context);
+                ctx->Unload(info->context_cache_file);
+        } else {
+                return SECNFS_WRONG_CONFIG;
+        }
+
+        info->context = ctx;
         info->context_size = sizeof(Context);
-        assert(info->context);
+
         return SECNFS_OKAY;
 }
 

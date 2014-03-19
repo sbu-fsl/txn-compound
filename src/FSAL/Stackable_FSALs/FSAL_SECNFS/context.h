@@ -41,7 +41,7 @@ struct CacheCompare {
  */
 class Context {
 public:
-        Context(const secnfs_info_t *secnfs_info, bool create = false);
+        Context(const secnfs_info_t *secnfs_info);
         ~Context();
 
         std::string name_;              /*!< name of current proxy */

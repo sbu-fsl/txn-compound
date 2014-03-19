@@ -82,6 +82,8 @@ target_link_libraries(fsalsecnfs
   gos
   cryptopp
   pthread
+  ${TBB_LIB}
+  ${PROTOBUF_LIBRARIES}
 )
 
 set_target_properties(fsalsecnfs PROPERTIES VERSION 4.2.0 SOVERSION 4)

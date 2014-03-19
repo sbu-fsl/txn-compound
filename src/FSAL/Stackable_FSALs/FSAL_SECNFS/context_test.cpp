@@ -21,7 +21,7 @@ using namespace secnfs;
 
 class ContextTest : public ::testing::Test {
 protected:
-        ContextTest() : context_(&secnfs_info_, true) {}
+        ContextTest() : context_(&secnfs_info_) {}
         virtual void SetUp() {
                 context_.name_ = "context-test";
                 rsa_pri_key_.GenerateRandomWithKeySize(prng_, RSAKeyLength);
@@ -43,7 +43,7 @@ TEST_F(ContextTest, Basic) {
 
         secnfs_info_t info;
         strncpy(info.secnfs_name, context_.name_.c_str(), MAXPATHLEN);
-        Context new_context(&info, true);
+        Context new_context(&info);
         new_context.Load(filename);
 
         EXPECT_EQ(context_.name_, new_context.name_);

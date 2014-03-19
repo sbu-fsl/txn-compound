@@ -17,11 +17,8 @@ using CryptoPP::AutoSeededRandomPool;
 namespace secnfs {
 
 // TODO accept option
-Context::Context(const secnfs_info_t *secnfs_info, bool create)
-                : name_(secnfs_info->secnfs_name), key_pair_(create) {
-        if (!create) {
-                Load(secnfs_info->context_cache_file);
-        }
+Context::Context(const secnfs_info_t *secnfs_info)
+                : name_(secnfs_info->secnfs_name) {
 }
 
 

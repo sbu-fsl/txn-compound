@@ -54,15 +54,6 @@
           ATTR_CTIME    | ATTR_MTIME    | ATTR_SPACEUSED | \
           ATTR_CHGTIME  )
 
-
-/* SECNFS FSAL module private storage */
-struct secnfs_fsal_module {
-	struct fsal_module fsal;
-	struct fsal_staticfsinfo_t fs_info;
-	fsal_init_info_t fsal_info;
-	secnfs_info_t secnfs_info;
-};
-
 const char myname[] = "SECNFS";
 
 /* filesystem info for SECNFS */
@@ -115,9 +106,9 @@ static int secnfs_init_params(const char *key, const char *val,
 
         if (!strcasecmp(key, "Context_Cache_File")) {
                 strncpy(secnfs_info->context_cache_file, val, MAXPATHLEN);
-        } if (!strcasecmp(key, "Create_If_No_Context")) {
+        } else if (!strcasecmp(key, "Create_If_No_Context")) {
                 secnfs_info->create_if_no_context = str_to_bool(val);
-        } if (!strcasecmp(key, "Name")) {
+        } else if (!strcasecmp(key, "Name")) {
                 strncpy(secnfs_info->secnfs_name, val, MAXPATHLEN);
         } else {
 		LogCrit(COMPONENT_CONFIG, "Unknown key: %s in %s", key, name);
@@ -130,7 +121,6 @@ static int secnfs_init_params(const char *key, const char *val,
 
 static int validate_conf_params(const secnfs_info_t *info)
 {
-	fsal_status_t st;
         if (!info->context_cache_file) {
                 LogCrit(COMPONENT_CONFIG, "'Context_Cache_File' not set");
                 return 0;
@@ -228,10 +218,6 @@ MODULE_INIT void secnfs_init(void)
 	myself->ops->create_export = secnfs_create_export;
 	myself->ops->init_config = init_config;
 	init_fsal_parameters(&SECNFS.fsal_info);
-
-        if (secnfs_create_context(&SECNFS.secnfs_info) != SECNFS_OKAY) {
-                fprintf(stderr, "SECNFS failed to initialize secnfs_info");
-        }
 }
 
 MODULE_FINI void secnfs_unload(void)

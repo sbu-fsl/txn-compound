@@ -22,6 +22,14 @@ struct secnfs_fsal_export {
         struct fsal_export *next_export;
 };
 
+/* SECNFS FSAL module private storage */
+struct secnfs_fsal_module {
+	struct fsal_module fsal;
+	struct fsal_staticfsinfo_t fs_info;
+	fsal_init_info_t fsal_info;
+	secnfs_info_t secnfs_info;
+};
+
 fsal_status_t secnfs_lookup_path(struct fsal_export *exp_hdl,
 				 const struct req_op_context *opctx,
 				 const char *path,
@@ -43,6 +51,8 @@ struct secnfs_fsal_obj_handle {
         secnfs_key_t fk;                        /*< file symmetric key */
         secnfs_key_t iv;                        /*< initialization vector */
         secnfs_info_t *info;                    /*< secnfs info */
+        /* NFSv4.2' support for sparse file will help us */
+        uint32_t data_offset;                   /*< beginning of data file */
 };
 
 static inline struct secnfs_fsal_obj_handle*

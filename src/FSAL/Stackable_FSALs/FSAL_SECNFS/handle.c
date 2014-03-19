@@ -133,6 +133,9 @@ static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
                 return st;
         }
 
+        /*write KF*/
+        /*st = next_ops.obj_ops->write(next_hdl, opctx, 0, */
+
         return make_handle_from_next(dir_hdl->export, next_hdl, handle);
 }
 
@@ -264,7 +267,14 @@ static fsal_status_t setattrs(struct fsal_obj_handle *obj_hdl,
 			      const struct req_op_context *opctx,
 			      struct attrlist *attrs)
 {
-        return next_ops.obj_ops->setattrs(next_handle(obj_hdl), opctx, attrs);
+        struct fsal_obj_handle *next_hdl = next_handle(obj_hdl);
+        fsal_status_t st = next_ops.obj_ops->setattrs(next_hdl, opctx, attrs);
+
+        if (!FSAL_IS_ERROR(st)) {
+                obj_hdl->attributes = next_hdl->attributes;
+        }
+
+        return st;
 }
 
 
