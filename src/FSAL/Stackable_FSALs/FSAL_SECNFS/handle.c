@@ -118,6 +118,18 @@ static fsal_status_t lookup(struct fsal_obj_handle *parent,
 }
 
 
+static fsal_status_t write_keyfile(struct fsal_obj_handle *hdl,
+                                   const struct req_op_context *opctx)
+{
+        fsal_status_t st;
+        size_t buf_len = 4096;
+        void *buf = alloca(buf_len);
+
+        return st;
+        /*st = next_ops.obj_ops->write(next_handle(hdl), opctx, 0,*/
+}
+
+
 static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
                             const struct req_op_context *opctx,
                             const char *name, struct attrlist *attrib,
@@ -133,10 +145,13 @@ static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
                 return st;
         }
 
-        /*write KF*/
-        /*st = next_ops.obj_ops->write(next_hdl, opctx, 0, */
+        st = make_handle_from_next(dir_hdl->export, next_hdl, handle);
+        if (FSAL_IS_ERROR(st)) {
+                LogCrit(COMPONENT_FSAL, "cannot create secnfs handle");
+                return st;
+        }
 
-        return make_handle_from_next(dir_hdl->export, next_hdl, handle);
+        return write_keyfile(*handle, opctx);
 }
 
 static fsal_status_t makedir(struct fsal_obj_handle *dir_hdl,

@@ -5,6 +5,7 @@
  */
 
 #include "secnfs.h"
+#include "test_helper.h"
 
 #include <string>
 using std::string;
@@ -16,6 +17,10 @@ using CryptoPP::AutoSeededRandomPool;
 
 #include <cryptopp/aes.h>
 using CryptoPP::AES;
+
+using namespace secnfs;
+
+namespace secnfs_test {
 
 const int MSG_SIZE = 40960;
 
@@ -95,4 +100,24 @@ TEST_F(EncryptTest, RandomOffsets) {
                                            cipher_ + offset, block));
                 EXPECT_SAME(block, plain_ + offset, size);
         }
+}
+
+
+class SecnfsTest : public ::testing::Test {
+protected:
+        SecnfsTest() : context_(NewContextWithProxies(5)) {}
+        ~SecnfsTest() { delete context_; }
+        virtual void SetUp() {
+
+        }
+
+
+        Context *context_;
+};
+
+
+TEST(CreateKeyFileTest, Basic) {
+
+}
+
 }

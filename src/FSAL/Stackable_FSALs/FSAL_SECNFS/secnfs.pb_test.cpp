@@ -6,6 +6,8 @@
 
 #include "secnfs.pb.h"
 
+#include "secnfs_lib.h"
+
 #include <gtest/gtest.h>
 
 #include <iostream>
@@ -54,25 +56,46 @@ TEST(KeyFileTest, Basic) {
 }
 
 
-TEST(SecureContextConfigTest, Basic) {
-        SecureContextConfig config;
-        config.set_name("secure-context");
-        config.set_pub_key("pub-key");
-        config.set_pri_key("pri-key");
+class SecureContextConfigTest : public ::testing::Test {
+protected:
+        virtual void SetUp() {
+                config_.set_name("secure-context");
+                config_.set_pub_key("pub-key");
+                config_.set_pri_key("pri-key");
 
-        KeyBlock *block = config.add_proxies();
-        block->set_proxy_name("proxy1");
-        block->set_encrypted_key("key");
+                KeyBlock *block = config_.add_proxies();
+                block->set_proxy_name("proxy1");
+                block->set_encrypted_key("key");
+        }
 
+        SecureContextConfig config_;
+};
+
+
+TEST_F(SecureContextConfigTest, Basic) {
         std::ofstream output("/tmp/secure_context_config.txt");
-        EXPECT_TRUE(config.SerializeToOstream(&output));
+        EXPECT_TRUE(config_.SerializeToOstream(&output));
         output.close();
 
         SecureContextConfig config_copy;
         std::ifstream input("/tmp/secure_context.txt");
         EXPECT_TRUE(config_copy.ParseFromIstream(&input));
 
-        EXPECT_EQ(config.name(), config_copy.name());
-        EXPECT_EQ(config.pub_key(), config_copy.pub_key());
-        EXPECT_EQ(config.pri_key(), config_copy.pri_key());
+        EXPECT_EQ(config_.DebugString(), config_copy.DebugString());
+}
+
+
+TEST_F(SecureContextConfigTest, EncodeDecodeCorrectly) {
+        void *buf;
+        uint32_t buf_size, msg_size;
+
+        EXPECT_TRUE(EncodeMessage(config_, &buf, &buf_size, 1024));
+        EXPECT_GT(buf_size, config_.ByteSize());
+
+        SecureContextConfig config_copy;
+        EXPECT_TRUE(DecodeMessage(&config_copy, buf, buf_size, &msg_size));
+
+        EXPECT_EQ(config_.DebugString(), config_copy.DebugString());
+
+        free(buf);
 }

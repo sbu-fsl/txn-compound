@@ -53,7 +53,7 @@ set(secnfs_SRC
 )
 
 function(add_unittest TestName)
-  add_executable(${TestName} "${TestName}.cpp" ${secnfs_SRC})
+  add_executable(${TestName} "${TestName}.cpp" ${secnfs_SRC} test_helper.cpp)
   target_link_libraries(${TestName} ${test_LIB})
   add_test(NAME ${TestName} COMMAND ${TestName})
 endfunction(add_unittest)

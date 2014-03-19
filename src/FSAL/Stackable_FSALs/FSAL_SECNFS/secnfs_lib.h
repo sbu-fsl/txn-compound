@@ -14,6 +14,8 @@
 using CryptoPP::RSA;
 using CryptoPP::RSAFunction;
 
+#include <google/protobuf/message.h>
+
 namespace secnfs {
 
 const int RSAKeyLength = 3072;
@@ -63,6 +65,16 @@ void RSAEncrypt(const RSA::PublicKey &pub_key, const std::string &plain,
 
 void RSADecrypt(const RSA::PrivateKey &pri_key, const std::string &cipher,
                 std::string *recovered);
+
+
+/**
+ * The returned "buf" is owned by the caller, who should free it properly.
+ */
+bool EncodeMessage(const google::protobuf::Message &msg, void **buf,
+                   uint32_t *buf_size, uint32_t align);
+
+bool DecodeMessage(google::protobuf::Message *msg, void *buf,
+                   uint32_t buf_size, uint32_t *msg_size);
 
 };
 

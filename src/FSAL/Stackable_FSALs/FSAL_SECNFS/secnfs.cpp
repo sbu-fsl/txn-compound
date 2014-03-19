@@ -135,24 +135,22 @@ void secnfs_destroy_context(secnfs_info_t *info) {
 
 
 secnfs_s secnfs_create_keyfile(secnfs_info_t *info,
-                               secnfs_key_t **fek,
-                               secnfs_key_t **iv,
+                               secnfs_key_t *fek,
+                               secnfs_key_t *iv,
                                void **keyfile,
-                               int *kf_len) {
-        *fek = new_secnfs_key();
-        *iv = new_secnfs_key();
+                               uint32_t *kf_len) {
         Context *ctx = get_context(info);
 
         KeyFile kf;
-        ctx->GenerateKeyFile((*fek)->bytes, (*iv)->bytes,
+        ctx->GenerateKeyFile(fek->bytes, iv->bytes,
                              SECNFS_KEY_LENGTH, &kf);
 
-        std::string kf_buf;
-        assert(kf.SerializeToString(&kf_buf));
+        assert(EncodeMessage(kf, keyfile, kf_len, 4096));
 
-        *kf_len = kf_buf.length();
-        *keyfile = malloc(*kf_len);
-        memcpy(*keyfile, kf_buf.c_str(), *kf_len);
+        // TODO allow keyfile to be larger than 4096.
+        assert(*kf_len == 4096);
+
+        std::string kf_buf;
 
         return SECNFS_OKAY;
 }

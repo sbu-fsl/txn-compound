@@ -115,15 +115,15 @@ void secnfs_destroy_context(secnfs_info_t *info);
  * @param[out]  keyfile KeyFile data
  * @param[out]  kf_len  Length of KeyFile data
  *
- * The caller is the owner of all returned data and should free them properly.
+ * The caller is the owner of the returned buf and should free them properly.
  *
  * @return SECNFS_OKAY on success.
  */
 secnfs_s secnfs_create_keyfile(secnfs_info_t *info,
-                               secnfs_key_t **fek,
-                               secnfs_key_t **iv,
+                               secnfs_key_t *fek,
+                               secnfs_key_t *iv,
                                void **keyfile,
-                               int *kf_len);
+                               uint32_t *kf_len);
 
 
 #ifdef __cplusplus

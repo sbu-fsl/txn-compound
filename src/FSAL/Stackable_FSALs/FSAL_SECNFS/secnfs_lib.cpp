@@ -21,6 +21,14 @@ using CryptoPP::StringStore;
 using CryptoPP::RSAES_OAEP_SHA_Decryptor;
 using CryptoPP::RSAES_OAEP_SHA_Encryptor;
 
+#include <google/protobuf/io/coded_stream.h>
+using google::protobuf::io::CodedInputStream;
+using google::protobuf::io::CodedOutputStream;
+
+#include <google/protobuf/io/zero_copy_stream_impl_lite.h>
+using google::protobuf::io::ArrayInputStream;
+using google::protobuf::io::ArrayOutputStream;
+
 namespace secnfs {
 
 RSAKeyPair::RSAKeyPair(bool create) {
@@ -76,6 +84,41 @@ void RSADecrypt(const RSA::PrivateKey &pri_key, const std::string &cipher,
         StringSource ss(cipher, true,
                 new PK_DecryptorFilter(prng, d,
                         new StringSink(*recovered)));
+}
+
+
+bool EncodeMessage(const google::protobuf::Message &msg, void **buf,
+                   uint32_t *buf_size, uint32_t align) {
+        uint32_t msg_size = msg.ByteSize();
+
+        *buf_size = ((msg_size + sizeof(msg_size) + align - 1) / align) * align;
+        *buf = malloc(*buf_size);
+
+        assert(*buf);
+
+        ArrayOutputStream aos(*buf, *buf_size);
+        CodedOutputStream cos(&aos);
+        cos.WriteLittleEndian32(msg_size);
+
+        return msg.SerializeToCodedStream(&cos);
+}
+
+
+bool DecodeMessage(google::protobuf::Message *msg, void *buf,
+                   uint32_t buf_size, uint32_t *msg_size) {
+        ArrayInputStream ais(buf, buf_size);
+        CodedInputStream cis(&ais);
+
+        if (!cis.ReadLittleEndian32(msg_size)) {
+                return false;
+        }
+
+        if (buf_size < *msg_size + 4) {
+                return false;
+        }
+
+        cis.PushLimit(*msg_size);
+        return msg->ParseFromCodedStream(&cis);
 }
 
 };
