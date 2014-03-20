@@ -118,15 +118,38 @@ static fsal_status_t lookup(struct fsal_obj_handle *parent,
 }
 
 
-static fsal_status_t write_keyfile(struct fsal_obj_handle *hdl,
+static fsal_status_t write_keyfile(struct fsal_obj_handle *fsal_hdl,
                                    const struct req_op_context *opctx)
 {
+        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(fsal_hdl);
         fsal_status_t st;
-        size_t buf_len = 4096;
-        void *buf = alloca(buf_len);
+        uint32_t buf_size;
+        size_t n, write_amount = 0;
+        void *buf;
+        int ret;
+        bool stable;
 
+        ret = secnfs_create_keyfile(hdl->info, &hdl->fk,
+                                    &hdl->iv, &buf, &buf_size);
+        assert(ret == SECNFS_OKAY);
+
+        do {
+                st = next_ops.obj_ops->write(hdl->next_handle, opctx,
+                                             write_amount,
+                                             buf_size - write_amount,
+                                             buf + write_amount,
+                                             &n,
+                                             &stable);
+                if (FSAL_IS_ERROR(st)) {
+                        LogCrit(COMPONENT_FSAL, "cannot write secnfs keyfile");
+                        goto out;
+                }
+                write_amount += n;
+        } while (write_amount < buf_size);
+
+out:
+        free(buf);
         return st;
-        /*st = next_ops.obj_ops->write(next_handle(hdl), opctx, 0,*/
 }
 
 

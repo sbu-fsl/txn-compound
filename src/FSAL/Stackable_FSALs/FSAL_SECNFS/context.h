@@ -44,7 +44,6 @@ public:
         Context(const secnfs_info_t *secnfs_info);
         ~Context();
 
-        std::string name_;              /*!< name of current proxy */
         RSAKeyPair key_pair_;           /*!< RSA key pair */
         secnfs_info_t *secnfs_info_;
 
@@ -61,6 +60,11 @@ public:
 
         // key, and iv should be terminated by '\0'.
         void GenerateKeyFile(byte *key, byte *iv, int len, KeyFile *kf);
+
+        const std::string& name() const { return name_; }
+        void set_name(const std::string &nm) { name_ = nm; }
+
+        std::string name_;              /*!< name of current proxy */
 };
 
 };

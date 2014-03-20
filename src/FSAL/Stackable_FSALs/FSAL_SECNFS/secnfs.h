@@ -126,6 +126,22 @@ secnfs_s secnfs_create_keyfile(secnfs_info_t *info,
                                uint32_t *kf_len);
 
 
+/**
+ * Read and decrypt file encryption key from keyfile.
+ *
+ * @param[in]   info        secnfs info, containing the context
+ * @param[in]   buf         buffer holding the keyfile data
+ * @param[in]   buf_size    size of the buffer
+ * @param[out]  fek         the resultant file encryption key
+ * @param[out]  iv          iv used for file data encryption/decryption
+ * @param[out]  kf_len      real lenght of the keyfile
+ */
+secnfs_s secnfs_read_file_key(secnfs_info_t *info,
+                              void *buf,
+                              uint32_t buf_size,
+                              secnfs_key_t *fek,
+                              secnfs_key_t *iv,
+                              uint32_t *kf_len);
 #ifdef __cplusplus
 }
 #endif

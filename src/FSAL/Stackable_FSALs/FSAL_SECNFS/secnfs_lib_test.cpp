@@ -1,7 +1,7 @@
 /*
  * vim:expandtab:shiftwidth=8:tabstop=8:
  *
- * Test context.cpp
+ * Test secnfs_lib.cpp
  */
 
 #include "secnfs_lib.h"
@@ -17,6 +17,8 @@ using std::string;
 using CryptoPP::AutoSeededRandomPool;
 
 using namespace secnfs;
+
+namespace secnfs_test {
 
 TEST(KeyCodingTest, Basic) {
         RSAKeyPair kp, kp_copy;
@@ -67,3 +69,5 @@ TEST(MessageCoding, Basic) {
                 free(buf);
         }
 }
+
+};

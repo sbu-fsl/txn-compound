@@ -36,10 +36,16 @@ static inline Context *get_context(secnfs_info_t *info) {
         return static_cast<Context *>(info->context);
 }
 
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+static void str_to_key(const std::string &sk, secnfs_key_t *key) {
+        assert(sk.length() == SECNFS_KEY_LENGTH);
+        memmove(key->bytes, sk.c_str(), SECNFS_KEY_LENGTH);
+        key->bytes[SECNFS_KEY_LENGTH] = 0;
+}
+
 
 secnfs_key_t *incr_ctr(secnfs_key_t *iv, unsigned size, int incr) {
         uint8_t *ctr = iv->bytes;
@@ -144,13 +150,42 @@ secnfs_s secnfs_create_keyfile(secnfs_info_t *info,
         KeyFile kf;
         ctx->GenerateKeyFile(fek->bytes, iv->bytes,
                              SECNFS_KEY_LENGTH, &kf);
+        kf.set_creator(ctx->name());
 
         assert(EncodeMessage(kf, keyfile, kf_len, 4096));
 
         // TODO allow keyfile to be larger than 4096.
         assert(*kf_len == 4096);
 
-        std::string kf_buf;
+        return SECNFS_OKAY;
+}
+
+
+secnfs_s secnfs_read_file_key(secnfs_info_t *info,
+                              void *buf,
+                              uint32_t buf_size,
+                              secnfs_key_t *fek,
+                              secnfs_key_t *iv,
+                              uint32_t *kf_len) {
+        Context *ctx = get_context(info);
+        KeyFile kf;
+
+        assert(DecodeMessage(&kf, buf, buf_size, kf_len));
+        assert(kf.ByteSize() == *kf_len);
+
+        str_to_key(kf.iv(), iv);
+
+        for (int i = 0; i < kf.key_blocks_size(); ++i) {
+                const KeyBlock &kb = kf.key_blocks(i);
+                if (kb.proxy_name() == ctx->name()) {
+                        std::string rkey;
+                        RSADecrypt(ctx->key_pair_.pri_, kb.encrypted_key(),
+                                   &rkey);
+                        str_to_key(rkey, fek);
+                        memmove(fek->bytes, rkey.c_str(), SECNFS_KEY_LENGTH);
+                        break;
+                }
+        }
 
         return SECNFS_OKAY;
 }

@@ -24,10 +24,6 @@ namespace secnfs_test {
 
 const int MSG_SIZE = 40960;
 
-#define EXPECT_OKAY(x) EXPECT_EQ(x, SECNFS_OKAY)
-
-#define EXPECT_SAME(buf_a, buf_b, len) EXPECT_EQ(memcmp(buf_a, buf_b, len), 0)
-
 class EncryptTest : public ::testing::Test {
 protected:
         virtual void SetUp() {
@@ -117,7 +113,26 @@ protected:
 
 
 TEST(CreateKeyFileTest, Basic) {
+        secnfs_info_t *info = NewSecnfsInfo(2);
+        Context *context = static_cast<Context *>(info->context);
+        secnfs_key_t key, iv;
+        uint32_t buf_size;
+        void *buf;
 
+        EXPECT_OKAY(secnfs_create_keyfile(info, &key, &iv, &buf, &buf_size));
+
+        secnfs_key_t rkey, riv;
+        uint32_t kf_len;
+
+        EXPECT_OKAY(secnfs_read_file_key(info, buf, buf_size,
+                                         &rkey, &riv, &kf_len));
+
+        EXPECT_SAME(iv.bytes, riv.bytes, SECNFS_KEY_LENGTH);
+        EXPECT_SAME(key.bytes, rkey.bytes, SECNFS_KEY_LENGTH);
+
+        free(buf);
+        delete context;
+        delete info;
 }
 
 }

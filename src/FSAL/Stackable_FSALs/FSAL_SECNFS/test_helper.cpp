@@ -3,12 +3,18 @@
  */
 
 #include "test_helper.h"
+#include "secnfs_lib.h"
 
 #include <stdio.h>
 
+#include <cryptopp/osrng.h>
+using CryptoPP::AutoSeededRandomPool;
+
+using namespace secnfs;
+
 namespace secnfs_test {
 
-static void AddProxies(int n, AutoSeededRandomPool *prng) {
+static void AddProxies(Context *ctx, int nproxy, AutoSeededRandomPool *prng) {
         for (int i = 0; i < nproxy; ++i) {
                 char name[64];
                 snprintf(name, 64, "proxy-%u", prng->GenerateWord32());
@@ -16,7 +22,7 @@ static void AddProxies(int n, AutoSeededRandomPool *prng) {
                 RSA::PrivateKey pri_key;
                 pri_key.GenerateRandomWithKeySize(*prng, RSAKeyLength);
 
-                ctx.AddProxy(SecureProxy(name, pri_key));
+                ctx->AddProxy(SecureProxy(name, pri_key));
         }
 }
 
@@ -25,12 +31,16 @@ secnfs::Context *NewContextWithProxies(int nproxy) {
         AutoSeededRandomPool prng;
         secnfs_info_t info;
 
-        snprintf(info.secnfs_name, MAXPATHLEN, "context-%u",
-                 prng.GenerateWord32());
-
-        Context ctx(&info);
+        Context *ctx = new Context(&info);
         
-        AddProxies(nproxy, &prng);
+        AddProxies(ctx, nproxy, &prng);
+
+        //snprintf(info.secnfs_name, MAXPATHLEN,
+                 //ctx->proxies_[0].name_.c_str());
+
+        ctx->set_name(ctx->proxies_[0].name_);
+
+        return ctx;
 }
 
 

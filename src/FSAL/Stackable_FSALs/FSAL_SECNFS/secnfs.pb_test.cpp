@@ -15,6 +15,8 @@
 
 using namespace secnfs;
 
+namespace secnfs_test {
+
 static void VerifyKeyFile(const KeyFile &f1, const KeyFile &f2) {
         EXPECT_EQ(f1.signature(), f2.signature());
         EXPECT_EQ(f1.creator(), f2.creator());
@@ -99,3 +101,5 @@ TEST_F(SecureContextConfigTest, EncodeDecodeCorrectly) {
 
         free(buf);
 }
+
+};

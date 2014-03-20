@@ -77,15 +77,17 @@ void Context::GenerateKeyFile(byte *key, byte *iv, int len, KeyFile *kf)
         AutoSeededRandomPool prng;
         prng.GenerateBlock(key, len);
         prng.GenerateBlock(iv, len);
+        key[len] = iv[len] = 0;
 
-        kf->set_iv(reinterpret_cast<char *>(iv));
+        kf->set_iv(std::string(reinterpret_cast<char *>(iv), len));
 
         for (size_t i = 0; i < proxies_.size(); ++i) {
                 const SecureProxy &p = proxies_[i];
                 KeyBlock *block = kf->add_key_blocks();
                 block->set_proxy_name(p.name_);
 
-                RSAEncrypt(p.key_, reinterpret_cast<char *>(key),
+                RSAEncrypt(p.key_,
+                           std::string(reinterpret_cast<char *>(key), len),
                            block->mutable_encrypted_key());
         }
 }

@@ -19,11 +19,13 @@ using CryptoPP::AutoSeededRandomPool;
 
 using namespace secnfs;
 
+namespace secnfs_test {
+
 class ContextTest : public ::testing::Test {
 protected:
         ContextTest() : context_(&secnfs_info_) {}
         virtual void SetUp() {
-                context_.name_ = "context-test";
+                context_.set_name("context-test");
                 rsa_pri_key_.GenerateRandomWithKeySize(prng_, RSAKeyLength);
 
                 context_.AddProxy(SecureProxy("proxy1", rsa_pri_key_));
@@ -42,11 +44,11 @@ TEST_F(ContextTest, Basic) {
         context_.Unload(filename);
 
         secnfs_info_t info;
-        strncpy(info.secnfs_name, context_.name_.c_str(), MAXPATHLEN);
+        strncpy(info.secnfs_name, context_.name().c_str(), MAXPATHLEN);
         Context new_context(&info);
         new_context.Load(filename);
 
-        EXPECT_EQ(context_.name_, new_context.name_);
+        EXPECT_EQ(context_.name(), new_context.name());
         EXPECT_EQ(context_.key_pair_, new_context.key_pair_);
 }
 
@@ -81,3 +83,5 @@ TEST_F(ContextTest, TestCacheMap) {
         EXPECT_TRUE(context_.map_.find(entry, key));
         EXPECT_EQ(entry->second, value);
 }
+
+};

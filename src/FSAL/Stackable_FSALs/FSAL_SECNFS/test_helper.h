@@ -12,6 +12,10 @@
 
 namespace secnfs_test {
 
+#define EXPECT_OKAY(x) EXPECT_EQ(x, SECNFS_OKAY)
+
+#define EXPECT_SAME(buf_a, buf_b, len) EXPECT_EQ(memcmp(buf_a, buf_b, len), 0)
+
 secnfs::Context *NewContextWithProxies(int nproxy);
 
 secnfs_info_t *NewSecnfsInfo(int nproxy);
