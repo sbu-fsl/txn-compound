@@ -25,7 +25,7 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
- * ------------- 
+ * -------------
  */
 
 /* main.c
@@ -145,6 +145,7 @@ static fsal_status_t init_config(struct fsal_module *fsal_hdl,
 {
 	struct secnfs_fsal_module *secnfs_me =
 	    container_of(fsal_hdl, struct secnfs_fsal_module, fsal);
+        secnfs_info_t *info = &secnfs_me->secnfs_info;
 	fsal_status_t st;
 
 	secnfs_me->fs_info = default_posix_info;	/* get a copy of the defaults */
@@ -156,11 +157,26 @@ static fsal_status_t init_config(struct fsal_module *fsal_hdl,
         st = fsal_load_config(fsal_hdl->ops->get_name(fsal_hdl), config_struct,
                               &secnfs_me->fsal_info, &secnfs_me->fs_info,
                               secnfs_init_params);
-	if (FSAL_IS_ERROR(st))
+	if (FSAL_IS_ERROR(st)) {
+                LogCrit(COMPONENT_FSAL, "cannot to SECNFS config");
 		return st;
+        }
 
-        if (!validate_conf_params(&secnfs_me->secnfs_info))
+        LogDebug(COMPONENT_FSAL, "Context_Cache_File = %s",
+                 info->context_cache_file);
+        LogDebug(COMPONENT_FSAL, "secnfs_name = %s", info->secnfs_name);
+        LogDebug(COMPONENT_FSAL, "create_if_no_context = %d",
+                 info->create_if_no_context);
+
+        if (!validate_conf_params(info)) {
+                LogCrit(COMPONENT_FSAL, "invalid SECNFS config");
                 return fsalstat(ERR_FSAL_INVAL, SECNFS_WRONG_CONFIG);
+        }
+
+        if (secnfs_create_context(info) != SECNFS_OKAY) {
+                LogCrit(COMPONENT_FSAL, "SECNFS failed to created context");
+                return fsalstat(ERR_FSAL_NOMEM, ENOMEM);
+        }
 
 	display_fsinfo(&secnfs_me->fs_info);
 	LogFullDebug(COMPONENT_FSAL,

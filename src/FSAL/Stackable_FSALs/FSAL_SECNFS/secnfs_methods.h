@@ -43,7 +43,7 @@ fsal_status_t secnfs_create_handle(struct fsal_export *exp_hdl,
 /*
  * SECNFS internal object handle
  *
- * KeyFile is appended to the data file.
+ * KeyFile is kept at the beginning of the data file.
  */
 struct secnfs_fsal_obj_handle {
         struct fsal_obj_handle obj_handle;

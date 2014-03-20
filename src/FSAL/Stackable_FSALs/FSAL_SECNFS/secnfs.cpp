@@ -31,6 +31,7 @@ using CryptoPP::RSA;
 using namespace secnfs;
 
 #include <assert.h>
+#include <error.h>
 
 static inline Context *get_context(secnfs_info_t *info) {
         return static_cast<Context *>(info->context);
@@ -116,10 +117,12 @@ secnfs_s secnfs_create_context(secnfs_info_t *info) {
         ret = ::stat(info->context_cache_file, &st);
         if (ret == 0) {
                 ctx->Load(info->context_cache_file);
-        } else if (ret == ENOENT) {
+        } else if (errno == ENOENT) {
                 assert(info->create_if_no_context);
                 ctx->Unload(info->context_cache_file);
         } else {
+                error(ret, errno, "cannot access or create %s",
+                      info->context_cache_file);
                 return SECNFS_WRONG_CONFIG;
         }
 

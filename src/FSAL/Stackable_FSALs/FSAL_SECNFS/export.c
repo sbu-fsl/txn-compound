@@ -249,7 +249,6 @@ fsal_status_t secnfs_create_export(struct fsal_module *fsal_hdl,
         struct secnfs_fsal_export *exp;
         struct fsal_export *next_exp;
         struct fsal_module *next_fsal;
-        struct secnfs_fsal_module *secnfs;
 
         exp = gsh_calloc(1, sizeof(*exp));
         if (!exp) {
@@ -302,11 +301,6 @@ fsal_status_t secnfs_create_export(struct fsal_module *fsal_hdl,
 
         exp->next_export = next_exp;
         *export = &exp->export;
-
-        secnfs = container_of(fsal_hdl, struct secnfs_fsal_module, fsal);
-        if (secnfs_create_context(&secnfs->secnfs_info) != SECNFS_OKAY) {
-                fprintf(stderr, "SECNFS failed to initialize secnfs_info");
-        }
 
         return st;
 

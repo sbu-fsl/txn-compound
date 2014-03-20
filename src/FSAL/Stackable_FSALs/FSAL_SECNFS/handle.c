@@ -133,6 +133,8 @@ static fsal_status_t write_keyfile(struct fsal_obj_handle *fsal_hdl,
                                     &hdl->iv, &buf, &buf_size);
         assert(ret == SECNFS_OKAY);
 
+        hdl->data_offset = buf_size;
+
         do {
                 st = next_ops.obj_ops->write(hdl->next_handle, opctx,
                                              write_amount,
@@ -174,8 +176,11 @@ static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
                 return st;
         }
 
-        return write_keyfile(*handle, opctx);
+        return st;
+
+        /*return write_keyfile(*handle, opctx);*/
 }
+
 
 static fsal_status_t makedir(struct fsal_obj_handle *dir_hdl,
 			     const struct req_op_context *opctx,
@@ -294,7 +299,16 @@ static fsal_status_t renamefile(struct fsal_obj_handle *olddir_hdl,
 static fsal_status_t getattrs(struct fsal_obj_handle *obj_hdl,
 			      const struct req_op_context *opctx)
 {
-        return next_ops.obj_ops->getattrs(next_handle(obj_hdl), opctx);
+        fsal_status_t st;
+        struct fsal_obj_handle *next_hdl = next_handle(obj_hdl);
+
+        st = next_ops.obj_ops->getattrs(next_hdl, opctx);
+
+        if (!FSAL_IS_ERROR(st)) {
+                obj_hdl->attributes = next_hdl->attributes;
+        }
+
+        return st;
 }
 
 

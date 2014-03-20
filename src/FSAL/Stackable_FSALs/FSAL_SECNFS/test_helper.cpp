@@ -14,7 +14,9 @@ using namespace secnfs;
 
 namespace secnfs_test {
 
-static void AddProxies(Context *ctx, int nproxy, AutoSeededRandomPool *prng) {
+static void AddProxies(Context *ctx, int nproxy) {
+        AutoSeededRandomPool prng;
+
         // Add itself as the first proxy.
         ctx->AddProxy(SecureProxy(ctx->name(), ctx->pub_key()));
 
@@ -23,7 +25,7 @@ static void AddProxies(Context *ctx, int nproxy, AutoSeededRandomPool *prng) {
                 snprintf(name, 64, "proxy-%d", i);
 
                 RSA::PrivateKey pri_key;
-                pri_key.GenerateRandomWithKeySize(*prng, RSAKeyLength);
+                pri_key.GenerateRandomWithKeySize(prng, RSAKeyLength);
                 RSA::PublicKey pub_key(pri_key);
 
                 ctx->AddProxy(SecureProxy(name, pub_key));
@@ -32,14 +34,13 @@ static void AddProxies(Context *ctx, int nproxy, AutoSeededRandomPool *prng) {
 
 
 secnfs::Context *NewContextWithProxies(int nproxy) {
-        AutoSeededRandomPool prng;
         secnfs_info_t info;
 
         strcpy(info.secnfs_name, "proxy-0");
 
         Context *ctx = new Context(&info);
 
-        AddProxies(ctx, nproxy, &prng);
+        AddProxies(ctx, nproxy);
 
         return ctx;
 }
