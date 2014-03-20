@@ -40,6 +40,27 @@
 #include "secnfs_methods.h"
 #include <os/subr.h>
 
+#define PASS_DOWN(func, obj_hdl, args...)                               \
+        struct fsal_obj_handle *next_hdl = next_handle(obj_hdl);        \
+        fsal_status_t st = next_ops.obj_ops->func(next_hdl, ## args);   \
+        if (!FSAL_IS_ERROR(st)) {                                       \
+                obj_hdl->attributes = next_hdl->attributes;             \
+        }                                                               \
+        return st;
+
+
+#define MAKE_SECNFS_FH(func, parent, handle, args...)                   \
+        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(parent);     \
+        struct fsal_obj_handle *next_hdl;                               \
+        fsal_status_t st;                                               \
+        st = next_ops.obj_ops->func(hdl->next_handle, ## args, &next_hdl); \
+        if (FSAL_IS_ERROR(st)) {                                        \
+                LogCrit(COMPONENT_FSAL, "secnfs " #func " failed");     \
+                return st;                                              \
+        }                                                               \
+        return make_handle_from_next(parent->export, next_hdl, handle);
+
+
 extern struct next_ops next_ops;
 
 /************************* helpers **********************/
@@ -105,16 +126,7 @@ static fsal_status_t lookup(struct fsal_obj_handle *parent,
 			    const struct req_op_context *opctx,
 			    const char *path, struct fsal_obj_handle **handle)
 {
-        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(parent);
-        struct fsal_obj_handle *next_hdl;
-        fsal_status_t st;
-
-        st = next_ops.obj_ops->lookup(hdl->next_handle, opctx, path, &next_hdl);
-        if (FSAL_IS_ERROR(st)) {
-                return st;
-        }
-
-        return make_handle_from_next(parent->export, next_hdl, handle);
+        MAKE_SECNFS_FH(lookup, parent, handle, opctx, path);
 }
 
 
@@ -187,14 +199,7 @@ static fsal_status_t makedir(struct fsal_obj_handle *dir_hdl,
 			     const char *name, struct attrlist *attrib,
 			     struct fsal_obj_handle **handle)
 {
-        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(dir_hdl);
-        struct fsal_obj_handle *next_hdl;
-        fsal_status_t st;
-
-        st = next_ops.obj_ops->mkdir(hdl->next_handle, opctx, name,
-                                     attrib, &next_hdl);
-
-        return make_handle_from_next(dir_hdl->export, next_hdl, handle);
+        MAKE_SECNFS_FH(mkdir, dir_hdl, handle, opctx, name, attrib);
 }
 
 static fsal_status_t makenode(struct fsal_obj_handle *dir_hdl,
@@ -204,17 +209,8 @@ static fsal_status_t makenode(struct fsal_obj_handle *dir_hdl,
 			      struct attrlist *attrib,
 			      struct fsal_obj_handle **handle)
 {
-        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(dir_hdl);
-        struct fsal_obj_handle *next_hdl;
-        fsal_status_t st;
-
-        st = next_ops.obj_ops->mknode(hdl->next_handle, opctx, name, nodetype,
-                                      dev, attrib, &next_hdl);
-        if (FSAL_IS_ERROR(st)) {
-                return st;
-        }
-
-        return make_handle_from_next(dir_hdl->export, next_hdl, handle);
+        MAKE_SECNFS_FH(mknode, dir_hdl, handle, opctx, name,
+                       nodetype, dev, attrib);
 }
 
 /** makesymlink
@@ -229,17 +225,8 @@ static fsal_status_t makesymlink(struct fsal_obj_handle *dir_hdl,
 				 struct attrlist *attrib,
 				 struct fsal_obj_handle **handle)
 {
-        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(dir_hdl);
-        struct fsal_obj_handle *next_hdl;
-        fsal_status_t st;
-
-        st = next_ops.obj_ops->symlink(hdl->next_handle, opctx, name,
-                                       link_path, attrib, &next_hdl);
-        if (FSAL_IS_ERROR(st)) {
-                return st;
-        }
-
-        return make_handle_from_next(dir_hdl->export, next_hdl, handle);
+        MAKE_SECNFS_FH(symlink, dir_hdl, handle, opctx, name,
+                       link_path, attrib);
 }
 
 
@@ -299,16 +286,7 @@ static fsal_status_t renamefile(struct fsal_obj_handle *olddir_hdl,
 static fsal_status_t getattrs(struct fsal_obj_handle *obj_hdl,
 			      const struct req_op_context *opctx)
 {
-        fsal_status_t st;
-        struct fsal_obj_handle *next_hdl = next_handle(obj_hdl);
-
-        st = next_ops.obj_ops->getattrs(next_hdl, opctx);
-
-        if (!FSAL_IS_ERROR(st)) {
-                obj_hdl->attributes = next_hdl->attributes;
-        }
-
-        return st;
+        PASS_DOWN(getattrs, obj_hdl, opctx);
 }
 
 
@@ -319,14 +297,7 @@ static fsal_status_t setattrs(struct fsal_obj_handle *obj_hdl,
 			      const struct req_op_context *opctx,
 			      struct attrlist *attrs)
 {
-        struct fsal_obj_handle *next_hdl = next_handle(obj_hdl);
-        fsal_status_t st = next_ops.obj_ops->setattrs(next_hdl, opctx, attrs);
-
-        if (!FSAL_IS_ERROR(st)) {
-                obj_hdl->attributes = next_hdl->attributes;
-        }
-
-        return st;
+        PASS_DOWN(setattrs, obj_hdl, opctx, attrs);
 }
 
 

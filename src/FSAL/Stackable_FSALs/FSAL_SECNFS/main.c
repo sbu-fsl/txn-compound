@@ -158,7 +158,7 @@ static fsal_status_t init_config(struct fsal_module *fsal_hdl,
                               &secnfs_me->fsal_info, &secnfs_me->fs_info,
                               secnfs_init_params);
 	if (FSAL_IS_ERROR(st)) {
-                LogCrit(COMPONENT_FSAL, "cannot to SECNFS config");
+                LogCrit(COMPONENT_FSAL, "cannot load SECNFS config");
 		return st;
         }
 
