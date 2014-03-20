@@ -44,7 +44,6 @@ public:
         Context(const secnfs_info_t *secnfs_info);
         ~Context();
 
-        RSAKeyPair key_pair_;           /*!< RSA key pair */
         secnfs_info_t *secnfs_info_;
 
         tbb::concurrent_hash_map<std::string, std::string, CacheCompare> map_;
@@ -64,7 +63,11 @@ public:
         const std::string& name() const { return name_; }
         void set_name(const std::string &nm) { name_ = nm; }
 
+        const RSA::PublicKey& pub_key() const { return key_pair_.pub_; }
+        const RSA::PrivateKey& pri_key() const { return key_pair_.pri_; }
+
         std::string name_;              /*!< name of current proxy */
+        RSAKeyPair key_pair_;           /*!< RSA key pair */
 };
 
 };

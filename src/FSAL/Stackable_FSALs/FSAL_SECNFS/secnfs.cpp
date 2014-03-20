@@ -179,8 +179,7 @@ secnfs_s secnfs_read_file_key(secnfs_info_t *info,
                 const KeyBlock &kb = kf.key_blocks(i);
                 if (kb.proxy_name() == ctx->name()) {
                         std::string rkey;
-                        RSADecrypt(ctx->key_pair_.pri_, kb.encrypted_key(),
-                                   &rkey);
+                        RSADecrypt(ctx->pri_key(), kb.encrypted_key(), &rkey);
                         str_to_key(rkey, fek);
                         memmove(fek->bytes, rkey.c_str(), SECNFS_KEY_LENGTH);
                         break;

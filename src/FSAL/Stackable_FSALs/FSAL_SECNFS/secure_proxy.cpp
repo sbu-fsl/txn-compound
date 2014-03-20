@@ -12,7 +12,8 @@ namespace secnfs {
 SecureProxy::SecureProxy() {}
 
 
-SecureProxy::SecureProxy(const std::string &name, RSA::PrivateKey &private_key)
-        : name_(name), key_(private_key) { }
+SecureProxy::SecureProxy(const std::string &name,
+                         const RSA::PublicKey &public_key)
+        : name_(name), key_(public_key) { }
 
 };
