@@ -92,7 +92,8 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
 {
 	LogDebug(COMPONENT_FSAL, "buffer_size = %d", buffer_size);
         fsal_status_t st = next_ops.obj_ops->read(next_handle(obj_hdl), opctx,
-                                                  offset, buffer_size, buffer,
+                                                  offset + KEY_FILE_SIZE,
+                                                  buffer_size, buffer,
                                                   read_amount, end_of_file);
         /*
 	if(FSAL_IS_ERROR(st)) {
@@ -127,7 +128,8 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
 		/*return secnfs_to_fsal_status(ret);*/
 	/*}*/
 
-	return next_ops.obj_ops->write(next_handle(obj_hdl), opctx, offset,
+	return next_ops.obj_ops->write(next_handle(obj_hdl), opctx,
+                                       offset + KEY_FILE_SIZE,
                                        buffer_size, buffer, write_amount,
                                        fsal_stable);
 }

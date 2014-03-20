@@ -45,6 +45,7 @@
         fsal_status_t st = next_ops.obj_ops->func(next_hdl, ## args);   \
         if (!FSAL_IS_ERROR(st)) {                                       \
                 obj_hdl->attributes = next_hdl->attributes;             \
+                adjust_attributes_up(&obj_hdl->attributes);             \
         }                                                               \
         return st;
 
@@ -83,6 +84,23 @@ static struct secnfs_fsal_obj_handle *alloc_handle(struct fsal_export *exp,
         }
 
         return hdl;
+}
+
+
+static void adjust_attributes_up(struct attrlist *attr)
+{
+        if (attr->type == REGULAR_FILE && attr->filesize > 0) {
+                assert(attr->filesize > KEY_FILE_SIZE);
+                attr->filesize -= KEY_FILE_SIZE;
+        }
+}
+
+
+static void adjust_attributes_down(struct attrlist *attr)
+{
+        if (attr->type == REGULAR_FILE && attr->filesize > 0) {
+                attr->filesize += KEY_FILE_SIZE;
+        }
 }
 
 
@@ -144,6 +162,7 @@ static fsal_status_t write_keyfile(struct fsal_obj_handle *fsal_hdl,
         ret = secnfs_create_keyfile(hdl->info, &hdl->fk,
                                     &hdl->iv, &buf, &buf_size);
         assert(ret == SECNFS_OKAY);
+        assert(buf_size == KEY_FILE_SIZE);
 
         hdl->data_offset = buf_size;
 
@@ -188,9 +207,7 @@ static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
                 return st;
         }
 
-        return st;
-
-        /*return write_keyfile(*handle, opctx);*/
+        return write_keyfile(*handle, opctx);
 }
 
 
@@ -297,7 +314,9 @@ static fsal_status_t setattrs(struct fsal_obj_handle *obj_hdl,
 			      const struct req_op_context *opctx,
 			      struct attrlist *attrs)
 {
-        PASS_DOWN(setattrs, obj_hdl, opctx, attrs);
+        struct attrlist attrs_copy = *attrs;
+        adjust_attributes_down(&attrs_copy);
+        PASS_DOWN(setattrs, obj_hdl, opctx, &attrs_copy);
 }
 
 

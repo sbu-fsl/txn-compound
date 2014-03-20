@@ -155,10 +155,9 @@ secnfs_s secnfs_create_keyfile(secnfs_info_t *info,
                              SECNFS_KEY_LENGTH, &kf);
         kf.set_creator(ctx->name());
 
-        assert(EncodeMessage(kf, keyfile, kf_len, 4096));
+        assert(EncodeMessage(kf, keyfile, kf_len, KEY_FILE_SIZE));
 
-        // TODO allow keyfile to be larger than 4096.
-        assert(*kf_len == 4096);
+        assert(*kf_len == KEY_FILE_SIZE);
 
         return SECNFS_OKAY;
 }

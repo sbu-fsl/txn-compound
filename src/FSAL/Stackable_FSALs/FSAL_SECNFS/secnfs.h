@@ -18,6 +18,9 @@ extern "C" {
 
 #define SECNFS_KEY_LENGTH 16
 
+// TODO allow keyfile to be larger than 4096.
+#define KEY_FILE_SIZE 4096
+
 typedef struct { uint8_t bytes[SECNFS_KEY_LENGTH + 1]; } secnfs_key_t;
 
 /**
