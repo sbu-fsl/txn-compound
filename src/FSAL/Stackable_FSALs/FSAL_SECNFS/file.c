@@ -22,7 +22,7 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
- * ------------- 
+ * -------------
  */
 
 /* file.c
@@ -54,7 +54,18 @@ fsal_status_t secnfs_open(struct fsal_obj_handle *obj_hdl,
                           const struct req_op_context *opctx,
                           fsal_openflags_t openflags)
 {
-	return next_ops.obj_ops->open(next_handle(obj_hdl), opctx, openflags);
+        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
+        fsal_status_t st;
+
+        st = next_ops.obj_ops->open(hdl->next_handle, opctx, openflags);
+
+        if (!FSAL_IS_ERROR(st) && obj_hdl->type == REGULAR_FILE
+            && !hdl->key_initialized) {
+                // read file key and iv
+                assert(read_keyfile(obj_hdl, opctx) == SECNFS_OKAY);
+        }
+
+        return st;
 }
 
 
@@ -90,22 +101,32 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
 			  size_t buffer_size, void *buffer,
 			  size_t *read_amount, bool *end_of_file)
 {
-	LogDebug(COMPONENT_FSAL, "buffer_size = %d", buffer_size);
-        fsal_status_t st = next_ops.obj_ops->read(next_handle(obj_hdl), opctx,
-                                                  offset + KEY_FILE_SIZE,
-                                                  buffer_size, buffer,
-                                                  read_amount, end_of_file);
-        /*
-	if(FSAL_IS_ERROR(st)) {
-		return st;
-	}
+        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
+        fsal_status_t st;
+        uint64_t next_offset;
 
-        secnfs_s retd = secnfs_decrypt(key, iv, offset, buffer_size,
-                                       buffer, buffer);
-        if (retd != SECNFS_OKAY) {
-                return secnfs_to_fsal_status(retd);
+	LogDebug(COMPONENT_FSAL, "buffer_size = %d", buffer_size);
+
+        next_offset = obj_hdl->type == REGULAR_FILE
+                        ? offset + KEY_FILE_SIZE
+                        : offset;
+
+        st = next_ops.obj_ops->read(next_handle(obj_hdl), opctx,
+                                    next_offset,
+                                    buffer_size, buffer,
+                                    read_amount, end_of_file);
+        if (FSAL_IS_ERROR(st)) {
+                return st;
         }
-        */
+
+        if (obj_hdl->type == REGULAR_FILE) {
+                assert(hdl->key_initialized);
+                secnfs_s retd = secnfs_decrypt(hdl->fk, hdl->iv, offset,
+                                               buffer_size, buffer, buffer);
+                if (retd != SECNFS_OKAY) {
+                        return secnfs_to_fsal_status(retd);
+                }
+        }
 
 	return st;
 }
@@ -119,17 +140,25 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
 			   size_t buffer_size, void *buffer,
 			   size_t *write_amount, bool *fsal_stable)
 {
-	LogDebug(COMPONENT_FSAL, "offset = %lu, buffer_size = %lu", offset, buffer_size);
+        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
+        uint64_t next_offset = offset;
 
-        /*secnfs_s ret = secnfs_encrypt(key, iv, offset, buffer_size,*/
-                                      /*buffer, buffer);*/
-
-	/*if(ret != SECNFS_OKAY) {*/
-		/*return secnfs_to_fsal_status(ret);*/
-	/*}*/
+        if (obj_hdl->type == REGULAR_FILE) {
+                next_offset += KEY_FILE_SIZE;
+                assert(hdl->key_initialized);
+                secnfs_s ret = secnfs_encrypt(hdl->fk,
+                                              hdl->iv,
+                                              offset,
+                                              buffer_size,
+                                              buffer,
+                                              buffer);
+                if(ret != SECNFS_OKAY) {
+                        return secnfs_to_fsal_status(ret);
+                }
+        }
 
 	return next_ops.obj_ops->write(next_handle(obj_hdl), opctx,
-                                       offset + KEY_FILE_SIZE,
+                                       next_offset,
                                        buffer_size, buffer, write_amount,
                                        fsal_stable);
 }

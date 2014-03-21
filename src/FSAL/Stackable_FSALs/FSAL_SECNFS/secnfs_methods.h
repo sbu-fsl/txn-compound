@@ -53,6 +53,7 @@ struct secnfs_fsal_obj_handle {
         secnfs_info_t *info;                    /*< secnfs info */
         /* NFSv4.2' support for sparse file will help us */
         uint32_t data_offset;                   /*< beginning of data file */
+        uint32_t key_initialized;
 };
 
 static inline struct secnfs_fsal_obj_handle*

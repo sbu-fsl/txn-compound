@@ -148,6 +148,53 @@ static fsal_status_t lookup(struct fsal_obj_handle *parent,
 }
 
 
+static fsal_status_t read_keyfile(struct fsal_obj_handle *fsal_hdl,
+                                  const struct req_op_context *opctx)
+{
+        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(fsal_hdl);
+        fsal_status_t st;
+        void *buf;
+        uint32_t buf_size, kf_len;
+        size_t n, read_amount = 0;
+        bool end_of_file = false;
+        secnfs_s ret;
+
+        buf_size = KEY_FILE_SIZE;
+        buf = malloc(buf_size);
+        assert(buf);
+
+        do {
+                st = next_ops.obj_ops->read(hdl->next_handle,
+                                            opctx,
+                                            read_amount,
+                                            buf_size - read_amount,
+                                            buf + read_amount,
+                                            &n,
+                                            &end_of_file);
+                if (FSAL_IS_ERROR(st)) {
+                        LogCrit(COMPONENT_FSAL, "cannot read secnfs keyfile");
+                        goto out;
+                }
+                assert(!end_of_file);
+                read_amount += n;
+        } while (read_amount < KEY_FILE_SIZE);
+
+        ret = secnfs_read_file_key(hdl->info,
+                                   buf,
+                                   buf_size,
+                                   &hdl->fk,
+                                   &hdl->iv,
+                                   &kf_len);
+        assert(ret == SECNFS_OKAY);
+
+        hdl->key_initialized = 1;
+
+out:
+        free(buf);
+        return st;
+}
+
+
 static fsal_status_t write_keyfile(struct fsal_obj_handle *fsal_hdl,
                                    const struct req_op_context *opctx)
 {
@@ -207,7 +254,12 @@ static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
                 return st;
         }
 
-        return write_keyfile(*handle, opctx);
+        if (attrib->type == REGULAR_FILE) {
+                generate_key_and_iv(&hdl->fk, &hdl->iv);
+                st = write_keyfile(*handle, opctx);
+        }
+
+        return st;
 }
 
 

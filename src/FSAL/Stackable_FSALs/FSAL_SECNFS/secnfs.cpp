@@ -28,6 +28,9 @@ using CryptoPP::CTR_Mode;
 #include <cryptopp/rsa.h>
 using CryptoPP::RSA;
 
+#include <cryptopp/osrng.h>
+using CryptoPP::AutoSeededRandomPool;
+
 using namespace secnfs;
 
 #include <assert.h>
@@ -48,7 +51,8 @@ static void str_to_key(const std::string &sk, secnfs_key_t *key) {
 }
 
 
-secnfs_key_t *incr_ctr(secnfs_key_t *iv, unsigned size, int incr) {
+secnfs_key_t *incr_ctr(secnfs_key_t *iv, unsigned size, int incr)
+{
         uint8_t *ctr = iv->bytes;
         int i = size - 1;
         int carry = incr;
@@ -62,6 +66,13 @@ secnfs_key_t *incr_ctr(secnfs_key_t *iv, unsigned size, int incr) {
 	return iv;
 }
 
+
+void generate_key_and_iv(secnfs_key_t *key, secnfs_key_t *iv)
+{
+        AutoSeededRandomPool prng;
+        prng.GenerateBlock(key->bytes, SECNFS_KEY_LENGTH);
+        prng.GenerateBlock(iv->bytes, SECNFS_KEY_LENGTH);
+}
 
 /*
  * @brief Check if n is aligned by the encryption block size

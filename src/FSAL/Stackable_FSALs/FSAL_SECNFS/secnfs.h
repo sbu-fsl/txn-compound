@@ -50,6 +50,13 @@ typedef struct {
  */
 secnfs_key_t *incr_ctr(secnfs_key_t *iv, unsigned size, int incr);
 
+
+/**
+ * @brief Generate a key and an IV from a crypto PRNG.
+ */
+void generate_key_and_iv(secnfs_key_t *key, secnfs_key_t *iv);
+
+
 /**
  * @brief Encrypt buffer contents
  *
