@@ -304,6 +304,7 @@ fsal_status_t secnfs_create_export(struct fsal_module *fsal_hdl,
         exp->next_export = next_exp;
         *export = &exp->export;
 
+        SECNFS_D("secnfs export created.\n");
 
         return st;
 

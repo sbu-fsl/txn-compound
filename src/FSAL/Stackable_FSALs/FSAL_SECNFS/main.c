@@ -161,11 +161,9 @@ static fsal_status_t init_config(struct fsal_module *fsal_hdl,
 		return st;
         }
 
-        LogDebug(COMPONENT_FSAL, "Context_Cache_File = %s",
-                 info->context_cache_file);
-        LogDebug(COMPONENT_FSAL, "secnfs_name = %s", info->secnfs_name);
-        LogDebug(COMPONENT_FSAL, "create_if_no_context = %d",
-                 info->create_if_no_context);
+        SECNFS_F("Context_Cache_File = %s", info->context_cache_file);
+        SECNFS_F("secnfs_name = %s", info->secnfs_name);
+        SECNFS_F("create_if_no_context = %d", info->create_if_no_context);
 
         if (!validate_conf_params(info)) {
                 LogCrit(COMPONENT_FSAL, "invalid SECNFS config");
@@ -220,7 +218,6 @@ struct next_ops next_ops;
 
 MODULE_INIT void secnfs_init(void)
 {
-	LogDebug(COMPONENT_FSAL, "TRACKER");
 	int retval;
 	struct fsal_module *myself = &SECNFS.fsal;
 
@@ -233,6 +230,7 @@ MODULE_INIT void secnfs_init(void)
 	myself->ops->create_export = secnfs_create_export;
 	myself->ops->init_config = init_config;
 	init_fsal_parameters(&SECNFS.fsal_info);
+	SECNFS_D("secnfs module initialized.");
 
 }
 

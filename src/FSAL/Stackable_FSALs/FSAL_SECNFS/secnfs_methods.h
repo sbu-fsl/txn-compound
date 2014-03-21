@@ -14,6 +14,9 @@ struct next_ops {
 	struct fsal_up_vector *up_ops;	/*< Upcall operations */
 };
 
+#define SECNFS_D(fmt, args...) LogDebug(COMPONENT_FSAL, "=secnfs=" fmt, ## args)
+#define SECNFS_F(fmt, args...) LogFullDebug(COMPONENT_FSAL, "=secnfs=" fmt, ## args)
+
 /*
  * SECNFS internal export
  */

@@ -92,7 +92,7 @@ static struct secnfs_fsal_obj_handle *alloc_handle(struct fsal_export *exp,
 static void adjust_attributes_up(struct attrlist *attr)
 {
         if (attr->type == REGULAR_FILE && attr->filesize > 0) {
-                assert(attr->filesize > KEY_FILE_SIZE);
+                assert(attr->filesize >= KEY_FILE_SIZE);
                 attr->filesize -= KEY_FILE_SIZE;
         }
 }
@@ -242,7 +242,10 @@ static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
 {
         struct secnfs_fsal_obj_handle *hdl = secnfs_handle(dir_hdl);
         struct fsal_obj_handle *next_hdl;
+        struct secnfs_fsal_obj_handle *new_hdl;
         fsal_status_t st;
+
+        SECNFS_D("hdl = %x; key = %d", hdl, hdl->key_initialized);
 
         st = next_ops.obj_ops->create(hdl->next_handle, opctx, name,
                                       attrib, &next_hdl);
@@ -257,7 +260,10 @@ static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
         }
 
         if (attrib->type == REGULAR_FILE) {
-                generate_key_and_iv(&hdl->fk, &hdl->iv);
+                new_hdl = secnfs_handle(*handle);
+                generate_key_and_iv(&new_hdl->fk, &new_hdl->iv);
+                new_hdl->key_initialized = 1;
+                SECNFS_D("key in new handle (%x) initialized", new_hdl);
                 st = write_keyfile(*handle, opctx);
         }
 
@@ -530,6 +536,8 @@ fsal_status_t secnfs_create_handle(struct fsal_export *exp,
                 LogMajor(COMPONENT_FSAL, "cannot create next handle");
                 return st;
         }
+
+        SECNFS_F("handle created by secnfs_create_handle\n");
 
         return make_handle_from_next(exp, next_hdl, handle);
 }

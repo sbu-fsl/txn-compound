@@ -62,6 +62,8 @@ fsal_status_t secnfs_open(struct fsal_obj_handle *obj_hdl,
         struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
         fsal_status_t st;
 
+        SECNFS_D("hdl = %x; openflag = %d\n", hdl, openflags);
+
         st = next_ops.obj_ops->open(hdl->next_handle, opctx, openflags);
 
         if (!FSAL_IS_ERROR(st) && should_read_keyfile(hdl)) {
@@ -146,8 +148,10 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
         struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
         uint64_t next_offset = offset;
 
+        SECNFS_D("hdl = %x; write to %u (%u)\n", hdl, offset, buffer_size);
         if (obj_hdl->type == REGULAR_FILE) {
                 next_offset += KEY_FILE_SIZE;
+                SECNFS_D("hdl = %x; key = %d\n", hdl, hdl->key_initialized);
                 assert(hdl->key_initialized);
                 secnfs_s ret = secnfs_encrypt(hdl->fk,
                                               hdl->iv,
