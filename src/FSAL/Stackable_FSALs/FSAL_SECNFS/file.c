@@ -44,8 +44,13 @@
 
 extern struct next_ops next_ops;
 
-static secnfs_key_t key = {"abcdefghijklmno"};
-static secnfs_key_t iv  = {"pqrstuvwxyzabcd"};
+static bool should_read_keyfile(const struct secnfs_fsal_obj_handle *hdl)
+{
+        return hdl->obj_handle.type == REGULAR_FILE
+                && hdl->obj_handle.attributes.filesize > 0
+                && !hdl->key_initialized;
+}
+
 
 /** secnfs_open
  * called with appropriate locks taken at the cache inode level
@@ -59,10 +64,9 @@ fsal_status_t secnfs_open(struct fsal_obj_handle *obj_hdl,
 
         st = next_ops.obj_ops->open(hdl->next_handle, opctx, openflags);
 
-        if (!FSAL_IS_ERROR(st) && obj_hdl->type == REGULAR_FILE
-            && !hdl->key_initialized) {
+        if (!FSAL_IS_ERROR(st) && should_read_keyfile(hdl)) {
                 // read file key and iv
-                assert(read_keyfile(obj_hdl, opctx) == SECNFS_OKAY);
+                st = read_keyfile(obj_hdl, opctx);
         }
 
         return st;
@@ -111,7 +115,7 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                         ? offset + KEY_FILE_SIZE
                         : offset;
 
-        st = next_ops.obj_ops->read(next_handle(obj_hdl), opctx,
+        st = next_ops.obj_ops->read(hdl->next_handle, opctx,
                                     next_offset,
                                     buffer_size, buffer,
                                     read_amount, end_of_file);
@@ -121,11 +125,10 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
 
         if (obj_hdl->type == REGULAR_FILE) {
                 assert(hdl->key_initialized);
+                // TODO only decrypt "*read_amount"
                 secnfs_s retd = secnfs_decrypt(hdl->fk, hdl->iv, offset,
                                                buffer_size, buffer, buffer);
-                if (retd != SECNFS_OKAY) {
-                        return secnfs_to_fsal_status(retd);
-                }
+                st = secnfs_to_fsal_status(retd);
         }
 
 	return st;

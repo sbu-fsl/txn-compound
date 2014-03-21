@@ -299,8 +299,11 @@ fsal_status_t secnfs_create_export(struct fsal_module *fsal_hdl,
         secnfs_handle_ops_init(exp->export.obj_ops);
         exp->export.up_ops = up_ops;
 
+        exp->export.fsal = fsal_hdl;
+
         exp->next_export = next_exp;
         *export = &exp->export;
+
 
         return st;
 

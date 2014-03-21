@@ -143,8 +143,7 @@ static int validate_conf_params(const secnfs_info_t *info)
 static fsal_status_t init_config(struct fsal_module *fsal_hdl,
 				 config_file_t config_struct)
 {
-	struct secnfs_fsal_module *secnfs_me =
-	    container_of(fsal_hdl, struct secnfs_fsal_module, fsal);
+	struct secnfs_fsal_module *secnfs_me = secnfs_module(fsal_hdl);
         secnfs_info_t *info = &secnfs_me->secnfs_info;
 	fsal_status_t st;
 
@@ -234,6 +233,7 @@ MODULE_INIT void secnfs_init(void)
 	myself->ops->create_export = secnfs_create_export;
 	myself->ops->init_config = init_config;
 	init_fsal_parameters(&SECNFS.fsal_info);
+
 }
 
 MODULE_FINI void secnfs_unload(void)

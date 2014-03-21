@@ -68,6 +68,12 @@ secnfs_export(struct fsal_export *export)
         return container_of(export, struct secnfs_fsal_export, export);
 }
 
+static inline struct secnfs_fsal_module*
+secnfs_module(struct fsal_module *fsal)
+{
+        return container_of(fsal, struct secnfs_fsal_module, fsal);
+}
+
 static inline struct fsal_obj_handle* next_handle(struct fsal_obj_handle *hdl)
 {
         return secnfs_handle(hdl)->next_handle;
@@ -90,6 +96,12 @@ static inline bool secnfs_unopenable_type(object_file_type_t type)
 		return false;
 	}
 }
+
+fsal_status_t read_keyfile(struct fsal_obj_handle *fsal_hdl,
+                           const struct req_op_context *opctx);
+
+fsal_status_t write_keyfile(struct fsal_obj_handle *fsal_hdl,
+                            const struct req_op_context *opctx);
 
 	/* I/O management */
 fsal_status_t secnfs_open(struct fsal_obj_handle * obj_hdl,

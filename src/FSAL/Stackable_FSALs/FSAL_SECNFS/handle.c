@@ -69,6 +69,7 @@ extern struct next_ops next_ops;
 static struct secnfs_fsal_obj_handle *alloc_handle(struct fsal_export *exp,
                                                    const struct attrlist *attr)
 {
+        struct secnfs_fsal_module *secnfs_fsal = secnfs_module(exp->fsal);
         struct secnfs_fsal_obj_handle *hdl;
         fsal_status_t st;
 
@@ -77,6 +78,7 @@ static struct secnfs_fsal_obj_handle *alloc_handle(struct fsal_export *exp,
                 return NULL;
 
         hdl->obj_handle.attributes = *attr;
+        hdl->info = &secnfs_fsal->secnfs_info;
 
         if (fsal_obj_handle_init(&hdl->obj_handle, exp, attr->type)) {
                 gsh_free(hdl);
@@ -148,8 +150,8 @@ static fsal_status_t lookup(struct fsal_obj_handle *parent,
 }
 
 
-static fsal_status_t read_keyfile(struct fsal_obj_handle *fsal_hdl,
-                                  const struct req_op_context *opctx)
+fsal_status_t read_keyfile(struct fsal_obj_handle *fsal_hdl,
+                           const struct req_op_context *opctx)
 {
         struct secnfs_fsal_obj_handle *hdl = secnfs_handle(fsal_hdl);
         fsal_status_t st;
@@ -195,8 +197,8 @@ out:
 }
 
 
-static fsal_status_t write_keyfile(struct fsal_obj_handle *fsal_hdl,
-                                   const struct req_op_context *opctx)
+fsal_status_t write_keyfile(struct fsal_obj_handle *fsal_hdl,
+                            const struct req_op_context *opctx)
 {
         struct secnfs_fsal_obj_handle *hdl = secnfs_handle(fsal_hdl);
         fsal_status_t st;
