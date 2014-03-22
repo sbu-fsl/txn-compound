@@ -67,6 +67,33 @@ TEST_F(EncryptTest, TwoSteps) {
 }
 
 
+TEST_F(EncryptTest, UnalignedBuf) {
+        const int TESTSIZE = AES::BLOCKSIZE * 10;
+        byte decrypted[TESTSIZE];
+
+        // test unaligned buffer size
+        for (int sz = 1; sz < TESTSIZE; ++sz) {
+                decrypted[sz] = 0;
+                EXPECT_OKAY(secnfs_decrypt(key_, iv_, 0, sz, cipher_,
+                                           decrypted));
+                EXPECT_SAME(plain_, decrypted, sz);
+                // The decryption should not touch anything beyond sz bytes
+                EXPECT_EQ(decrypted[sz], 0);
+        }
+
+        // test unaligned offsets
+        for (int os = 1; os < TESTSIZE; ++os) {
+                int sz = TESTSIZE - os;
+                decrypted[sz] = 0;
+                EXPECT_OKAY(secnfs_decrypt(key_, iv_, os, sz,
+                                           cipher_ + os, decrypted));
+                EXPECT_SAME(plain_ + os, decrypted, sz);
+                // The decryption should not touch anything beyond sz bytes
+                EXPECT_EQ(decrypted[sz], 0);
+        }
+}
+
+
 TEST_F(EncryptTest, BlockByBlock) {
         secnfs_key_t myiv = iv_;
         byte block[MSG_SIZE];
@@ -106,7 +133,6 @@ protected:
         virtual void SetUp() {
 
         }
-
 
         Context *context_;
 };

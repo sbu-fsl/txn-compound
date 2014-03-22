@@ -79,14 +79,17 @@ void generate_key_and_iv(secnfs_key_t *key, secnfs_key_t *iv)
  */
 static int is_block_aligned(uint64_t n) { return !(n & (AES::BLOCKSIZE - 1)); }
 
-secnfs_s secnfs_encrypt(secnfs_key_t key,
-                        secnfs_key_t iv,
-                        uint64_t offset,
-                        uint64_t size,
-                        void *plain,
-                        void *buffer)
+// TODO simplify
+static uint64_t round_up(uint64_t n, uint64_t b) { return (n + b - 1) / b * b; }
+
+static secnfs_s offset_aligned_encrypt(secnfs_key_t key,
+                                       secnfs_key_t iv,
+                                       uint64_t offset,
+                                       uint64_t size,
+                                       void *plain,
+                                       void *buffer)
 {
-        assert(is_block_aligned(offset) && is_block_aligned(size));
+        assert(is_block_aligned(offset));
 
         incr_ctr(&iv, SECNFS_KEY_LENGTH, offset / AES::BLOCKSIZE);
 
@@ -105,6 +108,37 @@ secnfs_s secnfs_encrypt(secnfs_key_t key,
 	}
 
         return SECNFS_OKAY;
+}
+
+secnfs_s secnfs_encrypt(secnfs_key_t key,
+                        secnfs_key_t iv,
+                        uint64_t offset,
+                        uint64_t size,
+                        void *plain,
+                        void *buffer)
+{
+        secnfs_s ret;
+        uint64_t left_over = round_up(offset, AES::BLOCKSIZE) - offset;
+
+        if (left_over > 0) {
+                uint64_t pad = AES::BLOCKSIZE - left_over;
+                uint64_t aligned_offset = offset - pad;
+                byte pbuf[AES::BLOCKSIZE];
+                byte cbuf[AES::BLOCKSIZE];
+
+                memmove(pbuf + pad, plain, left_over);
+                ret = offset_aligned_encrypt(key, iv, aligned_offset,
+                                             AES::BLOCKSIZE, pbuf, cbuf);
+                if (ret != SECNFS_OKAY)
+                        return ret;
+                memmove(buffer, cbuf + pad, left_over);
+        }
+
+        return offset_aligned_encrypt(key, iv,
+                                      offset + left_over,
+                                      size - left_over,
+                                      static_cast<byte *>(plain) + left_over,
+                                      static_cast<byte *>(buffer) + left_over);
 }
 
 
