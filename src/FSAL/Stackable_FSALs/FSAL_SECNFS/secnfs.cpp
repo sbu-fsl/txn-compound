@@ -164,9 +164,12 @@ secnfs_s secnfs_create_context(secnfs_info_t *info) {
         ret = ::stat(info->context_cache_file, &st);
         if (ret == 0) {
                 ctx->Load(info->context_cache_file);
+                SECNFS_I("secnfs context loaded");
         } else if (errno == ENOENT) {
                 assert(info->create_if_no_context);
+                SECNFS_I("new secnfs context created");
                 ctx->Unload(info->context_cache_file);
+                SECNFS_I("context written to %s", info->context_cache_file);
         } else {
                 error(ret, errno, "cannot access or create %s",
                       info->context_cache_file);
