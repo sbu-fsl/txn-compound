@@ -110,6 +110,8 @@ static int secnfs_init_params(const char *key, const char *val,
                 secnfs_info->create_if_no_context = str_to_bool(val);
         } else if (!strcasecmp(key, "Name")) {
                 strncpy(secnfs_info->secnfs_name, val, MAXPATHLEN);
+        } else if (!strcasecmp(key, "Proxy_Lists")) {
+                strncpy(secnfs_info->plist_file, val, MAXPATHLEN);
         } else {
 		LogCrit(COMPONENT_CONFIG, "Unknown key: %s in %s", key, name);
 		return 1;

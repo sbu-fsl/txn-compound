@@ -7,7 +7,6 @@
 #include "secnfs.h"
 #include "context.h"
 #include "secnfs_lib.h"
-#include "secure_proxy.h"
 
 #include <string>
 using std::string;
@@ -27,9 +26,6 @@ protected:
         virtual void SetUp() {
                 context_.set_name("context-test");
                 rsa_pri_key_.GenerateRandomWithKeySize(prng_, RSAKeyLength);
-
-                context_.AddProxy(SecureProxy("proxy1", rsa_pri_key_));
-                context_.AddProxy(SecureProxy("proxy2", rsa_pri_key_));
         }
 
         secnfs_info_t secnfs_info_;

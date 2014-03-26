@@ -39,8 +39,10 @@ typedef enum {
 typedef struct {
         uint32_t context_size;          /*!< size of context */
         void *context;                  /*!< context data */
+        void *proxy_list;               /*!< list of proxy and its public key */
         char context_cache_file[MAXPATHLEN + 1];
         char secnfs_name[MAXPATHLEN + 1];       /*!< secnfs unique name */
+        char plist_file[MAXPATHLEN + 1];        /*!< list of secnfs proxies */
         unsigned create_if_no_context : 1;
 } secnfs_info_t;
 
@@ -94,6 +96,9 @@ secnfs_s secnfs_decrypt(secnfs_key_t key,
                         uint64_t size,
                         void *cipher,
                         void *buffer);
+
+
+secnfs_s secnfs_init_info(secnfs_info_t *info);
 
 
 /**

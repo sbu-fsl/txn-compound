@@ -16,5 +16,14 @@ message SecureContextConfig {
   required string name = 1;
   required bytes pub_key = 2;
   required bytes pri_key = 3;
-  repeated KeyBlock proxies = 4;
+  // repeated KeyBlock proxies = 4;
+}
+
+message ProxyList {
+  repeated SecureProxy proxies = 1;
+}
+
+message SecureProxy {
+  required string name = 1;
+  required bytes key = 2;   // public key
 }

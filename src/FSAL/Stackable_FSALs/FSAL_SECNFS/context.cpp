@@ -25,11 +25,6 @@ Context::Context(const secnfs_info_t *secnfs_info)
 Context::~Context() {}
 
 
-void Context::AddProxy(const SecureProxy &proxy) {
-        proxies_.push_back(proxy);
-}
-
-
 void Context::Load(const std::string &filename) {
         SecureContextConfig config;
         std::ifstream input(filename.c_str());
@@ -39,14 +34,6 @@ void Context::Load(const std::string &filename) {
 
         DecodeKey(&(key_pair_.pri_), config.pri_key());
         DecodeKey(&(key_pair_.pub_), config.pub_key());
-
-        proxies_.resize(config.proxies_size());
-        for (size_t i = 0; i < proxies_.size(); ++i) {
-                SecureProxy &p = proxies_[i];
-                const KeyBlock &block = config.proxies(i);
-                p.name_ = block.proxy_name();
-                DecodeKey(&(p.key_), block.encrypted_key());
-        }
 }
 
 
@@ -58,13 +45,6 @@ void Context::Unload(const std::string &filename) {
         EncodeKey(key_pair_.pub_, config.mutable_pub_key());
         assert(config.pri_key().length() > 0);
         assert(config.pub_key().length() > 0);
-
-        for (size_t i = 0; i < proxies_.size(); ++i) {
-                const SecureProxy &p = proxies_[i];
-                KeyBlock *block = config.add_proxies();
-                block->set_proxy_name(p.name_);
-                EncodeKey(p.key_, block->mutable_encrypted_key());
-        }
 
         std::ofstream output(filename.c_str());
         assert(config.SerializeToOstream(&output));

@@ -40,6 +40,10 @@ static inline Context *get_context(secnfs_info_t *info) {
         return static_cast<Context *>(info->context);
 }
 
+static inline ProxyList *get_proxies(secnfs_info_t *info) {
+        return static_cast<ProxyList*>(info->proxy_list);
+}
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -183,6 +187,38 @@ secnfs_s secnfs_create_context(secnfs_info_t *info) {
 }
 
 
+secnfs_s secnfs_init_proxies(secnfs_info_t *info) {
+        ProxyList *plist = new ProxyList();
+
+        std::ifstream input(info->plist_file);
+        if (!plist->ParseFromIstream(input)) {
+                SECNFS_ERR("cannot read proxy list from %s", info->plist_file);
+                return SECNFS_WRONG_CONFIG;
+        }
+
+        info->proxy_list = plist;
+
+        return SECNFS_OKAY;
+}
+
+
+secnfs_s secnfs_init_info(secnfs_info_t *info) {
+        secnfs_s ss;
+
+        if ((ss = secnfs_create_context(info)) != SECNFS_OKAY) {
+                SECNFS_ERR("cannot create context: %d", ss);
+                return ss;
+        }
+
+        if ((ss == secnfs_init_proxies(info)) != SECNFS_OKAY) {
+                SECNFS_ERR("cannot init proxy list: %d", ss);
+                return ss;
+        }
+
+        return SECNFS_OKAY;
+}
+
+
 static inline secnfs_key_t *new_secnfs_key() {
         return static_cast<secnfs_key_t*>(calloc(1, sizeof(secnfs_key_t)));
 }
@@ -190,6 +226,7 @@ static inline secnfs_key_t *new_secnfs_key() {
 
 void secnfs_destroy_context(secnfs_info_t *info) {
         delete get_context(info);
+        delete get_proxies(info);
 }
 
 

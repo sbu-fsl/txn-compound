@@ -10,7 +10,6 @@
 
 #include "secnfs.h"
 #include "secnfs_lib.h"
-#include "secure_proxy.h"
 #include "secnfs.pb.h"
 
 #include <vector>
@@ -50,9 +49,6 @@ public:
         typedef tbb::concurrent_hash_map<std::string, std::string,
                                          CacheCompare>::accessor hash_entry;
 
-        // We use vector because we do not expect a lot of proxies.
-        std::vector<SecureProxy> proxies_;      /*!< list of proxies */
-        void AddProxy(const SecureProxy &proxy);
 
         void Load(const std::string &filename);
         void Unload(const std::string &filename);
@@ -68,6 +64,12 @@ public:
 
         std::string name_;              /*!< name of current proxy */
         RSAKeyPair key_pair_;           /*!< RSA key pair */
+
+        ProxyList* proxies() { return proxies_; }
+        void set_proxies(ProxyList *plist) { proxies_ = plist; }
+
+private:
+        ProxyList *proxies_;      /*!< list of proxies */
 };
 
 };

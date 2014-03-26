@@ -46,7 +46,6 @@ set(test_LIB
 set(secnfs_SRC
   secnfs.cpp
   context.cpp
-  secure_proxy.cpp
   secnfs_lib.cpp
   ${ProtoSources}
   ${ProtoHeaders}
