@@ -6,12 +6,15 @@
  */
 
 #include <sys/stat.h>
+#include <glog/logging.h>
 #include "secnfs.h"
 #include "secnfs.pb.h"
 #include "context.h"
 #include "secnfs_lib.h"
+#include "proxy_manager.h"
 
 #include <iostream>
+#include <fstream>
 #include <string>
 
 #include <cryptopp/filters.h>
@@ -40,8 +43,8 @@ static inline Context *get_context(secnfs_info_t *info) {
         return static_cast<Context *>(info->context);
 }
 
-static inline ProxyList *get_proxies(secnfs_info_t *info) {
-        return static_cast<ProxyList*>(info->proxy_list);
+static inline ProxyManager* get_proxies(secnfs_info_t *info) {
+        return static_cast<ProxyManager*>(info->proxy_list);
 }
 
 #ifdef __cplusplus
@@ -168,12 +171,12 @@ secnfs_s secnfs_create_context(secnfs_info_t *info) {
         ret = ::stat(info->context_cache_file, &st);
         if (ret == 0) {
                 ctx->Load(info->context_cache_file);
-                SECNFS_I("secnfs context loaded");
+                LOG(INFO) << "secnfs context loaded";
         } else if (errno == ENOENT) {
                 assert(info->create_if_no_context);
-                SECNFS_I("new secnfs context created");
+                LOG(INFO) << "new secnfs context created";
                 ctx->Unload(info->context_cache_file);
-                SECNFS_I("context written to %s", info->context_cache_file);
+                LOG(INFO) << "context written to " << info->context_cache_file;
         } else {
                 error(ret, errno, "cannot access or create %s",
                       info->context_cache_file);
@@ -188,15 +191,18 @@ secnfs_s secnfs_create_context(secnfs_info_t *info) {
 
 
 secnfs_s secnfs_init_proxies(secnfs_info_t *info) {
-        ProxyList *plist = new ProxyList();
+        ProxyList plist;
 
         std::ifstream input(info->plist_file);
-        if (!plist->ParseFromIstream(input)) {
-                SECNFS_ERR("cannot read proxy list from %s", info->plist_file);
+        if (!plist.ParseFromIstream(&input)) {
+                LOG(ERROR) << "cannot read proxy list from "
+                           << info->plist_file;
                 return SECNFS_WRONG_CONFIG;
         }
 
-        info->proxy_list = plist;
+        ProxyManager* pm = new ProxyManager(plist);
+        info->proxy_list = pm;
+        get_context(info)->set_proxy_manager(pm);
 
         return SECNFS_OKAY;
 }
@@ -205,13 +211,15 @@ secnfs_s secnfs_init_proxies(secnfs_info_t *info) {
 secnfs_s secnfs_init_info(secnfs_info_t *info) {
         secnfs_s ss;
 
+        google::InitGoogleLogging("secnfs");
+
         if ((ss = secnfs_create_context(info)) != SECNFS_OKAY) {
-                SECNFS_ERR("cannot create context: %d", ss);
+                LOG(ERROR) << "cannot create context: " << ss;
                 return ss;
         }
 
         if ((ss == secnfs_init_proxies(info)) != SECNFS_OKAY) {
-                SECNFS_ERR("cannot init proxy list: %d", ss);
+                LOG(ERROR) << "cannot init proxy list: " << ss;
                 return ss;
         }
 

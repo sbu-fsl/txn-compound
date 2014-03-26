@@ -20,10 +20,10 @@ message SecureContextConfig {
 }
 
 message ProxyList {
-  repeated SecureProxy proxies = 1;
+  repeated ProxyEntry proxies = 1;
 }
 
-message SecureProxy {
+message ProxyEntry {
   required string name = 1;
   required bytes key = 2;   // public key
 }

@@ -39,6 +39,11 @@ RSAKeyPair::RSAKeyPair(bool create) {
         }
 }
 
+RSAKeyPair::RSAKeyPair(const std::string &pub, const std::string &pri) {
+        DecodeKey(&pub_, pub);
+        DecodeKey(&pri_, pri);
+}
+
 
 bool RSAKeyPair::operator==(const RSAKeyPair &other) const {
         return IsSamePrivateKey(pri_, other.pri_) &&

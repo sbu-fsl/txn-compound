@@ -14,11 +14,12 @@ using namespace secnfs;
 
 namespace secnfs_test {
 
-static void AddProxies(Context *ctx, int nproxy) {
+static void AddProxies(Context* ctx, int nproxy) {
         AutoSeededRandomPool prng;
+        ProxyManager* pm = ctx->proxy_manager();
 
         // Add itself as the first proxy.
-        ctx->AddProxy(SecureProxy(ctx->name(), ctx->pub_key()));
+        pm->add_proxy(SecureProxy(ctx->name(), ctx->pub_key()));
 
         for (int i = 1; i < nproxy; ++i) {
                 char name[64];
@@ -28,17 +29,17 @@ static void AddProxies(Context *ctx, int nproxy) {
                 pri_key.GenerateRandomWithKeySize(prng, RSAKeyLength);
                 RSA::PublicKey pub_key(pri_key);
 
-                ctx->AddProxy(SecureProxy(name, pub_key));
+                pm->add_proxy(SecureProxy(name, pub_key));
         }
 }
 
 
-secnfs::Context *NewContextWithProxies(int nproxy) {
+secnfs::Context* NewContextWithProxies(int nproxy) {
         secnfs_info_t info;
 
         strcpy(info.secnfs_name, "proxy-0");
 
-        Context *ctx = new Context(&info);
+        Context* ctx = new Context(&info);
 
         AddProxies(ctx, nproxy);
 
@@ -46,11 +47,11 @@ secnfs::Context *NewContextWithProxies(int nproxy) {
 }
 
 
-secnfs_info_t *NewSecnfsInfo(int nproxy) {
-        secnfs_info_t *info = new secnfs_info_t();
-        Context *context = NewContextWithProxies(nproxy);
+secnfs_info_t* NewSecnfsInfo(int nproxy) {
+        secnfs_info_t* info = new secnfs_info_t();
+        Context* context = NewContextWithProxies(nproxy);
 
-        strncpy(info->secnfs_name, context->name_.c_str(), MAXPATHLEN);
+        strncpy(info->secnfs_name, context->name().c_str(), MAXPATHLEN);
 
         info->context_size = sizeof(*context);
         info->context = context;

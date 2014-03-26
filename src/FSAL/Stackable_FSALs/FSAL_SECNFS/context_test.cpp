@@ -45,7 +45,7 @@ TEST_F(ContextTest, Basic) {
         new_context.Load(filename);
 
         EXPECT_EQ(context_.name(), new_context.name());
-        EXPECT_EQ(context_.key_pair_, new_context.key_pair_);
+        EXPECT_EQ(context_.key_pair(), new_context.key_pair());
 }
 
 

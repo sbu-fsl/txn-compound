@@ -38,6 +38,7 @@ inline bool IsSamePublicKey(const RSA::PublicKey &k1,
 class RSAKeyPair {
 public:
         RSAKeyPair(bool create=true);
+        RSAKeyPair(const std::string &pub, const std::string &pri);
         RSA::PrivateKey pri_;
         RSA::PublicKey pub_;
         bool operator==(const RSAKeyPair &other) const;

@@ -14,3 +14,5 @@ CMakeLists.txt accordingly.
     b) make
     c) cp ../build/linux_intel64_gcc_cc4.4.7_libc2.12_kernel3.8.4_release/*.so.2 /usr/local/lib64/tbb
     d) cp -r include/tbb /usr/include
+
+5. google-glog

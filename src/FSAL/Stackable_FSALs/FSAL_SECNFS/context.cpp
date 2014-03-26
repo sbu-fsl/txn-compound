@@ -25,7 +25,7 @@ Context::Context(const secnfs_info_t *secnfs_info)
 Context::~Context() {}
 
 
-void Context::Load(const std::string &filename) {
+void Context::Load(const std::string& filename) {
         SecureContextConfig config;
         std::ifstream input(filename.c_str());
         assert(config.ParseFromIstream(&input));
@@ -37,7 +37,7 @@ void Context::Load(const std::string &filename) {
 }
 
 
-void Context::Unload(const std::string &filename) {
+void Context::Unload(const std::string& filename) {
         // TODO encryption the file
         SecureContextConfig config;
         config.set_name(name_);
@@ -52,22 +52,23 @@ void Context::Unload(const std::string &filename) {
 }
 
 
-void Context::GenerateKeyFile(byte *key, byte *iv, int len, KeyFile *kf)
+void Context::GenerateKeyFile(byte* key, byte* iv, int len, KeyFile* kf)
 {
         AutoSeededRandomPool prng;
         prng.GenerateBlock(key, len);
         prng.GenerateBlock(iv, len);
         key[len] = iv[len] = 0;
 
-        kf->set_iv(std::string(reinterpret_cast<char *>(iv), len));
+        kf->set_iv(std::string(reinterpret_cast<char*>(iv), len));
 
-        for (size_t i = 0; i < proxies_.size(); ++i) {
-                const SecureProxy &p = proxies_[i];
-                KeyBlock *block = kf->add_key_blocks();
-                block->set_proxy_name(p.name_);
+        for (size_t i = 0; i < pm_->proxies_size(); ++i) {
+                const SecureProxy& p = pm_->proxies(i);
 
-                RSAEncrypt(p.key_,
-                           std::string(reinterpret_cast<char *>(key), len),
+                KeyBlock* block = kf->add_key_blocks();
+                block->set_proxy_name(p.name());
+
+                RSAEncrypt(p.key(),
+                           std::string(reinterpret_cast<char*>(key), len),
                            block->mutable_encrypted_key());
         }
 }

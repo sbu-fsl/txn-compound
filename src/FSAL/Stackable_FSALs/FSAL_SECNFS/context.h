@@ -11,6 +11,7 @@
 #include "secnfs.h"
 #include "secnfs_lib.h"
 #include "secnfs.pb.h"
+#include "proxy_manager.h"
 
 #include <vector>
 #include <string>
@@ -49,7 +50,6 @@ public:
         typedef tbb::concurrent_hash_map<std::string, std::string,
                                          CacheCompare>::accessor hash_entry;
 
-
         void Load(const std::string &filename);
         void Unload(const std::string &filename);
 
@@ -59,17 +59,18 @@ public:
         const std::string& name() const { return name_; }
         void set_name(const std::string &nm) { name_ = nm; }
 
+        const RSAKeyPair& key_pair() const { return key_pair_; }
         const RSA::PublicKey& pub_key() const { return key_pair_.pub_; }
         const RSA::PrivateKey& pri_key() const { return key_pair_.pri_; }
 
+        ProxyManager* proxy_manager() { return pm_; }
+        void set_proxy_manager(ProxyManager* pm) { pm_ = pm; }
+
+private:
         std::string name_;              /*!< name of current proxy */
         RSAKeyPair key_pair_;           /*!< RSA key pair */
 
-        ProxyList* proxies() { return proxies_; }
-        void set_proxies(ProxyList *plist) { proxies_ = plist; }
-
-private:
-        ProxyList *proxies_;      /*!< list of proxies */
+        ProxyManager* pm_;              /*!< manager of proxies */
 };
 
 };

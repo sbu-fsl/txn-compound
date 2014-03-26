@@ -34,26 +34,32 @@ add_library(gtest_main "${GTEST}/src/gtest_main.cc")
 find_library(TBB_LIB tbb "/usr/local/lib64/tbb/")
 message(STATUS "tbb library: " ${TBB_LIB})
 
+set(secnfs_LIB
+  gos
+  glog
+  cryptopp
+  pthread
+  ${TBB_LIB}
+  ${PROTOBUF_LIBRARIES}
+)
+
 set(test_LIB
 	gtest
 	gtest_main
-	cryptopp
-	pthread
-  ${TBB_LIB}
-  ${PROTOBUF_LIBRARIES}
 )
 
 set(secnfs_SRC
   secnfs.cpp
   context.cpp
   secnfs_lib.cpp
+  proxy_manager.cpp
   ${ProtoSources}
   ${ProtoHeaders}
 )
 
 function(add_unittest TestName)
   add_executable(${TestName} "${TestName}.cpp" ${secnfs_SRC} test_helper.cpp)
-  target_link_libraries(${TestName} ${test_LIB})
+  target_link_libraries(${TestName} ${secnfs_LIB} ${test_LIB})
   add_test(NAME ${TestName} COMMAND ${TestName})
 endfunction(add_unittest)
 
@@ -77,13 +83,7 @@ SET(fsalsecnfs_LIB_SRCS
 
 add_library(fsalsecnfs SHARED ${fsalsecnfs_LIB_SRCS})
 
-target_link_libraries(fsalsecnfs
-  gos
-  cryptopp
-  pthread
-  ${TBB_LIB}
-  ${PROTOBUF_LIBRARIES}
-)
+target_link_libraries(fsalsecnfs ${secnfs_LIB})
 
 set_target_properties(fsalsecnfs PROPERTIES VERSION 4.2.0 SOVERSION 4)
 install(TARGETS fsalsecnfs COMPONENT fsal DESTINATION ${FSAL_DESTINATION} )
