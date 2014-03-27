@@ -70,6 +70,7 @@ add_unittest(secnfs_test)
 add_unittest(context_test)
 add_unittest(secnfs.pb_test)
 add_unittest(secnfs_lib_test)
+add_unittest(proxy_manager_test)
 
 ########### next target ###############
 

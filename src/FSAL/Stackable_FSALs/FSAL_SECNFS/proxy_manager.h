@@ -15,6 +15,7 @@
 using CryptoPP::RSA;
 
 #include "secnfs.pb.h"
+#include "secnfs_lib.h"
 
 namespace secnfs {
 
@@ -36,6 +37,10 @@ public:
 
         const RSA::PublicKey& key() const { return key_; }
         void set_key(const std::string& key_str);
+
+        bool operator==(const SecureProxy& sp) const {
+                return name() == sp.name() && IsSamePublicKey(key(), sp.key());
+        }
 
 private:
         std::string name_;
