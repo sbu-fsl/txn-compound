@@ -34,11 +34,14 @@ add_library(gtest_main "${GTEST}/src/gtest_main.cc")
 find_library(TBB_LIB tbb "/usr/local/lib64/tbb/")
 message(STATUS "tbb library: " ${TBB_LIB})
 
+find_library(GLOG_LIB glog "/usr/local/lib")
+message(STATUS "glog library: " ${GLOG_LIB})
+
 set(secnfs_LIB
   gos
-  glog
   cryptopp
   pthread
+  ${GLOG_LIB}
   ${TBB_LIB}
   ${PROTOBUF_LIBRARIES}
 )

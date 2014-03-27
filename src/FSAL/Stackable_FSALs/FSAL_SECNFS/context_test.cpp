@@ -20,15 +20,15 @@ using namespace secnfs;
 
 namespace secnfs_test {
 
+static const char* proxy_name = "context-test";
+
 class ContextTest : public ::testing::Test {
 protected:
-        ContextTest() : context_(&secnfs_info_) {}
+        ContextTest() : context_(proxy_name) {}
         virtual void SetUp() {
-                context_.set_name("context-test");
                 rsa_pri_key_.GenerateRandomWithKeySize(prng_, RSAKeyLength);
         }
 
-        secnfs_info_t secnfs_info_;
         AutoSeededRandomPool prng_;
         Context context_;
         RSA::PrivateKey rsa_pri_key_;
@@ -39,9 +39,7 @@ TEST_F(ContextTest, Basic) {
         const string filename = "/tmp/secure-context-test.conf";
         context_.Unload(filename);
 
-        secnfs_info_t info;
-        strncpy(info.secnfs_name, context_.name().c_str(), MAXPATHLEN);
-        Context new_context(&info);
+        Context new_context(proxy_name);
         new_context.Load(filename);
 
         EXPECT_EQ(context_.name(), new_context.name());

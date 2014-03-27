@@ -43,10 +43,6 @@ static inline Context *get_context(secnfs_info_t *info) {
         return static_cast<Context *>(info->context);
 }
 
-static inline ProxyManager* get_proxies(secnfs_info_t *info) {
-        return static_cast<ProxyManager*>(info->proxy_list);
-}
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -164,7 +160,7 @@ secnfs_s secnfs_decrypt(secnfs_key_t key,
 secnfs_s secnfs_create_context(secnfs_info_t *info) {
         int ret;
         struct stat st;
-        Context *ctx = new Context(info);
+        Context *ctx = new Context(info->secnfs_name);
 
         assert(ctx);
 
@@ -174,7 +170,11 @@ secnfs_s secnfs_create_context(secnfs_info_t *info) {
                 LOG(INFO) << "secnfs context loaded";
         } else if (errno == ENOENT) {
                 assert(info->create_if_no_context);
-                LOG(INFO) << "new secnfs context created";
+                if (ctx->AddCurrentProxy()) {
+                        LOG(INFO) << "proxy added into list";
+                } else {
+                        LOG(ERROR) << "cannot add proxy into list";
+                }
                 ctx->Unload(info->context_cache_file);
                 LOG(INFO) << "context written to " << info->context_cache_file;
         } else {
@@ -183,26 +183,12 @@ secnfs_s secnfs_create_context(secnfs_info_t *info) {
                 return SECNFS_WRONG_CONFIG;
         }
 
-        info->context = ctx;
-        info->context_size = sizeof(Context);
-
-        return SECNFS_OKAY;
-}
-
-
-secnfs_s secnfs_init_proxies(secnfs_info_t *info) {
-        ProxyList plist;
-
-        std::ifstream input(info->plist_file);
-        if (!plist.ParseFromIstream(&input)) {
-                LOG(ERROR) << "cannot read proxy list from "
-                           << info->plist_file;
+        if (!ctx->proxy_manager().Load(info->plist_file)) {
                 return SECNFS_WRONG_CONFIG;
         }
 
-        ProxyManager* pm = new ProxyManager(plist);
-        info->proxy_list = pm;
-        get_context(info)->set_proxy_manager(pm);
+        info->context = ctx;
+        info->context_size = sizeof(Context);
 
         return SECNFS_OKAY;
 }
@@ -218,11 +204,6 @@ secnfs_s secnfs_init_info(secnfs_info_t *info) {
                 return ss;
         }
 
-        if ((ss == secnfs_init_proxies(info)) != SECNFS_OKAY) {
-                LOG(ERROR) << "cannot init proxy list: " << ss;
-                return ss;
-        }
-
         return SECNFS_OKAY;
 }
 
@@ -234,7 +215,6 @@ static inline secnfs_key_t *new_secnfs_key() {
 
 void secnfs_destroy_context(secnfs_info_t *info) {
         delete get_context(info);
-        delete get_proxies(info);
 }
 
 

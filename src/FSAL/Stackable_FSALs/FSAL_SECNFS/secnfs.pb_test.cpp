@@ -64,10 +64,6 @@ protected:
                 config_.set_name("secure-context");
                 config_.set_pub_key("pub-key");
                 config_.set_pri_key("pri-key");
-
-                //KeyBlock *block = config_.add_proxies();
-                //block->set_proxy_name("proxy1");
-                //block->set_encrypted_key("key");
         }
 
         SecureContextConfig config_;
@@ -75,12 +71,13 @@ protected:
 
 
 TEST_F(SecureContextConfigTest, Basic) {
-        std::ofstream output("/tmp/secure_context_config.txt");
+        const char* file_path = "/tmp/secure_context_config.txt";
+        std::ofstream output(file_path);
         EXPECT_TRUE(config_.SerializeToOstream(&output));
         output.close();
 
         SecureContextConfig config_copy;
-        std::ifstream input("/tmp/secure_context.txt");
+        std::ifstream input(file_path);
         EXPECT_TRUE(config_copy.ParseFromIstream(&input));
 
         EXPECT_EQ(config_.DebugString(), config_copy.DebugString());
@@ -104,6 +101,9 @@ TEST_F(SecureContextConfigTest, EncodeDecodeCorrectly) {
 
 
 TEST(ProxyListTest, Basic) {
+        const char* proxy_file = "secure_proxies.txt";
+        // contain private keys
+        const char* private_file = "secure_privates.txt";
         ProxyList plist;
         ProxyList private_keys;
 
@@ -113,16 +113,16 @@ TEST(ProxyListTest, Basic) {
                 snprintf(buf, 16, "proxy%d", i);
                 p->set_name(buf);
                 RSAKeyPair kp(true);
-                EncodeKey(kp.pub_, p->mutable_name());
+                EncodeKey(kp.pub_, p->mutable_key());
 
                 ProxyEntry *pri = private_keys.add_proxies();
                 pri->set_name(buf);
-                EncodeKey(kp.pri_, pri->mutable_name());
+                EncodeKey(kp.pri_, pri->mutable_key());
         }
 
         // write proxy list and corresponding private keys out
-        std::ofstream output_proxies("secure_proxies.txt");
-        std::ofstream output_privates("secure_privates.txt");
+        std::ofstream output_proxies(proxy_file);
+        std::ofstream output_privates(private_file);
 
         EXPECT_TRUE(plist.SerializeToOstream(&output_proxies));
         EXPECT_TRUE(private_keys.SerializeToOstream(&output_privates));
@@ -131,8 +131,8 @@ TEST(ProxyListTest, Basic) {
         output_privates.close();
 
         // write proxy list back
-        std::ifstream input_proxies("secure_proxies.txt");
-        std::ifstream input_privates("secure_privates.txt");
+        std::ifstream input_proxies(proxy_file);
+        std::ifstream input_privates(private_file);
 
         ProxyList recovered_plist;
         ProxyList recovered_privates;

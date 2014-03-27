@@ -7,6 +7,8 @@
 
 #include <fstream>
 
+#include <glog/logging.h>
+
 #include "proxy_manager.h"
 #include "secnfs_lib.h"
 
@@ -40,13 +42,18 @@ ProxyManager::ProxyManager(const std::string& config_file) {
 }
 
 
-void ProxyManager::Load(const std::string& config_file) {
+bool ProxyManager::Load(const std::string& config_file) {
         std::ifstream input(config_file.c_str());
         ProxyList plist;
 
-        assert(plist.ParseFromIstream(&input));
+        if (!plist.ParseFromIstream(&input)) {
+                LOG(ERROR) << "cannot load ProxyManager from " << config_file;
+                return false;
+        }
 
         SetProxyList(plist);
+
+        return true;
 }
 
 
@@ -59,5 +66,15 @@ void ProxyManager::SetProxyList(const ProxyList& plist) {
         }
 }
 
+
+SecureProxy* ProxyManager::Find(const std::string& nm) {
+        for (size_t i = 0; i < proxies_.size(); ++i) {
+                if (proxies_[i].name() == nm) {
+                        return &proxies_[i];
+                }
+        }
+
+        return NULL;
+}
 
 };

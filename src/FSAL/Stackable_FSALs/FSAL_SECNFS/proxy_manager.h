@@ -51,15 +51,19 @@ private:
  */
 class ProxyManager {
 public:
+        ProxyManager() {}
         ProxyManager(const std::string& config_file);
         ProxyManager(const ProxyList& plist);
 
-        void Load(const std::string& config_file);
+        bool Load(const std::string& config_file);
+        void Unload(const std::string& config_file);
         void SetProxyList(const ProxyList& plist);
 
         size_t proxies_size() const { return proxies_.size(); }
         const SecureProxy& proxies(size_t i) const { return proxies_[i]; }
         void add_proxy(const SecureProxy& sp) { proxies_.push_back(sp); }
+
+        SecureProxy* Find(const std::string& nm);
 
 private:
         std::vector<SecureProxy> proxies_;

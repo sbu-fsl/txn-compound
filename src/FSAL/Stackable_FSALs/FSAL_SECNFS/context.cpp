@@ -11,15 +11,15 @@
 #include <fstream>
 #include <assert.h>
 
+#include <glog/logging.h>
+
 #include <cryptopp/osrng.h>
 using CryptoPP::AutoSeededRandomPool;
 
 namespace secnfs {
 
 // TODO accept option
-Context::Context(const secnfs_info_t *secnfs_info)
-                : name_(secnfs_info->secnfs_name) {
-}
+Context::Context(const std::string& name) : name_(name) {}
 
 
 Context::~Context() {}
@@ -52,6 +52,19 @@ void Context::Unload(const std::string& filename) {
 }
 
 
+bool Context::AddCurrentProxy() {
+        SecureProxy* existed = pm_.Find(name_);
+        if (existed != NULL) {
+                LOG(ERROR) << "proxy " << name_ << " already exists";
+                return false;
+        }
+
+        pm_.add_proxy(SecureProxy(name(), pub_key()));
+
+        return true;
+}
+
+
 void Context::GenerateKeyFile(byte* key, byte* iv, int len, KeyFile* kf)
 {
         AutoSeededRandomPool prng;
@@ -61,8 +74,8 @@ void Context::GenerateKeyFile(byte* key, byte* iv, int len, KeyFile* kf)
 
         kf->set_iv(std::string(reinterpret_cast<char*>(iv), len));
 
-        for (size_t i = 0; i < pm_->proxies_size(); ++i) {
-                const SecureProxy& p = pm_->proxies(i);
+        for (size_t i = 0; i < pm_.proxies_size(); ++i) {
+                const SecureProxy& p = pm_.proxies(i);
 
                 KeyBlock* block = kf->add_key_blocks();
                 block->set_proxy_name(p.name());

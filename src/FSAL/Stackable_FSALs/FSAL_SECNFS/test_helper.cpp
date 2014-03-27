@@ -15,11 +15,11 @@ using namespace secnfs;
 namespace secnfs_test {
 
 static void AddProxies(Context* ctx, int nproxy) {
-        AutoSeededRandomPool prng;
-        ProxyManager* pm = ctx->proxy_manager();
-
         // Add itself as the first proxy.
-        pm->add_proxy(SecureProxy(ctx->name(), ctx->pub_key()));
+        ctx->AddCurrentProxy();
+
+        AutoSeededRandomPool prng;
+        ProxyManager& pm = ctx->proxy_manager();
 
         for (int i = 1; i < nproxy; ++i) {
                 char name[64];
@@ -29,17 +29,13 @@ static void AddProxies(Context* ctx, int nproxy) {
                 pri_key.GenerateRandomWithKeySize(prng, RSAKeyLength);
                 RSA::PublicKey pub_key(pri_key);
 
-                pm->add_proxy(SecureProxy(name, pub_key));
+                pm.add_proxy(SecureProxy(name, pub_key));
         }
 }
 
 
 secnfs::Context* NewContextWithProxies(int nproxy) {
-        secnfs_info_t info;
-
-        strcpy(info.secnfs_name, "proxy-0");
-
-        Context* ctx = new Context(&info);
+        Context* ctx = new Context("proxy-0");
 
         AddProxies(ctx, nproxy);
 

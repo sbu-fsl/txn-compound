@@ -41,10 +41,8 @@ struct CacheCompare {
  */
 class Context {
 public:
-        Context(const secnfs_info_t *secnfs_info);
+        Context(const std::string& name);
         ~Context();
-
-        secnfs_info_t *secnfs_info_;
 
         tbb::concurrent_hash_map<std::string, std::string, CacheCompare> map_;
         typedef tbb::concurrent_hash_map<std::string, std::string,
@@ -52,6 +50,9 @@ public:
 
         void Load(const std::string &filename);
         void Unload(const std::string &filename);
+
+        // Add current proxy into the proxy list.
+        bool AddCurrentProxy();
 
         // key, and iv should be terminated by '\0'.
         void GenerateKeyFile(byte *key, byte *iv, int len, KeyFile *kf);
@@ -63,14 +64,13 @@ public:
         const RSA::PublicKey& pub_key() const { return key_pair_.pub_; }
         const RSA::PrivateKey& pri_key() const { return key_pair_.pri_; }
 
-        ProxyManager* proxy_manager() { return pm_; }
-        void set_proxy_manager(ProxyManager* pm) { pm_ = pm; }
+        ProxyManager& proxy_manager() { return pm_; }
 
 private:
         std::string name_;              /*!< name of current proxy */
         RSAKeyPair key_pair_;           /*!< RSA key pair */
 
-        ProxyManager* pm_;              /*!< manager of proxies */
+        ProxyManager pm_;              /*!< manager of proxies */
 };
 
 };
