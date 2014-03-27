@@ -56,8 +56,11 @@ public:
         ProxyManager(const ProxyList& plist);
 
         bool Load(const std::string& config_file);
-        void Unload(const std::string& config_file);
+        bool Unload(const std::string& config_file);
+
+        void AddProxyList(const ProxyList& plist);
         void SetProxyList(const ProxyList& plist);
+        void GetProxyList(ProxyList* plist);
 
         size_t proxies_size() const { return proxies_.size(); }
         const SecureProxy& proxies(size_t i) const { return proxies_[i]; }

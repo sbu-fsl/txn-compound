@@ -161,6 +161,8 @@ secnfs_s secnfs_create_context(secnfs_info_t *info) {
         int ret;
         struct stat st;
         Context *ctx = new Context(info->secnfs_name);
+        ProxyManager& pm = ctx->proxy_manager();
+        bool new_context = false;
 
         assert(ctx);
 
@@ -177,14 +179,27 @@ secnfs_s secnfs_create_context(secnfs_info_t *info) {
                 }
                 ctx->Unload(info->context_cache_file);
                 LOG(INFO) << "context written to " << info->context_cache_file;
+                new_context = true;
         } else {
-                error(ret, errno, "cannot access or create %s",
-                      info->context_cache_file);
-                return SECNFS_WRONG_CONFIG;
+                error(ret, errno, "cannot access %s", info->context_cache_file);
         }
 
-        if (!ctx->proxy_manager().Load(info->plist_file)) {
-                return SECNFS_WRONG_CONFIG;
+        ret = ::stat(info->plist_file, &st);
+        if (ret == 0) {
+                if (!pm.Load(info->plist_file)) {
+                        LOG(ERROR) << "cannot load proxy list";
+                        delete ctx;
+                        return SECNFS_WRONG_CONFIG;
+                }
+        } else if (errno == ENOENT) {
+                assert(new_context);
+        } else {
+                error(ret, errno, "cannot access %s", info->plist_file);
+        }
+
+        // add the newly created into the list if necessary
+        if (new_context) {
+                pm.Unload(info->plist_file);
         }
 
         info->context = ctx;
