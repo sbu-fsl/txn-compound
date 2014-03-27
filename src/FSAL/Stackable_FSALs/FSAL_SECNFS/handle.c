@@ -323,7 +323,7 @@ static fsal_status_t linkfile(struct fsal_obj_handle *obj_hdl,
 			      const char *name)
 {
         return next_ops.obj_ops->link(next_handle(obj_hdl), opctx,
-                                      destdir_hdl, name);
+                                      next_handle(destdir_hdl), name);
 }
 
 /**
