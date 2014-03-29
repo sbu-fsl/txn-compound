@@ -40,25 +40,25 @@
 #include "secnfs_methods.h"
 #include <os/subr.h>
 
-#define PASS_DOWN(func, obj_hdl, args...)                               \
-        struct fsal_obj_handle *next_hdl = next_handle(obj_hdl);        \
-        fsal_status_t st = next_ops.obj_ops->func(next_hdl, ## args);   \
-        if (!FSAL_IS_ERROR(st)) {                                       \
-                obj_hdl->attributes = next_hdl->attributes;             \
-                adjust_attributes_up(&obj_hdl->attributes);             \
-        }                                                               \
+#define PASS_DOWN(func, obj_hdl, args...)                                   \
+        struct fsal_obj_handle *next_hdl = next_handle(obj_hdl);            \
+        fsal_status_t st = next_ops.obj_ops->func(next_hdl, ## args);       \
+        if (!FSAL_IS_ERROR(st)) {                                           \
+                obj_hdl->attributes = next_hdl->attributes;                 \
+                adjust_attributes_up(&obj_hdl->attributes, obj_hdl->type);  \
+        }                                                                   \
         return st;
 
 
-#define MAKE_SECNFS_FH(func, parent, handle, args...)                   \
-        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(parent);     \
-        struct fsal_obj_handle *next_hdl;                               \
-        fsal_status_t st;                                               \
-        st = next_ops.obj_ops->func(hdl->next_handle, ## args, &next_hdl); \
-        if (FSAL_IS_ERROR(st)) {                                        \
-                LogCrit(COMPONENT_FSAL, "secnfs " #func " failed");     \
-                return st;                                              \
-        }                                                               \
+#define MAKE_SECNFS_FH(func, parent, handle, args...)                       \
+        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(parent);         \
+        struct fsal_obj_handle *next_hdl;                                   \
+        fsal_status_t st;                                                   \
+        st = next_ops.obj_ops->func(hdl->next_handle, ## args, &next_hdl);  \
+        if (FSAL_IS_ERROR(st)) {                                            \
+                LogCrit(COMPONENT_FSAL, "secnfs " #func " failed");         \
+                return st;                                                  \
+        }                                                                   \
         return make_handle_from_next(parent->export, next_hdl, handle);
 
 
@@ -89,18 +89,20 @@ static struct secnfs_fsal_obj_handle *alloc_handle(struct fsal_export *exp,
 }
 
 
-static void adjust_attributes_up(struct attrlist *attr)
+static void adjust_attributes_up(struct attrlist *attr,
+                                 object_file_type_t type)
 {
-        if (attr->type == REGULAR_FILE && attr->filesize > 0) {
+        if (type == REGULAR_FILE && attr->filesize >= 0) {
                 assert(attr->filesize >= KEY_FILE_SIZE);
                 attr->filesize -= KEY_FILE_SIZE;
         }
 }
 
 
-static void adjust_attributes_down(struct attrlist *attr)
+static void adjust_attributes_down(struct attrlist *attr,
+                                   object_file_type_t type)
 {
-        if (attr->type == REGULAR_FILE && attr->filesize > 0) {
+        if (type == REGULAR_FILE && attr->filesize >= 0) {
                 attr->filesize += KEY_FILE_SIZE;
         }
 }
@@ -374,9 +376,13 @@ static fsal_status_t setattrs(struct fsal_obj_handle *obj_hdl,
 			      const struct req_op_context *opctx,
 			      struct attrlist *attrs)
 {
-        struct attrlist attrs_copy = *attrs;
-        adjust_attributes_down(&attrs_copy);
-        PASS_DOWN(setattrs, obj_hdl, opctx, &attrs_copy);
+        /*
+         * We use the "obj_hdl->type", instead of "attrs->type" because,
+         * sometimes, "attrs->type" is NO_FILE_TYPE.  For example, when
+         * we "truncate" a file.
+         */
+        adjust_attributes_down(attrs, obj_hdl->type);
+        PASS_DOWN(setattrs, obj_hdl, opctx, attrs);
 }
 
 
