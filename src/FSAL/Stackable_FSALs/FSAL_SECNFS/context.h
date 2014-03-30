@@ -48,8 +48,8 @@ public:
         typedef tbb::concurrent_hash_map<std::string, std::string,
                                          CacheCompare>::accessor hash_entry;
 
-        void Load(const std::string &filename);
-        void Unload(const std::string &filename);
+        bool Load(const std::string &filename);
+        bool Unload(const std::string &filename);
 
         // Add current proxy into the proxy list.
         bool AddCurrentProxy();

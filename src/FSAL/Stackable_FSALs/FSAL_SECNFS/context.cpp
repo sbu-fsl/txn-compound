@@ -25,19 +25,25 @@ Context::Context(const std::string& name) : name_(name) {}
 Context::~Context() {}
 
 
-void Context::Load(const std::string& filename) {
+bool Context::Load(const std::string& filename) {
         SecureContextConfig config;
         std::ifstream input(filename.c_str());
-        assert(config.ParseFromIstream(&input));
+
+        if (!config.ParseFromIstream(&input)) {
+                LOG(ERROR) << "cannot load context";
+                return false;
+        }
 
         assert(name_ == config.name());
 
         DecodeKey(&(key_pair_.pri_), config.pri_key());
         DecodeKey(&(key_pair_.pub_), config.pub_key());
+
+        return true;
 }
 
 
-void Context::Unload(const std::string& filename) {
+bool Context::Unload(const std::string& filename) {
         // TODO encryption the file
         SecureContextConfig config;
         config.set_name(name_);
@@ -47,8 +53,13 @@ void Context::Unload(const std::string& filename) {
         assert(config.pub_key().length() > 0);
 
         std::ofstream output(filename.c_str());
-        assert(config.SerializeToOstream(&output));
+        if (!config.SerializeToOstream(&output)) {
+                LOG(ERROR) << "cannot save context";
+                return false;
+        }
         output.close();
+
+        return true;
 }
 
 

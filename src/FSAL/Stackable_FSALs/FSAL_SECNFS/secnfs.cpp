@@ -245,7 +245,10 @@ secnfs_s secnfs_create_keyfile(secnfs_info_t *info,
                              SECNFS_KEY_LENGTH, &kf);
         kf.set_creator(ctx->name());
 
-        assert(EncodeMessage(kf, keyfile, kf_len, KEY_FILE_SIZE));
+        if (!EncodeMessage(kf, keyfile, kf_len, KEY_FILE_SIZE)) {
+                LOG(ERROR) << "cannot write keyfile";
+                return SECNFS_WRONG_CONFIG;
+        }
 
         assert(*kf_len == KEY_FILE_SIZE);
 
@@ -262,7 +265,11 @@ secnfs_s secnfs_read_file_key(secnfs_info_t *info,
         Context *ctx = get_context(info);
         KeyFile kf;
 
-        assert(DecodeMessage(&kf, buf, buf_size, kf_len));
+        if (!DecodeMessage(&kf, buf, buf_size, kf_len)) {
+                LOG(ERROR) << "cannot decode keyfile";
+                return SECNFS_KEYFILE_ERROR;
+        }
+
         assert(kf.ByteSize() == *kf_len);
 
         str_to_key(kf.iv(), iv);
@@ -274,11 +281,13 @@ secnfs_s secnfs_read_file_key(secnfs_info_t *info,
                         RSADecrypt(ctx->pri_key(), kb.encrypted_key(), &rkey);
                         str_to_key(rkey, fek);
                         memmove(fek->bytes, rkey.c_str(), SECNFS_KEY_LENGTH);
-                        break;
+                        return SECNFS_OKAY;
                 }
         }
 
-        return SECNFS_OKAY;
+        LOG(ERROR) << "key not found for " << ctx->name();
+
+        return SECNFS_KEYFILE_ERROR;
 }
 
 

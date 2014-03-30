@@ -30,6 +30,7 @@ typedef enum {
         SECNFS_OKAY = 0,
         SECNFS_CRYPTO_ERROR = 1,
         SECNFS_WRONG_CONFIG,
+        SECNFS_KEYFILE_ERROR,
 } secnfs_s;
 
 
