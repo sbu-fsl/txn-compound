@@ -1,5 +1,25 @@
+#!/bin/bash -
+# Launch the secnfs proxy.
+#
+# This script should be placed in the build directory.
+#
+#       cp run-secnfs.sh <root-to-nfs-ganesha>/<build-directory>
+#
+# Usage 1 (executed in the directory):
+#
+#       cd <root-to-nfs-ganesha>/<build-directory>
+#       ./run-secnfs.sh
+#
+# Usage 2 (executed using full path):
+#
+#       <root-to-nfs-ganesha>/<build-directory>/run-secnfs.sh
+
+set -e
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 #PATHPROG=/usr/local/bin/ganesha.nfsd 
-PATHPROG=MainNFSD/ganesha.nfsd
+PATHPROG=$DIR/MainNFSD/ganesha.nfsd
 
 LOGFILE=/var/log/secnfs.ganesha.log
 CONFFILE=/etc/ganesha/secnfs.ganesha.conf
