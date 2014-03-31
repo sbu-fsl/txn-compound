@@ -539,7 +539,8 @@ fsal_status_t secnfs_create_handle(struct fsal_export *exp,
         st = next_ops.exp_ops->create_handle(secnfs_exp->next_export, opctx,
                                              hdl_desc, &next_hdl);
         if (FSAL_IS_ERROR(st)) {
-                LogMajor(COMPONENT_FSAL, "cannot create next handle");
+                SECNFS_ERR("cannot create next handle (%d, %d)",
+                           st.major, st.minor);
                 return st;
         }
 
