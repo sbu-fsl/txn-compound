@@ -212,7 +212,13 @@ secnfs_s secnfs_create_context(secnfs_info_t *info) {
 secnfs_s secnfs_init_info(secnfs_info_t *info) {
         secnfs_s ss;
 
+        // Log files will be saved into /tmp/, for example
+        // /tmp/secnfs.nfs4sec.mchen.log.INFO.20140331-073455.5871
+        //
+        // The log directory can be changed by setting:
+        //      FLAGS_log_dir = "/some/log/directory";
         google::InitGoogleLogging("secnfs");
+        LOG(INFO) << "Logging initialized";
 
         if ((ss = secnfs_create_context(info)) != SECNFS_OKAY) {
                 LOG(ERROR) << "cannot create context: " << ss;

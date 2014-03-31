@@ -168,12 +168,12 @@ static fsal_status_t init_config(struct fsal_module *fsal_hdl,
         SECNFS_F("create_if_no_context = %d", info->create_if_no_context);
 
         if (!validate_conf_params(info)) {
-                LogCrit(COMPONENT_FSAL, "invalid SECNFS config");
+                SECNFS_ERR("invalid SECNFS config");
                 return fsalstat(ERR_FSAL_INVAL, SECNFS_WRONG_CONFIG);
         }
 
-        if (secnfs_create_context(info) != SECNFS_OKAY) {
-                LogCrit(COMPONENT_FSAL, "SECNFS failed to created context");
+        if (secnfs_init_info(info) != SECNFS_OKAY) {
+                SECNFS_ERR("SECNFS failed to created context");
                 return fsalstat(ERR_FSAL_NOMEM, ENOMEM);
         }
 
@@ -233,7 +233,6 @@ MODULE_INIT void secnfs_init(void)
 	myself->ops->init_config = init_config;
 	init_fsal_parameters(&SECNFS.fsal_info);
 	SECNFS_D("secnfs module initialized.");
-
 }
 
 MODULE_FINI void secnfs_unload(void)
