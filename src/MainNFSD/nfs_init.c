@@ -957,12 +957,6 @@ static void nfs_Init(const nfs_start_info_t *p_start_info)
 	/* Admin initialisation */
 	nfs_Init_admin_thread();
 
-	LogEvent(COMPONENT_INIT, "Initializing ID Mapper.");
-	if (!idmapper_init())
-		LogFatal(COMPONENT_INIT, "Failed initializing ID Mapper.");
-	else
-		LogEvent(COMPONENT_INIT, "ID Mapper successfully initialized.");
-
 	/* Init the NFSv4 Clientid cache */
 	LogDebug(COMPONENT_INIT, "Now building NFSv4 clientid cache");
 	if (nfs_Init_client_id(&nfs_param.client_id_param) !=

@@ -60,6 +60,7 @@ int str_to_bool(const char *str);
 int snprintmem(char *target, size_t tgt_size, const void *source,
 	       size_t mem_size);
 int sscanmem(void *target, size_t tgt_size, const char *str_source);
+void print_stack();
 
 /* String parsing functions */
 

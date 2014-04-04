@@ -186,8 +186,14 @@ cache_inode_open(cache_entry_t *entry,
 			goto unlock;
 		}
 
-		if (!FSAL_IS_ERROR(fsal_status))
-			atomic_dec_size_t(&open_fd_count);
+		if (!FSAL_IS_ERROR(fsal_status)) {
+			if (atomic_dec_size_t(&open_fd_count) == (size_t)(-1)) {
+				print_stack();
+				LogFatal(COMPONENT_CACHE_INODE,
+					 "FD double release detected!\n"
+					 "current_flags = %x", current_flags);
+			}
+		}
 
 		/* Force re-openning */
 		current_flags = obj_hdl->ops->status(obj_hdl);

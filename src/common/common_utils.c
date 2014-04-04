@@ -1,5 +1,5 @@
 /*
- * vim:noexpandtab:shiftwidth=4:tabstop=8:
+ * vim:noexpandtab:shiftwidth=8:tabstop=8:
  */
 
 /**
@@ -234,4 +234,14 @@ sscanmem(void *target, size_t tgt_size, const char *str_source)
 
 	return nb_read;
 
+}
+
+void print_stack()
+{
+	void *array[20];
+	size_t size;
+
+	size = backtrace(array, 20);
+
+	backtrace_symbols_fd(array, size, 2);
 }
