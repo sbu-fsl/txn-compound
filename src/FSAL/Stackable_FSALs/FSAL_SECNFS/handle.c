@@ -164,7 +164,7 @@ fsal_status_t read_keyfile(struct fsal_obj_handle *fsal_hdl,
         secnfs_s ret;
 
         buf_size = KEY_FILE_SIZE;
-        buf = malloc(buf_size);
+        buf = gsh_malloc(buf_size);
         assert(buf);
 
         do {
@@ -194,7 +194,7 @@ fsal_status_t read_keyfile(struct fsal_obj_handle *fsal_hdl,
         hdl->key_initialized = 1;
 
 out:
-        free(buf);
+        gsh_free(buf);
         return st;
 }
 

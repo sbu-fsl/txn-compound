@@ -952,7 +952,7 @@ int pxy_init_rpc(const struct pxy_fsal_module *pm)
 
 	for (i = 16; i > 0; i--) {
 		struct pxy_rpc_io_context *c =
-		    gsh_malloc(sizeof(*c) + pm->special.srv_sendsize +
+		    gsh_calloc(1, sizeof(*c) + pm->special.srv_sendsize +
 			       pm->special.srv_recvsize);
 		if (!c) {
 			free_io_contexts();
@@ -1494,7 +1494,7 @@ static fsal_status_t pxy_readlink(struct fsal_obj_handle *obj_hdl,
 	link_content->len =
 	    obj_hdl->attributes.filesize ? (obj_hdl->attributes.filesize +
 					    1) : fsal_default_linksize;
-	link_content->addr = gsh_malloc(link_content->len);
+	link_content->addr = gsh_calloc(1, link_content->len);
 
 	if (link_content->addr == NULL)
 		return fsalstat(ERR_FSAL_NOMEM, 0);
