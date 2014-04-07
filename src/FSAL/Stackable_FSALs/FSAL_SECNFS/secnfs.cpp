@@ -82,11 +82,6 @@ void generate_key_and_iv(secnfs_key_t *key, secnfs_key_t *iv)
  */
 static int is_block_aligned(uint64_t n) { return !(n & (AES::BLOCKSIZE - 1)); }
 
-static uint64_t round_up_block(uint64_t n)
-{
-        return (n + AES::BLOCKSIZE - 1) & ~(AES::BLOCKSIZE - 1);
-}
-
 static secnfs_s offset_aligned_encrypt(secnfs_key_t key,
                                        secnfs_key_t iv,
                                        uint64_t offset,
@@ -123,7 +118,7 @@ secnfs_s secnfs_encrypt(secnfs_key_t key,
                         void *buffer)
 {
         secnfs_s ret;
-        uint64_t left_over = round_up_block(offset) - offset;
+        uint64_t left_over = round_up(offset, AES::BLOCKSIZE) - offset;
 
         if (left_over > 0) {
                 uint64_t pad = AES::BLOCKSIZE - left_over;

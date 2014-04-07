@@ -18,6 +18,11 @@ using CryptoPP::RSAFunction;
 
 namespace secnfs {
 
+inline uint64_t round_up(uint64_t n, uint64_t m) {
+        assert((m & (m - 1)) == 0);
+        return (n + m - 1) & ~(m - 1);
+}
+
 const int RSAKeyLength = 3072;
 
 inline bool IsSamePrivateKey(const RSA::PrivateKey &k1,
