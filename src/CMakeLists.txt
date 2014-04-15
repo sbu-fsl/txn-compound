@@ -113,6 +113,8 @@ configure_file(
   "${PROJECT_SOURCE_DIR}/nfs-ganesha.spec"
 )
 
+include(tsan.cmake)
+
 if (FREEBSD)
 #default gcc doesn't like using -Wuninitialized without -O on FreeBSD
     set(PLATFORM "FREEBSD")
