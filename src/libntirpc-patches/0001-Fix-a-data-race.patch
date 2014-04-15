@@ -1,0 +1,41 @@
+From 5e370805572900e4d7f03c50837f1452c00cb71b Mon Sep 17 00:00:00 2001
+From: Ming Chen <v.mingchen@gmail.com>
+Date: Tue, 15 Apr 2014 13:17:56 -0400
+Subject: [PATCH] Fix a data race
+
+wakeups is static and thus shared by multiple threads.
+---
+ src/svc_rqst.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/svc_rqst.c b/src/svc_rqst.c
+index 739eb7c..51247cc 100644
+--- a/src/svc_rqst.c
++++ b/src/svc_rqst.c
+@@ -910,12 +910,13 @@ svc_rqst_thrd_run_epoll(struct svc_rqst_rec *sr_rec, uint32_t
+ 	int timeout_ms = 120 * 1000;	/* XXX */
+ 	int n_events;
+ 	static uint32_t wakeups;
++	uint32_t wakeup_i;
+ 
+ 	for (;;) {
+ 
+ 		mutex_lock(&sr_rec->mtx);
+ 
+-		++(wakeups);
++		wakeup_i = atomic_inc_uint32_t(&wakeups);
+ 
+ 		/* check for signals */
+ 		if (sr_rec->signals & SVC_RQST_SIGNAL_SHUTDOWN) {
+@@ -947,7 +948,7 @@ svc_rqst_thrd_run_epoll(struct svc_rqst_rec *sr_rec, uint32_t
+ 			/* new events */
+ 			for (ix = 0; ix < n_events; ++ix) {
+ 				ev = &(sr_rec->ev_u.epoll.events[ix]);
+-				svc_rqst_handle_event(sr_rec, ev, wakeups);
++				svc_rqst_handle_event(sr_rec, ev, wakeup_i);
+ 			}
+ 		}
+ 	}
+-- 
+1.8.4.2
+
