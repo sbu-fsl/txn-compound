@@ -51,8 +51,8 @@ def print_exports():
 
 
 def print_iostats(stats):
-        print("requested\ttransferred\ttotal\terrors\tlatency\tqueue_latency")
-        print("%d\t%d\t%d\t%d\t%d\t%d" % (stats[0], stats[1], stats[2],
+        print("requested\ttransferred\ttotal\terrors\tlatency(ns)\tqueue_latency(ns)")
+        print("%d\t\t%d\t\t%d\t%d\t%d\t\t%d" % (stats[0], stats[1], stats[2],
               stats[3], stats[4], stats[5]))
 
 
