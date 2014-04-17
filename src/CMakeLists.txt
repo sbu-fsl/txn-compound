@@ -113,8 +113,6 @@ configure_file(
   "${PROJECT_SOURCE_DIR}/nfs-ganesha.spec"
 )
 
-include(tsan.cmake)
-
 if (FREEBSD)
 #default gcc doesn't like using -Wuninitialized without -O on FreeBSD
     set(PLATFORM "FREEBSD")
@@ -857,7 +855,6 @@ configure_file(
   "${PROJECT_BINARY_DIR}/include/config.h"
 )
 
-
 ########### add a "make dist"  ###############
 add_custom_target(dist COMMAND ${CMAKE_MAKE_PROGRAM} package_source)
 
@@ -872,3 +869,5 @@ E
     )
 endif(DOXYGEN_FOUND)
 
+# Include thread-sanitizer module
+include(${CMAKE_SOURCE_DIR}/cmake/tsan.cmake)
