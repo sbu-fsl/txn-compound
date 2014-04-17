@@ -187,7 +187,7 @@ cache_inode_open(cache_entry_t *entry,
 		}
 
 		if (!FSAL_IS_ERROR(fsal_status)) {
-			if (atomic_dec_size_t(&open_fd_count) == (size_t)(-1)) {
+			if (release_fd() == (size_t)(-1)) {
 				print_stack();
 				LogFatal(COMPONENT_CACHE_INODE,
 					 "FD double release detected!\n"
@@ -218,12 +218,7 @@ cache_inode_open(cache_entry_t *entry,
 		/* This is temporary code, until Jim Lieb makes FSALs cache
 		   their own file descriptors.  Under that regime, the LRU
 		   thread will interrogate FSALs for their FD use. */
-		atomic_inc_size_t(&open_fd_count);
-
-		LogDebug(COMPONENT_CACHE_INODE,
-			 "cache_inode_open: pentry %p: openflags = %d, "
-			 "open_fd_count = %zd", entry, openflags,
-			 open_fd_count);
+		acquire_fd();
 	}
 
 	status = CACHE_INODE_SUCCESS;
@@ -262,17 +257,17 @@ cache_inode_close(cache_entry_t *entry, uint32_t flags)
 		goto out;
 	}
 
-	if (!(flags & CACHE_INODE_FLAG_CONTENT_HAVE))
+	if (!(flags & CACHE_INODE_FLAG_CONTENT_HAVE)) {
+		LogDebug(COMPONENT_CACHE_INODE, "=== grabbing content_lock ===");
 		PTHREAD_RWLOCK_wrlock(&entry->content_lock);
+	}
 
 	/* If nothing is opened, do nothing */
 	if (!is_open(entry)) {
-		if (!(flags & CACHE_INODE_FLAG_CONTENT_HOLD))
-			PTHREAD_RWLOCK_unlock(&entry->content_lock);
 		LogFullDebug(COMPONENT_CACHE_INODE, "Entry %p File not open",
 			     entry);
 		status = CACHE_INODE_SUCCESS;
-		return status;
+		goto unlock;
 	}
 
 	/* If file is pinned, do not close it.  This should
@@ -305,7 +300,7 @@ cache_inode_close(cache_entry_t *entry, uint32_t flags)
 			goto unlock;
 		}
 		if (!FSAL_IS_ERROR(fsal_status))
-			atomic_dec_size_t(&open_fd_count);
+			release_fd();
 	}
 
 	status = CACHE_INODE_SUCCESS;

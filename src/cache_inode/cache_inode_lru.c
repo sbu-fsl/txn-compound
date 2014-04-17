@@ -648,7 +648,7 @@ lru_run(struct fridgethr_context *ctx)
 	fds_avg = (lru_state.fds_hiwat - lru_state.fds_lowat) / 2;
 
 	if (nfs_param.cache_param.use_fd_cache)
-		extremis = (open_fd_count > lru_state.fds_hiwat);
+		extremis = (get_fd_count() > lru_state.fds_hiwat);
 
 	LogFullDebug(COMPONENT_CACHE_INODE_LRU, "LRU awakes.");
 
@@ -667,11 +667,11 @@ lru_run(struct fridgethr_context *ctx)
 	   permanent.  (It will have to adapt heavily to the new FSAL
 	   API, for example.) */
 
-	if ((atomic_fetch_size_t(&open_fd_count) < lru_state.fds_lowat)
+	if ((get_fd_count() < lru_state.fds_lowat)
 	    && nfs_param.cache_param.use_fd_cache) {
 		LogDebug(COMPONENT_CACHE_INODE_LRU,
 			 "FD count is %zd and low water mark is "
-			 "%d: not reaping.", open_fd_count,
+			 "%d: not reaping.", get_fd_count(),
 			 lru_state.fds_lowat);
 		if (nfs_param.cache_param.use_fd_cache
 		    && !lru_state.caching_fds) {
@@ -682,7 +682,7 @@ lru_run(struct fridgethr_context *ctx)
 	} else {
 		/* The count of open file descriptors before this run
 		   of the reaper. */
-		size_t formeropen = open_fd_count;
+		size_t formeropen = get_fd_count();
 		/* Work done in the most recent pass of all queues.  if
 		   value is less than the work to do in a single queue,
 		   don't spin through more passes. */
@@ -691,7 +691,7 @@ lru_run(struct fridgethr_context *ctx)
 		time_t curr_time = time(NULL);
 		fdratepersec =
 		    (curr_time <=
-		     lru_state.prev_time) ? 1 : (open_fd_count -
+		     lru_state.prev_time) ? 1 : (formeropen -
 						 lru_state.prev_fd_count) /
 		    (curr_time - lru_state.prev_time);
 
@@ -831,7 +831,7 @@ lru_run(struct fridgethr_context *ctx)
 		} while (extremis && (workpass >= lru_state.per_lane_work)
 			 && (totalwork < lru_state.biggest_window));
 
-		currentopen = open_fd_count;
+		currentopen = get_fd_count();
 		if (extremis
 		    && ((currentopen > formeropen)
 			|| (formeropen - currentopen <
@@ -881,7 +881,7 @@ lru_run(struct fridgethr_context *ctx)
 
 	LogDebug(COMPONENT_CACHE_INODE_LRU,
 		 "After work, open_fd_count:%zd  count:%" PRIu64 " fdrate:%u "
-		 "threadwait=%" PRIu64 "\n", open_fd_count,
+		 "threadwait=%" PRIu64 "\n", get_fd_count(),
 		 lru_state.entries_used, fdratepersec, threadwait);
 	LogFullDebug(COMPONENT_CACHE_INODE_LRU,
 		     "currentopen=%zd futility=%d totalwork=%zd "
@@ -914,7 +914,7 @@ cache_inode_lru_pkginit(void)
 	frp.thread_delay = nfs_param.cache_param.lru_run_interval;
 	frp.flavor = fridgethr_flavor_looper;
 
-	open_fd_count = 0;
+	set_fd_count(0);
 
 	/* Set high and low watermark for cache entries.  This seems a
 	   bit fishy, so come back and revisit this. */

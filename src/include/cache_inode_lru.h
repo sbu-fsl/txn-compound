@@ -175,6 +175,26 @@ static inline bool cache_inode_lru_fds_available(void)
 	return true;
 }
 
+static inline size_t acquire_fd(void)
+{
+	return atomic_inc_size_t(&open_fd_count);
+}
+
+static inline size_t release_fd(void)
+{
+	return atomic_dec_size_t(&open_fd_count);
+}
+
+static inline size_t get_fd_count(void)
+{
+	return atomic_fetch_size_t(&open_fd_count);
+}
+
+static inline void set_fd_count(size_t n)
+{
+	atomic_store_size_t(&open_fd_count, n);
+}
+
 /**
  * Return true if we are currently caching file descriptors.
  */
