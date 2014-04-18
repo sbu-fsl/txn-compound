@@ -403,7 +403,7 @@ struct gsh_export *get_gsh_export_by_tag(char *tag)
 
 void put_gsh_export(struct gsh_export *export)
 {
-	assert(export->refcnt > 0);
+	assert(atomic_fetch_int64_t(&export->refcnt) > 0);
 	atomic_dec_int64_t(&export->refcnt);
 }
 
