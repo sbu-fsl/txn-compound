@@ -521,7 +521,8 @@ lru_try_reap_entry(void)
 {
 	cache_inode_lru_t *lru;
 
-	if (lru_state.entries_used < lru_state.entries_hiwat)
+	if (atomic_fetch_int64_t(&lru_state.entries_used) <
+	    lru_state.entries_hiwat)
 		return NULL;
 
 	lru = lru_reap_impl(LRU_ENTRY_L2);
