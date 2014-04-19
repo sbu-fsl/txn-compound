@@ -781,8 +781,7 @@ int pxy_compoundv4_execute(const char *caller, const struct user_cred *creds,
 		 || (rc == RPC_CANTSEND));
 
 	pthread_mutex_lock(&listlock);
-	if (glist_empty(&free_contexts))
-		pthread_cond_signal(&need_context);
+	pthread_cond_signal(&need_context);
 	glist_add(&free_contexts, &ctx->calls);
 	pthread_mutex_unlock(&listlock);
 
