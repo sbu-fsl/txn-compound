@@ -1,0 +1,23 @@
+diff --git a/block/blk-core.c b/block/blk-core.c
+index bfe16d5..b9825ef 100644
+--- a/block/blk-core.c
++++ b/block/blk-core.c
+@@ -1878,6 +1878,18 @@ void submit_bio(int rw, struct bio *bio)
+ {
+ 	bio->bi_rw |= rw;
+ 
++	if (bio_integrity_enabled(bio)) {
++		if (!bio_integrity(bio)) {
++			int err = bio_integrity_prep(bio);
++			if (err != 0) {
++				pr_error("cannot prepare integrity data");
++				bio->bi_end_io(bio, err);
++				return ;
++			}
++			trace_printk("bio integrity prepared");
++		}
++	}
++
+ 	/*
+ 	 * If it's a regular read/write or a barrier with data attached,
+ 	 * go through the normal accounting stuff before submission.
