@@ -1437,6 +1437,8 @@ enum nfs_opnum4 {
 	OP_VERIFY		= 37,
 	OP_WRITE		= 38,
 	OP_RELEASE_LOCKOWNER	= 39,
+	OP_WRITE_PLUS		= 64,
+	OP_READ_PLUS		= 65,
 	OP_ILLEGAL		= 10044
 };
 
@@ -1480,6 +1482,8 @@ union nfs_argop4 switch (nfs_opnum4 argop) {
  case OP_WRITE:		WRITE4args opwrite;
  case OP_RELEASE_LOCKOWNER:	RELEASE_LOCKOWNER4args
 				    oprelease_lockowner;
+ case OP_WRITE_PLUS:	WRITE_PLUS4args opwriteplus;
+ case OP_READ_PLUS:	READ_PLUS4args opreadplus;
  case OP_ILLEGAL:	void;
 };
 
@@ -1523,6 +1527,8 @@ union nfs_resop4 switch (nfs_opnum4 resop){
  case OP_WRITE:		WRITE4res opwrite;
  case OP_RELEASE_LOCKOWNER:	RELEASE_LOCKOWNER4res
 				    oprelease_lockowner;
+ case OP_WRITE_PLUS:	WRITE_PLUS4res opwriteplus;
+ case OP_READ_PLUS:	READ_PLUS4res opreadplus;
  case OP_ILLEGAL:	ILLEGAL4res opillegal;
 };
 
