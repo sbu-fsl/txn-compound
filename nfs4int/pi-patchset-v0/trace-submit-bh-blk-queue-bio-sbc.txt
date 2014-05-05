@@ -1,0 +1,891 @@
+# tracer: function_graph
+#
+# CPU  DURATION                  FUNCTION CALLS
+# |     |   |                     |   |   |   |
+  0)   0.166 us    |  integrity_iint_find();
+  0)               |  __set_current_blocked() {
+  0)   0.178 us    |    __set_task_blocked();
+  0)   0.814 us    |  }
+  0)               |  __set_current_blocked() {
+  0)   0.050 us    |    __set_task_blocked();
+  0)   0.523 us    |  }
+  0)               |  __set_current_blocked() {
+  0)   0.049 us    |    __set_task_blocked();
+  0)   0.400 us    |  }
+  0)   0.121 us    |  get_pageblock_flags_group();
+  0)   0.090 us    |  get_pageblock_flags_group();
+  0)   0.120 us    |  update_cfs_rq_blocked_load();
+  0)               |  __set_current_blocked() {
+  0)   0.140 us    |    __set_task_blocked();
+  0)   0.629 us    |  }
+  0)               |  __set_current_blocked() {
+  0)   0.121 us    |    __set_task_blocked();
+  0)   0.587 us    |  }
+  0)               |  __set_current_blocked() {
+  0)   0.051 us    |    __set_task_blocked();
+  0)   0.389 us    |  }
+  0)               |  __set_current_blocked() {
+  0)   0.040 us    |    __set_task_blocked();
+  0)   0.386 us    |  }
+  0)   0.092 us    |  update_cfs_rq_blocked_load();
+ ------------------------------------------
+  0) run-ftr-24938  =>    dd-24942   
+ ------------------------------------------
+
+  0)               |  __set_current_blocked() {
+  0)   0.112 us    |    __set_task_blocked();
+  0)   0.696 us    |  }
+  0)               |  __getblk() {
+  0)               |    __find_get_block() {
+  0)   0.904 us    |      __find_get_block_slow();
+  0)   2.028 us    |    }
+  0)   2.544 us    |  }
+  0)   0.156 us    |  get_pageblock_flags_group();
+  0)   0.074 us    |  get_pageblock_flags_group();
+  0)   0.052 us    |  get_pageblock_flags_group();
+  0)   0.052 us    |  get_pageblock_flags_group();
+  0)   0.046 us    |  get_pageblock_flags_group();
+  0)   0.051 us    |  get_pageblock_flags_group();
+  0)   0.050 us    |  get_pageblock_flags_group();
+  0)   0.044 us    |  get_pageblock_flags_group();
+  0)   0.049 us    |  get_pageblock_flags_group();
+  0)   0.050 us    |  get_pageblock_flags_group();
+  0)   0.050 us    |  get_pageblock_flags_group();
+  0)   0.041 us    |  get_pageblock_flags_group();
+  0)   0.044 us    |  get_pageblock_flags_group();
+  0)   0.048 us    |  get_pageblock_flags_group();
+  0)   0.049 us    |  get_pageblock_flags_group();
+  0)   0.048 us    |  get_pageblock_flags_group();
+  0)   0.058 us    |  get_pageblock_flags_group();
+  0)   0.049 us    |  get_pageblock_flags_group();
+  0)   0.044 us    |  get_pageblock_flags_group();
+  0)   0.050 us    |  get_pageblock_flags_group();
+  0)   0.050 us    |  get_pageblock_flags_group();
+  0)   0.051 us    |  get_pageblock_flags_group();
+  0)   0.041 us    |  get_pageblock_flags_group();
+  0)   0.050 us    |  get_pageblock_flags_group();
+  0)   0.044 us    |  get_pageblock_flags_group();
+  0)   0.049 us    |  get_pageblock_flags_group();
+  0)   0.049 us    |  get_pageblock_flags_group();
+  0)   0.048 us    |  get_pageblock_flags_group();
+  0)   0.043 us    |  get_pageblock_flags_group();
+  0)   0.041 us    |  get_pageblock_flags_group();
+  0)   0.047 us    |  get_pageblock_flags_group();
+  0)   0.047 us    |  get_pageblock_flags_group();
+  0)   0.049 us    |  get_pageblock_flags_group();
+  0)   0.040 us    |  get_pageblock_flags_group();
+  0)   0.040 us    |  get_pageblock_flags_group();
+  0)   0.042 us    |  get_pageblock_flags_group();
+  0)   0.064 us    |  get_pageblock_flags_group();
+  0)   0.047 us    |  get_pageblock_flags_group();
+  0)   0.070 us    |  blk_start_plug();
+  0)               |  ext4_get_block [ext4]() {
+  0)               |    _ext4_get_block [ext4]() {
+  0)               |      ext4_map_blocks [ext4]() {
+  0)   0.859 us    |        ext4_ext_map_blocks [ext4]();
+  0)   0.042 us    |        ext4_data_block_valid [ext4]();
+  0)   2.827 us    |      }
+  0)   3.345 us    |    }
+  0)   3.806 us    |  }
+  0)   0.035 us    |  bio_get_nr_vecs();
+  0)   0.531 us    |  bio_alloc_bioset();
+  0)               |  bio_add_page() {
+  0)   0.761 us    |    __bio_add_page();
+  0)   1.185 us    |  }
+  0)               |  bio_add_page() {
+  0)   0.192 us    |    __bio_add_page();
+  0)   0.539 us    |  }
+  0)               |  bio_add_page() {
+  0)   0.092 us    |    __bio_add_page();
+  0)   0.407 us    |  }
+  0)               |  bio_add_page() {
+  0)   0.084 us    |    __bio_add_page();
+  0)   0.431 us    |  }
+  0)               |  bio_add_page() {
+  0)   0.080 us    |    __bio_add_page();
+  0)   0.454 us    |  }
+  0)               |  bio_add_page() {
+  0)   0.075 us    |    __bio_add_page();
+  0)   0.417 us    |  }
+  0)               |  bio_add_page() {
+  0)   0.080 us    |    __bio_add_page();
+  0)   0.411 us    |  }
+  0)               |  bio_add_page() {
+  0)   0.082 us    |    __bio_add_page();
+  0)   0.419 us    |  }
+  0)               |  bio_add_page() {
+  0)   0.083 us    |    __bio_add_page();
+  0)   0.407 us    |  }
+  0)               |  bio_add_page() {
+  0)   0.074 us    |    __bio_add_page();
+  0)   0.405 us    |  }
+  0)               |  bio_add_page() {
+  0)   0.083 us    |    __bio_add_page();
+  0)   0.410 us    |  }
+  0)               |  bio_add_page() {
+  0)   0.075 us    |    __bio_add_page();
+  0)   0.414 us    |  }
+  0)               |  bio_add_page() {
+  0)   0.075 us    |    __bio_add_page();
+  0)   0.417 us    |  }
+  0)               |  bio_add_page() {
+  0)   0.080 us    |    __bio_add_page();
+  0)   0.410 us    |  }
+  0)               |  bio_add_page() {
+  0)   0.086 us    |    __bio_add_page();
+  0)   0.446 us    |  }
+  0)               |  submit_bio() {
+  0)   0.406 us    |    blk_throtl_bio();
+  0)               |    __split_and_process_bio [dm_mod]() {
+  0)   0.208 us    |      bio_alloc_bioset();
+  0)   0.039 us    |      __bio_clone_fast();
+  0)   0.055 us    |      bio_advance();
+  0)               |      __map_bio [dm_mod]() {
+  0)   0.260 us    |        blk_throtl_bio();
+  0)   0.963 us    |      }
+  0)   3.170 us    |    }
+  0)               |    blk_queue_bio() {
+  0)   0.107 us    |      blk_queue_bounce();
+  0)   0.050 us    |      bio_integrity_enabled();
+  0)   0.053 us    |      blk_attempt_plug_merge();
+  0)   0.094 us    |      blk_rq_init();
+  0)   0.054 us    |      check_blkcg_changed();
+  0)               |      init_request_from_bio() {
+  0)               |        blk_rq_bio_prep() {
+  0)               |          blk_recount_segments() {
+  0)   0.334 us    |            __blk_recalc_rq_segments();
+  0)   0.821 us    |          }
+  0)   1.338 us    |        }
+  0)   1.770 us    |      }
+  0)   0.326 us    |      blk_account_io_start();
+  0)   7.928 us    |    }
+  0) + 14.037 us   |  }
+  0)               |  blk_finish_plug() {
+  0)               |    blk_flush_plug_list() {
+  0)               |      __blk_run_queue() {
+  0)               |        blk_peek_request() {
+  0)               |          blk_rq_map_sg() {
+  0)   0.421 us    |            __blk_bios_map_sg();
+  0)   0.823 us    |          }
+  0)   4.474 us    |        }
+  0)               |        blk_start_request() {
+  0)   0.063 us    |          blk_dequeue_request();
+  0)               |          blk_add_timer() {
+  0)   0.297 us    |            __blk_add_timer();
+  0)   0.698 us    |          }
+  0)   1.553 us    |        }
+  0)   0.118 us    |        update_cfs_rq_blocked_load();
+  0)   0.074 us    |        update_cfs_rq_blocked_load();
+  0)   0.061 us    |        update_cfs_rq_blocked_load();
+  0)   0.052 us    |        update_cfs_rq_blocked_load();
+  0)   0.358 us    |        blk_peek_request();
+  0) ! 106.004 us  |      }
+  0) ! 108.538 us  |    }
+  0) ! 116.836 us  |  }
+  0)   0.211 us    |  __delayacct_blkio_start();
+  0)   0.037 us    |  update_cfs_rq_blocked_load();
+  0)   0.038 us    |  update_cfs_rq_blocked_load();
+  0)               |  update_blocked_averages() {
+  0)   0.057 us    |    update_cfs_rq_blocked_load();
+  0)   0.075 us    |    update_cfs_rq_blocked_load();
+  0)   0.074 us    |    update_cfs_rq_blocked_load();
+  0)   0.051 us    |    update_cfs_rq_blocked_load();
+  0)   0.049 us    |    update_cfs_rq_blocked_load();
+  0)   0.059 us    |    update_cfs_rq_blocked_load();
+  0)   3.432 us    |  }
+  0)   0.230 us    |  __delayacct_blkio_end();
+  0)   0.074 us    |  get_pageblock_flags_group();
+  0)               |  blocking_notifier_call_chain() {
+  0)   0.070 us    |    __blocking_notifier_call_chain();
+  0)   0.584 us    |  }
+  0)   0.074 us    |  get_pageblock_flags_group();
+  0)   0.041 us    |  integrity_iint_find();
+  0)               |  blkdev_open() {
+  0)               |    blkdev_get() {
+  0)               |      __blkdev_get() {
+  0)   1.291 us    |        disk_block_events();
+  0)   0.122 us    |        scsi_block_when_processing_errors();
+  0)   0.035 us    |        blk_get_backing_dev_info();
+  0)               |        disk_unblock_events() {
+  0)   0.369 us    |          __disk_unblock_events();
+  0)   0.973 us    |        }
+  0) + 32.195 us   |      }
+  0) + 32.893 us   |    }
+  0) + 33.868 us   |  }
+  0)               |  blkdev_aio_write() {
+  0)   0.069 us    |    blk_start_plug();
+  0)               |    blkdev_write_begin() {
+  0)               |      block_write_begin() {
+  0)               |        __block_write_begin() {
+  0)   0.039 us    |          blkdev_get_block();
+  0)   2.817 us    |        }
+  0)   5.251 us    |      }
+  0)   5.835 us    |    }
+  0)   0.098 us    |    update_cfs_rq_blocked_load();
+  0)   0.040 us    |    update_cfs_rq_blocked_load();
+  0)   0.047 us    |    update_cfs_rq_blocked_load();
+  0)   0.059 us    |    update_cfs_rq_blocked_load();
+  0)               |    blkdev_write_end() {
+  0)               |      block_write_end() {
+  0)               |        __block_commit_write.isra.20() {
+  0)   0.042 us    |          sb_is_blkdev_sb();
+  0)   3.402 us    |        }
+  0)   3.869 us    |      }
+  0)   4.755 us    |    }
+  0)               |    blk_finish_plug() {
+  0)   0.102 us    |      blk_flush_plug_list();
+  0)   0.668 us    |    }
+  0) + 68.509 us   |  }
+  0)   0.108 us    |  update_cfs_rq_blocked_load();
+  0)   0.054 us    |  update_cfs_rq_blocked_load();
+  0)   0.035 us    |  update_cfs_rq_blocked_load();
+  0)               |  blkdev_close() {
+  0)               |    blkdev_put() {
+  0)   0.086 us    |      update_cfs_rq_blocked_load();
+  0)               |      __blkdev_put() {
+  0)               |        __sync_blockdev() {
+  0)   0.071 us    |          blk_start_plug();
+  0)               |          blkdev_writepage() {
+  0)               |            block_write_full_page() {
+  0)               |              block_write_full_page_endio() {
+  0)               |                __block_write_full_page() {
+  0)   0.357 us    |                  bio_alloc_bioset();
+  0)               |                  submit_bio() {
+  0)   0.583 us    |                    blk_throtl_bio();
+  0)               |                    blk_queue_bio() {
+  0)   0.113 us    |                      blk_queue_bounce();
+  0)   0.061 us    |                      bio_integrity_enabled();
+  0)               |                      bio_integrity_prep() {
+  0) + 18.725 us   |                        bio_integrity_alloc();
+  0)   0.052 us    |                        bio_integrity_add_page();
+  0)               |                        bio_integrity_walk_bufs() {
+  0)               |                          sd_dif_type3_generate_crc [sd_mod]() {
+  0)   0.113 us    |                            sd_dif_type3_generate [sd_mod]();
+  0)   9.663 us    |                          }
+  0) + 10.553 us   |                        }
+  0) + 31.891 us   |                      }
+  0)   0.070 us    |                      blk_attempt_plug_merge();
+  0)   0.099 us    |                      blk_rq_init();
+  0)   0.054 us    |                      check_blkcg_changed();
+  0)               |                      init_request_from_bio() {
+  0)               |                        blk_rq_bio_prep() {
+  0)               |                          blk_recount_segments() {
+  0)   0.113 us    |                            __blk_recalc_rq_segments();
+  0)   0.538 us    |                          }
+  0)   1.062 us    |                        }
+  0)   1.501 us    |                      }
+  0)   0.252 us    |                      blk_account_io_start();
+  0) + 40.410 us   |                    }
+  0) + 41.922 us   |                  }
+  0)   0.036 us    |                  bio_put();
+  0) + 44.992 us   |                }
+  0) + 45.931 us   |              }
+  0) + 46.402 us   |            }
+  0) + 46.947 us   |          }
+  0)               |          blk_finish_plug() {
+  0)               |            blk_flush_plug_list() {
+  0)               |              __blk_run_queue() {
+  0)               |                blk_peek_request() {
+  0)               |                  blk_rq_map_sg() {
+  0)   0.146 us    |                    __blk_bios_map_sg();
+  0)   0.506 us    |                  }
+  0)   0.244 us    |                  blk_rq_count_integrity_sg();
+  0)   0.461 us    |                  blk_rq_map_integrity_sg();
+  0)   0.147 us    |                  sd_dif_prepare [sd_mod]();
+  0)   9.423 us    |                }
+  0)               |                blk_queue_start_tag() {
+  0)               |                  blk_start_request() {
+  0)   0.051 us    |                    blk_dequeue_request();
+  0)               |                    blk_add_timer() {
+  0)   0.278 us    |                      __blk_add_timer();
+  0)   0.661 us    |                    }
+  0)   1.499 us    |                  }
+  0)   2.084 us    |                }
+  0)   0.065 us    |                update_cfs_rq_blocked_load();
+  0)   0.110 us    |                blk_peek_request();
+  0) + 16.910 us   |              }
+  0) + 18.910 us   |            }
+  0) + 19.313 us   |          }
+  0)   0.253 us    |          __delayacct_blkio_start();
+  0)   0.093 us    |          update_cfs_rq_blocked_load();
+  0)   0.045 us    |          update_cfs_rq_blocked_load();
+  0)   0.399 us    |          __delayacct_blkio_end();
+  0) ! 1326.106 us |        }
+  0)               |        block_invalidatepage() {
+  0)   0.553 us    |          blkdev_releasepage();
+  0)   1.235 us    |        }
+  0)   0.163 us    |        get_pageblock_flags_group();
+  0)   0.048 us    |        get_pageblock_flags_group();
+  0) ! 1485.366 us |      }
+  0) ! 3337.301 us |    }
+  0) ! 3337.885 us |  }
+  0)   0.093 us    |  integrity_iint_find();
+  0)               |  blocking_notifier_call_chain() {
+  0)   0.035 us    |    __blocking_notifier_call_chain();
+  0)   0.412 us    |  }
+  0)   0.084 us    |  get_pageblock_flags_group();
+  0)   0.083 us    |  update_cfs_rq_blocked_load();
+  0)   0.093 us    |  update_cfs_rq_blocked_load();
+  0)   0.079 us    |  update_cfs_rq_blocked_load();
+  0)   0.081 us    |  update_cfs_rq_blocked_load();
+  0)   0.084 us    |  update_cfs_rq_blocked_load();
+  0)   0.079 us    |  blk_start_plug();
+  0)               |  ext4_get_block [ext4]() {
+  0)               |    _ext4_get_block [ext4]() {
+  0)               |      ext4_map_blocks [ext4]() {
+  0)   0.082 us    |        ext4_data_block_valid [ext4]();
+  0)   5.096 us    |      }
+  0)   5.601 us    |    }
+  0)   6.016 us    |  }
+  0)   0.045 us    |  bio_get_nr_vecs();
+  0)   0.621 us    |  bio_alloc_bioset();
+  0)               |  bio_add_page() {
+  0)   0.568 us    |    __bio_add_page();
+  0)   1.173 us    |  }
+  0)               |  submit_bio() {
+  0)   0.565 us    |    blk_throtl_bio();
+  0)               |    __split_and_process_bio [dm_mod]() {
+  0)   0.299 us    |      bio_alloc_bioset();
+  0)   0.058 us    |      __bio_clone_fast();
+  0)   0.126 us    |      bio_advance();
+  0)               |      __map_bio [dm_mod]() {
+  0)   0.272 us    |        blk_throtl_bio();
+  0)   0.941 us    |      }
+  0)   6.202 us    |    }
+  0)               |    blk_queue_bio() {
+  0)   0.097 us    |      blk_queue_bounce();
+  0)   0.051 us    |      bio_integrity_enabled();
+  0)   0.048 us    |      blk_attempt_plug_merge();
+  0)   0.196 us    |      blk_rq_merge_ok();
+  0)   0.101 us    |      blk_rq_init();
+  0)   0.053 us    |      check_blkcg_changed();
+  0)               |      init_request_from_bio() {
+  0)               |        blk_rq_bio_prep() {
+  0)               |          blk_recount_segments() {
+  0)   0.137 us    |            __blk_recalc_rq_segments();
+  0)   0.667 us    |          }
+  0)   1.197 us    |        }
+  0)   1.664 us    |      }
+  0)   0.274 us    |      blk_account_io_start();
+  0)   7.655 us    |    }
+  0) + 16.363 us   |  }
+  0)   0.036 us    |  bio_get_nr_vecs();
+  0)   0.262 us    |  bio_alloc_bioset();
+  0)               |  bio_add_page() {
+  0)   0.162 us    |    __bio_add_page();
+  0)   0.531 us    |  }
+  0)               |  bio_add_page() {
+  0)   0.108 us    |    __bio_add_page();
+  0)   0.454 us    |  }
+  0)               |  ext4_get_block [ext4]() {
+  0)               |    _ext4_get_block [ext4]() {
+  0)               |      ext4_map_blocks [ext4]() {
+  0)   0.039 us    |        ext4_data_block_valid [ext4]();
+  0)   0.638 us    |      }
+  0)   1.040 us    |    }
+  0)   1.388 us    |  }
+  0)               |  submit_bio() {
+  0)   0.137 us    |    blk_throtl_bio();
+  0)               |    __split_and_process_bio [dm_mod]() {
+  0)   0.196 us    |      bio_alloc_bioset();
+  0)   0.053 us    |      __bio_clone_fast();
+  0)   0.054 us    |      bio_advance();
+  0)               |      __map_bio [dm_mod]() {
+  0)   0.112 us    |        blk_throtl_bio();
+  0)   0.556 us    |      }
+  0)   2.312 us    |    }
+  0)               |    blk_queue_bio() {
+  0)   0.060 us    |      blk_queue_bounce();
+  0)   0.037 us    |      bio_integrity_enabled();
+  0)               |      blk_attempt_plug_merge() {
+  0)   0.045 us    |        blk_rq_merge_ok();
+  0)   0.043 us    |        blk_try_merge();
+  0)   0.896 us    |      }
+  0)   0.042 us    |      blk_rq_merge_ok();
+  0)   0.091 us    |      blk_rq_init();
+  0)   0.039 us    |      check_blkcg_changed();
+  0)               |      init_request_from_bio() {
+  0)               |        blk_rq_bio_prep() {
+  0)               |          blk_recount_segments() {
+  0)   0.135 us    |            __blk_recalc_rq_segments();
+  0)   0.523 us    |          }
+  0)   0.936 us    |        }
+  0)   1.336 us    |      }
+  0)   0.114 us    |      blk_account_io_start();
+  0)   5.990 us    |    }
+  0)   9.601 us    |  }
+  0)   0.035 us    |  bio_get_nr_vecs();
+  0)   0.171 us    |  bio_alloc_bioset();
+  0)               |  bio_add_page() {
+  0)   0.078 us    |    __bio_add_page();
+  0)   2.582 us    |  }
+  0)               |  ext4_get_block [ext4]() {
+  0)               |    _ext4_get_block [ext4]() {
+  0)               |      ext4_map_blocks [ext4]() {
+  0)   0.045 us    |        ext4_data_block_valid [ext4]();
+  0)   0.556 us    |      }
+  0)   0.986 us    |    }
+  0)   1.357 us    |  }
+  0)               |  submit_bio() {
+  0)   0.143 us    |    blk_throtl_bio();
+  0)               |    __split_and_process_bio [dm_mod]() {
+  0)   0.180 us    |      bio_alloc_bioset();
+  0)   0.039 us    |      __bio_clone_fast();
+  0)   0.046 us    |      bio_advance();
+  0)               |      __map_bio [dm_mod]() {
+  0)   0.116 us    |        blk_throtl_bio();
+  0)   0.576 us    |      }
+  0)   2.342 us    |    }
+  0)               |    blk_queue_bio() {
+  0)   0.045 us    |      blk_queue_bounce();
+  0)   0.037 us    |      bio_integrity_enabled();
+  0)               |      blk_attempt_plug_merge() {
+  0)   0.045 us    |        blk_rq_merge_ok();
+  0)   0.039 us    |        blk_try_merge();
+  0)   0.128 us    |        blk_rq_merge_ok();
+  0)   0.060 us    |        blk_try_merge();
+  0)   5.778 us    |      }
+  0)   0.073 us    |      blk_rq_merge_ok();
+  0)   0.123 us    |      blk_rq_init();
+  0)   0.068 us    |      check_blkcg_changed();
+  0)               |      init_request_from_bio() {
+  0)               |        blk_rq_bio_prep() {
+  0)               |          blk_recount_segments() {
+  0)   0.143 us    |            __blk_recalc_rq_segments();
+  0)   0.822 us    |          }
+  0)   1.527 us    |        }
+  0)   2.122 us    |      }
+  0)   0.244 us    |      blk_account_io_start();
+  0) + 13.736 us   |    }
+  0) + 17.547 us   |  }
+  0)   0.060 us    |  bio_get_nr_vecs();
+  0)   0.294 us    |  bio_alloc_bioset();
+  0)               |  bio_add_page() {
+  0)   0.228 us    |    __bio_add_page();
+  0)   0.882 us    |  }
+  0)               |  ext4_get_block [ext4]() {
+  0)               |    _ext4_get_block [ext4]() {
+  0)               |      ext4_map_blocks [ext4]() {
+  0)   0.068 us    |        ext4_data_block_valid [ext4]();
+  0)   1.131 us    |      }
+  0)   1.806 us    |    }
+  0)   2.382 us    |  }
+  0)               |  submit_bio() {
+  0)   0.323 us    |    blk_throtl_bio();
+  0)               |    __split_and_process_bio [dm_mod]() {
+  0)   0.264 us    |      bio_alloc_bioset();
+  0)   0.065 us    |      __bio_clone_fast();
+  0)   0.070 us    |      bio_advance();
+  0)               |      __map_bio [dm_mod]() {
+  0)   0.195 us    |        blk_throtl_bio();
+  0)   0.863 us    |      }
+  0)   3.629 us    |    }
+  0)               |    blk_queue_bio() {
+  0)   0.070 us    |      blk_queue_bounce();
+  0)   0.058 us    |      bio_integrity_enabled();
+  0)               |      blk_attempt_plug_merge() {
+  0)   0.078 us    |        blk_rq_merge_ok();
+  0)   0.073 us    |        blk_try_merge();
+  0)   0.071 us    |        blk_rq_merge_ok();
+  0)   0.070 us    |        blk_try_merge();
+  0)   0.072 us    |        blk_rq_merge_ok();
+  0)   0.065 us    |        blk_try_merge();
+  0)   4.055 us    |      }
+  0)   0.073 us    |      blk_rq_merge_ok();
+  0)   0.123 us    |      blk_rq_init();
+  0)   0.065 us    |      check_blkcg_changed();
+  0)               |      init_request_from_bio() {
+  0)               |        blk_rq_bio_prep() {
+  0)               |          blk_recount_segments() {
+  0)   0.133 us    |            __blk_recalc_rq_segments();
+  0)   0.730 us    |          }
+  0)   1.425 us    |        }
+  0)   2.024 us    |      }
+  0)   0.181 us    |      blk_account_io_start();
+  0) + 11.484 us   |    }
+  0) + 17.376 us   |  }
+  0)   0.035 us    |  bio_get_nr_vecs();
+  0)   0.320 us    |  bio_alloc_bioset();
+  0)               |  bio_add_page() {
+  0)   0.120 us    |    __bio_add_page();
+  0)   0.500 us    |  }
+  0)               |  ext4_get_block [ext4]() {
+  0)               |    _ext4_get_block [ext4]() {
+  0)               |      ext4_map_blocks [ext4]() {
+  0)   0.987 us    |        ext4_ext_map_blocks [ext4]();
+  0)   0.045 us    |        ext4_data_block_valid [ext4]();
+  0)   2.899 us    |      }
+  0)   3.294 us    |    }
+  0)   3.638 us    |  }
+  0)               |  bio_add_page() {
+  0)   0.094 us    |    __bio_add_page();
+  0)   0.452 us    |  }
+  0)               |  submit_bio() {
+  0)   0.213 us    |    blk_throtl_bio();
+  0)               |    __split_and_process_bio [dm_mod]() {
+  0)   0.177 us    |      bio_alloc_bioset();
+  0)   0.047 us    |      __bio_clone_fast();
+  0)   0.036 us    |      bio_advance();
+  0)               |      __map_bio [dm_mod]() {
+  0)   0.112 us    |        blk_throtl_bio();
+  0)   0.505 us    |      }
+  0)   2.315 us    |    }
+  0)               |    blk_queue_bio() {
+  0)   0.041 us    |      blk_queue_bounce();
+  0)   0.041 us    |      bio_integrity_enabled();
+  0)               |      blk_attempt_plug_merge() {
+  0)   0.061 us    |        blk_rq_merge_ok();
+  0)   0.036 us    |        blk_try_merge();
+  0)   0.041 us    |        blk_rq_merge_ok();
+  0)   0.036 us    |        blk_try_merge();
+  0)   0.048 us    |        blk_rq_merge_ok();
+  0)   0.037 us    |        blk_try_merge();
+  0)   0.046 us    |        blk_rq_merge_ok();
+  0)   0.036 us    |        blk_try_merge();
+  0)   2.874 us    |      }
+  0)   0.040 us    |      blk_rq_merge_ok();
+  0)   0.087 us    |      blk_rq_init();
+  0)   0.045 us    |      check_blkcg_changed();
+  0)               |      init_request_from_bio() {
+  0)               |        blk_rq_bio_prep() {
+  0)               |          blk_recount_segments() {
+  0)   0.102 us    |            __blk_recalc_rq_segments();
+  0)   0.460 us    |          }
+  0)   0.874 us    |        }
+  0)   1.238 us    |      }
+  0)   0.121 us    |      blk_account_io_start();
+  0)   7.748 us    |    }
+  0) + 11.536 us   |  }
+  0)               |  blk_finish_plug() {
+  0)               |    blk_flush_plug_list() {
+  0)   0.096 us    |      blk_attempt_req_merge();
+  0)               |      __blk_run_queue() {
+  0)               |        blk_peek_request() {
+  0)               |          blk_rq_map_sg() {
+  0)   0.237 us    |            __blk_bios_map_sg();
+  0)   0.637 us    |          }
+  0)   4.058 us    |        }
+  0)               |        blk_start_request() {
+  0)   0.062 us    |          blk_dequeue_request();
+  0)               |          blk_add_timer() {
+  0)   0.272 us    |            __blk_add_timer();
+  0)   0.655 us    |          }
+  0)   1.455 us    |        }
+  0)   0.094 us    |        update_cfs_rq_blocked_load();
+  0)   0.052 us    |        update_cfs_rq_blocked_load();
+  0)   3.874 us    |        blk_peek_request();
+  0) + 72.151 us   |      }
+  0)   0.105 us    |      blk_attempt_req_merge();
+  0)   0.060 us    |      blk_attempt_req_merge();
+  0)   0.040 us    |      blk_attempt_req_merge();
+  0)   0.042 us    |      blk_attempt_req_merge();
+  0)               |      __blk_run_queue() {
+  0)               |        blk_peek_request() {
+  0)               |          blk_rq_map_sg() {
+  0)   0.244 us    |            __blk_bios_map_sg();
+  0)   0.664 us    |          }
+  0)   3.549 us    |        }
+  0)               |        blk_start_request() {
+  0)   0.062 us    |          blk_dequeue_request();
+  0)               |          blk_add_timer() {
+  0)   0.329 us    |            __blk_add_timer();
+  0)   0.695 us    |          }
+  0)   1.510 us    |        }
+  0)               |        blk_peek_request() {
+  0)               |          blk_rq_map_sg() {
+  0)   0.206 us    |            __blk_bios_map_sg();
+  0)   0.668 us    |          }
+  0)   4.412 us    |        }
+  0)               |        blk_start_request() {
+  0)   0.048 us    |          blk_dequeue_request();
+  0)               |          blk_add_timer() {
+  0)   0.330 us    |            __blk_add_timer();
+  0)   0.810 us    |          }
+  0)   1.569 us    |        }
+  0)               |        blk_complete_request() {
+  0)   0.375 us    |          __blk_complete_request();
+  0)   0.898 us    |        }
+  0)               |        blk_complete_request() {
+  0)   0.197 us    |          __blk_complete_request();
+  0)   0.639 us    |        }
+  0)               |        blk_complete_request() {
+  0)   0.151 us    |          __blk_complete_request();
+  0)   0.504 us    |        }
+  0)               |        blk_done_softirq() {
+  0)               |          blk_end_request() {
+  0)               |            blk_end_bidi_request() {
+  0)               |              blk_update_bidi_request() {
+  0)               |                blk_update_request() {
+  0)   0.064 us    |                  blk_account_io_completion();
+  0)   0.177 us    |                  bio_advance();
+  0)               |                  bio_endio() {
+  0)               |                    bio_put() {
+  0)   0.047 us    |                      bio_disassociate_task();
+  0)   0.762 us    |                    }
+  0)               |                    bio_endio() {
+  0)               |                      bio_put() {
+  0)   0.053 us    |                        bio_disassociate_task();
+  0)   0.620 us    |                      }
+  0)   1.521 us    |                    }
+  0)   4.015 us    |                  }
+  0)   5.880 us    |                }
+  0)   7.249 us    |              }
+  0)               |              blk_finish_request() {
+  0)   0.094 us    |                blk_delete_timer();
+  0)   0.116 us    |                blk_account_io_done();
+  0)   1.885 us    |                __blk_put_request();
+  0) + 20.957 us   |              }
+  0) + 29.056 us   |            }
+  0) + 29.466 us   |          }
+  0)               |          blk_run_queue() {
+  0)               |            __blk_run_queue() {
+  0)               |              blk_peek_request() {
+  0)               |                blk_rq_map_sg() {
+  0)   0.186 us    |                  __blk_bios_map_sg();
+  0)   0.598 us    |                }
+  0)   3.196 us    |              }
+  0)               |              blk_start_request() {
+  0)   0.059 us    |                blk_dequeue_request();
+  0)               |                blk_add_timer() {
+  0)   0.313 us    |                  __blk_add_timer();
+  0)   0.692 us    |                }
+  0)   1.489 us    |              }
+  0)               |              blk_peek_request() {
+  0)               |                blk_rq_map_sg() {
+  0)   0.241 us    |                  __blk_bios_map_sg();
+  0)   0.669 us    |                }
+  0)   4.192 us    |              }
+  0)               |              blk_start_request() {
+  0)   0.061 us    |                blk_dequeue_request();
+  0)               |                blk_add_timer() {
+  0)   0.310 us    |                  __blk_add_timer();
+  0)   0.678 us    |                }
+  0)   1.503 us    |              }
+  0)   0.763 us    |              blk_peek_request();
+  0) + 82.555 us   |            }
+  0) + 83.016 us   |          }
+  0)               |          blk_end_request() {
+  0)               |            blk_end_bidi_request() {
+  0)               |              blk_update_bidi_request() {
+  0)               |                blk_update_request() {
+  0)   0.055 us    |                  blk_account_io_completion();
+  0)   0.180 us    |                  bio_advance();
+  0)               |                  bio_endio() {
+  0)               |                    bio_put() {
+  0)   0.035 us    |                      bio_disassociate_task();
+  0)   0.726 us    |                    }
+  0)               |                    bio_endio() {
+  0)               |                      bio_put() {
+  0)   0.045 us    |                        bio_disassociate_task();
+  0)   0.663 us    |                      }
+  0)   1.734 us    |                    }
+  0)   3.934 us    |                  }
+  0)   5.686 us    |                }
+  0)   6.803 us    |              }
+  0)               |              blk_finish_request() {
+  0)   0.040 us    |                blk_delete_timer();
+  0)   0.093 us    |                blk_account_io_done();
+  0)   1.219 us    |                __blk_put_request();
+  0)   2.669 us    |              }
+  0) + 10.251 us   |            }
+  0) + 10.709 us   |          }
+  0)               |          blk_run_queue() {
+  0)               |            __blk_run_queue() {
+  0)   0.138 us    |              blk_peek_request();
+  0)   0.517 us    |            }
+  0)   0.947 us    |          }
+  0)               |          blk_end_request() {
+  0)               |            blk_end_bidi_request() {
+  0)               |              blk_update_bidi_request() {
+  0)               |                blk_update_request() {
+  0)   0.042 us    |                  blk_account_io_completion();
+  0)   0.084 us    |                  bio_advance();
+  0)               |                  bio_endio() {
+  0)               |                    bio_put() {
+  0)   0.035 us    |                      bio_disassociate_task();
+  0)   0.480 us    |                    }
+  0)               |                    bio_endio() {
+  0)               |                      bio_put() {
+  0)   0.042 us    |                        bio_disassociate_task();
+  0)   0.468 us    |                      }
+  0)   0.977 us    |                    }
+  0)   2.288 us    |                  }
+  0)   3.546 us    |                }
+  0)   4.238 us    |              }
+  0)               |              blk_finish_request() {
+  0)   0.038 us    |                blk_delete_timer();
+  0)   0.088 us    |                blk_account_io_done();
+  0)   0.545 us    |                __blk_put_request();
+  0)   5.633 us    |              }
+  0) + 10.561 us   |            }
+  0) + 10.930 us   |          }
+  0)               |          blk_run_queue() {
+  0)               |            __blk_run_queue() {
+  0)   0.131 us    |              blk_peek_request();
+  0)   0.541 us    |            }
+  0)   0.924 us    |          }
+  0) ! 143.928 us  |        }
+  0)   0.084 us    |        blk_peek_request();
+  0) ! 266.280 us  |      }
+  0) ! 346.721 us  |    }
+  0) ! 347.203 us  |  }
+  0)               |  blk_complete_request() {
+  0)   0.316 us    |    __blk_complete_request();
+  0)   0.765 us    |  }
+  0)               |  blk_complete_request() {
+  0)   0.127 us    |    __blk_complete_request();
+  0)   0.508 us    |  }
+  0)               |  blk_done_softirq() {
+  0)               |    blk_end_request() {
+  0)               |      blk_end_bidi_request() {
+  0)               |        blk_update_bidi_request() {
+  0)               |          blk_update_request() {
+  0)   0.047 us    |            blk_account_io_completion();
+  0)   0.113 us    |            bio_advance();
+  0)               |            bio_endio() {
+  0)               |              bio_put() {
+  0)   0.042 us    |                bio_disassociate_task();
+  0)   0.694 us    |              }
+  0)               |              bio_endio() {
+  0)               |                bio_put() {
+  0)   0.035 us    |                  bio_disassociate_task();
+  0)   0.540 us    |                }
+  0)   1.333 us    |              }
+  0)   3.239 us    |            }
+  0)   4.800 us    |          }
+  0)   5.671 us    |        }
+  0)               |        blk_finish_request() {
+  0)   0.037 us    |          blk_delete_timer();
+  0)   0.072 us    |          blk_account_io_done();
+  0)   1.340 us    |          __blk_put_request();
+  0)   2.653 us    |        }
+  0)   9.039 us    |      }
+  0)   9.426 us    |    }
+  0)               |    blk_run_queue() {
+  0)               |      __blk_run_queue() {
+  0)   0.238 us    |        blk_peek_request();
+  0)   0.662 us    |      }
+  0)   1.050 us    |    }
+  0)               |    blk_end_request() {
+  0)               |      blk_end_bidi_request() {
+  0)               |        blk_update_bidi_request() {
+  0)               |          blk_update_request() {
+  0)   0.035 us    |            blk_account_io_completion();
+  0)   0.105 us    |            bio_advance();
+  0)               |            bio_endio() {
+  0)               |              bio_put() {
+  0)   0.036 us    |                bio_disassociate_task();
+  0)   0.479 us    |              }
+  0)               |              bio_endio() {
+  0)               |                bio_put() {
+  0)   0.035 us    |                  bio_disassociate_task();
+  0)   0.456 us    |                }
+  0)   0.984 us    |              }
+  0)   2.284 us    |            }
+  0)   3.497 us    |          }
+  0)   4.079 us    |        }
+  0)               |        blk_finish_request() {
+  0)   0.036 us    |          blk_delete_timer();
+  0)   0.060 us    |          blk_account_io_done();
+  0)               |          __blk_put_request() {
+  0)               |            kblockd_schedule_work() {
+  0)   0.068 us    |              update_cfs_rq_blocked_load();
+  0)   3.714 us    |            }
+  0)   4.996 us    |          }
+  0)   6.137 us    |        }
+  0) + 14.129 us   |      }
+  0) + 14.522 us   |    }
+  0)               |    blk_run_queue() {
+  0)               |      __blk_run_queue() {
+  0)   0.208 us    |        blk_peek_request();
+  0)   0.642 us    |      }
+  0)   0.996 us    |    }
+  0) + 30.339 us   |  }
+  0)   0.084 us    |  update_cfs_rq_blocked_load();
+  0)   0.083 us    |  update_cfs_rq_blocked_load();
+  0)               |  blocking_notifier_call_chain() {
+  0)   0.131 us    |    __blocking_notifier_call_chain();
+  0)   0.862 us    |  }
+  0)   0.135 us    |  get_pageblock_flags_group();
+  0)   0.060 us    |  get_pageblock_flags_group();
+  0)   0.044 us    |  get_pageblock_flags_group();
+  0)   0.045 us    |  get_pageblock_flags_group();
+  0)   0.045 us    |  get_pageblock_flags_group();
+  0)   0.043 us    |  get_pageblock_flags_group();
+  0)   0.043 us    |  get_pageblock_flags_group();
+  0)   0.045 us    |  get_pageblock_flags_group();
+  0)   0.045 us    |  get_pageblock_flags_group();
+  0)   0.046 us    |  get_pageblock_flags_group();
+  0)   0.042 us    |  get_pageblock_flags_group();
+  0)   0.042 us    |  get_pageblock_flags_group();
+  0)   0.041 us    |  get_pageblock_flags_group();
+  0)   0.045 us    |  get_pageblock_flags_group();
+  0)   0.044 us    |  get_pageblock_flags_group();
+  0)   0.042 us    |  get_pageblock_flags_group();
+  0)   0.043 us    |  get_pageblock_flags_group();
+  0)   0.045 us    |  get_pageblock_flags_group();
+  0)   0.043 us    |  get_pageblock_flags_group();
+  0)   0.044 us    |  get_pageblock_flags_group();
+  0)   0.045 us    |  get_pageblock_flags_group();
+  0)   0.051 us    |  get_pageblock_flags_group();
+  0)   0.043 us    |  get_pageblock_flags_group();
+  0)   0.046 us    |  get_pageblock_flags_group();
+  0)   0.044 us    |  get_pageblock_flags_group();
+  0)   0.044 us    |  get_pageblock_flags_group();
+  0)   0.046 us    |  get_pageblock_flags_group();
+  0)   0.045 us    |  get_pageblock_flags_group();
+  0)   0.045 us    |  get_pageblock_flags_group();
+  0)   0.045 us    |  get_pageblock_flags_group();
+  0)   0.044 us    |  get_pageblock_flags_group();
+  0)   0.044 us    |  get_pageblock_flags_group();
+  0)   0.045 us    |  get_pageblock_flags_group();
+  0)   0.045 us    |  get_pageblock_flags_group();
+  0)   0.044 us    |  get_pageblock_flags_group();
+  0)   0.040 us    |  get_pageblock_flags_group();
+  0)   0.040 us    |  get_pageblock_flags_group();
+  0)   0.041 us    |  get_pageblock_flags_group();
+  0)   0.044 us    |  get_pageblock_flags_group();
+  0)   0.042 us    |  get_pageblock_flags_group();
+  0)   0.044 us    |  get_pageblock_flags_group();
+  0)   0.040 us    |  get_pageblock_flags_group();
+  0)   0.094 us    |  get_pageblock_flags_group();
+  0)   0.048 us    |  get_pageblock_flags_group();
+  0)   0.051 us    |  get_pageblock_flags_group();
+  0)   0.049 us    |  get_pageblock_flags_group();
+  0)   0.049 us    |  get_pageblock_flags_group();
+  0)   0.042 us    |  get_pageblock_flags_group();
+  0)   0.049 us    |  get_pageblock_flags_group();
+  0)   0.048 us    |  get_pageblock_flags_group();
+  0)   0.043 us    |  get_pageblock_flags_group();
+  0)   0.042 us    |  get_pageblock_flags_group();
+  0)   0.041 us    |  get_pageblock_flags_group();
+  0)   0.042 us    |  get_pageblock_flags_group();
+  0)   0.041 us    |  integrity_iint_find();
+  0)   0.065 us    |  integrity_iint_find();
+  0)   0.043 us    |  integrity_iint_find();
+  0)   0.035 us    |  integrity_iint_find();
+  0)   0.060 us    |  update_cfs_rq_blocked_load();
+  0)   0.044 us    |  update_cfs_rq_blocked_load();
+  0)   0.061 us    |  update_cfs_rq_blocked_load();
+  0)   0.053 us    |  update_cfs_rq_blocked_load();
+  0)   0.035 us    |  update_cfs_rq_blocked_load();
+  0)               |  kblockd_schedule_work() {
+  0)   0.057 us    |    update_cfs_rq_blocked_load();
+  0)   4.068 us    |  }
+  0)   0.060 us    |  update_cfs_rq_blocked_load();
+  0)   0.068 us    |  update_cfs_rq_blocked_load();
+ ------------------------------------------
+  0)    dd-24942    => run-ftr-24938 
+ ------------------------------------------
+
+  0)               |  __set_current_blocked() {
+  0)   0.165 us    |    __set_task_blocked();
+  0)   0.729 us    |  }
+  0)               |  __set_current_blocked() {
+  0)   0.042 us    |    __set_task_blocked();
+  0)   0.364 us    |  }
+  0)               |  set_current_blocked() {
+  0)               |    __set_current_blocked() {
+  0)   0.043 us    |      __set_task_blocked();
+  0)   0.345 us    |    }
+  0)   0.652 us    |  }

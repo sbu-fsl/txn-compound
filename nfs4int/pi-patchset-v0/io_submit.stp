@@ -1,0 +1,142 @@
+probe kernel.function("sys_io_getevents").return {
+	printf("%s returns %d\n", probefunc(), $return);
+}
+
+probe kernel.function("generic_file_aio_write").return {
+	printf("%s returns %d\n", probefunc(), $return);
+}
+
+probe kernel.function("*@fs/aio.c").call {
+	if (execname() == "dix") {
+		printf("%s -> %s\n", thread_indent(1), probefunc());
+	}
+}
+
+probe kernel.function("*@fs/aio.c").return {
+	if (execname() == "dix") {
+		printf("%s <- %s\n", thread_indent(-1), probefunc());
+	}
+}
+
+probe kernel.function("aio_read_events_ring") {
+	if (execname() == "dix") {
+		printf("%s requests %d events\n", probefunc(), $nr);
+	}
+}
+
+//probe kernel.function("aio_run_iocb") {
+	//if (execname() == "dix") {
+		//printf("%s rw_op: %x\n", probefunc(), $req->ki_filp->f_op->aio_write);
+	//}
+//}
+
+probe kernel.function("__generic_file_aio_write") {
+	if (execname() == "dix") {
+		print_backtrace();
+	}
+}
+
+probe kernel.function("__generic_file_aio_write").return {
+	if (execname() == "dix") {
+		printf("%s returns %d\n", probefunc(), $return);
+	}
+}
+
+probe kernel.function("generic_file_direct_write").return {
+	if (execname() == "dix") {
+		printf("generic_file_direct_write count = %u\n", $count);
+		printf("%s returns %d\n", probefunc(), $return);
+	}
+}
+
+probe kernel.function("__blockdev_direct_IO").return {
+	if (execname() == "dix") {
+		printf("__blockdev_direct_IO returns %d\n", $return);
+		printf("__blockdev_direct_IO: %s\n", $$vars);
+	}
+}
+
+probe kernel.function("*@fs/direct-io.c").call {
+	if (execname() == "dix") {
+		printf("%s -> %s\n", thread_indent(1), probefunc());
+	}
+}
+
+probe kernel.function("*@fs/direct-io.c").return {
+	if (execname() == "dix") {
+		printf("%s <- %s\n", thread_indent(-1), probefunc());
+	}
+}
+
+probe kernel.function("filemap_write_and_wait_range").return {
+	if (execname() == "dix") {
+		printf("filemap_write_and_wait_range returns %d\n", $return);
+	}
+}
+
+probe kernel.function("dio_complete").return {
+	if (execname() == "dix") {
+		printf("dio_complete returns %d\n", $return);
+		printf("dio_complete: dio->page_errors: %d\n", $dio->page_errors);
+		printf("dio_complete: dio->io_error: %d\n", $dio->io_error);
+		printf("dio_complete: dio->result: %d\n", $dio->result);
+	}
+}
+
+probe kernel.function("bio_integrity_add_page").return {
+	if (execname() == "dix") {
+		printf("bio_integrity_add_page returns %d\n", $return);
+	}
+}
+
+global bdev_int_fn;
+
+probe kernel.function("bio_integrity_update_user_buffer").return {
+	if (execname() == "dix") {
+		printf("bio_integrity_update_user_buffer returns %d\n", $return);
+		bdev_int_fn = sprintf("%p", $bio->bi_bdev->bd_disk->integrity->mod_user_buf_fn);
+	}
+}
+
+probe kernel.function("bio_integrity_prep_buffer").return {
+	if (execname() == "dix") {
+		printf("bio_integrity_prep_buffer returns %d\n", $return);
+	}
+}
+
+probe kernel.function("dio_send_cur_page").return {
+	if (execname() == "dix") {
+		printf("dio_send_cur_page returns %d\n", $return);
+	}
+}
+
+//probe kernel.function("do_direct_IO").return {
+	//if (execname() == "dix") {
+		//printf("do_direct_IO returns %d\n", $return);
+	//}
+//}
+
+probe kernel.function("dio_set_defer_completion").return {
+	if (execname() == "dix") {
+		printf("dio_set_defer_completion returns %d\n", $return);
+	}
+}
+
+//probe kernel.function("dio_prep_for_pi").return {
+	//if (execname() == "dix") {
+		//printf("dio_prep_for_pi returns %d\n", $return);
+	//}
+//}
+
+//probe kernel.function("dio_io_submit") {
+	//printf("%u\n", $opcode);
+//}
+
+//probe kernel.function("io_submit_one") {
+	//printf("%d\n", $iocb->aio_lio_opcode);
+//}
+//
+
+probe end {
+	print_stack(bdev_int_fn);
+}
