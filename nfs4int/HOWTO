@@ -49,6 +49,13 @@ Create a lun out of the ramdisk.
 After this, you should be able to see a new 10MB device in "fdisk -l" output,
 for example '/dev/sdb'.
 
+Verify integrity is enabled:
+
+	$ cat /sys/block/sdb/integrity/read_verify
+	1
+	$ cat /sys/block/sdb/integrity/write_generate
+	1
+
 
 Add support for passing DIX data from user application to kernel
 ================================================================
@@ -87,3 +94,5 @@ http://tools.ietf.org/html/draft-cel-nfsv4-end2end-data-protection-00
 https://www.kernel.org/doc/ols/2008/ols2008v2-pages-151-156.pdf
 
 http://thread.gmane.org/gmane.linux.kernel.aio.general/3904
+
+http://www.spinics.net/lists/target-devel/msg06044.html
