@@ -6,7 +6,7 @@
 #=============================================================================
 
 set -o nounset                          # treat unset variables as an error
-set -o errexit                          # stop script if command fail
+#set -o errexit                          # stop script if command fail
 export PATH="/bin:/usr/bin:/sbin"             
 IFS=$' \t\n'                            # reset IFS
 unset -f unalias                        # make sure unalias is not a function
@@ -35,7 +35,8 @@ echo $$ > set_ftrace_pid
 
 echo 1 > tracing_on
 
-dd if=/dev/urandom of=/dev/sdb bs=4k count=1;
+#dd if=/dev/urandom of=/dev/sdb bs=4k count=1;
+$OLDPWD/dix -p g -wr -s 16 /mnt/hi.txt
 
 echo 0 > tracing_on
 
