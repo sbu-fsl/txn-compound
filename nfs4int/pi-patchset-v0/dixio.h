@@ -15,6 +15,11 @@
 #define IOCB_CMD_PREADVM	(9)
 #define IOCB_CMD_PWRITEVM	(10)
 
+#define GENERATE_GUARD	(1)
+#define GENERATE_REF	(2)
+#define GENERATE_APP	(4)
+#define GENERATE_ALL	(7)
+
 struct sd_dif_tuple {
        uint16_t guard_tag;	/* Checksum */
        uint16_t app_tag;		/* Opaque storage */

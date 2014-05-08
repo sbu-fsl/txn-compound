@@ -16,6 +16,22 @@
 
 #include "dixio.h"
 
+
+const size_t N = 8;
+
+const size_t SEC = 512;
+
+const size_t PAGESIZE = 4096;
+
+static uint8_t magic_byte = 0x73;
+
+static uint32_t ref_tag = 0xbeaf;
+
+static uint32_t pi_flags = GENERATE_GUARD;
+
+#define buf_len (N << 9)
+#define pbuf_len ((N + 1) * sizeof(struct sd_dif_tuple))
+
 /* Table generated using the following polynomium:
  * x^16 + x^15 + x^11 + x^9 + x^8 + x^7 + x^5 + x^4 + x^2 + x + 1
  * gt: 0x8bb7
@@ -65,13 +81,19 @@ uint16_t crc_t10dif(uint16_t crc, const unsigned char *buffer, uint32_t len)
 	return crc;
 }
 
-static void stamp_pi_buffer(struct sd_dif_tuple *t, uint16_t csum,
-			    uint16_t tag, uint32_t sector)
+
+static void stamp_pi_buffer(struct sd_dif_tuple *t,
+			    void *sec_data, uint32_t pi_flags,
+			    uint16_t app_tag,
+			    uint32_t ref_tag)
 {
-	t->guard_tag = htons(csum);
-	t->app_tag = htons(tag);
-	t->ref_tag = htonl(sector);
+	uint16_t csum = crc_t10dif(0, sec_data, SEC);
+
+	t->guard_tag = pi_flags & GENERATE_GUARD ? 0 : htons(csum);
+	t->app_tag = pi_flags & GENERATE_APP ? 0 : htons(app_tag);
+	t->ref_tag = pi_flags & GENERATE_REF ? 0 : htonl(ref_tag);
 }
+
 
 static void dump_buffer(char *buf, size_t len)
 {
@@ -90,19 +112,10 @@ static void dump_buffer(char *buf, size_t len)
 	printf("\n");
 }
 
-const size_t N = 8;
-
-const size_t SEC = 512;
-
-const size_t PAGESIZE = 4096;
-
-const unsigned char MAGIC_BYTE = 0x73;
-
 static void test_normal_dio(int fd, off_t offset)
 {
 	ssize_t ret;
 	void *buf, *buf2;
-	size_t buf_len = N << 9;
 	struct iovec iov[1];
 
 	if (posix_memalign(&buf, PAGESIZE, buf_len) ||
@@ -110,7 +123,7 @@ static void test_normal_dio(int fd, off_t offset)
 		error(1, ENOMEM, "posix_memalign");
 	}
 
-	memset(buf, MAGIC_BYTE, buf_len);
+	memset(buf, magic_byte, buf_len);
 
 	iov[0].iov_base = buf;
 	iov[0].iov_len = buf_len;
@@ -139,12 +152,7 @@ static void test_dixio(int fd, off_t offset)
 {
 	int i, ret;
 	void *pb, *buf, *buf2, *prot_buf, *prot_buf2;
-	size_t buf_len, pbuf_len;
 	struct sd_dif_tuple *pp;
-	uint32_t pi_flags = 0;
-
-	buf_len = N << 9;
-	pbuf_len = (N + 1) * sizeof(struct sd_dif_tuple);
 
 	if (posix_memalign(&buf, PAGESIZE, buf_len) ||
 	    posix_memalign(&buf2, PAGESIZE, buf_len) ||
@@ -152,24 +160,24 @@ static void test_dixio(int fd, off_t offset)
 	    posix_memalign(&prot_buf2, PAGESIZE, pbuf_len)) {
 		error(1, ENOMEM, "memalign");
 	}
-	
+
 	/*  XXX: how is this flag used? */
 	memcpy(prot_buf, &pi_flags, sizeof(pi_flags));
-	memset(buf, MAGIC_BYTE, N * SEC);
+	memset(buf, magic_byte, N * SEC);
 	for (i = 0, pb = buf, pp = prot_buf + sizeof(struct sd_dif_tuple);
 	     i < N; ++i, pb += SEC, ++pp) {
-		stamp_pi_buffer(pp, crc_t10dif(0, pb, SEC), 0, 0xbeaf);
+		stamp_pi_buffer(pp, pb, pi_flags, 0, ref_tag);
 	}
 
 	dump_buffer(prot_buf, pbuf_len);
 
-	ret = dixio_pwrite(fd, buf, prot_buf, buf_len, 0);
+	ret = dixio_pwrite(fd, buf, prot_buf, buf_len, offset);
 	if (ret < 0) {
 		error(1, -ret, "dixio_pwrite");
 	}
 
 	memcpy(prot_buf2, &pi_flags, sizeof(pi_flags));
-	ret = dixio_pread(fd, buf2, prot_buf2, buf_len, 0);
+	ret = dixio_pread(fd, buf2, prot_buf2, buf_len, offset);
 	if (ret < 0) {
 		error(1, -ret, "dixio_pread");
 	}
@@ -191,11 +199,45 @@ static void test_dixio(int fd, off_t offset)
 }
 
 
+static void test_dixread(int fd, off_t offset)
+{
+	int i, ret;
+	void *pb, *buf, *prot_buf;
+	struct sd_dif_tuple *pp;
+
+	if (posix_memalign(&buf, PAGESIZE, buf_len) ||
+	    posix_memalign(&prot_buf, PAGESIZE, pbuf_len)) {
+		error(1, ENOMEM, "memalign");
+	}
+
+	memcpy(prot_buf, &pi_flags, sizeof(pi_flags));
+	ret = dixio_pread(fd, buf, prot_buf, buf_len, offset);
+	if (ret < 0) {
+		error(1, -ret, "dixio_pread");
+	}
+
+	dump_buffer(prot_buf, pbuf_len);
+
+	free(buf);
+	free(prot_buf);
+}
+
+
+static void test_dixwrite(int fd, off_t offset)
+{
+}
+
+const char *option_str = " -h	    print help\n"
+	" -o offset	file offset\n"
+	" -r ref_tag	reference tag value\n"
+	" -b byte	magic byte value\n"
+	" -p [rwda]	operation code\n"
+	"    r: read;  w: write;  d: normal direct io;  x: verify dix\n";
+
 static void print_help(const char *progname)
 {
 	printf("Usage: %s [OPTS] fname\n", progname);
-	printf("-h	Use this application tag\n");
-	printf("-n	Test normal direct IO instead of DIX\n");
+	printf(option_str);
 }
 
 
@@ -205,12 +247,22 @@ int main(int argc, char *argv[])
 	int opt;
 	struct stat st;
 	size_t fsize;
-	int normal = 0;
+	off_t offset;
+	char op = 'x';
 
-	while ((opt = getopt(argc, argv, "nh")) != -1) {
+	while ((opt = getopt(argc, argv, "o:p:r:b:h")) != -1) {
 		switch(opt) {
-		case 'n':
-			normal = 1;
+		case 'o':
+			offset = strtoull(optarg, NULL, 0);
+			break;
+		case 'p':
+			op = optarg[0];
+			break;
+		case 'r':
+			ref_tag = strtoul(optarg, NULL, 16);
+			break;
+		case 'b':
+			magic_byte = (uint8_t)strtoul(optarg, NULL, 16);
 			break;
 		case 'h':
 			print_help(argv[0]);
@@ -230,10 +282,21 @@ int main(int argc, char *argv[])
 
 	fprintf(stderr, "file size of %s is %zu\n", argv[optind], fsize);
 
-	if (normal) {
-		test_normal_dio(fd, 0);
-	} else {
-		test_dixio(fd, 0);
+	switch (op) {
+	case 'd':
+		test_normal_dio(fd, offset);
+		break;
+	case 'x':
+		test_dixio(fd, offset);
+		break;
+	case 'r':
+		test_dixread(fd, offset);
+		break;
+	case 'w':
+		test_dixwrite(fd, offset);
+		break;
+	default:
+		error(1, EINVAL, "unknown opcode: %s", optarg);
 	}
 
 	close(fd);
