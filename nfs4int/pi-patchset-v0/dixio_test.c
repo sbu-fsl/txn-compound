@@ -225,6 +225,7 @@ static void test_dixread(int fd, off_t offset)
 
 static void test_dixwrite(int fd, off_t offset)
 {
+	test_dixio(fd, offset);
 }
 
 const char *option_str = " -h	    print help\n"

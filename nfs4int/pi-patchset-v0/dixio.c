@@ -88,9 +88,11 @@ ssize_t dixio_pread(int fd, void *buf, void *prot_buf,
                     size_t count, off_t offset)
 {
 	struct iovec iov[2];
+	int iovcnt = prot_buf ? 2 : 1;
+	int iocmd = prot_buf ? IOCB_CMD_PREADVM : IOCB_CMD_PREADV;
 
 	setup_iov(iov, buf, prot_buf, count, offset);
-	return do_dixio(fd, offset, IOCB_CMD_PREADVM, iov, 2);
+	return do_dixio(fd, offset, iocmd, iov, iovcnt);
 }
 
 
@@ -98,7 +100,9 @@ ssize_t dixio_pwrite(int fd, const void *buf, const void *prot_buf,
                      size_t count, off_t offset)
 {
 	struct iovec iov[2];
+	int iovcnt = prot_buf ? 2 : 1;
+	int iocmd = prot_buf ? IOCB_CMD_PWRITEVM : IOCB_CMD_PWRITEV;
 
 	setup_iov(iov, (void *)buf, (void *)prot_buf, count, offset);
-	return do_dixio(fd, offset, IOCB_CMD_PWRITEVM, iov, 2);
+	return do_dixio(fd, offset, iocmd, iov, iovcnt);
 }
