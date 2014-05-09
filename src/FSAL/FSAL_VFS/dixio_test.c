@@ -1,5 +1,3 @@
-#define _GNU_SOURCE
-
 #include <unistd.h>
 #include <libaio.h>
 #include <fcntl.h>
@@ -125,16 +123,12 @@ static void test_normal_dio(int fd, off_t offset)
 
 	memset(buf, magic_byte, buf_len);
 
-	iov[0].iov_base = buf;
-	iov[0].iov_len = buf_len;
-	if ((ret = do_dixio(fd, offset, IOCB_CMD_PWRITEV, iov, 1)) < 0) {
-		error(1, -ret, "preadv");
+	if ((ret = dixio_pwrite(fd, buf, NULL, buf_len, offset)) < 0) {
+		error(1, -ret, "pwritev");
 	}
 
-	iov[0].iov_base = buf2;
-	iov[0].iov_len = buf_len;
-	if ((ret = do_dixio(fd, offset, IOCB_CMD_PREADV, iov, 1)) < 0) {
-		error(1, -ret, "pwritev");
+	if ((ret = dixio_pread(fd, buf2, NULL, buf_len, offset)) < 0) {
+		error(1, -ret, "preadv");
 	}
 
 	if (memcmp(buf, buf2, buf_len)) {
@@ -237,7 +231,7 @@ const char *option_str = " -h	    print help\n"
 
 static void print_help(const char *progname)
 {
-	printf("Usage: %s [OPTS] fname\n", progname);
+	printf("Usage: %s [OPTS] filename\n", progname);
 	printf(option_str);
 }
 
@@ -248,7 +242,7 @@ int main(int argc, char *argv[])
 	int opt;
 	struct stat st;
 	size_t fsize;
-	off_t offset;
+	off_t offset = 0;
 	char op = 'x';
 
 	while ((opt = getopt(argc, argv, "o:p:r:b:h")) != -1) {
@@ -270,8 +264,13 @@ int main(int argc, char *argv[])
 			return 0;
 		default:
 			print_help(argv[0]);
-			return 2;
+			return 1;
 		}
+	}
+
+	if (optind >= argc) {
+		print_help(argv[0]);
+		return 1;
 	}
 
 	fd = open(argv[optind], O_DIRECT | O_SYNC | O_RDWR);

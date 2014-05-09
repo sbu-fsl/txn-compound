@@ -1,5 +1,3 @@
-#define _GNU_SOURCE
-
 #include "dixio.h"
 #include <assert.h>
 #include <stdio.h>

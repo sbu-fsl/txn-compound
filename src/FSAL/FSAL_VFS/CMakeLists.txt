@@ -21,9 +21,15 @@ SET(fsalvfs_LIB_SRCS
    file.c
    xattrs.c
    vfs_methods.h
+   dixio.c
+   dixio.h
 )
 
 add_library(fsalvfs SHARED ${fsalvfs_LIB_SRCS})
+
+add_executable(dixio_test "dixio_test.c" dixio.h dixio.c)
+find_library(AIO aio "/usr/lib")
+target_link_libraries(dixio_test ${AIO})
 
 target_link_libraries(fsalvfs
   gos
