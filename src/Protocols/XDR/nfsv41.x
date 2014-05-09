@@ -224,7 +224,13 @@ enum nfsstat4 {
  NFS4ERR_DIRDELEG_UNAVAIL=10084,/* delegation not avail.   */
  NFS4ERR_REJECT_DELEG   = 10085,/* cb rejected delegation  */
  NFS4ERR_RETURNCONFLICT = 10086,/* layout get before return*/
- NFS4ERR_DELEG_REVOKED  = 10087 /* deleg./layout revoked   */
+ NFS4ERR_DELEG_REVOKED  = 10087,/* deleg./layout revoked   */
+
+ /* NFS end2end integrity errors */
+ NFS4ERR_PROT_NOTSUPP = 10200,
+ NFS4ERR_PROT_INVAL   = 10201,
+ NFS4ERR_PROT_FAIL    = 10202,
+ NFS4ERR_PROT_LATFAIL = 10203
 };
 
 /*
@@ -839,6 +845,10 @@ const FATTR4_RETENTEVT_SET      = 72;
 const FATTR4_RETENTION_HOLD     = 73;
 const FATTR4_MODE_SET_MASKED    = 74;
 const FATTR4_FS_CHARSET_CAP     = 76;
+%
+%/* new to NFS end-to-end integrity */
+%
+const FATTR4_MOUNTED_ON_FILEID	= 82;
 
 /*
  * File attribute container
@@ -2625,6 +2635,11 @@ enum nfs_opnum4 {
  OP_WANT_DELEGATION     = 56,
  OP_DESTROY_CLIENTID    = 57,
  OP_RECLAIM_COMPLETE    = 58,
+%
+%/* new to NFS end-to-end integrity */
+%
+ OP_WRITE_PLUS          = 64,
+ OP_READ_PLUS           = 65,
  OP_ILLEGAL             = 10044
 };
 
@@ -2729,6 +2744,10 @@ union nfs_argop4 switch (nfs_opnum4 argop) {
  case OP_RECLAIM_COMPLETE:
                         RECLAIM_COMPLETE4args
                                 opreclaim_complete;
+
+ /* Operations new to NFS end-to-end integrity */
+ case OP_WRITE_PLUS:	WRITE_PLUS4args opwriteplus;
+ case OP_READ_PLUS:	READ_PLUS4args opreadplus;
 
  /* Operations not new to NFSv4.1 */
  case OP_ILLEGAL:       void;
@@ -2843,6 +2862,10 @@ union nfs_resop4 switch (nfs_opnum4 resop) {
  case OP_RECLAIM_COMPLETE:
                         RECLAIM_COMPLETE4res
                                 opreclaim_complete;
+
+ /* Operations new to NFS end-to-end integrity */
+ case OP_READ_PLUS:	READ_PLUS4res opreadplus;
+ case OP_ILLEGAL:	ILLEGAL4res opillegal;
 
  /* Operations not new to NFSv4.1 */
  case OP_ILLEGAL:       ILLEGAL4res opillegal;
@@ -3272,3 +3295,151 @@ program NFS4_CALLBACK {
                         CB_COMPOUND(CB_COMPOUND4args) = 1;
         } = 1;
 } = 0x40000000;
+
+
+/* NFS end-to-end integrity */
+
+enum nfs_protection_type4 {
+    NFS_PI_TYPE1    = 1,
+    NFS_PI_TYPE2    = 2,
+    NFS_PI_TYPE3    = 3,
+    NFS_PI_TYPE4    = 4,
+    NFS_PI_TYPE5    = 5
+};
+
+struct nfs_protection_info4 {
+    nfs_protection_type4    pi_type;
+    uint32_t                pi_intvl_size;
+    uint64_t                pi_other_data;
+};
+
+/* args for INIT_PROT_INFO operation */
+struct INITPROTINFO4args {
+    nfs_protection_type4    ipi_type;
+    opaque                  ipi_data<NFS4_OPAQUE_LIMIT>;
+};
+
+/* res for INIT_PROT_INFO operation */
+struct INITPROTINFO4res {
+    nfsstat4                status;
+};
+
+enum data_content4 {
+    NFS4_CONTENT_DATA           = 0,
+    NFS4_CONTENT_APP_DATA_HOLE  = 1,
+    NFS4_CONTENT_HOLE           = 2,
+    NFS4_CONTENT_PROTECTED_DATA = 3,    /* data and protect information */
+    NFS4_CONTENT_PROTECT_INFO   = 4     /* protect information only */
+};
+
+struct data_protected4 {
+    nfs_protection_info4    pd_type;
+    offset4                 pd_offset;
+    bool                    pd_allocated;
+    opaque                  pd_info<>;
+    opaque                  pd_data<>;
+};
+
+struct data_protect_info4 {
+    nfs_protection_info4    pi_type;
+    offset4                 pi_offset;
+    bool                    pi_allocated;
+    opaque                  pi_data<>;
+};
+
+enum space_info4 {
+    SPACE_RESERVED4             = 0,
+    SPACE_UNRESERVED4           = 1,
+    SPACE_UNKNOWN4              = 2
+};
+
+struct data_info4 {
+    offset4                 di_offset;
+    length4                 di_length;
+    space_info4             di_reserved;
+};
+
+struct data4 {
+    offset4                 d_offset;
+    bool                    d_allocated;
+    opaque                  d_data<>;
+};
+
+struct app_data_hole4 {
+    offset4                 adh_offset;
+    length4                 adh_block_size;
+    length4                 adh_block_count;
+    length4                 adh_reloff_blocknum;
+    count4                  adh_block_num;
+    length4                 adh_reloff_pattern;
+    opaque                  adh_pattern<>;
+};
+
+union read_plus_content4 switch (data_content4 rpc_content) {
+    case NFS4_CONTENT_DATA:
+        data4               rpc_data;
+    case NFS4_CONTENT_HOLE:
+        data_info4          rpc_hole;
+    case NFS4_CONTENT_APP_DATA_HOLE:
+        app_data_hole4      rpc_adh;
+    case NFS4_CONTENT_PROTECTED_DATA:
+        data_protected4     rpc_pdata;
+    case NFS4_CONTENT_PROTECT_INFO:
+        data_protect_info4  rpc_pinfo;
+    default:
+        void;
+};
+
+struct READ_PLUS4args {
+    /* CURRENT_FH: file */
+    stateid4                rpa_stateid;
+    offset4                 rpa_offset;
+    count4                  rpa_count;
+    data_content4           rpa_content;
+};
+
+struct read_plus_res4 {
+    bool                    rpr_eof;
+    read_plus_content4      rpr_contents<>;
+};
+
+union READ_PLUS4res switch (nfsstat4 rp_stauts) {
+    case NFS4_OK:
+        read_plus_res4      rp_resok4;
+    default:
+        void;
+};
+
+union write_plus_arg4 switch (data_content4 wpa_content) {
+    case NFS4_CONTENT_DATA:
+        data4               wpa_data;
+    case NFS4_CONTENT_APP_DATA_HOLE:
+        app_data_hole4      wpa_adh;
+    case NFS4_CONTENT_HOLE:
+        data_info4          wpa_hole;
+    case NFS4_CONTENT_PROTECTED_DATA:
+        data_protected4     wpa_pdata;
+    default:
+        void;
+};
+
+struct WRITE_PLUS4args {
+    /* CURRENT_FH: file */
+    stateid4                wp_stateid;
+    stable_how4             wp_stable;
+    write_plus_arg4         wp_data<>;
+};
+
+struct write_response4 {
+    stateid4                wr_callback_id<1>;
+    count4                  wr_count;
+    stable_how4             wr_committed;
+    verifier4               wr_writeverf;
+};
+
+union WRITE_PLUS4res switch (nfsstat4 wp_stats) {
+    case NFS4_OK:
+        write_response4     wp_resok4;
+    default:
+        void;
+};
