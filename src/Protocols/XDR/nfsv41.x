@@ -757,6 +757,8 @@ typedef nfsacl41        fattr4_dacl;
 typedef nfsacl41        fattr4_sacl;
 typedef change_policy4  fattr4_change_policy;
 
+typedef nfs_protection_info4 fattr4_protection_info;
+
 %/*
 % * REQUIRED Attributes
 % */
@@ -848,7 +850,7 @@ const FATTR4_FS_CHARSET_CAP     = 76;
 %
 %/* new to NFS end-to-end integrity */
 %
-const FATTR4_MOUNTED_ON_FILEID	= 82;
+const FATTR4_PROTECTION_TYPES	= 82;
 
 /*
  * File attribute container
@@ -2865,7 +2867,7 @@ union nfs_resop4 switch (nfs_opnum4 resop) {
 
  /* Operations new to NFS end-to-end integrity */
  case OP_READ_PLUS:	READ_PLUS4res opreadplus;
- case OP_ILLEGAL:	ILLEGAL4res opillegal;
+ case OP_WRITE_PLUS: WRITE_PLUS4res opwriteplus;
 
  /* Operations not new to NFSv4.1 */
  case OP_ILLEGAL:       ILLEGAL4res opillegal;
