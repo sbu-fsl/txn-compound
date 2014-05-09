@@ -850,7 +850,7 @@ const FATTR4_FS_CHARSET_CAP     = 76;
 %
 %/* new to NFS end-to-end integrity */
 %
-const FATTR4_PROTECTION_TYPES	= 82;
+const FATTR4_PROTECTION_TYPES	= 77;
 
 /*
  * File attribute container

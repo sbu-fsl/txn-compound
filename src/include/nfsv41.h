@@ -816,7 +816,9 @@ extern "C" {
 
 /* new to NFS end-to-end integrity */
 
-#define FATTR4_PROTECTION_TYPES 82
+#define FATTR4_PROTECTION_TYPES 77
+
+#define FATTR4_MAX 77
 
 	struct fattr4 {
 		struct bitmap4 attrmask;
@@ -2477,11 +2479,13 @@ extern "C" {
 	typedef struct RECLAIM_COMPLETE4res RECLAIM_COMPLETE4res;
 
 	enum nfs_protection_type4 {
+		NFS_PI_NOT_SUPPORTED = 0,
 		NFS_PI_TYPE1 = 1,
 		NFS_PI_TYPE2 = 2,
 		NFS_PI_TYPE3 = 3,
 		NFS_PI_TYPE4 = 4,
 		NFS_PI_TYPE5 = 5,
+		__NFS_PI_TYPELIMIT = 6,
 	};
 	typedef enum nfs_protection_type4 nfs_protection_type4;
 

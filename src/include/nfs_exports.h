@@ -1,5 +1,5 @@
 /*
- *
+ * vim:noexpandtab:shiftwidth=8:tabstop=8:
  *
  * Copyright CEA/DAM/DIF  (2008)
  * contributeur : Philippe DENIEL   philippe.deniel@cea.fr
@@ -175,6 +175,8 @@ typedef struct exportlist {
 	bool UseCookieVerifier;	/*< Is Cookie verifier to be used? */
 	exportlist_client_t clients;	/*< Allowed clients */
 	struct fsal_export *export_hdl;	/*< Handle into our FSAL */
+
+	uint32_t dix_protection_type; /*< data integirty protection type */
 
 	pthread_mutex_t exp_state_mutex;	/*< Mutex to protect per-export
 						   state information. */
