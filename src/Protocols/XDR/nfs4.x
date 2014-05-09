@@ -113,13 +113,13 @@ enum nfsstat4 {
 	NFS4ERR_DEADLOCK	= 10045,/* file locking deadlock   */
 	NFS4ERR_FILE_OPEN	= 10046,/* open file blocks op.    */
 	NFS4ERR_ADMIN_REVOKED	= 10047,/* lockowner state revoked */
-	NFS4ERR_CB_PATH_DOWN    = 10048 /* callback path down      */
+	NFS4ERR_CB_PATH_DOWN    = 10048, /* callback path down      */
 
     /* NFS end2end integrity errors */
     NFS4ERR_PROT_NOTSUPP = 10200,
     NFS4ERR_PROT_INVAL   = 10201,
     NFS4ERR_PROT_FAIL    = 10202,
-    NFS4ERR_PROT_LATFAIL = 10203,
+    NFS4ERR_PROT_LATFAIL = 10203
 };
 
 /*
@@ -1437,8 +1437,8 @@ enum nfs_opnum4 {
 	OP_VERIFY		= 37,
 	OP_WRITE		= 38,
 	OP_RELEASE_LOCKOWNER	= 39,
-	OP_WRITE_PLUS		= 64,
-	OP_READ_PLUS		= 65,
+	OP_WRITE_PLUS		= 40,       /* 64 in RFC draft */
+	OP_READ_PLUS		= 41,       /* 65 in RFC draft */
 	OP_ILLEGAL		= 10044
 };
 
@@ -1659,7 +1659,7 @@ enum nfs_protection_type4 {
     NFS_PI_TYPE2    = 2,
     NFS_PI_TYPE3    = 3,
     NFS_PI_TYPE4    = 4,
-    NFS_PI_TYPE5    = 5,
+    NFS_PI_TYPE5    = 5
 };
 
 struct nfs_protection_info4 {
@@ -1671,7 +1671,7 @@ struct nfs_protection_info4 {
 /* args for INIT_PROT_INFO operation */
 struct INITPROTINFO4args {
     nfs_protection_type4    ipi_type;
-    opaque                  ipi_data;
+    opaque                  ipi_data<NFS4_OPAQUE_LIMIT>;
 };
 
 /* res for INIT_PROT_INFO operation */
@@ -1684,7 +1684,7 @@ enum data_content4 {
     NFS4_CONTENT_APP_DATA_HOLE  = 1,
     NFS4_CONTENT_HOLE           = 2,
     NFS4_CONTENT_PROTECTED_DATA = 3,    /* data and protect information */
-    NFS4_CONTENT_PROTECT_INFO   = 4,    /* protect information only */
+    NFS4_CONTENT_PROTECT_INFO   = 4     /* protect information only */
 };
 
 struct data_protected4 {
@@ -1705,7 +1705,7 @@ struct data_protect_info4 {
 enum space_info4 {
     SPACE_RESERVED4             = 0,
     SPACE_UNRESERVED4           = 1,
-    SPACE_UNKNOWN4              = 2,
+    SPACE_UNKNOWN4              = 2
 };
 
 struct data_info4 {
