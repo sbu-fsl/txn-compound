@@ -2640,8 +2640,8 @@ enum nfs_opnum4 {
 %
 %/* new to NFS end-to-end integrity */
 %
- OP_WRITE_PLUS          = 64,
- OP_READ_PLUS           = 65,
+ OP_WRITE_PLUS          = 59,
+ OP_READ_PLUS           = 60,
  OP_ILLEGAL             = 10044
 };
 

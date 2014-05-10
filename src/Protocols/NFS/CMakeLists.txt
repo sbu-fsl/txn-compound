@@ -86,6 +86,8 @@ SET(nfsproto_STAT_SRCS
    nfs4_op_write.c
    nfs4_pseudo.c
    nfs_proto_tools.c
+   nfs4_op_read_plus.c
+   nfs4_op_write_plus.c
 )
 
 add_library(nfsproto STATIC ${nfsproto_STAT_SRCS})

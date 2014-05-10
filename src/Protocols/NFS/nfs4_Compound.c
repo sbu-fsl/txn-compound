@@ -346,7 +346,17 @@ static const struct nfs4_op_desc optabv4[] = {
 		.name = "OP_RECLAIM_COMPLETE",
 		.funct = nfs4_op_reclaim_complete,
 		.free_res = nfs4_op_reclaim_complete_Free,
-		.exp_perm_flags = 0}
+		.exp_perm_flags = 0},
+	[NFS4_OP_WRITE_PLUS] = {
+		.name = "OP_WRITE_PLUS",
+		.funct = nfs4_op_write_plus,
+		.free_res = nfs4_op_write_plus_Free,
+		.exp_perm_flags = EXPORT_OPTION_WRITE_ACCESS},
+	[NFS4_OP_READ_PLUS] = {
+		.name = "OP_READ_PLUS",
+		.funct = nfs4_op_read_plus,
+		.free_res = nfs4_op_read_plus_Free,
+		.exp_perm_flags = EXPORT_OPTION_READ_ACCESS},
 };
 
 /**
