@@ -809,6 +809,8 @@ uint64_t nfs_ntohl64(uint64_t);
 void nfs4_bitmap4_Remove_Unsupported(struct bitmap4 *);
 
 /* NFSv4 end-to-end integrity */
+void fill_protection_info4(compound_data_t *compound, nfs_protection_info4 *pi);
+
 int nfs4_op_read_plus(struct nfs_argop4 *, compound_data_t *,
                       struct nfs_resop4 *);
 

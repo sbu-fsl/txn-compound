@@ -2614,7 +2614,7 @@ extern "C" {
 	typedef struct read_plus_res4 read_plus_res4;
 
 	struct READ_PLUS4res {
-		nfsstat4 rp_stauts;
+		nfsstat4 rp_status;
 		union {
 			read_plus_res4 rp_resok4;
 		} READ_PLUS4res_u;
@@ -8898,9 +8898,9 @@ extern "C" {
 	{
 		register int32_t *buf;
 
-		if (!xdr_nfsstat4(xdrs, &objp->rp_stauts))
+		if (!xdr_nfsstat4(xdrs, &objp->rp_status))
 			 return false;
-		switch (objp->rp_stauts) {
+		switch (objp->rp_status) {
 		case NFS4_OK:
 			if (!xdr_read_plus_res4(xdrs, &objp->READ_PLUS4res_u.rp_resok4))
 				 return false;

@@ -3405,7 +3405,7 @@ struct read_plus_res4 {
     read_plus_content4      rpr_contents<>;
 };
 
-union READ_PLUS4res switch (nfsstat4 rp_stauts) {
+union READ_PLUS4res switch (nfsstat4 rp_status) {
     case NFS4_OK:
         read_plus_res4      rp_resok4;
     default:

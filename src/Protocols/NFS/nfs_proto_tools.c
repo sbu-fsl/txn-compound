@@ -2404,20 +2404,9 @@ static fattr_xdr_result decode_fs_charset_cap(XDR *xdr,
 static fattr_xdr_result encode_protection_info(XDR *xdr,
 					       struct xdr_attrs_args *args)
 {
-	fattr4_protection_info pi = {0};
+	fattr4_protection_info pi;
 
-	if (args->data != NULL && args->data->export != NULL) {
-		pi.pi_type = args->data->export->dix_protection_type;
-		/*
-		 * This means 4K is our smallest I/O size.
-		 */
-		pi.pi_intvl_size = 4096;
-	}
-
-	if (pi.pi_type != 5) {
-		/* Now, only type 5 is supported, disable PI if not type 5 */
-		pi.pi_type = NFS_PI_NOT_SUPPORTED;
-	}
+	fill_protection_info4(args->data, &pi);
 
 	if (!xdr_fattr4_protection_info(xdr, &pi))
 		return FATTR_XDR_FAILED;
