@@ -1542,6 +1542,69 @@ struct fsal_obj_ops {
 				void *buffer,
 				size_t *wrote_amount,
 				bool *fsal_stable);
+
+/**
+ * @brief Read data (or with protection infor) from a file
+ *
+ * This function reads data from the given file.
+ *
+ * @note We probably want to keep end_of_file.  There may be reasons
+ * other than end of file while less data are returned than requested
+ * (FSAL_PROXY, for example, might do this depending on the will of
+ * the remote server.) -- ACE
+ *
+ * @param[in]  obj_hdl     File to read
+ * @param[in]  opctx       Request context, includes credentials
+ * @param[in]  offset      Position from which to read
+ * @param[in]  buffer_size Amount of data to read
+ * @param[out] buffer      Buffer to which data are to be copied
+ * @param[out] read_amount Amount of data read
+ * @param[in/out] pi_dlen  PI data length
+ * @param[out] pi_data	   PI data
+ * @param[out] end_of_file true if the end of file has been reached
+ *
+ * @return FSAL status.
+ */
+	 fsal_status_t(*read_plus) (struct fsal_obj_handle *obj_hdl,
+				    const struct req_op_context *opctx,
+				    uint64_t offset,
+				    size_t buffer_size,
+				    void *buffer,
+				    size_t *read_amount,
+				    size_t *pi_dlen,
+				    void *pi_data,
+				    bool *end_of_file);
+
+/**
+ * @brief Write data (with proection information) to a file
+ *
+ * This function writes data to a file.
+ *
+ * @note Should buffer be const? -- ACE
+ *
+ * @param[in]  obj_hdl      File to be written
+ * @param[in]  opctx        Request context, includes credentials
+ * @param[in]  offset       Position at which to write
+ * @param[in]  buffer_size  Length of data to be written
+ * @param[in]  buffer       Data to be written
+ * @param[in/out] pi_dlen   Length of PI data
+ * @param[in]  pi_data	    PI data
+ * @param[in,out] fsal_stable In, if on, the fsal is requested to write data
+ *                            to stable store. Out, the fsal reports what
+ *                            it did.
+ *
+ * @return FSAL status.
+ */
+	 fsal_status_t(*write_plus) (struct fsal_obj_handle *obj_hdl, const
+				     struct req_op_context *opctx,
+				     uint64_t offset,
+				     size_t buffer_size,
+				     void *buffer,
+				     size_t *wrote_amount,
+				     size_t *pi_dlen,
+				     void *pi_data,
+				     bool *fsal_stable);
+
 /**
  * @brief Commit written data
  *

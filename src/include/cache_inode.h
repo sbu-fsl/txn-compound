@@ -1,4 +1,6 @@
 /*
+ * vim:noexpandtab:shiftwidth=8:tabstop=8:
+ *
  * Copyright CEA/DAM/DIF  (2008)
  * contributeur : Philippe DENIEL   philippe.deniel@cea.fr
  *                Thomas LEIBOVICI  thomas.leibovici@cea.fr
@@ -108,7 +110,9 @@ typedef struct cache_inode_lru__ {
 
 typedef enum io_direction__ {
 	CACHE_INODE_READ = 1,	/*< Reading */
-	CACHE_INODE_WRITE = 2	/*< Writing */
+	CACHE_INODE_WRITE = 2,	/*< Writing */
+	CACHE_INODE_READ_PLUS = 3,
+	CACHE_INODE_WRITE_PLUS = 4,
 } cache_inode_io_direction_t;
 
 /**
@@ -709,6 +713,14 @@ cache_inode_status_t cache_inode_rdwr(cache_entry_t *entry,
 				      bool *eof,
 				      struct req_op_context *req_ctx,
 				      bool *sync);
+
+cache_inode_status_t
+cache_inode_rdwr_plus(cache_entry_t *entry,
+		      cache_inode_io_direction_t io_direction,
+		      uint64_t offset, size_t io_size,
+		      size_t *bytes_moved, void *buffer,
+		      size_t *pi_dlen, void *pi_data, bool *eof,
+		      struct req_op_context *req_ctx, bool *sync);
 
 cache_inode_status_t cache_inode_commit(cache_entry_t *entry, uint64_t offset,
 					size_t count,

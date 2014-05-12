@@ -5,9 +5,8 @@
  * contributeur : Philippe DENIEL   philippe.deniel@cea.fr
  *                Thomas LEIBOVICI  thomas.leibovici@cea.fr
  *
- * Copyright Stony Brook University
+ * Copyright Stony Brook University, 2014
  * Ming Chen <v.mingchen@gmail.com>
- *
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -49,6 +48,7 @@
 #include <unistd.h>
 #include "fsal_pnfs.h"
 #include "server_stats.h"
+#include "nfs_integrity.h"
 
 void fill_protection_info4(compound_data_t *compound, nfs_protection_info4 *pi)
 {
@@ -60,7 +60,7 @@ void fill_protection_info4(compound_data_t *compound, nfs_protection_info4 *pi)
 		 * This means 4K is our smallest I/O size.
 		 * TODO ideally we should read from config file
 		 */
-		pi->pi_intvl_size = 4096;
+		pi->pi_intvl_size = PI_INTERVAL_SIZE;
 		pi->pi_other_data = 0;
 	}
 
@@ -134,14 +134,15 @@ static inline void free_rpc4_protect_info4(read_plus_content4 *rpc4)
 	data_protect_info4 *dpi = &rpc4->read_plus_content4_u.rpc_pinfo;
 
 	gsh_free(dpi->pi_data.pi_data_len);
+
 }
 
-static inline void build_read_plus_res(READ_PLUS4args *rp4args,
-				       READ_PLUS4res *rp4res,
-				       compound_data_t *compound,
-				       size_t dlen, char *data,
-				       size_t pi_dlen, char *pi_data,
-				       bool eof)
+static void build_read_plus_res(READ_PLUS4args *rp4args,
+			        READ_PLUS4res *rp4res,
+			        compound_data_t *compound,
+			        size_t dlen, char *data,
+			        size_t pi_dlen, char *pi_data,
+			        bool eof)
 {
 	nfs_protection_info4 pi;
 	read_plus_content4 *rpc4;
@@ -228,6 +229,8 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 	uint64_t offset = 0;
 	bool eof_met = false;
 	void *bufferdata = NULL;
+	size_t pi_dlen = 0;
+	void *pi_data = NULL;
 	cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
 	state_t *state_found = NULL;
 	state_t *state_open = NULL;
@@ -248,6 +251,7 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 	}
 
 	resp->resop = NFS4_OP_READ_PLUS;
+	memset(rp4res, 0, sizeof(*rp4res));
 	rp4res->rp_status = NFS4_OK;
 
 	/* Do basic checks on a filehandle Only files can be read */
@@ -461,6 +465,15 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 		goto done;
 	}
 
+	pi_dlen = get_pi_size(size);
+	pi_data = gsh_malloc_aligned(4096, pi_dlen);
+	if (pi_data == NULL) {
+		LogEvent(COMPONENT_NFS_V4, "FAILED to allocate pi_data");
+		gsh_free(bufferdata);
+		rp4res->rp_status = NFS4ERR_SERVERFAULT;
+		goto done;
+	}
+
 	if (!anonymous && compound->minorversion == 0) {
 		compound->req_ctx->clientid =
 		    &state_found->state_owner->so_owner.so_nfs4_owner.
@@ -468,11 +481,13 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 	}
 
 	cache_status = cache_inode_rdwr(entry,
-					CACHE_INODE_READ,
+					CACHE_INODE_READ_PLUS,
 					offset,
 					size,
 					&read_size,
 					bufferdata,
+					&pi_dlen,
+					pi_data,
 					&eof_met,
 					compound->req_ctx,
 					&sync);
@@ -480,7 +495,7 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 	if (cache_status != CACHE_INODE_SUCCESS) {
 		rp4res->rp_status = nfs4_Errno(cache_status);
 		gsh_free(bufferdata);
-		rp4res->READ4res_u.resok4.data.data_val = NULL;
+		gsh_free(pi_data);
 		goto done;
 	}
 
@@ -488,37 +503,32 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 	    CACHE_INODE_SUCCESS) {
 		rp4res->rp_status = nfs4_Errno(cache_status);
 		gsh_free(bufferdata);
-		rp4res->READ4res_u.resok4.data.data_val = NULL;
+		gsh_free(pi_data);
 		goto done;
 	}
 
 	if (!anonymous && compound->minorversion == 0)
 		compound->req_ctx->clientid = NULL;
 
-	rp4res->READ4res_u.resok4.data.data_len = read_size;
-	rp4res->READ4res_u.resok4.data.data_val = bufferdata;
-
 	LogFullDebug(COMPONENT_NFS_V4,
 		     "NFS4_OP_READ_PLUS: offset = %" PRIu64
 		     " read length = %zu eof=%u",
 		     offset, read_size, eof_met);
 
-	/* Is EOF met or not ? */
-	rp4res->READ4res_u.resok4.eof = (eof_met
-					    || ((offset + read_size) >=
-						file_size));
+	eof_met = eof_met || ((offset + read_size) >= file_size);
+	build_read_plus_res(rp4args, rp4res, compound, read_size, bufferdata,
+			    pi_dlen, pi_data, eof_met);
 
 	/* Say it is ok */
 	rp4res->rp_status = NFS4_OK;
 
- done:
+done:
 	if (anonymous)
 		PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
 #ifdef USE_DBUS_STATS
 	server_stats_io_done(compound->req_ctx, size, read_size,
-			     (rp4res->rp_status == NFS4_OK) ? true : false,
-			     false);
+			     rp4res->rp_status == NFS4_OK, false);
 #endif
 
 	return rp4res->rp_status;
