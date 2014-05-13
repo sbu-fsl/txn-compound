@@ -1559,8 +1559,7 @@ struct fsal_obj_ops {
  * @param[in]  buffer_size Amount of data to read
  * @param[out] buffer      Buffer to which data are to be copied
  * @param[out] read_amount Amount of data read
- * @param[in/out] pi_dlen  PI data length
- * @param[out] pi_data	   PI data
+ * @param[in/out]  extra   Extra data including protection information etc.
  * @param[out] end_of_file true if the end of file has been reached
  *
  * @return FSAL status.
@@ -1571,8 +1570,7 @@ struct fsal_obj_ops {
 				    size_t buffer_size,
 				    void *buffer,
 				    size_t *read_amount,
-				    size_t *pi_dlen,
-				    void *pi_data,
+				    struct data_plus4 *data_plus,
 				    bool *end_of_file);
 
 /**
@@ -1587,8 +1585,7 @@ struct fsal_obj_ops {
  * @param[in]  offset       Position at which to write
  * @param[in]  buffer_size  Length of data to be written
  * @param[in]  buffer       Data to be written
- * @param[in/out] pi_dlen   Length of PI data
- * @param[in]  pi_data	    PI data
+ * @param[in/out]  extra    Extra data including protection information etc.
  * @param[in,out] fsal_stable In, if on, the fsal is requested to write data
  *                            to stable store. Out, the fsal reports what
  *                            it did.
@@ -1601,8 +1598,7 @@ struct fsal_obj_ops {
 				     size_t buffer_size,
 				     void *buffer,
 				     size_t *wrote_amount,
-				     size_t *pi_dlen,
-				     void *pi_data,
+				     struct data_plus4 *data_plus,
 				     bool *fsal_stable);
 
 /**

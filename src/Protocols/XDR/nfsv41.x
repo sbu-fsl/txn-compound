@@ -3421,6 +3421,8 @@ union write_plus_arg4 switch (data_content4 wpa_content) {
         data_info4          wpa_hole;
     case NFS4_CONTENT_PROTECTED_DATA:
         data_protected4     wpa_pdata;
+    case NFS4_CONTENT_PROTECT_INFO:
+        data_protect_info4  wpa_pinfo;
     default:
         void;
 };

@@ -174,7 +174,7 @@ fsal_status_t vfs_read_plus(struct fsal_obj_handle *obj_hdl,
 			    const struct req_op_context *opctx,
 			    uint64_t offset, size_t buffer_size,
 			    void *buffer, size_t *read_amount,
-			    size_t *pi_dlen, void *pi_data,
+                            struct data_plus *data_plus,
 			    bool *end_of_file)
 {
 	struct vfs_fsal_obj_handle *myself;
@@ -187,8 +187,9 @@ fsal_status_t vfs_read_plus(struct fsal_obj_handle *obj_hdl,
 	assert(myself->u.file.fd >= 0
 	       && myself->u.file.openflags != FSAL_O_CLOSED);
 
-	nb_read = dixio_pread(myself->u.file.fd, buffer, pi_data, buffer_size,
-			      offset);
+	nb_read = dixio_pread(myself->u.file.fd, buffer,
+			      data_plus_to_pi_data(data_plus),
+			      buffer_size, offset);
 
 	if (offset == -1 || nb_read == -1) {
 		retval = errno;
@@ -212,7 +213,7 @@ fsal_status_t vfs_write_plus(struct fsal_obj_handle *obj_hdl,
 			     const struct req_op_context *opctx,
 			     uint64_t offset, size_t buffer_size,
 			     void *buffer, size_t *write_amount,
-			     size_t *pi_dlen, void *pi_data,
+                             struct data_plus *data_plus,
 			     bool *fsal_stable)
 {
 	struct vfs_fsal_obj_handle *myself;
@@ -226,7 +227,8 @@ fsal_status_t vfs_write_plus(struct fsal_obj_handle *obj_hdl,
 	       && myself->u.file.openflags != FSAL_O_CLOSED);
 
 	fsal_set_credentials(opctx->creds);
-	nb_written = dixio_pwrite(myself->u.file.fd, buffer, pi_data,
+	nb_written = dixio_pwrite(myself->u.file.fd, buffer,
+				  data_plus_to_pi_data(data_plus),
 				  buffer_size, offset);
 
 	if (offset == -1 || nb_written == -1) {

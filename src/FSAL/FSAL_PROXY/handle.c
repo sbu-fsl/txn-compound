@@ -1,5 +1,8 @@
 /*
- * vim:noexpandtab:shiftwidth=8:tabstop=8:
+ * vim:expandtab:shiftwidth=8:tabstop=8:
+ *
+ * Copyright (C) Stony Brook University 2014
+ * by Ming Chen <v.mingchen@gmail.com>
  *
  * Copyright (C) Max Matveev, 2012
  * Copyright CEA/DAM/DIF  (2008)
@@ -2014,60 +2017,60 @@ static fsal_status_t pxy_write(struct fsal_obj_handle *obj_hdl,
 }
 
 fsal_status_t pxy_read_plus(struct fsal_obj_handle *obj_hdl,
-			    const struct req_op_context *opctx,
-			    uint64_t offset, size_t buffer_size,
-			    void *buffer, size_t *read_amount,
-			    size_t *pi_dlen, void *pi_data,
-			    bool *end_of_file)
+                            const struct req_op_context *opctx,
+                            uint64_t offset, size_t buffer_size,
+                            void *buffer, size_t *read_amount,
+                            struct data_plus *data_plus,
+                            bool *end_of_file)
 {
-	int rc;
-	int opcnt = 0;
-	struct pxy_obj_handle *ph;
+        int rc;
+        int opcnt = 0;
+        struct pxy_obj_handle *ph;
 #define FSAL_READ_NB_OP_ALLOC 2
-	nfs_argop4 argoparray[FSAL_READ_NB_OP_ALLOC];
-	nfs_resop4 resoparray[FSAL_READ_NB_OP_ALLOC];
-	READ4resok *rok;
+        nfs_argop4 argoparray[FSAL_READ_NB_OP_ALLOC];
+        nfs_resop4 resoparray[FSAL_READ_NB_OP_ALLOC];
+        READ4resok *rok;
 
-	if (!obj_hdl || !read_amount || !end_of_file || !opctx)
-		return fsalstat(ERR_FSAL_FAULT, EINVAL);
+        if (!obj_hdl || !read_amount || !end_of_file || !opctx)
+                return fsalstat(ERR_FSAL_FAULT, EINVAL);
 
-	if (!buffer_size) {
-		*read_amount = 0;
-		*end_of_file = false;
-		return fsalstat(ERR_FSAL_NO_ERROR, 0);
-	}
+        if (!buffer_size) {
+                *read_amount = 0;
+                *end_of_file = false;
+                return fsalstat(ERR_FSAL_NO_ERROR, 0);
+        }
 
-	ph = container_of(obj_hdl, struct pxy_obj_handle, obj);
+        ph = container_of(obj_hdl, struct pxy_obj_handle, obj);
 #if 0
-	if ((ph->openflags & (FSAL_O_RDONLY | FSAL_O_RDWR)) == 0)
-		return fsalstat(ERR_FSAL_FILE_OPEN, EBADF);
+        if ((ph->openflags & (FSAL_O_RDONLY | FSAL_O_RDWR)) == 0)
+                return fsalstat(ERR_FSAL_FILE_OPEN, EBADF);
 #endif
 
-	if (buffer_size > obj_hdl->export->ops->fs_maxread(obj_hdl->export))
-		buffer_size = obj_hdl->export->ops->fs_maxread(obj_hdl->export);
+        if (buffer_size > obj_hdl->export->ops->fs_maxread(obj_hdl->export))
+                buffer_size = obj_hdl->export->ops->fs_maxread(obj_hdl->export);
 
-	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
-	rok = &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
-	rok->data.data_val = buffer;
-	rok->data.data_len = buffer_size;
-	COMPOUNDV4_ARG_ADD_OP_READ_PLUS(opcnt, argoparray, offset,
-					buffer_size, datatype);
+        COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
+        rok = &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
+        rok->data.data_val = buffer;
+        rok->data.data_len = buffer_size;
+        COMPOUNDV4_ARG_ADD_OP_READ_PLUS(opcnt, argoparray, offset,
+                                        buffer_size, datatype);
 
-	rc = pxy_nfsv4_call(obj_hdl->export, opctx->creds, opcnt, argoparray,
-			    resoparray);
-	if (rc != NFS4_OK)
-		return nfsstat4_to_fsal(rc);
+        rc = pxy_nfsv4_call(obj_hdl->export, opctx->creds, opcnt, argoparray,
+                            resoparray);
+        if (rc != NFS4_OK)
+                return nfsstat4_to_fsal(rc);
 
-	*end_of_file = rok->eof;
-	*read_amount = rok->data.data_len;
-	return fsalstat(ERR_FSAL_NO_ERROR, 0);
+        *end_of_file = rok->eof;
+        *read_amount = rok->data.data_len;
+        return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
 fsal_status_t pxy_write_plus(struct fsal_obj_handle *obj_hdl,
 			     const struct req_op_context *opctx,
 			     uint64_t offset, size_t buffer_size,
 			     void *buffer, size_t *write_amount,
-			     size_t *pi_dlen, void *pi_data,
+                             struct data_plus *data_plus,
 			     bool *fsal_stable)
 {
 	int rc;

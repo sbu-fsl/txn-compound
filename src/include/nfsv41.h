@@ -2628,6 +2628,7 @@ extern "C" {
 			app_data_hole4 wpa_adh;
 			data_info4 wpa_hole;
 			data_protected4 wpa_pdata;
+			data_protect_info4 wpa_pinfo;
 		} write_plus_arg4_u;
 	};
 	typedef struct write_plus_arg4 write_plus_arg4;
