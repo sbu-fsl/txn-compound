@@ -41,6 +41,7 @@
 #include "FSAL/fsal_commonlib.h"
 #include "vfs_methods.h"
 #include "fsal_handle_syscalls.h"
+#include "dixio.h"
 
 /** vfs_open
  * called with appropriate locks taken at the cache inode level
@@ -151,6 +152,90 @@ fsal_status_t vfs_write(struct fsal_obj_handle *obj_hdl,
 		fsal_error = posix2fsal_error(retval);
 		goto out;
 	}
+
+	*write_amount = nb_written;
+
+	/* attempt stability */
+	if (*fsal_stable) {
+		retval = fsync(myself->u.file.fd);
+		if (retval == -1) {
+			retval = errno;
+			fsal_error = posix2fsal_error(retval);
+		}
+		*fsal_stable = true;
+	}
+
+ out:
+	fsal_restore_ganesha_credentials();
+	return fsalstat(fsal_error, retval);
+}
+
+fsal_status_t vfs_read_plus(struct fsal_obj_handle *obj_hdl,
+			    const struct req_op_context *opctx,
+			    uint64_t offset, size_t buffer_size,
+			    void *buffer, size_t *read_amount,
+			    size_t *pi_dlen, void *pi_data,
+			    bool *end_of_file)
+{
+	struct vfs_fsal_obj_handle *myself;
+	ssize_t nb_read;
+	fsal_errors_t fsal_error = ERR_FSAL_NO_ERROR;
+	int retval = 0;
+
+	myself = container_of(obj_hdl, struct vfs_fsal_obj_handle, obj_handle);
+
+	assert(myself->u.file.fd >= 0
+	       && myself->u.file.openflags != FSAL_O_CLOSED);
+
+	nb_read = dixio_pread(myself->u.file.fd, buffer, pi_data, buffer_size,
+			      offset);
+
+	if (offset == -1 || nb_read == -1) {
+		retval = errno;
+		fsal_error = posix2fsal_error(retval);
+		goto out;
+	}
+
+	assert(is_pi_aligned(nb_read));
+
+	*read_amount = nb_read;
+
+	/* dual eof condition, cf. GPFS */
+	*end_of_file = ((nb_read == 0) /* most clients */ ||	/* ESXi */
+			(((offset + nb_read) >= obj_hdl->attributes.filesize)));
+
+ out:
+	return fsalstat(fsal_error, retval);
+}
+
+fsal_status_t vfs_write_plus(struct fsal_obj_handle *obj_hdl,
+			     const struct req_op_context *opctx,
+			     uint64_t offset, size_t buffer_size,
+			     void *buffer, size_t *write_amount,
+			     size_t *pi_dlen, void *pi_data,
+			     bool *fsal_stable)
+{
+	struct vfs_fsal_obj_handle *myself;
+	ssize_t nb_written;
+	fsal_errors_t fsal_error = ERR_FSAL_NO_ERROR;
+	int retval = 0;
+
+	myself = container_of(obj_hdl, struct vfs_fsal_obj_handle, obj_handle);
+
+	assert(myself->u.file.fd >= 0
+	       && myself->u.file.openflags != FSAL_O_CLOSED);
+
+	fsal_set_credentials(opctx->creds);
+	nb_written = dixio_pwrite(myself->u.file.fd, buffer, pi_data,
+				  buffer_size, offset);
+
+	if (offset == -1 || nb_written == -1) {
+		retval = errno;
+		fsal_error = posix2fsal_error(retval);
+		goto out;
+	}
+
+	assert(is_pi_aligned(nb_written));
 
 	*write_amount = nb_written;
 

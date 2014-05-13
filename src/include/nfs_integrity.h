@@ -27,6 +27,10 @@ struct sd_dif_tuple {
 #define GENERATE_APP	(4)
 #define GENERATE_ALL	(7)
 
+static inline bool is_pi_aligned(uint64_t dlen) {
+        return (dlen & (PI_INTERVAL_SIZE - 1)) == 0;
+}
+
 static inline uint64_t get_pi_count(uint64_t dlen) {
         return (dlen + PI_INTERVAL_SIZE - 1) >> PI_INTERVAL_SHIFT;
 }

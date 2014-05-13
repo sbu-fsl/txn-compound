@@ -1,4 +1,7 @@
-/* VFS methods for handles
+/*
+ * vim:expandtab:shiftwidth=8:tabstop=8:
+ *
+ * VFS methods for handles
  */
 
 #include "fsal_handle_syscalls.h"
@@ -118,6 +121,21 @@ fsal_status_t vfs_write(struct fsal_obj_handle *obj_hdl,
 			const struct req_op_context *opctx, uint64_t offset,
 			size_t buffer_size, void *buffer, size_t *write_amount,
 			bool *fsal_stable);
+
+fsal_status_t vfs_read_plus(struct fsal_obj_handle *obj_hdl,
+			    const struct req_op_context *opctx,
+			    uint64_t offset, size_t buffer_size,
+			    void *buffer, size_t *read_amount,
+			    size_t *pi_dlen, void *pi_data,
+			    bool *end_of_file);
+
+fsal_status_t vfs_write_plus(struct fsal_obj_handle *obj_hdl,
+			     const struct req_op_context *opctx,
+			     uint64_t offset, size_t buffer_size,
+			     void *buffer, size_t *write_amount,
+			     size_t *pi_dlen, void *pi_data,
+			     bool *fsal_stable);
+
 fsal_status_t vfs_commit(struct fsal_obj_handle *obj_hdl,	/* sync */
 			 off_t offset, size_t len);
 fsal_status_t vfs_lock_op(struct fsal_obj_handle *obj_hdl,
