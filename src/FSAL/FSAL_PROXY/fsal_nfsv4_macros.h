@@ -1,5 +1,5 @@
 /*
- * vim:noexpandtab:shiftwidth=8:tabstop=8:
+ * vim:expandtab:shiftwidth=8:tabstop=8:
  */
 
 /**
@@ -335,6 +335,38 @@ do { \
 	op->nfs_argop4_u.opwrite.offset = inoffset;			\
 	op->nfs_argop4_u.opwrite.data.data_val = inbuf;			\
 	op->nfs_argop4_u.opwrite.data.data_len = inlen;			\
+} while (0)
+
+#define COMPOUNDV4_ARG_ADD_OP_READ_PLUS(opcnt, argarray, inoffset, incount, \
+                                        content)                            \
+do { \
+        nfs_argop4 *op = argarray+opcnt; opcnt++;                           \
+        READ_PLUS4args *rp4args = &op->nfs_argop4_u.opreadplus;             \
+        op->argop = NFS4_OP_READ_PLUS;                                      \
+        memset(rp4args->rpa_stateid, 0, sizeof(stateid4));                  \
+        rp4args->rpa_offset = inoffset;                                     \
+        rp4args->rpa_count = incount;                                       \
+        rp4args->rpa_content = content;                                     \
+} while (0)
+
+#define COMPOUNDV4_ARG_ADD_OP_WRITE_PLUS(opcnt, argarray, wpa, inoffset,    \
+                                         inbuf, inlen, pibuf, pilen, pitype)  \
+do { \
+        nfs_argop4 *op = argarray+opcnt; opcnt++;                           \
+        WRITE_PLUS4args *wp4args = &op->nfs_argop4_u.opwriteplus;           \
+        op->argop = NFS4_OP_WRITE_PLUS;                                     \
+        memset(&wp4args->wp_stateid, 0, sizeof(stateid4));                  \
+        wp4args->wp_stable = DATA_SYNC4;                                    \
+        wp4args->wp_data.wp_data_len = 1;                                   \
+        wp4args->wp_data.wp_data_val = wpa;                                 \
+        wpa->wpa_content = NFS4_CONTENT_PROTECTED_DATA;                     \
+        wpa->write_plus_arg4_u.wpa_pdata.pd_type = pi_info;                 \
+        wpa->write_plus_arg4_u.wpa_pdata.pd_offset = inoffset;              \
+        wpa->write_plus_arg4_u.wpa_pdata.pd_allocated = true;               \
+        wpa->write_plus_arg4_u.wpa_pdata.pd_info.pd_info_len = pilen;       \
+        wpa->write_plus_arg4_u.wpa_pdata.pd_info.pd_info_val = pibuf;       \
+        wpa->write_plus_arg4_u.wpa_pdata.pd_data.pd_data_len = inlen;       \
+        wpa->write_plus_arg4_u.wpa_pdata.pd_data.pd_data_val = inbuf;       \
 } while (0)
 
 #define COMPOUNDV4_EXECUTE_SIMPLE(pcontext, argcompound, rescompound)   \
