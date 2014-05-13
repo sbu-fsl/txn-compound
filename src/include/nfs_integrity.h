@@ -44,13 +44,25 @@ struct data_plus {
 static inline void data_plus_to_read_plus_content(struct data_plus *dp,
                                                   read_plus_content4 *rpc4) {
         rpc4->rpc_content = dp->content_type;
-        rpc4->read_plus_content4_u = dp->u;
+        memcpy(&rpc4->read_plus_content4_u, &dp->u, sizeof(dp->u));
+}
+
+static inline void data_plus_from_read_plus_content(struct data_plus *dp,
+                                                    read_plus_content4 *rpc4) {
+        dp->content_type = rpc4->rpc_content;
+        memcpy(&dp->u, &rpc->read_plus_content4_u, sizeof(dp->u));
 }
 
 static inline void data_plus_to_write_plus_args(struct data_plus *dp,
                                                 write_plus_arg4 *wpa4) {
         wpa4->wpa_content = dp->content_type;
-        wpa4->write_plus_arg4_u = dp->u;
+        memcpy(&wpa4->write_plus_arg4_u, &dp->u, sizeof(dp->u));
+}
+
+static inline void data_plus_from_write_plus_args(struct data_plus *dp,
+                                                  write_plus_arg4 *wpa4) {
+        dp->content_type = wpa4->wpa_content;
+        memcpy(&dp->u, &wpa4->write_plus_arg4_u, sizeof(dp->u));
 }
 
 static inline size_t data_plus_to_pi_dlen(struct data_plus *dp) {
@@ -66,7 +78,7 @@ static inline size_t data_plus_to_pi_dlen(struct data_plus *dp) {
         }
 }
 
-static inline char* dat_plus_to_pi_data(struct data_plus *dp) {
+static inline char* data_plus_to_pi_data(struct data_plus *dp) {
         assert(dp->content_type == NFS4_CONTENT_PROTECTED_DATA ||
                dp->content_type == NFS4_CONTENT_PROTECT_INFO);
         switch (dp->content_type) {

@@ -50,6 +50,33 @@
 #include "server_stats.h"
 #include "nfs_integrity.h"
 
+#define ALIGNMENT 4096
+
+#define rpc_data_data_len(rpc4) \
+	rpc4->read_plus_content4_u.rpc_data.d_data.d_data_len
+
+#define rpc_data_data_val(rpc4) \
+	rpc4->read_plus_content4_u.rpc_data.d_data.d_data_val
+
+#define rpc_pdata_data_len(rpc4) \
+	rpc4->read_plus_content4_u.rpc_pdata.pd_data.pd_data_len
+
+#define rpc_pdata_data_val(rpc4) \
+	rpc4->read_plus_content4_u.rpc_pdata.pd_data.pd_data_val
+
+#define rpc_pdata_info_len(rpc4) \
+	rpc4->read_plus_content4_u.rpc_pdata.pd_info.pd_info_len
+
+#define rpc_pdata_info_val(rpc4) \
+	rpc4->read_plus_content4_u.rpc_pdata.pd_info.pd_info_val
+
+#define rpc_pinfo_data_len(rpc4) \
+	rpc4->read_plus_content4_u.rpc_pinfo.pi_data.pi_data_len
+
+#define rpc_pinfo_data_val(rpc4) \
+	rpc4->read_plus_content4_u.rpc_pinfo.pi_data.pi_data_val
+
+
 void fill_protection_info4(compound_data_t *compound, nfs_protection_info4 *pi)
 {
 	memset(pi, 0, sizeof(nfs_protection_info4));
@@ -72,151 +99,200 @@ void fill_protection_info4(compound_data_t *compound, nfs_protection_info4 *pi)
 	return pi;
 }
 
-static inline void fill_rpc4_data(read_plus_content4 *rpc4, off_t offset,
-				  size_t dlen, char *data)
+static int fill_data4(data4 *d, off_t offset, size_t size, bool alloc_buffers)
 {
-	data4 *d = &rpc->read_plus_content4_u.rpc_data;
+	/*data4 *d = &rpc->read_plus_content4_u.rpc_data;*/
+	void *data = NULL;
+
+	if (size > 0 && alloc_buffers) {
+		if (!(data = gsh_malloc_aligned(ALIGNMENT, size)))
+			return NFS4ERR_SERVERFAULT;
+	}
+
 
 	d->d_offset = offset;
 	d->d_allocated = true;
-	d->d_data.d_data_len = dlen;
+	d->d_data.d_data_len = size;
 	d->d_data.d_data_val = data;
+
+	return NFS4_OK;
 }
 
-static inline void free_rpc4_data(read_plus_content4 *rpc4)
+static inline void clean_data4(data4 *d)
 {
-	data4 *d = &rpc->read_plus_content4_u.rpc_data;
-
 	gsh_free(d->d_data.d_data_val);
 }
 
-static inline void fill_rpc4_data_protected(read_plus_content4 *rpc4,
-					    off_t offset,
-					    size_t dlen, char *data,
-					    nfs_protection_info4 *pi,
-					    size_t pi_dlen, char *pi_data)
+static int fill_data_protected(data_protected4 *pd, off_t offset, size_t size,
+			       nfs_protection_info4 *pi, bool alloc_buffers)
 {
-	data_protected4 *pd = &rpc4->read_plus_content4_u.rpc_pdata;
+	/*data_protected4 *pd = &rpc4->read_plus_content4_u.rpc_pdata;*/
+	void *data = NULL;
+	void *pi_data = NULL;
+	size_t pi_size = 0;
+
+	if (size > 0 && alloc_buffers) {
+		if (!(data = gsh_malloc_aligned(ALIGNMENT, size)))
+			return NFS4ERR_SERVERFAULT;
+		pi_size = get_pi_size(size);
+		if (!(pi_data = gsh_malloc_aligned(ALIGNMENT, pi_size))) {
+			gsh_free(data);
+			return NFS4ERR_SERVERFAULT;
+		}
+	}
 
 	pd->pd_type = *pi;
 	pd->pd_offset = offset;
 	pd->pd_allocated = true;
-	pd->pd_data.pd_data_len = dlen;
+	pd->pd_data.pd_data_len = size;
 	pd->pd_data.pd_data_val = data;
-	pd->pd_info.pd_info_len = pi_dlen;
+	pd->pd_info.pd_info_len = pi_size;
 	pd->pd_info.pd_info_val = pi_data;
+
+	return NFS4_OK;
 }
 
-static inline void free_rpc4_data_protected(read_plus_content4 *rpc4)
+static inline void clean_rpc4_data_protected(data_protected4 *pd)
 {
-	data_protected4 *pd = &rpc4->read_plus_content4_u.rpc_pdata;
-
 	gsh_free(pd->pd_data.pd_data_val);
 	gsh_free(pd->pd_info.pd_info_val);
 }
 
-static inline void fill_rpc4_protect_info4(read_plus_content4 *rpc4,
-					   off_t offset,
-					   nfs_protection_info4 *pi,
-					   size_t pi_dlen, char *pi_data)
+static int fill_protect_info4(data_protect_info4 *dpi, off_t offset,
+			      size_t size, nfs_protection_info4 *pi,
+			      bool alloc_rpc4_protect_info4)
 {
-	data_protect_info4 *dpi = &rpc4->read_plus_content4_u.rpc_pinfo;
+	void *pi_data = NULL;
+	size_t pi_size = 0;
+
+	pi_size = get_pi_size(size);
+	if (pi_size > 0 && alloc_buffers) {
+		if (!(pi_data = gsh_malloc_aligned(ALIGNMENT, pi_size)))
+			return NFS4ERR_SERVERFAULT;
+	}
 
 	dpi->pi_type = *pi;
 	dpi->pi_offset = offset;
 	dpi->pi_allocated = true;
-	dpi->pi_data.pi_data_len = pi_dlen;
+	dpi->pi_data.pi_data_len = pi_size;
 	dpi->pi_data.pi_data_val = pi_data;
+
+	return NFS4_OK;
 }
 
-static inline void free_rpc4_protect_info4(read_plus_content4 *rpc4)
+static inline void clean_protect_info4(data_protect_info4 *dpi)
 {
-	data_protect_info4 *dpi = &rpc4->read_plus_content4_u.rpc_pinfo;
-
-	gsh_free(dpi->pi_data.pi_data_len);
-
+	gsh_free(dpi->pi_data.pi_data_val);
 }
 
-static void build_read_plus_res(READ_PLUS4args *rp4args,
-			        READ_PLUS4res *rp4res,
-			        compound_data_t *compound,
-			        size_t dlen, char *data,
-			        size_t pi_dlen, char *pi_data,
-			        bool eof)
+static int fill_data_plus(struct data_plus *dp, off_t offset, size_t size,
+			  data_content4 content_type, nfs_protection_info4 *pi,
+			  bool alloc_buffers)
 {
-	nfs_protection_info4 pi;
-	read_plus_content4 *rpc4;
-	read_plus_res4 *rpr4 = &rp4res->READ_PLUS4res_u.rp_resok4;
-	off_t offset = rp4args->rpa_offset;
+	int ret = NFS4_OK;
 
-	*rpc4 = gsh_malloc(sizeof(read_plus_content4));
-	if (!rpc4) {
-		rp4res->rp_status = NFS4ERR_SERVERFAULT;
-		return;
-	}
+	if (!(dp = gsh_zalloc(sizeof(*dp), 1)))
+		return NULL;
 
-	switch (rp4args->rpa_content) {
+	switch (content_type) {
 	case NFS4_CONTENT_DATA:
-		fill_rpc4_data(rpc4, offset, dlen, data);
+		ret = fill_data4(&dp->u.data, offset, size, alloc_buffers);
 		break;
 	case NFS4_CONTENT_PROTECTED_DATA:
-		fill_protection_info4(compound, &pi);
-		fill_rpc4_data_protected(rpc4, offset, dlen, data,
-					 pi, pi_dlen, pi_data);
+		ret = fill_data_protected(&dp->u.pdata, offset, size, pi,
+					  alloc_buffers);
 		break;
 	case NFS4_CONTENT_PROTECT_INFO:
-		fill_protection_info4(compound, &pi);
-		fill_rpc4_protect_info4(rpc4, offset, pi, pi_dlen, pi_data);
+		ret = fill_protect_info4(&dp->u.pinfo, offset, size, pi,
+					 alloc_buffers);
 		break;
 	case NFS4_CONTENT_APP_DATA_HOLE:
 	case NFS4_CONTENT_HOLE:
 	default:
-		rp4res->rp_status = NFS4ERR_NOTSUPP;
-		gsh_free(rpc4);
+		ret = NFS4ERR_NOTSUPP;
 		LogMajor(COMPONENT_NFS_V4, "BUG: operations not supported "
 			 "should not reach here.");
-		return;
 	}
 
-	rpc4->rpc_content = rp4args->rpa_content;
+	if (ret != NFS4_OK) {
+		gsh_free(dp);
+		return ret;
+	}
+
+	dp->content_type = content_type;
+
+	return ret;
+}
+
+static void clean_data_plus(struct data_plus *dp)
+{
+	switch (dp->content_type) {
+	case NFS4_CONTENT_DATA:
+		clean_rpc4_data(&dp->u.data);
+		break;
+	case NFS4_CONTENT_PROTECTED_DATA:
+		clean_rpc4_data_protected(&dp->u.pdata);
+		break;
+	case NFS4_CONTENT_PROTECT_INFO:
+		clean_rpc4_protect_info4(&dp->u.pinfo);
+		break;
+	case NFS4_CONTENT_APP_DATA_HOLE:
+	case NFS4_CONTENT_HOLE:
+	default:
+		LogMajor(COMPONENT_NFS_V4, "BUG: operations not supported "
+			 "should not reach here.");
+	}
+}
+
+static int fill_read_plus_res(READ_PLUS4res *rp4res, size_t read_size,
+			      struct data_plus *dp, bool eof)
+{
+	nfs_protection_info4 pi;
+	read_plus_content4 *rpc4;
+	read_plus_res4 *rpr4 = &rp4res->READ_PLUS4res_u.rp_resok4;
+	int ret = 0;
+
+	*rpc4 = gsh_calloc(sizeof(read_plus_content4), 1);
+	if (!rpc4) {
+		rp4res->rp_status = NFS4ERR_SERVERFAULT;
+		return rp4res->rp_status;
+	}
+
+	data_plus_to_read_plus_content(dp, rpc4);
+
+	switch (dp->content_type) {
+	case NFS4_CONTENT_DATA:
+		rpc_data_data_len(rpc4) = read_size;
+		break;
+	case NFS4_CONTENT_PROTECTED_DATA:
+		rpc_pdata_data_len(rpc4) = read_size;
+		rpc_pdata_info_len(rpc4) = get_pi_size(read_size);
+		break;
+	case NFS4_CONTENT_PROTECT_INFO:
+		rpc_pinfo_data_len(rpc4) = get_pi_size(read_size);
+		break;
+	case NFS4_CONTENT_APP_DATA_HOLE:
+	case NFS4_CONTENT_HOLE:
+	default:
+		ret = NFS4ERR_NOTSUPP;
+		LogMajor(COMPONENT_NFS_V4, "BUG: operations not supported "
+			 "should not reach here.");
+	}
+
+	if (ret != NFS4_OK) {
+		rp4res->rp_status = ret;
+		gsh_free(rpc4);
+		return ret;
+	}
 
 	rp4res->rp_status = NFS4_OK;
 
 	rpr4->rpr_eof = eof;
+	rpc4->rpc_content = dp->content_type;
 	rpr4->rpr_contents_len = 1;
 	rpr4->rpr_contents_val = rpc4;
-}
 
-/*
- * REQUIRES: the result status is NFS4_OK.
- */
-static void free_read_plus_res(READ_PLUSres *rp4res)
-{
-	read_plus_res4 *rpr4 = &rp4res->READ_PLUS4res_u.rp_resok4;
-	int rpc_len = rpr4->rpr_contents.rpr_contents_len;
-	read_plus_content4 *rpc4s = rpr4->rpr_contents_val;
-
-	for (int i = 0; i < rpc_len; ++i) {
-		switch (rpc4s[i].rpc_content) {
-		case NFS4_CONTENT_DATA:
-			free_rpc4_data(rpc4s + i);
-			break;
-		case NFS4_CONTENT_PROTECTED_DATA:
-			free_rpc4_data_protected(rpc4s + i);
-			break;
-		case NFS4_CONTENT_PROTECT_INFO:
-			free_rpc4_protect_info4(rpc4s + i);
-			break;
-		case NFS4_CONTENT_APP_DATA_HOLE:
-		case NFS4_CONTENT_HOLE:
-		default:
-			LogMajor(COMPONENT_NFS_V4, "BUG: operations not supported "
-				 "should not reach here.");
-			continue;
-		}
-	}
-
-	gsh_free(rpc4s);
+	return NFS4_OK;
 }
 
 int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
@@ -229,8 +305,6 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 	uint64_t offset = 0;
 	bool eof_met = false;
 	void *bufferdata = NULL;
-	size_t pi_dlen = 0;
-	void *pi_data = NULL;
 	cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
 	state_t *state_found = NULL;
 	state_t *state_open = NULL;
@@ -243,6 +317,9 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 	 * read, since the open state itself prevents a conflict.
 	 */
 	bool anonymous = false;
+	struct data_plus data_plus;
+	data_content4 content_type;
+	nfs_protection_info4 pi;
 
 	if (rp4args->data_content4 == NFS4_CONTENT_APP_DATA_HOLE ||
 	    rp4args->data_content4 == NFS4_CONTENT_HOLE) {
@@ -268,7 +345,7 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 	/* Manage access type MDONLY */
 	if ((compound->export->access_type == ACCESSTYPE_MDONLY)
 	    || (compound->export->access_type == ACCESSTYPE_MDONLY_RO)) {
-		rp4res->rp_status = NFS4ERR_DQUOT;
+		rp4res->rp_status = NFS4ERR_INVAL;
 		return rp4res->rp_status;
 	}
 
@@ -423,14 +500,14 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 		}
 	}
 
-	/* Get the size and offset of the read operation */
 	offset = rp4args->rpa_offset;
 	size = rp4args->rpa_count;
+	content_type = rp4args->rpa_content;
 
 	if (((compound->export->export_perms.options &
 	      EXPORT_OPTION_MAXOFFSETREAD) == EXPORT_OPTION_MAXOFFSETREAD)
 	    && ((offset + size) > compound->export->MaxOffsetRead)) {
-		rp4res->rp_status = NFS4ERR_DQUOT;
+		rp4res->rp_status = NFS4ERR_INVAL;
 		goto done;
 	}
 
@@ -446,31 +523,15 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 		size = compound->export->MaxRead;
 	}
 
+	fill_protect_info4(compound, &pi);
+	fill_data_plus(&data_plus, offset, size, content_type, &pi, size > 0);
+
 	/* If size == 0, no I/O is to be made and everything is
 	 * alright
 	 */
 	if (size == 0) {
 		/* A size = 0 can not lead to EOF */
-		build_read_plus_res(rp4args, rp4res, compound,
-				    0, NULL, 0, NULL, false);
-		goto done;
-	}
-
-	/* Some work is to be done */
-	bufferdata = gsh_malloc_aligned(4096, size);
-
-	if (bufferdata == NULL) {
-		LogEvent(COMPONENT_NFS_V4, "FAILED to allocate bufferdata");
-		rp4res->rp_status = NFS4ERR_SERVERFAULT;
-		goto done;
-	}
-
-	pi_dlen = get_pi_size(size);
-	pi_data = gsh_malloc_aligned(4096, pi_dlen);
-	if (pi_data == NULL) {
-		LogEvent(COMPONENT_NFS_V4, "FAILED to allocate pi_data");
-		gsh_free(bufferdata);
-		rp4res->rp_status = NFS4ERR_SERVERFAULT;
+		fill_read_plus_res(rp4res, 0, data_plus, false);
 		goto done;
 	}
 
@@ -482,21 +543,19 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 
 	cache_status = cache_inode_rdwr_plus(entry, CACHE_INODE_READ_PLUS,
 					     offset, size, &read_size,
-					     bufferdata, data_plus, &eof_met,
+					     bufferdata, &data_plus, &eof_met,
 					     compound->req_ctx, &sync);
 
 	if (cache_status != CACHE_INODE_SUCCESS) {
 		rp4res->rp_status = nfs4_Errno(cache_status);
-		gsh_free(bufferdata);
-		gsh_free(pi_data);
+		clean_data_plus(&data_plus);
 		goto done;
 	}
 
 	if (cache_inode_size(entry, compound->req_ctx, &file_size) !=
 	    CACHE_INODE_SUCCESS) {
 		rp4res->rp_status = nfs4_Errno(cache_status);
-		gsh_free(bufferdata);
-		gsh_free(pi_data);
+		clean_data_plus(&data_plus);
 		goto done;
 	}
 
@@ -509,8 +568,7 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 		     offset, read_size, eof_met);
 
 	eof_met = eof_met || ((offset + read_size) >= file_size);
-	build_read_plus_res(rp4args, rp4res, compound, read_size, bufferdata,
-			    pi_dlen, pi_data, eof_met);
+	fill_read_plus_res(rp4res, read_size, data_plus, eof_met);
 
 	/* Say it is ok */
 	rp4res->rp_status = NFS4_OK;
@@ -539,10 +597,15 @@ done:
 void nfs4_op_read_plus_Free(nfs_resop4 *res)
 {
 	READ_PLUS4res * const rp4res = &res->nfs_resop4_u.opreadplus;
+	read_plus_res4 *rpr4 = &rp4res->READ_PLUS4res_u.rp_resok4;
+	int rpc_len = rpr4->rpr_contents.rpr_contents_len;
+	read_plus_content4 *rpc4s = rpr4->rpr_contents_val;
+	struct data_plus data_plus;
 
-	if (rp4res->status == NFS4_OK) {
-		free_read_plus_res(rp4res);
+	for (int i = 0; i < rpc_len; ++i) {
+		data_plus_from_read_plus_content(&data_plus, rpc4s + i);
+		clean_data_plus(&data_plus);
 	}
 
-	return;
+	gsh_free(rpc4s);
 }				/* nfs4_op_read_Free */

@@ -8935,6 +8935,9 @@ extern "C" {
 		case NFS4_CONTENT_PROTECTED_DATA:
 			 if (!xdr_data_protected4(xdrs, &objp->write_plus_arg4_u.wpa_pdata))
 				 return false;
+		case NFS4_CONTENT_PROTECT_INFO:
+			 if (!xdr_data_protect_info4(xdrs, &objp->write_plus_arg4_u.wpa_pinfo))
+				 return false;
 			break;
 		default:
 			break;
