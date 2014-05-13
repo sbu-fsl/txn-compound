@@ -285,15 +285,10 @@ int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *data,
 		    so_clientid;
 	}
 
-	cache_status = cache_inode_rdwr(entry,
-					CACHE_INODE_WRITE,
-					offset,
-					size,
-					&written_size,
-					bufferdata,
-					&eof_met,
-					data->req_ctx,
-					&sync);
+	cache_status = cache_inode_rdwr_plus(entry, CACHE_INODE_WRITE, offset,
+					     size, &written_size, bufferdata,
+					     data_plus, &eof_met,
+					     data->req_ctx, &sync);
 
 	if (cache_status != CACHE_INODE_SUCCESS) {
 		LogDebug(COMPONENT_NFS_V4,

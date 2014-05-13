@@ -480,17 +480,10 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 		    so_clientid;
 	}
 
-	cache_status = cache_inode_rdwr(entry,
-					CACHE_INODE_READ_PLUS,
-					offset,
-					size,
-					&read_size,
-					bufferdata,
-					&pi_dlen,
-					pi_data,
-					&eof_met,
-					compound->req_ctx,
-					&sync);
+	cache_status = cache_inode_rdwr_plus(entry, CACHE_INODE_READ_PLUS,
+					     offset, size, &read_size,
+					     bufferdata, data_plus, &eof_met,
+					     compound->req_ctx, &sync);
 
 	if (cache_status != CACHE_INODE_SUCCESS) {
 		rp4res->rp_status = nfs4_Errno(cache_status);

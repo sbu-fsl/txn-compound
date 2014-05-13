@@ -66,8 +66,7 @@
  * @param[in]     io_size      Amount of data to be read or written
  * @param[out]    bytes_moved  The length of data successfuly read or written
  * @param[in,out] buffer       Where in memory to read or write data
- * @param[in,out] pi_dlen      Length of pi_data buffer
- * @param[in,out] pi_data      Protection information data
+ * @param[in,out] data_plus    Extra data including protection information etc.
  * @param[out]    eof          Whether a READ encountered the end of file.  May
  *                             be NULL for writes.
  * @param[in]     req_ctx      FSAL credentials
@@ -81,7 +80,7 @@ cache_inode_rdwr_plus(cache_entry_t *entry,
 		      cache_inode_io_direction_t io_direction,
 		      uint64_t offset, size_t io_size,
 		      size_t *bytes_moved, void *buffer,
-		      size_t *pi_dlen, void *pi_data, bool *eof,
+		      struct data_plus *data_plus, bool *eof,
 		      struct req_op_context *req_ctx, bool *sync)
 {
 	/* Error return from FSAL calls */
@@ -149,13 +148,13 @@ cache_inode_rdwr_plus(cache_entry_t *entry,
 	if (io_direction == CACHE_INODE_READ_PLUS) {
 		fsal_status =
 		    obj_hdl->ops->read_plus(obj_hdl, req_ctx, offset, io_size,
-					    buffer, bytes_moved, pi_dlen,
-					    pi_data, eof);
+					    buffer, bytes_moved, data_plus,
+					    eof);
 	} else {
 		bool fsal_sync = *sync;
 		fsal_status =
 		    obj_hdl->ops->write_plus(obj_hdl, req_ctx, offset, io_size,
-					     buffer, bytes_moved, pi_dlen, pi_data,
+					     buffer, bytes_moved, data_plus,
 					     &fsal_sync);
 
 		/* XXX: does write_plus requires O_SYNC? */
