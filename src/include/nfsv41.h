@@ -2495,7 +2495,7 @@ extern "C" {
 		uint64_t pi_other_data;
 	};
 	typedef struct nfs_protection_info4 nfs_protection_info4;
-	typedef nfs_protection_info4 fattr4_protection_info;
+	typedef nfs_protection_info4 fattr4_protection_types;
 
 	struct INITPROTINFO4args {
 		nfs_protection_type4 ipi_type;
@@ -8689,7 +8689,7 @@ extern "C" {
 	}
 
 	static inline bool
-	xdr_fattr4_protection_info(XDR *xdrs, fattr4_protection_info *objp)
+	xdr_fattr4_protection_types(XDR *xdrs, fattr4_protection_types *objp)
 	{
 		 if (!xdr_nfs_protection_info4(xdrs, objp))
 			 return false;
@@ -9189,8 +9189,8 @@ extern "C" {
 	static inline bool xdr_fattr4_sacl(XDR *, fattr4_sacl *);
 	static inline bool xdr_fattr4_change_policy(XDR *,
 						    fattr4_change_policy *);
-	static inline bool xdr_fattr4_protection_info(XDR *,
-						    fattr4_protection_info *);
+	static inline bool xdr_fattr4_protection_types(XDR *,
+						    fattr4_protection_types *);
 	static inline bool xdr_fattr4(XDR *, fattr4 *);
 	static inline bool xdr_change_info4(XDR *, change_info4 *);
 	static inline bool xdr_clientaddr4(XDR *, clientaddr4 *);
@@ -9713,7 +9713,7 @@ extern "C" {
 	static inline bool xdr_fattr4_dacl();
 	static inline bool xdr_fattr4_sacl();
 	static inline bool xdr_fattr4_change_policy();
-	static inline bool xdr_fattr4_protection_info();
+	static inline bool xdr_fattr4_protection_types();
 	static inline bool xdr_fattr4();
 	static inline bool xdr_change_info4();
 	static inline bool xdr_clientaddr4();

@@ -35,6 +35,7 @@ target_link_libraries(fsalvfs
   gos
   pnfs_panfs
   ${SYSTEM_LIBRARIES}
+  ${AIO}
 )
 
 set_target_properties(fsalvfs PROPERTIES VERSION 4.2.0 SOVERSION 4)

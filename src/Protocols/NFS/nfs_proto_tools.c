@@ -2401,21 +2401,21 @@ static fattr_xdr_result decode_fs_charset_cap(XDR *xdr,
 	return FATTR_XDR_NOOP;
 }
 
-static fattr_xdr_result encode_protection_info(XDR *xdr,
-					       struct xdr_attrs_args *args)
+static fattr_xdr_result encode_protection_types(XDR *xdr,
+						struct xdr_attrs_args *args)
 {
-	fattr4_protection_info pi;
+	fattr4_protection_types pt;
 
-	get_protection_info4(args->data, &pi);
+	get_protection_type4(args->data, &pt);
 
-	if (!xdr_fattr4_protection_info(xdr, &pi))
+	if (!xdr_fattr4_protection_types(xdr, &pt))
 		return FATTR_XDR_FAILED;
 
 	return FATTR_XDR_SUCCESS;
 }
 
-static fattr_xdr_result decode_protection_info(XDR *xdr,
-					       struct xdr_attrs_args *args)
+static fattr_xdr_result decode_protection_types(XDR *xdr,
+						struct xdr_attrs_args *args)
 {
 	return FATTR_XDR_NOOP;
 }
@@ -3071,9 +3071,9 @@ const struct fattr4_dent fattr4tab[FATTR4_MAX + 1] = {
 	[FATTR4_PROTECTION_TYPES] = {
 		.name = "FATTR4_PROTECTION_TYPES",
 		.supported = 1,
-		.size_fattr4 = sizeof(fattr4_protection_info),
-		.encode = encode_protection_info,
-		.decode = decode_protection_info,
+		.size_fattr4 = sizeof(fattr4_protection_types),
+		.encode = encode_protection_types,
+		.decode = decode_protection_types,
 		.access = FATTR4_ATTR_READ}
 	,
 };

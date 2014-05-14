@@ -77,7 +77,7 @@
 	rpc4->read_plus_content4_u.rpc_pinfo.pi_data.pi_data_val
 
 
-void get_protection_info4(compound_data_t *compound, nfs_protection_info4 *pi)
+void get_protection_type4(compound_data_t *compound, nfs_protection_info4 *pi)
 {
 	memset(pi, 0, sizeof(*pi));
 
@@ -521,7 +521,7 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 		size = compound->export->MaxRead;
 	}
 
-	get_protection_info4(compound, &pi);
+	get_protection_type4(compound, &pi);
 	fill_data_plus(&data_plus, offset, size, content_type, &pi, size > 0);
 
 	/* If size == 0, no I/O is to be made and everything is

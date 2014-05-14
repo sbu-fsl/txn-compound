@@ -757,7 +757,21 @@ typedef nfsacl41        fattr4_dacl;
 typedef nfsacl41        fattr4_sacl;
 typedef change_policy4  fattr4_change_policy;
 
-typedef nfs_protection_info4 fattr4_protection_info;
+enum nfs_protection_type4 {
+    NFS_PI_TYPE1    = 1,
+    NFS_PI_TYPE2    = 2,
+    NFS_PI_TYPE3    = 3,
+    NFS_PI_TYPE4    = 4,
+    NFS_PI_TYPE5    = 5
+};
+
+struct nfs_protection_info4 {
+    nfs_protection_type4    pi_type;
+    uint32_t                pi_intvl_size;
+    uint64_t                pi_other_data;
+};
+
+typedef nfs_protection_info4 fattr4_protection_types;
 
 %/*
 % * REQUIRED Attributes
@@ -3300,20 +3314,6 @@ program NFS4_CALLBACK {
 
 
 /* NFS end-to-end integrity */
-
-enum nfs_protection_type4 {
-    NFS_PI_TYPE1    = 1,
-    NFS_PI_TYPE2    = 2,
-    NFS_PI_TYPE3    = 3,
-    NFS_PI_TYPE4    = 4,
-    NFS_PI_TYPE5    = 5
-};
-
-struct nfs_protection_info4 {
-    nfs_protection_type4    pi_type;
-    uint32_t                pi_intvl_size;
-    uint64_t                pi_other_data;
-};
 
 /* args for INIT_PROT_INFO operation */
 struct INITPROTINFO4args {
