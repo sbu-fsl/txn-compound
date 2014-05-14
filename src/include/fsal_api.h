@@ -41,6 +41,7 @@
 #define FSAL_API
 
 #include "fsal_pnfs.h"
+#include "nfs_integrity.h"
 
 /**
  * @page newapi New FSAL API
@@ -1570,7 +1571,7 @@ struct fsal_obj_ops {
 				    size_t buffer_size,
 				    void *buffer,
 				    size_t *read_amount,
-				    struct data_plus4 *data_plus,
+				    struct data_plus *data_plus,
 				    bool *end_of_file);
 
 /**
@@ -1598,7 +1599,7 @@ struct fsal_obj_ops {
 				     size_t buffer_size,
 				     void *buffer,
 				     size_t *wrote_amount,
-				     struct data_plus4 *data_plus,
+				     struct data_plus *data_plus,
 				     bool *fsal_stable);
 
 /**

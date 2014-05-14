@@ -187,7 +187,8 @@ fsal_status_t vfs_read_plus(struct fsal_obj_handle *obj_hdl,
 	assert(myself->u.file.fd >= 0
 	       && myself->u.file.openflags != FSAL_O_CLOSED);
 
-	nb_read = dixio_pread(myself->u.file.fd, buffer,
+	nb_read = dixio_pread(myself->u.file.fd,
+			      data_plus_to_file_data(data_plus),
 			      data_plus_to_pi_data(data_plus),
 			      buffer_size, offset);
 
@@ -227,7 +228,8 @@ fsal_status_t vfs_write_plus(struct fsal_obj_handle *obj_hdl,
 	       && myself->u.file.openflags != FSAL_O_CLOSED);
 
 	fsal_set_credentials(opctx->creds);
-	nb_written = dixio_pwrite(myself->u.file.fd, buffer,
+	nb_written = dixio_pwrite(myself->u.file.fd,
+				  data_plus_to_file_data(data_plus),
 				  data_plus_to_pi_data(data_plus),
 				  buffer_size, offset);
 
