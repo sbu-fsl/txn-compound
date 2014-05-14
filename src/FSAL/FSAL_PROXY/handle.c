@@ -2054,7 +2054,7 @@ fsal_status_t pxy_read_plus(struct fsal_obj_handle *obj_hdl,
         rok->data.data_val = buffer;
         rok->data.data_len = buffer_size;
         COMPOUNDV4_ARG_ADD_OP_READ_PLUS(opcnt, argoparray, offset,
-                                        buffer_size, datatype);
+                                        buffer_size, data_plus->content_type);
 
         rc = pxy_nfsv4_call(obj_hdl->export, opctx->creds, opcnt, argoparray,
                             resoparray);
@@ -2068,7 +2068,7 @@ fsal_status_t pxy_read_plus(struct fsal_obj_handle *obj_hdl,
 
 fsal_status_t pxy_write_plus(struct fsal_obj_handle *obj_hdl,
 			     const struct req_op_context *opctx,
-			     uint64_t offset, size_t buffer_size,
+			     uint64_t offset, size_t size,
 			     void *buffer, size_t *write_amount,
                              struct data_plus *data_plus,
 			     bool *fsal_stable)
@@ -2080,6 +2080,7 @@ fsal_status_t pxy_write_plus(struct fsal_obj_handle *obj_hdl,
 	nfs_resop4 resoparray[FSAL_WRITE_NB_OP_ALLOC];
 	WRITE4resok *wok;
 	struct pxy_obj_handle *ph;
+        struct write_plus_arg4 wpa4;
 
 	if (!obj_hdl || !write_amount || !opctx)
 		return fsalstat(ERR_FSAL_FAULT, EINVAL);
@@ -2101,8 +2102,8 @@ fsal_status_t pxy_write_plus(struct fsal_obj_handle *obj_hdl,
 		size = obj_hdl->export->ops->fs_maxwrite(obj_hdl->export);
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
 	wok = &resoparray[opcnt].nfs_resop4_u.opwrite.WRITE4res_u.resok4;
-	COMPOUNDV4_ARG_ADD_OP_WRITE_PLUS(opcnt, argoparray, wpa, offset,
-					 buffer, size, pibuf, pilen, pitype);
+        data_plus_to_write_plus_args(data_plus, &wpa4);
+	COMPOUNDV4_ARG_ADD_OP_WRITE_PLUS(opcnt, argoparray, (&wpa4));
 
 	rc = pxy_nfsv4_call(obj_hdl->export, opctx->creds, opcnt, argoparray,
 			    resoparray);

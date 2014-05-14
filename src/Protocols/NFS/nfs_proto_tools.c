@@ -2406,7 +2406,7 @@ static fattr_xdr_result encode_protection_info(XDR *xdr,
 {
 	fattr4_protection_info pi;
 
-	fill_protection_info4(args->data, &pi);
+	get_protection_info4(args->data, &pi);
 
 	if (!xdr_fattr4_protection_info(xdr, &pi))
 		return FATTR_XDR_FAILED;

@@ -65,7 +65,7 @@
  * @param[in]     offset       Absolute file position for I/O
  * @param[in]     io_size      Amount of data to be read or written
  * @param[out]    bytes_moved  The length of data successfuly read or written
- * @param[in,out] buffer       Where in memory to read or write data
+ * @param[in,out] buffer [DEPRECATED] Where in memory to read or write data
  * @param[in,out] data_plus    Extra data including protection information etc.
  * @param[out]    eof          Whether a READ encountered the end of file.  May
  *                             be NULL for writes.

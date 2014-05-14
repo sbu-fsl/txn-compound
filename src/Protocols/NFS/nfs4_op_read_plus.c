@@ -77,9 +77,9 @@
 	rpc4->read_plus_content4_u.rpc_pinfo.pi_data.pi_data_val
 
 
-void fill_protection_info4(compound_data_t *compound, nfs_protection_info4 *pi)
+void get_protection_info4(compound_data_t *compound, nfs_protection_info4 *pi)
 {
-	memset(pi, 0, sizeof(nfs_protection_info4));
+	memset(pi, 0, sizeof(*pi));
 
 	if (compound != NULL && compound->export != NULL) {
 		pi->pi_type = compound->export->dix_protection_type;
@@ -95,8 +95,6 @@ void fill_protection_info4(compound_data_t *compound, nfs_protection_info4 *pi)
 		/* Now, only type 5 is supported, disable PI if not type 5 */
 		pi->pi_type = NFS_PI_NOT_SUPPORTED;
 	}
-
-	return pi;
 }
 
 static int fill_data4(data4 *d, off_t offset, size_t size, bool alloc_buffers)
@@ -152,7 +150,7 @@ static int fill_data_protected(data_protected4 *pd, off_t offset, size_t size,
 	return NFS4_OK;
 }
 
-static inline void clean_rpc4_data_protected(data_protected4 *pd)
+static inline void clean_data_protected4(data_protected4 *pd)
 {
 	gsh_free(pd->pd_data.pd_data_val);
 	gsh_free(pd->pd_info.pd_info_val);
@@ -160,7 +158,7 @@ static inline void clean_rpc4_data_protected(data_protected4 *pd)
 
 static int fill_protect_info4(data_protect_info4 *dpi, off_t offset,
 			      size_t size, nfs_protection_info4 *pi,
-			      bool alloc_rpc4_protect_info4)
+			      bool alloc_buffers)
 {
 	void *pi_data = NULL;
 	size_t pi_size = 0;
@@ -191,8 +189,7 @@ static int fill_data_plus(struct data_plus *dp, off_t offset, size_t size,
 {
 	int ret = NFS4_OK;
 
-	if (!(dp = gsh_zalloc(sizeof(*dp), 1)))
-		return NULL;
+	memset(dp, 0, sizeof(*dp));
 
 	switch (content_type) {
 	case NFS4_CONTENT_DATA:
@@ -228,13 +225,13 @@ static void clean_data_plus(struct data_plus *dp)
 {
 	switch (dp->content_type) {
 	case NFS4_CONTENT_DATA:
-		clean_rpc4_data(&dp->u.data);
+		clean_data4(&dp->u.data);
 		break;
 	case NFS4_CONTENT_PROTECTED_DATA:
-		clean_rpc4_data_protected(&dp->u.pdata);
+		clean_data_protected4(&dp->u.pdata);
 		break;
 	case NFS4_CONTENT_PROTECT_INFO:
-		clean_rpc4_protect_info4(&dp->u.pinfo);
+		clean_protect_info4(&dp->u.pinfo);
 		break;
 	case NFS4_CONTENT_APP_DATA_HOLE:
 	case NFS4_CONTENT_HOLE:
@@ -252,7 +249,7 @@ static int fill_read_plus_res(READ_PLUS4res *rp4res, size_t read_size,
 	read_plus_res4 *rpr4 = &rp4res->READ_PLUS4res_u.rp_resok4;
 	int ret = 0;
 
-	*rpc4 = gsh_calloc(sizeof(read_plus_content4), 1);
+	rpc4 = gsh_calloc(sizeof(read_plus_content4), 1);
 	if (!rpc4) {
 		rp4res->rp_status = NFS4ERR_SERVERFAULT;
 		return rp4res->rp_status;
@@ -287,10 +284,11 @@ static int fill_read_plus_res(READ_PLUS4res *rp4res, size_t read_size,
 
 	rp4res->rp_status = NFS4_OK;
 
-	rpr4->rpr_eof = eof;
 	rpc4->rpc_content = dp->content_type;
-	rpr4->rpr_contents_len = 1;
-	rpr4->rpr_contents_val = rpc4;
+
+	rpr4->rpr_eof = eof;
+	rpr4->rpr_contents.rpr_contents_len = 1;
+	rpr4->rpr_contents.rpr_contents_val = rpc4;
 
 	return NFS4_OK;
 }
@@ -321,8 +319,8 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 	data_content4 content_type;
 	nfs_protection_info4 pi;
 
-	if (rp4args->data_content4 == NFS4_CONTENT_APP_DATA_HOLE ||
-	    rp4args->data_content4 == NFS4_CONTENT_HOLE) {
+	if (rp4args->rpa_content == NFS4_CONTENT_APP_DATA_HOLE ||
+	    rp4args->rpa_content == NFS4_CONTENT_HOLE) {
 		rp4res->rp_status = NFS4ERR_NOTSUPP;
 		return rp4res->rp_status;
 	}
@@ -523,7 +521,7 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 		size = compound->export->MaxRead;
 	}
 
-	fill_protect_info4(compound, &pi);
+	get_protection_info4(compound, &pi);
 	fill_data_plus(&data_plus, offset, size, content_type, &pi, size > 0);
 
 	/* If size == 0, no I/O is to be made and everything is
@@ -531,7 +529,7 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 	 */
 	if (size == 0) {
 		/* A size = 0 can not lead to EOF */
-		fill_read_plus_res(rp4res, 0, data_plus, false);
+		fill_read_plus_res(rp4res, 0, &data_plus, false);
 		goto done;
 	}
 
@@ -568,7 +566,7 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 		     offset, read_size, eof_met);
 
 	eof_met = eof_met || ((offset + read_size) >= file_size);
-	fill_read_plus_res(rp4res, read_size, data_plus, eof_met);
+	fill_read_plus_res(rp4res, read_size, &data_plus, eof_met);
 
 	/* Say it is ok */
 	rp4res->rp_status = NFS4_OK;
@@ -599,10 +597,11 @@ void nfs4_op_read_plus_Free(nfs_resop4 *res)
 	READ_PLUS4res * const rp4res = &res->nfs_resop4_u.opreadplus;
 	read_plus_res4 *rpr4 = &rp4res->READ_PLUS4res_u.rp_resok4;
 	int rpc_len = rpr4->rpr_contents.rpr_contents_len;
-	read_plus_content4 *rpc4s = rpr4->rpr_contents_val;
+	read_plus_content4 *rpc4s = rpr4->rpr_contents.rpr_contents_val;
 	struct data_plus data_plus;
+	int i;
 
-	for (int i = 0; i < rpc_len; ++i) {
+	for (i = 0; i < rpc_len; ++i) {
 		data_plus_from_read_plus_content(&data_plus, rpc4s + i);
 		clean_data_plus(&data_plus);
 	}

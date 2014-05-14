@@ -41,6 +41,7 @@
 #include "nfs_proto_tools.h"
 #include "fsal_pnfs.h"
 #include "server_stats.h"
+#include "nfs_integrity.h"
 
 
 int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *data,
@@ -66,9 +67,10 @@ int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *data,
 	   state itself prevents a conflict. */
 	bool anonymous = false;
 	struct gsh_buffdesc verf_desc;
+	struct data_plus data_plus;
 
 	/* Lock are not supported */
-	resp->resop = NFS4_OP_WRITE;
+	resp->resop = NFS4_OP_WRITE_PLUS;
 	res_WRITE4->status = NFS4_OK;
 
 	/*
@@ -287,7 +289,7 @@ int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *data,
 
 	cache_status = cache_inode_rdwr_plus(entry, CACHE_INODE_WRITE, offset,
 					     size, &written_size, bufferdata,
-					     data_plus, &eof_met,
+					     &data_plus, &eof_met,
 					     data->req_ctx, &sync);
 
 	if (cache_status != CACHE_INODE_SUCCESS) {

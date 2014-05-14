@@ -50,7 +50,7 @@ static inline void data_plus_to_read_plus_content(struct data_plus *dp,
 static inline void data_plus_from_read_plus_content(struct data_plus *dp,
                                                     read_plus_content4 *rpc4) {
         dp->content_type = rpc4->rpc_content;
-        memcpy(&dp->u, &rpc->read_plus_content4_u, sizeof(dp->u));
+        memcpy(&dp->u, &rpc4->read_plus_content4_u, sizeof(dp->u));
 }
 
 static inline void data_plus_to_write_plus_args(struct data_plus *dp,
@@ -117,17 +117,17 @@ static inline char* data_plus_to_file_data(struct data_plus *dp) {
         }
 }
 
-static inline bool is_pi_aligned(uint64_t dlen) {
-        return (dlen & (PI_INTERVAL_SIZE - 1)) == 0;
+static inline bool is_pi_aligned(uint64_t data_len) {
+        return (data_len & (PI_INTERVAL_SIZE - 1)) == 0;
 }
 
-static inline uint64_t get_pi_count(uint64_t dlen) {
-        return (dlen + PI_INTERVAL_SIZE - 1) >> PI_INTERVAL_SHIFT;
+static inline uint64_t get_pi_count(uint64_t data_len) {
+        return (data_len + PI_INTERVAL_SIZE - 1) >> PI_INTERVAL_SHIFT;
 }
 
-static inline uint64_t get_pi_size(uint64_t dlen) {
+static inline uint64_t get_pi_size(uint64_t data_len) {
         /* +1 for the header */
-        return (get_pi_count(dlen) + 1) * sizeof(sd_dif_tuple);
+        return (get_pi_count(data_len) + 1) * sizeof(struct sd_dif_tuple);
 }
 
 
