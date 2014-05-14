@@ -395,7 +395,7 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 		default:
 			rp4res->rp_status = NFS4ERR_BAD_STATEID;
 			LogDebug(COMPONENT_NFS_V4_LOCK,
-				 "READ with invalid statid of type %d",
+				 "READ_PLUS with invalid statid of type %d",
 				 state_found->state_type);
 			return rp4res->rp_status;
 		}
@@ -417,7 +417,7 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 				/* Bad open mode, return NFS4ERR_OPENMODE */
 				rp4res->rp_status = NFS4ERR_OPENMODE;
 				LogDebug(COMPONENT_NFS_V4_LOCK,
-					 "READ state %p doesn't have "
+					 "READ_PLUS state %p doesn't have "
 					 "OPEN4_SHARE_ACCESS_READ",
 					 state_found);
 				return rp4res->rp_status;
@@ -514,15 +514,19 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 		   not happen because client will get FATTR4_MAXREAD value
 		   at mount time */
 
-		LogFullDebug(COMPONENT_NFS_V4,
-			     "NFS4_OP_READ_PLUS: read requested size = %"PRIu64
-			     " read allowed size = %" PRIu64,
-			     size, compound->export->MaxRead);
+		LogWarn(COMPONENT_NFS_V4,
+			"NFS4_OP_READ_PLUS: read requested size = %"PRIu64
+			" read allowed size = %" PRIu64,
+			size, compound->export->MaxRead);
 		size = compound->export->MaxRead;
 	}
 
 	get_protection_type4(compound, &pi);
-	fill_data_plus(&data_plus, offset, size, content_type, &pi, size > 0);
+	rp4res->rp_status = fill_data_plus(&data_plus, offset, size,
+					   content_type, &pi, size > 0);
+	if (rp4res->rp_status != NFS4_OK) {
+		goto done;
+	}
 
 	/* If size == 0, no I/O is to be made and everything is
 	 * alright
@@ -567,9 +571,6 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 
 	eof_met = eof_met || ((offset + read_size) >= file_size);
 	fill_read_plus_res(rp4res, read_size, &data_plus, eof_met);
-
-	/* Say it is ok */
-	rp4res->rp_status = NFS4_OK;
 
 done:
 	if (anonymous)
