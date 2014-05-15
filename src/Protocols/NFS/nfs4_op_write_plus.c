@@ -231,9 +231,7 @@ int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *compound,
 
 		if (cache_status != CACHE_INODE_SUCCESS) {
 			wp4res->wp_status = nfs4_Errno(cache_status);
-			if (anonymous)
-				PTHREAD_RWLOCK_unlock(&entry->state_lock);
-			return wp4res->wp_status;
+			goto out;
 		}
 	}
 
@@ -261,9 +259,7 @@ int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *compound,
 	     EXPORT_OPTION_MAXOFFSETWRITE) == EXPORT_OPTION_MAXOFFSETWRITE)
 		if ((offset + size) > compound->export->MaxOffsetWrite) {
 			wp4res->wp_status = NFS4ERR_DQUOT;
-			if (anonymous)
-				PTHREAD_RWLOCK_unlock(&entry->state_lock);
-			return wp4res->wp_status;
+			goto out;
 		}
 
 	if (size > compound->export->MaxWrite) {
@@ -291,15 +287,10 @@ int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *compound,
 	if (size == 0) {
 		fill_write_plus_res(wp4res, 0, FILE_SYNC4,
 				    fsal_ops->get_write_verifier);
-		if (anonymous)
-			PTHREAD_RWLOCK_unlock(&entry->state_lock);
-		return wp4res->wp_status;
+		goto out;
 	}
 
-	if (wp4args->wp_stable == UNSTABLE4)
-		sync = false;
-	else
-		sync = true;
+	sync = wp4args->wp_stable != UNSTABLE4;
 
 	if (!anonymous && compound->minorversion == 0) {
 		compound->req_ctx->clientid =
@@ -317,9 +308,7 @@ int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *compound,
 			 "cache_inode_rdwr returned %s",
 			 cache_inode_err_str(cache_status));
 		wp4res->wp_status = nfs4_Errno(cache_status);
-		if (anonymous)
-			PTHREAD_RWLOCK_unlock(&entry->state_lock);
-		return wp4res->wp_status;
+		goto out;
 	}
 
 	if (!anonymous && compound->minorversion == 0)
@@ -329,6 +318,7 @@ int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *compound,
 			    sync ? FILE_SYNC4 : UNSTABLE4,
 			    fsal_ops->get_write_verifier);
 
+out:
 	if (anonymous)
 		PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
