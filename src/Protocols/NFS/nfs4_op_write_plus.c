@@ -72,7 +72,7 @@ int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *compound,
 	size_t written_size;
 	uint64_t offset;
 	bool eof_met;
-	bool sync = false;
+	bool sync = wp4args->wp_stable != UNSTABLE4;
 	void *bufferdata;
 	stable_how4 stable_how;
 	state_t *state_found = NULL;
@@ -290,17 +290,15 @@ int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *compound,
 		goto out;
 	}
 
-	sync = wp4args->wp_stable != UNSTABLE4;
-
 	if (!anonymous && compound->minorversion == 0) {
 		compound->req_ctx->clientid =
 		    &state_found->state_owner->so_owner.so_nfs4_owner.
 		    so_clientid;
 	}
 
-	cache_status = cache_inode_rdwr_plus(entry, CACHE_INODE_WRITE, offset,
-					     size, &written_size, bufferdata,
-					     &data_plus, &eof_met,
+	cache_status = cache_inode_rdwr_plus(entry, CACHE_INODE_WRITE_PLUS,
+					     offset, size, &written_size,
+					     bufferdata, &data_plus, &eof_met,
 					     compound->req_ctx, &sync);
 
 	if (cache_status != CACHE_INODE_SUCCESS) {
