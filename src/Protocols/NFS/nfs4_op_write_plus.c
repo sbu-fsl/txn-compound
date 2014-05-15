@@ -44,11 +44,30 @@
 #include "nfs_integrity.h"
 
 
-int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *data,
+static void fill_write_plus_res(WRITE_PLUS4res *wp4res,
+				size_t count, int stable,
+				void (*get_verifier) (struct gsh_buffdesc
+						      *verf_desc))
+{
+	struct gsh_buffdesc verf_desc;
+	write_response4 *wr4 = &wp4res->WRITE_PLUS4res_u.wp_resok4;
+
+	memset(&wr4->wr_callback_id, 0, sizeof(wr4->wr_callback_id));
+	wr4->wr_count = count;
+	wr4->wr_committed = stable;
+
+	verf_desc.addr = &wr4->wr_writeverf;
+	verf_desc.len = sizeof(verifier4);
+	get_verifier(&verf_desc);
+
+	wp4res->wp_status = NFS4_OK;
+}
+
+int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *compound,
 		       struct nfs_resop4 *resp)
 {
-	WRITE4args * const arg_WRITE4 = &op->nfs_argop4_u.opwrite;
-	WRITE4res * const res_WRITE4 = &resp->nfs_resop4_u.opwrite;
+	WRITE_PLUS4args * const wp4args = &op->nfs_argop4_u.opwriteplus;
+	WRITE_PLUS4res * const wp4res = &resp->nfs_resop4_u.opwriteplus;
 	uint64_t size;
 	size_t written_size;
 	uint64_t offset;
@@ -66,75 +85,71 @@ int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *data,
 	   not need to be held during a non-anonymous read, since the open
 	   state itself prevents a conflict. */
 	bool anonymous = false;
-	struct gsh_buffdesc verf_desc;
 	struct data_plus data_plus;
+	struct export_ops *fsal_ops = compound->export->export_hdl->ops;
+
 
 	/* Lock are not supported */
 	resp->resop = NFS4_OP_WRITE_PLUS;
-	res_WRITE4->status = NFS4_OK;
+	wp4res->wp_status = NFS4_OK;
 
 	/*
 	 * Do basic checks on a filehandle
 	 * Only files can be written
 	 */
-	res_WRITE4->status = nfs4_sanity_check_FH(data, REGULAR_FILE, true);
-	if (res_WRITE4->status != NFS4_OK)
-		return res_WRITE4->status;
+	wp4res->wp_status = nfs4_sanity_check_FH(compound, REGULAR_FILE, true);
+	if (wp4res->wp_status != NFS4_OK)
+		return wp4res->wp_status;
 
 	/* if quota support is active, then we should check is the FSAL
 	   allows inode creation or not */
-	fsal_status = data->export->export_hdl->ops->check_quota(
-						data->export->export_hdl,
-						data->export->fullpath,
-						FSAL_QUOTA_INODES,
-						data->req_ctx);
+	fsal_status = fsal_ops->check_quota(compound->export->export_hdl,
+					    compound->export->fullpath,
+					    FSAL_QUOTA_INODES,
+					    compound->req_ctx);
 
 	if (FSAL_IS_ERROR(fsal_status)) {
-		res_WRITE4->status = NFS4ERR_DQUOT;
-		return res_WRITE4->status;
+		wp4res->wp_status = NFS4ERR_DQUOT;
+		return wp4res->wp_status;
 	}
 
-	if ((data->minorversion == 1)
-	    && (nfs4_Is_Fh_DSHandle(&data->currentFH))) {
-		res_WRITE4->status = NFS4ERR_NOTSUPP;
-		return res_WRITE4->status;
+	if ((compound->minorversion == 1)
+	    && (nfs4_Is_Fh_DSHandle(&compound->currentFH))) {
+		wp4res->wp_status = NFS4ERR_NOTSUPP;
+		return wp4res->wp_status;
 	}
 
 
 	/* Manage access type */
-	switch (data->export->access_type) {
+	switch (compound->export->access_type) {
 	case ACCESSTYPE_MDONLY:
 	case ACCESSTYPE_MDONLY_RO:
-		res_WRITE4->status = NFS4ERR_DQUOT;
-		return res_WRITE4->status;
+		wp4res->wp_status = NFS4ERR_DQUOT;
+		return wp4res->wp_status;
 		break;
 
 	case ACCESSTYPE_RO:
-		res_WRITE4->status = NFS4ERR_ROFS;
-		return res_WRITE4->status;
+		wp4res->wp_status = NFS4ERR_ROFS;
+		return wp4res->wp_status;
 		break;
 
 	default:
 		break;
-	}			/* switch( data->export->access_type ) */
+	}			/* switch( compound->export->access_type ) */
 
 	/* vnode to manage is the current one */
-	entry = data->current_entry;
+	entry = compound->current_entry;
 
 	/* Check stateid correctness and get pointer to state
 	 * (also checks for special stateids)
 	 */
-	res_WRITE4->status = nfs4_Check_Stateid(&arg_WRITE4->stateid,
-						entry,
-						&state_found,
-						data,
-						STATEID_SPECIAL_ANY,
-						0,
-						false,
-						"WRITE");
+	wp4res->wp_status = nfs4_Check_Stateid(&wp4args->wp_stateid, entry,
+					       &state_found, compound,
+					       STATEID_SPECIAL_ANY, 0, false,
+					       "WRITE_PLUS");
 
-	if (res_WRITE4->status != NFS4_OK)
-		return res_WRITE4->status;
+	if (wp4res->wp_status != NFS4_OK)
+		return wp4res->wp_status;
 
 	/* NB: After this points, if state_found == NULL, then
 	 * the stateid is all-0 or all-1
@@ -164,11 +179,11 @@ int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *data,
 			break;
 
 		default:
-			res_WRITE4->status = NFS4ERR_BAD_STATEID;
+			wp4res->wp_status = NFS4ERR_BAD_STATEID;
 			LogDebug(COMPONENT_NFS_V4_LOCK,
 				 "WRITE with invalid stateid of type %d",
 				 (int)state_found->state_type);
-			return res_WRITE4->status;
+			return wp4res->wp_status;
 		}
 
 		/* This is a write operation, this means that the file
@@ -178,11 +193,11 @@ int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *data,
 		    (state_open->state_data.share.share_access &
 		     OPEN4_SHARE_ACCESS_WRITE) == 0) {
 			/* Bad open mode, return NFS4ERR_OPENMODE */
-			res_WRITE4->status = NFS4ERR_OPENMODE;
+			wp4res->wp_status = NFS4ERR_OPENMODE;
 			LogDebug(COMPONENT_NFS_V4_LOCK,
 				 "WRITE state %p doesn't have OPEN4_SHARE_ACCESS_WRITE",
 				 state_found);
-			return res_WRITE4->status;
+			return wp4res->wp_status;
 		}
 	} else {
 		/* Special stateid, no open state, check to see if any
@@ -196,93 +211,98 @@ int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *data,
 		/* Special stateid, no open state, check to see if any share
 		 * conflicts The stateid is all-0 or all-1
 		 */
-		res_WRITE4->status =
+		wp4res->wp_status =
 		    nfs4_check_special_stateid(entry,
 					       "WRITE",
 					       FATTR4_ATTR_WRITE);
 
-		if (res_WRITE4->status != NFS4_OK) {
+		if (wp4res->wp_status != NFS4_OK) {
 			PTHREAD_RWLOCK_unlock(&entry->state_lock);
-			return res_WRITE4->status;
+			return wp4res->wp_status;
 		}
 	}
 
 	if (state_open == NULL
 	    && entry->obj_handle->attributes.owner !=
-	    data->req_ctx->creds->caller_uid) {
+	    compound->req_ctx->creds->caller_uid) {
 		cache_status = cache_inode_access(entry,
 						  FSAL_WRITE_ACCESS,
-						  data->req_ctx);
+						  compound->req_ctx);
 
 		if (cache_status != CACHE_INODE_SUCCESS) {
-			res_WRITE4->status = nfs4_Errno(cache_status);
+			wp4res->wp_status = nfs4_Errno(cache_status);
 			if (anonymous)
 				PTHREAD_RWLOCK_unlock(&entry->state_lock);
-			return res_WRITE4->status;
+			return wp4res->wp_status;
 		}
 	}
 
 	/* Get the characteristics of the I/O to be made */
-	offset = arg_WRITE4->offset;
-	size = arg_WRITE4->data.data_len;
-	stable_how = arg_WRITE4->stable;
+	if (wp4args->wp_data.wp_data_len != 1) {
+		wp4res->wp_status = NFS4ERR_INVAL;
+		LogWarn(COMPONENT_NFS_V4,
+			"NFS4_OP_WRITE_PLUS has %d (not 1) arguments.",
+			wp4args->wp_data.wp_data_len);
+		return wp4res->wp_status;
+	}
+
+	data_plus_from_write_plus_args(&data_plus,
+				       wp4args->wp_data.wp_data_val);
+
+	offset = data_plus_to_offset(&data_plus);
+	size = data_plus_to_file_dlen(&data_plus);
+	stable_how = wp4args->wp_stable;
 	LogFullDebug(COMPONENT_NFS_V4,
-		     "NFS4_OP_WRITE: offset = %" PRIu64 "  length = %" PRIu64
-		     "  stable = %d",
+		     "NFS4_OP_WRITE_PLUS: offset = %" PRIu64 "  length = %"
+		     PRIu64 "  stable = %d",
 		     offset, size, stable_how);
 
-	if ((data->export->export_perms.options &
+	if ((compound->export->export_perms.options &
 	     EXPORT_OPTION_MAXOFFSETWRITE) == EXPORT_OPTION_MAXOFFSETWRITE)
-		if ((offset + size) > data->export->MaxOffsetWrite) {
-			res_WRITE4->status = NFS4ERR_DQUOT;
+		if ((offset + size) > compound->export->MaxOffsetWrite) {
+			wp4res->wp_status = NFS4ERR_DQUOT;
 			if (anonymous)
 				PTHREAD_RWLOCK_unlock(&entry->state_lock);
-			return res_WRITE4->status;
+			return wp4res->wp_status;
 		}
 
-	if (size > data->export->MaxWrite) {
+	if (size > compound->export->MaxWrite) {
 		/*
 		 * The client asked for too much data, we
 		 * must restrict him
 		 */
 
 		LogFullDebug(COMPONENT_NFS_V4,
-			     "NFS4_OP_WRITE: write requested size = %" PRIu64
-			     " write allowed size = %" PRIu64,
-			     size, data->export->MaxWrite);
+			     "NFS4_OP_WRITE_PLUS: write requested size = %"
+			     PRIu64 " write allowed size = %" PRIu64,
+			     size, compound->export->MaxWrite);
 
-		size = data->export->MaxWrite;
+		size = compound->export->MaxWrite;
 	}
 
 	/* Where are the data ? */
-	bufferdata = arg_WRITE4->data.data_val;
+	bufferdata = data_plus_to_file_data(&data_plus);
 
 	LogFullDebug(COMPONENT_NFS_V4,
-		     "NFS4_OP_WRITE: offset = %" PRIu64 " length = %" PRIu64,
-		     offset, size);
+		     "NFS4_OP_WRITE_PLUS: offset = %" PRIu64 " length = %"
+		     PRIu64, offset, size);
 
 	/* if size == 0 , no I/O) are actually made and everything is alright */
 	if (size == 0) {
-		res_WRITE4->WRITE4res_u.resok4.count = 0;
-		res_WRITE4->WRITE4res_u.resok4.committed = FILE_SYNC4;
-
-		verf_desc.addr = res_WRITE4->WRITE4res_u.resok4.writeverf;
-		verf_desc.len = sizeof(verifier4);
-		data->export->export_hdl->ops->get_write_verifier(&verf_desc);
-
-		res_WRITE4->status = NFS4_OK;
+		fill_write_plus_res(wp4res, 0, FILE_SYNC4,
+				    fsal_ops->get_write_verifier);
 		if (anonymous)
 			PTHREAD_RWLOCK_unlock(&entry->state_lock);
-		return res_WRITE4->status;
+		return wp4res->wp_status;
 	}
 
-	if (arg_WRITE4->stable == UNSTABLE4)
+	if (wp4args->wp_stable == UNSTABLE4)
 		sync = false;
 	else
 		sync = true;
 
-	if (!anonymous && data->minorversion == 0) {
-		data->req_ctx->clientid =
+	if (!anonymous && compound->minorversion == 0) {
+		compound->req_ctx->clientid =
 		    &state_found->state_owner->so_owner.so_nfs4_owner.
 		    so_clientid;
 	}
@@ -290,52 +310,41 @@ int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *data,
 	cache_status = cache_inode_rdwr_plus(entry, CACHE_INODE_WRITE, offset,
 					     size, &written_size, bufferdata,
 					     &data_plus, &eof_met,
-					     data->req_ctx, &sync);
+					     compound->req_ctx, &sync);
 
 	if (cache_status != CACHE_INODE_SUCCESS) {
 		LogDebug(COMPONENT_NFS_V4,
 			 "cache_inode_rdwr returned %s",
 			 cache_inode_err_str(cache_status));
-		res_WRITE4->status = nfs4_Errno(cache_status);
+		wp4res->wp_status = nfs4_Errno(cache_status);
 		if (anonymous)
 			PTHREAD_RWLOCK_unlock(&entry->state_lock);
-		return res_WRITE4->status;
+		return wp4res->wp_status;
 	}
 
-	if (!anonymous && data->minorversion == 0)
-		data->req_ctx->clientid = NULL;
+	if (!anonymous && compound->minorversion == 0)
+		compound->req_ctx->clientid = NULL;
 
-	/* Set the returned value */
-	if (sync)
-		res_WRITE4->WRITE4res_u.resok4.committed = FILE_SYNC4;
-	else
-		res_WRITE4->WRITE4res_u.resok4.committed = UNSTABLE4;
-
-	res_WRITE4->WRITE4res_u.resok4.count = written_size;
-
-	verf_desc.addr = res_WRITE4->WRITE4res_u.resok4.writeverf;
-	verf_desc.len = sizeof(verifier4);
-	data->export->export_hdl->ops->get_write_verifier(&verf_desc);
-
-	res_WRITE4->status = NFS4_OK;
+	fill_write_plus_res(wp4res, written_size,
+			    sync ? FILE_SYNC4 : UNSTABLE4,
+			    fsal_ops->get_write_verifier);
 
 	if (anonymous)
 		PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
 #ifdef USE_DBUS_STATS
-	server_stats_io_done(data->req_ctx, size, written_size,
-			     (res_WRITE4->status == NFS4_OK) ? true : false,
-			     true);
+	server_stats_io_done(compound->req_ctx, size, written_size,
+			     (wp4res->wp_status == NFS4_OK), true);
 #endif
 
-	return res_WRITE4->status;
+	return wp4res->wp_status;
 }				/* nfs4_op_write */
 
 /**
  * @brief Free memory allocated for WRITE result
  *
  * This function frees any memory allocated for the result of the
- * NFS4_OP_WRITE operation.
+ * NFS4_OP_WRITE_PLUS operation.
  *
  * @param[in,out] resp nfs4_op results
 *

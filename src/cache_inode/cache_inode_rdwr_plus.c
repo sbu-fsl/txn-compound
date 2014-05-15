@@ -6,7 +6,7 @@
  *                Thomas LEIBOVICI  thomas.leibovici@cea.fr
  *
  * Copyright Stony Brook University, 2014
- * Ming Chen <v.mingchen@gmail.com>
+ * by Ming Chen <v.mingchen@gmail.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -173,18 +173,18 @@ cache_inode_rdwr_plus(cache_entry_t *entry,
 	}
 
 	LogFullDebug(COMPONENT_FSAL,
-		     "cache_inode_rdwr: FSAL IO operation returned "
+		     "cache_inode_rdwr_plus: FSAL IO operation returned "
 		     "%d, asked_size=%zu, effective_size=%zu",
 		     fsal_status.major, io_size, *bytes_moved);
 
 	if (FSAL_IS_ERROR(fsal_status)) {
 		if (fsal_status.major == ERR_FSAL_DELAY) {
 			LogEvent(COMPONENT_CACHE_INODE,
-				 "cache_inode_rdwr: FSAL_write "
+				 "cache_inode_rdwr_plus: FSAL_write "
 				 " returned EBUSY");
 		} else {
 			LogDebug(COMPONENT_CACHE_INODE,
-				 "cache_inode_rdwr: fsal_status.major = %d",
+				 "cache_inode_rdwr_plus: fsal_status.major = %d",
 				 fsal_status.major);
 		}
 
@@ -201,7 +201,7 @@ cache_inode_rdwr_plus(cache_entry_t *entry,
 			cache_inode_status_t cstatus;
 
 			LogFullDebug(COMPONENT_CACHE_INODE,
-				     "cache_inode_rdwr: CLOSING entry %p",
+				     "cache_inode_rdwr_plus: CLOSING entry %p",
 				     entry);
 			PTHREAD_RWLOCK_unlock(&entry->content_lock);
 			PTHREAD_RWLOCK_wrlock(&entry->content_lock);
@@ -214,7 +214,7 @@ cache_inode_rdwr_plus(cache_entry_t *entry,
 
 			if (cstatus != CACHE_INODE_SUCCESS) {
 				LogCrit(COMPONENT_CACHE_INODE,
-					"Error closing file in cache_inode_rdwr: %d.",
+					"Error closing file in cache_inode_rdwr_plus: %d",
 					cstatus);
 			}
 		}
@@ -223,7 +223,7 @@ cache_inode_rdwr_plus(cache_entry_t *entry,
 	}
 
 	LogFullDebug(COMPONENT_CACHE_INODE,
-		     "cache_inode_rdwr: inode/direct: io_size=%zu, "
+		     "cache_inode_rdwr_plus: inode/direct: io_size=%zu, "
 		     "bytes_moved=%zu, offset=%" PRIu64, io_size, *bytes_moved,
 		     offset);
 
@@ -236,7 +236,7 @@ cache_inode_rdwr_plus(cache_entry_t *entry,
 				      CACHE_INODE_FLAG_CONTENT_HOLD);
 		if (status != CACHE_INODE_SUCCESS) {
 			LogEvent(COMPONENT_CACHE_INODE,
-				 "cache_inode_rdwr: cache_inode_close = %d",
+				 "cache_inode_rdwr_plus: cache_inode_close = %d",
 				 status);
 			goto out;
 		}

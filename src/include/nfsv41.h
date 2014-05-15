@@ -2644,10 +2644,7 @@ extern "C" {
 	typedef struct WRITE_PLUS4args WRITE_PLUS4args;
 
 	struct write_response4 {
-		struct {
-			u_int wr_callback_id_len;
-			stateid4 *wr_callback_id_val;
-		} wr_callback_id;
+		stateid4 wr_callback_id;
 		count4 wr_count;
 		stable_how4 wr_committed;
 		verifier4 wr_writeverf;
@@ -2655,7 +2652,7 @@ extern "C" {
 	typedef struct write_response4 write_response4;
 
 	struct WRITE_PLUS4res {
-		nfsstat4 wp_stats;
+		nfsstat4 wp_status;
 		union {
 			write_response4 wp_resok4;
 		} WRITE_PLUS4res_u;
@@ -8967,10 +8964,7 @@ extern "C" {
 	{
 		register int32_t *buf;
 
-		if (!xdr_array(xdrs,
-		               (char **)&objp->wr_callback_id.wr_callback_id_val,
-		               (u_int *)&objp->wr_callback_id.wr_callback_id_len, 1,
-		               sizeof(stateid4), (xdrproc_t) xdr_stateid4))
+		 if (!xdr_stateid4 (xdrs, &objp->wr_callback_id))
 			 return false;
 		 if (!xdr_count4 (xdrs, &objp->wr_count))
 			 return false;
@@ -8986,9 +8980,9 @@ extern "C" {
 	{
 		register int32_t *buf;
 
-		if (!xdr_nfsstat4(xdrs, &objp->wp_stats))
+		if (!xdr_nfsstat4(xdrs, &objp->wp_status))
 			 return false;
-		switch (objp->wp_stats) {
+		switch (objp->wp_status) {
 		case NFS4_OK:
 			 if (!xdr_write_response4(xdrs, &objp->WRITE_PLUS4res_u.wp_resok4))
 				 return false;

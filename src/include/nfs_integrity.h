@@ -65,6 +65,19 @@ static inline void data_plus_from_write_plus_args(struct data_plus *dp,
         memcpy(&dp->u, &wpa4->write_plus_arg4_u, sizeof(dp->u));
 }
 
+static inline off_t data_plus_to_offset(struct data_plus *dp) {
+        switch (dp->content_type) {
+        case NFS4_CONTENT_DATA:
+                return dp->u.data.d_offset;
+        case NFS4_CONTENT_PROTECTED_DATA:
+                return dp->u.pdata.pd_offset;
+        case NFS4_CONTENT_PROTECT_INFO:
+                return dp->u.pinfo.pi_offset;
+        default:
+                return 0;
+        }
+}
+
 static inline size_t data_plus_to_pi_dlen(struct data_plus *dp) {
         assert(dp->content_type == NFS4_CONTENT_PROTECTED_DATA ||
                dp->content_type == NFS4_CONTENT_PROTECT_INFO);

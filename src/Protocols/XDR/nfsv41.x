@@ -3435,13 +3435,13 @@ struct WRITE_PLUS4args {
 };
 
 struct write_response4 {
-    stateid4                wr_callback_id<1>;
+    stateid4                wr_callback_id;
     count4                  wr_count;
     stable_how4             wr_committed;
     verifier4               wr_writeverf;
 };
 
-union WRITE_PLUS4res switch (nfsstat4 wp_stats) {
+union WRITE_PLUS4res switch (nfsstat4 wp_status) {
     case NFS4_OK:
         write_response4     wp_resok4;
     default:
