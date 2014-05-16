@@ -587,7 +587,7 @@ int nfs4_Compound(nfs_arg_t *arg, exportlist_t *export,
 				}
 			}
 
-			if (opcode > NFS4_OP_RECLAIM_COMPLETE)
+			if (opcode > NFS4_OP_READ_PLUS)
 				opcode = 0;
 		}
 		LogDebug(COMPONENT_NFS_V4, "Request %d: opcode %d is %s", i,
@@ -992,6 +992,8 @@ void nfs4_Compound_CopyResOne(nfs_resop4 *res_dst, nfs_resop4 *res_src)
 	case NFS4_OP_WANT_DELEGATION:
 	case NFS4_OP_DESTROY_CLIENTID:
 	case NFS4_OP_RECLAIM_COMPLETE:
+	case NFS4_OP_WRITE_PLUS:
+	case NFS4_OP_READ_PLUS:
 		break;
 
 	case NFS4_OP_ILLEGAL:
