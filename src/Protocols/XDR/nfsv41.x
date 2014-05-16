@@ -2762,8 +2762,8 @@ union nfs_argop4 switch (nfs_opnum4 argop) {
                                 opreclaim_complete;
 
  /* Operations new to NFS end-to-end integrity */
- case OP_WRITE_PLUS:	WRITE_PLUS4args opwriteplus;
- case OP_READ_PLUS:	READ_PLUS4args opreadplus;
+ case OP_WRITE_PLUS:	WRITE_PLUS4args opwrite_plus;
+ case OP_READ_PLUS:	READ_PLUS4args opread_plus;
 
  /* Operations not new to NFSv4.1 */
  case OP_ILLEGAL:       void;
@@ -2880,8 +2880,8 @@ union nfs_resop4 switch (nfs_opnum4 resop) {
                                 opreclaim_complete;
 
  /* Operations new to NFS end-to-end integrity */
- case OP_READ_PLUS:	READ_PLUS4res opreadplus;
- case OP_WRITE_PLUS: WRITE_PLUS4res opwriteplus;
+ case OP_READ_PLUS:	READ_PLUS4res opread_plus;
+ case OP_WRITE_PLUS: WRITE_PLUS4res opwrite_plus;
 
  /* Operations not new to NFSv4.1 */
  case OP_ILLEGAL:       ILLEGAL4res opillegal;

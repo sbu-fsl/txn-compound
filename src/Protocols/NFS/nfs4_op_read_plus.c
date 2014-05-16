@@ -296,8 +296,8 @@ static int fill_read_plus_res(READ_PLUS4res *rp4res, size_t read_size,
 int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 		      struct nfs_resop4 *resp)
 {
-	READ_PLUS4args * const rp4args = &op->nfs_argop4_u.opreadplus;
-	READ_PLUS4res * const rp4res = &resp->nfs_resop4_u.opreadplus;
+	READ_PLUS4args * const rp4args = &op->nfs_argop4_u.opread_plus;
+	READ_PLUS4res * const rp4res = &resp->nfs_resop4_u.opread_plus;
 	uint64_t size = 0;
 	size_t read_size = 0;
 	uint64_t offset = 0;
@@ -595,7 +595,7 @@ done:
  */
 void nfs4_op_read_plus_Free(nfs_resop4 *res)
 {
-	READ_PLUS4res * const rp4res = &res->nfs_resop4_u.opreadplus;
+	READ_PLUS4res * const rp4res = &res->nfs_resop4_u.opread_plus;
 	read_plus_res4 *rpr4 = &rp4res->READ_PLUS4res_u.rp_resok4;
 	int rpc_len = rpr4->rpr_contents.rpr_contents_len;
 	read_plus_content4 *rpc4s = rpr4->rpr_contents.rpr_contents_val;

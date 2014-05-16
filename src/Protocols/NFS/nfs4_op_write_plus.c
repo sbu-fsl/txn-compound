@@ -66,8 +66,8 @@ static void fill_write_plus_res(WRITE_PLUS4res *wp4res,
 int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *compound,
 		       struct nfs_resop4 *resp)
 {
-	WRITE_PLUS4args * const wp4args = &op->nfs_argop4_u.opwriteplus;
-	WRITE_PLUS4res * const wp4res = &resp->nfs_resop4_u.opwriteplus;
+	WRITE_PLUS4args * const wp4args = &op->nfs_argop4_u.opwrite_plus;
+	WRITE_PLUS4res * const wp4res = &resp->nfs_resop4_u.opwrite_plus;
 	uint64_t size;
 	size_t written_size;
 	uint64_t offset;

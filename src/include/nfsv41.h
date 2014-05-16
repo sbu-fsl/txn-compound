@@ -2776,8 +2776,8 @@ extern "C" {
 			WANT_DELEGATION4args opwant_delegation;
 			DESTROY_CLIENTID4args opdestroy_clientid;
 			RECLAIM_COMPLETE4args opreclaim_complete;
-			WRITE_PLUS4args opwriteplus;
-			READ_PLUS4args opreadplus;
+			WRITE_PLUS4args opwrite_plus;
+			READ_PLUS4args opread_plus;
 		} nfs_argop4_u;
 	};
 	typedef struct nfs_argop4 nfs_argop4;
@@ -2841,8 +2841,8 @@ extern "C" {
 			WANT_DELEGATION4res opwant_delegation;
 			DESTROY_CLIENTID4res opdestroy_clientid;
 			RECLAIM_COMPLETE4res opreclaim_complete;
-			READ_PLUS4res opreadplus;
-			WRITE_PLUS4res opwriteplus;
+			WRITE_PLUS4res opwrite_plus;
+			READ_PLUS4res opread_plus;
 			ILLEGAL4res opillegal;
 		} nfs_resop4_u;
 	};
@@ -7321,6 +7321,339 @@ extern "C" {
 		return true;
 	}
 
+	/* new to NFS end-to-end integrity */
+
+	static inline bool
+	xdr_nfs_protection_type4(XDR *xdrs, nfs_protection_type4 *objp)
+	{
+		register int32_t *buf;
+
+		 if (!xdr_enum(xdrs, (enum_t *) objp))
+			 return false;
+		return true;
+	}
+
+	static inline bool
+	xdr_nfs_protection_info4(XDR *xdrs, nfs_protection_info4 *objp)
+	{
+		register int32_t *buf;
+
+		 if (!xdr_nfs_protection_type4(xdrs, &objp->pi_type))
+			 return false;
+		 if (!xdr_uint32_t(xdrs, &objp->pi_intvl_size))
+			 return false;
+		 if (!xdr_uint64_t(xdrs, &objp->pi_other_data))
+			 return false;
+		return true;
+	}
+
+	static inline bool
+	xdr_fattr4_protection_types(XDR *xdrs, fattr4_protection_types *objp)
+	{
+		 if (!xdr_nfs_protection_info4(xdrs, objp))
+			 return false;
+		return true;
+	}
+
+	static inline bool
+	xdr_INITPROTINFO4args(XDR *xdrs, INITPROTINFO4args *objp)
+	{
+		register int32_t *buf;
+
+		 if (!xdr_nfs_protection_type4(xdrs, &objp->ipi_type))
+			 return false;
+		 if (!xdr_bytes(xdrs, (char **)&objp->ipi_data.ipi_data_val,
+		                (u_int *)&objp->ipi_data.ipi_data_len,
+		                NFS4_OPAQUE_LIMIT))
+			 return false;
+		return true;
+	}
+
+	static inline bool
+	xdr_INITPROTINFO4res(XDR *xdrs, INITPROTINFO4res *objp)
+	{
+		register int32_t *buf;
+
+		 if (!xdr_nfsstat4(xdrs, &objp->status))
+			 return false;
+		return true;
+	}
+
+	static inline bool
+	xdr_data_content4(XDR *xdrs, data_content4 *objp)
+	{
+		register int32_t *buf;
+
+		 if (!xdr_enum(xdrs, (enum_t *) objp))
+			 return false;
+		return true;
+	}
+
+	static inline bool
+	xdr_data_protected4(XDR *xdrs, data_protected4 *objp)
+	{
+		register int32_t *buf;
+
+		 if (!xdr_nfs_protection_info4(xdrs, &objp->pd_type))
+			 return false;
+		 if (!xdr_offset4(xdrs, &objp->pd_offset))
+			 return false;
+		 if (!xdr_bool(xdrs, &objp->pd_allocated))
+			 return false;
+		 if (!xdr_bytes(xdrs, (char **)&objp->pd_info.pd_info_val,
+		                (u_int *)&objp->pd_info.pd_info_len, ~0))
+			 return false;
+		 if (!xdr_bytes(xdrs, (char **)&objp->pd_data.pd_data_val,
+		                (u_int *)&objp->pd_data.pd_data_len, ~0))
+			 return false;
+		return true;
+	}
+
+	static inline bool
+	xdr_data_protect_info4(XDR *xdrs, data_protect_info4 *objp)
+	{
+		register int32_t *buf;
+
+		 if (!xdr_nfs_protection_info4(xdrs, &objp->pi_type))
+			 return false;
+		 if (!xdr_offset4(xdrs, &objp->pi_offset))
+			 return false;
+		 if (!xdr_bool(xdrs, &objp->pi_allocated))
+			 return false;
+		 if (!xdr_bytes(xdrs, (char **)&objp->pi_data.pi_data_val,
+		                (u_int *) &objp->pi_data.pi_data_len, ~0))
+			 return false;
+		return true;
+	}
+
+	static inline bool
+	xdr_space_info4(XDR *xdrs, space_info4 *objp)
+	{
+		register int32_t *buf;
+
+		 if (!xdr_enum(xdrs, (enum_t *) objp))
+			 return false;
+		return true;
+	}
+
+	static inline bool
+	xdr_data_info4(XDR *xdrs, data_info4 *objp)
+	{
+		register int32_t *buf;
+
+		 if (!xdr_offset4(xdrs, &objp->di_offset))
+			 return false;
+		 if (!xdr_length4(xdrs, &objp->di_length))
+			 return false;
+		 if (!xdr_space_info4(xdrs, &objp->di_reserved))
+			 return false;
+		return true;
+	}
+
+	static inline bool
+	xdr_data4(XDR *xdrs, data4 *objp)
+	{
+		register int32_t *buf;
+
+		 if (!xdr_offset4(xdrs, &objp->d_offset))
+			 return false;
+		 if (!xdr_bool(xdrs, &objp->d_allocated))
+			 return false;
+		 if (!xdr_bytes(xdrs, (char **)&objp->d_data.d_data_val,
+		                (u_int *) &objp->d_data.d_data_len, ~0))
+			 return false;
+		return true;
+	}
+
+	static inline bool
+	xdr_app_data_hole4(XDR *xdrs, app_data_hole4 *objp)
+	{
+		register int32_t *buf;
+
+		 if (!xdr_offset4(xdrs, &objp->adh_offset))
+			 return false;
+		 if (!xdr_length4(xdrs, &objp->adh_block_size))
+			 return false;
+		 if (!xdr_length4(xdrs, &objp->adh_block_count))
+			 return false;
+		 if (!xdr_length4(xdrs, &objp->adh_reloff_blocknum))
+			 return false;
+		 if (!xdr_count4(xdrs, &objp->adh_block_num))
+			 return false;
+		 if (!xdr_length4(xdrs, &objp->adh_reloff_pattern))
+			 return false;
+		 if (!xdr_bytes(xdrs, (char **)&objp->adh_pattern.adh_pattern_val,
+		                (u_int *)&objp->adh_pattern.adh_pattern_len, ~0))
+			 return false;
+		return true;
+	}
+
+	static inline bool
+	xdr_read_plus_content4(XDR *xdrs, read_plus_content4 *objp)
+	{
+		register int32_t *buf;
+
+		 if (!xdr_data_content4(xdrs, &objp->rpc_content))
+			 return false;
+		switch (objp->rpc_content) {
+		case NFS4_CONTENT_DATA:
+			 if (!xdr_data4(xdrs, &objp->read_plus_content4_u.rpc_data))
+				 return false;
+			break;
+		case NFS4_CONTENT_HOLE:
+			 if (!xdr_data_info4(xdrs, &objp->read_plus_content4_u.rpc_hole))
+				 return false;
+			break;
+		case NFS4_CONTENT_APP_DATA_HOLE:
+			 if (!xdr_app_data_hole4(xdrs, &objp->read_plus_content4_u.rpc_adh))
+				 return false;
+			break;
+		case NFS4_CONTENT_PROTECTED_DATA:
+			 if (!xdr_data_protected4(xdrs, &objp->read_plus_content4_u.rpc_pdata))
+				 return false;
+			break;
+		case NFS4_CONTENT_PROTECT_INFO:
+			 if (!xdr_data_protect_info4(xdrs, &objp->read_plus_content4_u.rpc_pinfo))
+				 return false;
+			break;
+		default:
+			break;
+		}
+		return true;
+	}
+
+	static inline bool
+	xdr_READ_PLUS4args(XDR *xdrs, READ_PLUS4args *objp)
+	{
+		register int32_t *buf;
+
+		if (!xdr_stateid4(xdrs, &objp->rpa_stateid))
+			 return false;
+		if (!xdr_offset4(xdrs, &objp->rpa_offset))
+			 return false;
+		if (!xdr_count4(xdrs, &objp->rpa_count))
+			 return false;
+		if (!xdr_data_content4(xdrs, &objp->rpa_content))
+			 return false;
+		return true;
+	}
+
+	static inline bool
+	xdr_read_plus_res4(XDR *xdrs, read_plus_res4 *objp)
+	{
+		register int32_t *buf;
+
+		if (!xdr_bool(xdrs, &objp->rpr_eof))
+			 return false;
+		if (!xdr_array(xdrs, (char **)&objp->rpr_contents.rpr_contents_val,
+		               (u_int *)&objp->rpr_contents.rpr_contents_len,
+		               ~0, sizeof(read_plus_content4),
+		               (xdrproc_t)xdr_read_plus_content4))
+			 return false;
+		return true;
+	}
+
+	static inline bool
+	xdr_READ_PLUS4res(XDR *xdrs, READ_PLUS4res *objp)
+	{
+		register int32_t *buf;
+
+		if (!xdr_nfsstat4(xdrs, &objp->rp_status))
+			 return false;
+		switch (objp->rp_status) {
+		case NFS4_OK:
+			if (!xdr_read_plus_res4(xdrs, &objp->READ_PLUS4res_u.rp_resok4))
+				 return false;
+			break;
+		default:
+			break;
+		}
+		return true;
+	}
+
+	static inline bool
+	xdr_write_plus_arg4(XDR *xdrs, write_plus_arg4 *objp)
+	{
+		register int32_t *buf;
+
+		if (!xdr_data_content4(xdrs, &objp->wpa_content))
+			return false;
+		switch (objp->wpa_content) {
+		case NFS4_CONTENT_DATA:
+			if (!xdr_data4(xdrs, &objp->write_plus_arg4_u.wpa_data))
+				 return false;
+			break;
+		case NFS4_CONTENT_APP_DATA_HOLE:
+			 if (!xdr_app_data_hole4(xdrs, &objp->write_plus_arg4_u.wpa_adh))
+				 return false;
+			break;
+		case NFS4_CONTENT_HOLE:
+			 if (!xdr_data_info4(xdrs, &objp->write_plus_arg4_u.wpa_hole))
+				 return false;
+			break;
+		case NFS4_CONTENT_PROTECTED_DATA:
+			 if (!xdr_data_protected4(xdrs, &objp->write_plus_arg4_u.wpa_pdata))
+				 return false;
+		case NFS4_CONTENT_PROTECT_INFO:
+			 if (!xdr_data_protect_info4(xdrs, &objp->write_plus_arg4_u.wpa_pinfo))
+				 return false;
+			break;
+		default:
+			break;
+		}
+		return true;
+	}
+
+	static inline bool
+	xdr_WRITE_PLUS4args(XDR *xdrs, WRITE_PLUS4args *objp)
+	{
+		register int32_t *buf;
+
+		if (!xdr_stateid4(xdrs, &objp->wp_stateid))
+			 return false;
+		if (!xdr_stable_how4(xdrs, &objp->wp_stable))
+			 return false;
+		if (!xdr_array(xdrs, (char **)&objp->wp_data.wp_data_val,
+					   (u_int *) &objp->wp_data.wp_data_len, ~0,
+					   sizeof(write_plus_arg4),
+					   (xdrproc_t)xdr_write_plus_arg4))
+			 return false;
+		return true;
+	}
+
+	static inline bool
+	xdr_write_response4(XDR *xdrs, write_response4 *objp)
+	{
+		register int32_t *buf;
+
+		 if (!xdr_stateid4 (xdrs, &objp->wr_callback_id))
+			 return false;
+		 if (!xdr_count4 (xdrs, &objp->wr_count))
+			 return false;
+		 if (!xdr_stable_how4 (xdrs, &objp->wr_committed))
+			 return false;
+		 if (!xdr_verifier4 (xdrs, objp->wr_writeverf))
+			 return false;
+		return true;
+	}
+
+	static inline bool
+	xdr_WRITE_PLUS4res(XDR *xdrs, WRITE_PLUS4res *objp)
+	{
+		register int32_t *buf;
+
+		if (!xdr_nfsstat4(xdrs, &objp->wp_status))
+			 return false;
+		switch (objp->wp_status) {
+		case NFS4_OK:
+			 if (!xdr_write_response4(xdrs, &objp->WRITE_PLUS4res_u.wp_resok4))
+				 return false;
+			break;
+		default:
+			break;
+		}
+		return true;
+	}
 /* new operations for NFSv4.1 */
 
 	static inline bool xdr_nfs_opnum4(XDR * xdrs, nfs_opnum4 *objp)
@@ -7617,6 +7950,14 @@ extern "C" {
 			    (xdrs, &objp->nfs_argop4_u.opreclaim_complete))
 				return false;
 			break;
+		case NFS4_OP_WRITE_PLUS:
+			if (!xdr_WRITE_PLUS4args(xdrs, &objp->nfs_argop4_u.opwrite_plus))
+				return false;
+			break;
+		case NFS4_OP_READ_PLUS:
+			if (!xdr_READ_PLUS4args(xdrs, &objp->nfs_argop4_u.opread_plus))
+				return false;
+			break;
 		case NFS4_OP_ILLEGAL:
 			break;
 		default:
@@ -7893,6 +8234,14 @@ extern "C" {
 		case NFS4_OP_RECLAIM_COMPLETE:
 			if (!xdr_RECLAIM_COMPLETE4res
 			    (xdrs, &objp->nfs_resop4_u.opreclaim_complete))
+				return false;
+			break;
+		case NFS4_OP_WRITE_PLUS:
+			if (!xdr_WRITE_PLUS4res(xdrs, &objp->nfs_resop4_u.opwrite_plus))
+				return false;
+			break;
+		case NFS4_OP_READ_PLUS:
+			if (!xdr_READ_PLUS4res(xdrs, &objp->nfs_resop4_u.opread_plus))
 				return false;
 			break;
 		case NFS4_OP_ILLEGAL:
@@ -8659,339 +9008,6 @@ extern "C" {
 		return true;
 	}
 
-	/* new to NFS end-to-end integrity */
-
-	static inline bool
-	xdr_nfs_protection_type4(XDR *xdrs, nfs_protection_type4 *objp)
-	{
-		register int32_t *buf;
-
-		 if (!xdr_enum(xdrs, (enum_t *) objp))
-			 return false;
-		return true;
-	}
-
-	static inline bool
-	xdr_nfs_protection_info4(XDR *xdrs, nfs_protection_info4 *objp)
-	{
-		register int32_t *buf;
-
-		 if (!xdr_nfs_protection_type4(xdrs, &objp->pi_type))
-			 return false;
-		 if (!xdr_uint32_t(xdrs, &objp->pi_intvl_size))
-			 return false;
-		 if (!xdr_uint64_t(xdrs, &objp->pi_other_data))
-			 return false;
-		return true;
-	}
-
-	static inline bool
-	xdr_fattr4_protection_types(XDR *xdrs, fattr4_protection_types *objp)
-	{
-		 if (!xdr_nfs_protection_info4(xdrs, objp))
-			 return false;
-		return true;
-	}
-
-	static inline bool
-	xdr_INITPROTINFO4args(XDR *xdrs, INITPROTINFO4args *objp)
-	{
-		register int32_t *buf;
-
-		 if (!xdr_nfs_protection_type4(xdrs, &objp->ipi_type))
-			 return false;
-		 if (!xdr_bytes(xdrs, (char **)&objp->ipi_data.ipi_data_val,
-		                (u_int *)&objp->ipi_data.ipi_data_len,
-		                NFS4_OPAQUE_LIMIT))
-			 return false;
-		return true;
-	}
-
-	static inline bool
-	xdr_INITPROTINFO4res(XDR *xdrs, INITPROTINFO4res *objp)
-	{
-		register int32_t *buf;
-
-		 if (!xdr_nfsstat4(xdrs, &objp->status))
-			 return false;
-		return true;
-	}
-
-	static inline bool
-	xdr_data_content4(XDR *xdrs, data_content4 *objp)
-	{
-		register int32_t *buf;
-
-		 if (!xdr_enum(xdrs, (enum_t *) objp))
-			 return false;
-		return true;
-	}
-
-	static inline bool
-	xdr_data_protected4(XDR *xdrs, data_protected4 *objp)
-	{
-		register int32_t *buf;
-
-		 if (!xdr_nfs_protection_info4(xdrs, &objp->pd_type))
-			 return false;
-		 if (!xdr_offset4(xdrs, &objp->pd_offset))
-			 return false;
-		 if (!xdr_bool(xdrs, &objp->pd_allocated))
-			 return false;
-		 if (!xdr_bytes(xdrs, (char **)&objp->pd_info.pd_info_val,
-		                (u_int *)&objp->pd_info.pd_info_len, ~0))
-			 return false;
-		 if (!xdr_bytes(xdrs, (char **)&objp->pd_data.pd_data_val,
-		                (u_int *)&objp->pd_data.pd_data_len, ~0))
-			 return false;
-		return true;
-	}
-
-	static inline bool
-	xdr_data_protect_info4(XDR *xdrs, data_protect_info4 *objp)
-	{
-		register int32_t *buf;
-
-		 if (!xdr_nfs_protection_info4(xdrs, &objp->pi_type))
-			 return false;
-		 if (!xdr_offset4(xdrs, &objp->pi_offset))
-			 return false;
-		 if (!xdr_bool(xdrs, &objp->pi_allocated))
-			 return false;
-		 if (!xdr_bytes(xdrs, (char **)&objp->pi_data.pi_data_val,
-		                (u_int *) &objp->pi_data.pi_data_len, ~0))
-			 return false;
-		return true;
-	}
-
-	static inline bool
-	xdr_space_info4(XDR *xdrs, space_info4 *objp)
-	{
-		register int32_t *buf;
-
-		 if (!xdr_enum(xdrs, (enum_t *) objp))
-			 return false;
-		return true;
-	}
-
-	static inline bool
-	xdr_data_info4(XDR *xdrs, data_info4 *objp)
-	{
-		register int32_t *buf;
-
-		 if (!xdr_offset4(xdrs, &objp->di_offset))
-			 return false;
-		 if (!xdr_length4(xdrs, &objp->di_length))
-			 return false;
-		 if (!xdr_space_info4(xdrs, &objp->di_reserved))
-			 return false;
-		return true;
-	}
-
-	static inline bool
-	xdr_data4(XDR *xdrs, data4 *objp)
-	{
-		register int32_t *buf;
-
-		 if (!xdr_offset4(xdrs, &objp->d_offset))
-			 return false;
-		 if (!xdr_bool(xdrs, &objp->d_allocated))
-			 return false;
-		 if (!xdr_bytes(xdrs, (char **)&objp->d_data.d_data_val,
-		                (u_int *) &objp->d_data.d_data_len, ~0))
-			 return false;
-		return true;
-	}
-
-	static inline bool
-	xdr_app_data_hole4(XDR *xdrs, app_data_hole4 *objp)
-	{
-		register int32_t *buf;
-
-		 if (!xdr_offset4(xdrs, &objp->adh_offset))
-			 return false;
-		 if (!xdr_length4(xdrs, &objp->adh_block_size))
-			 return false;
-		 if (!xdr_length4(xdrs, &objp->adh_block_count))
-			 return false;
-		 if (!xdr_length4(xdrs, &objp->adh_reloff_blocknum))
-			 return false;
-		 if (!xdr_count4(xdrs, &objp->adh_block_num))
-			 return false;
-		 if (!xdr_length4(xdrs, &objp->adh_reloff_pattern))
-			 return false;
-		 if (!xdr_bytes(xdrs, (char **)&objp->adh_pattern.adh_pattern_val,
-		                (u_int *)&objp->adh_pattern.adh_pattern_len, ~0))
-			 return false;
-		return true;
-	}
-
-	static inline bool
-	xdr_read_plus_content4(XDR *xdrs, read_plus_content4 *objp)
-	{
-		register int32_t *buf;
-
-		 if (!xdr_data_content4(xdrs, &objp->rpc_content))
-			 return false;
-		switch (objp->rpc_content) {
-		case NFS4_CONTENT_DATA:
-			 if (!xdr_data4(xdrs, &objp->read_plus_content4_u.rpc_data))
-				 return false;
-			break;
-		case NFS4_CONTENT_HOLE:
-			 if (!xdr_data_info4(xdrs, &objp->read_plus_content4_u.rpc_hole))
-				 return false;
-			break;
-		case NFS4_CONTENT_APP_DATA_HOLE:
-			 if (!xdr_app_data_hole4(xdrs, &objp->read_plus_content4_u.rpc_adh))
-				 return false;
-			break;
-		case NFS4_CONTENT_PROTECTED_DATA:
-			 if (!xdr_data_protected4(xdrs, &objp->read_plus_content4_u.rpc_pdata))
-				 return false;
-			break;
-		case NFS4_CONTENT_PROTECT_INFO:
-			 if (!xdr_data_protect_info4(xdrs, &objp->read_plus_content4_u.rpc_pinfo))
-				 return false;
-			break;
-		default:
-			break;
-		}
-		return true;
-	}
-
-	static inline bool
-	xdr_READ_PLUS4args(XDR *xdrs, READ_PLUS4args *objp)
-	{
-		register int32_t *buf;
-
-		if (!xdr_stateid4(xdrs, &objp->rpa_stateid))
-			 return false;
-		if (!xdr_offset4(xdrs, &objp->rpa_offset))
-			 return false;
-		if (!xdr_count4(xdrs, &objp->rpa_count))
-			 return false;
-		if (!xdr_data_content4(xdrs, &objp->rpa_content))
-			 return false;
-		return true;
-	}
-
-	static inline bool
-	xdr_read_plus_res4(XDR *xdrs, read_plus_res4 *objp)
-	{
-		register int32_t *buf;
-
-		if (!xdr_bool(xdrs, &objp->rpr_eof))
-			 return false;
-		if (!xdr_array(xdrs, (char **)&objp->rpr_contents.rpr_contents_val,
-		               (u_int *)&objp->rpr_contents.rpr_contents_len,
-		               ~0, sizeof(read_plus_content4),
-		               (xdrproc_t)xdr_read_plus_content4))
-			 return false;
-		return true;
-	}
-
-	static inline bool
-	xdr_READ_PLUS4res(XDR *xdrs, READ_PLUS4res *objp)
-	{
-		register int32_t *buf;
-
-		if (!xdr_nfsstat4(xdrs, &objp->rp_status))
-			 return false;
-		switch (objp->rp_status) {
-		case NFS4_OK:
-			if (!xdr_read_plus_res4(xdrs, &objp->READ_PLUS4res_u.rp_resok4))
-				 return false;
-			break;
-		default:
-			break;
-		}
-		return true;
-	}
-
-	static inline bool
-	xdr_write_plus_arg4(XDR *xdrs, write_plus_arg4 *objp)
-	{
-		register int32_t *buf;
-
-		if (!xdr_data_content4(xdrs, &objp->wpa_content))
-			return false;
-		switch (objp->wpa_content) {
-		case NFS4_CONTENT_DATA:
-			if (!xdr_data4(xdrs, &objp->write_plus_arg4_u.wpa_data))
-				 return false;
-			break;
-		case NFS4_CONTENT_APP_DATA_HOLE:
-			 if (!xdr_app_data_hole4(xdrs, &objp->write_plus_arg4_u.wpa_adh))
-				 return false;
-			break;
-		case NFS4_CONTENT_HOLE:
-			 if (!xdr_data_info4(xdrs, &objp->write_plus_arg4_u.wpa_hole))
-				 return false;
-			break;
-		case NFS4_CONTENT_PROTECTED_DATA:
-			 if (!xdr_data_protected4(xdrs, &objp->write_plus_arg4_u.wpa_pdata))
-				 return false;
-		case NFS4_CONTENT_PROTECT_INFO:
-			 if (!xdr_data_protect_info4(xdrs, &objp->write_plus_arg4_u.wpa_pinfo))
-				 return false;
-			break;
-		default:
-			break;
-		}
-		return true;
-	}
-
-	static inline bool
-	xdr_WRITE_PLUS4args(XDR *xdrs, WRITE_PLUS4args *objp)
-	{
-		register int32_t *buf;
-
-		if (!xdr_stateid4(xdrs, &objp->wp_stateid))
-			 return false;
-		if (!xdr_stable_how4(xdrs, &objp->wp_stable))
-			 return false;
-		if (!xdr_array(xdrs, (char **)&objp->wp_data.wp_data_val,
-					   (u_int *) &objp->wp_data.wp_data_len, ~0,
-					   sizeof(write_plus_arg4),
-					   (xdrproc_t)xdr_write_plus_arg4))
-			 return false;
-		return true;
-	}
-
-	static inline bool
-	xdr_write_response4(XDR *xdrs, write_response4 *objp)
-	{
-		register int32_t *buf;
-
-		 if (!xdr_stateid4 (xdrs, &objp->wr_callback_id))
-			 return false;
-		 if (!xdr_count4 (xdrs, &objp->wr_count))
-			 return false;
-		 if (!xdr_stable_how4 (xdrs, &objp->wr_committed))
-			 return false;
-		 if (!xdr_verifier4 (xdrs, objp->wr_writeverf))
-			 return false;
-		return true;
-	}
-
-	static inline bool
-	xdr_WRITE_PLUS4res(XDR *xdrs, WRITE_PLUS4res *objp)
-	{
-		register int32_t *buf;
-
-		if (!xdr_nfsstat4(xdrs, &objp->wp_status))
-			 return false;
-		switch (objp->wp_status) {
-		case NFS4_OK:
-			 if (!xdr_write_response4(xdrs, &objp->WRITE_PLUS4res_u.wp_resok4))
-				 return false;
-			break;
-		default:
-			break;
-		}
-		return true;
-	}
 #if 0
 	static inline bool xdr_nfs_ftype4(XDR *, nfs_ftype4 *);
 	static inline bool xdr_nfsstat4(XDR *, nfsstat4 *);
