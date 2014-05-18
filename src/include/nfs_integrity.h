@@ -139,7 +139,7 @@ static inline uint64_t get_pi_count(uint64_t data_len) {
 }
 
 static inline uint64_t get_pi_size(uint64_t data_len) {
-        /* +1 for the header */
+        /* +1 for the header (user flags such as GENERATE_ALL) */
         return (get_pi_count(data_len) + 1) * sizeof(struct sd_dif_tuple);
 }
 
