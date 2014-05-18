@@ -7571,6 +7571,11 @@ extern "C" {
 		return true;
 	}
 
+#define RETURN_FALSE \
+{ \
+  printf("%s:%d (%s) returns false\n", __FILE__, __LINE__, __FUNCTION__); \
+  return false;                                                       \
+}
 	static inline bool
 	xdr_write_plus_arg4(XDR *xdrs, write_plus_arg4 *objp)
 	{
@@ -7594,6 +7599,7 @@ extern "C" {
 		case NFS4_CONTENT_PROTECTED_DATA:
 			 if (!xdr_data_protected4(xdrs, &objp->write_plus_arg4_u.wpa_pdata))
 				 return false;
+			break;
 		case NFS4_CONTENT_PROTECT_INFO:
 			 if (!xdr_data_protect_info4(xdrs, &objp->write_plus_arg4_u.wpa_pinfo))
 				 return false;
