@@ -5,6 +5,9 @@
 #include <libaio.h>
 #include <sys/types.h>
 
+#include "log.h"
+#include "nfs_integrity.h"
+
 #define GENERATE_GUARD	(1)
 #define GENERATE_REF	(2)
 #define GENERATE_APP	(4)
@@ -18,13 +21,18 @@
 #define PROT_INFO_SIZE 8
 
 #define PAGESIZE 4096
+#define PAGESHIFT 12
+
+static inline size_t page_roundup(size_t size) {
+	return (size + PAGESIZE - 1) >> PAGESHIFT;
+}
 
 static inline int page_aligned(void *buf) {
 	return !((unsigned long)buf & (PAGESIZE - 1));
 }
 
-ssize_t do_dixio(int fd, off_t offset, int iocmd,
-		 const struct iovec *iov, int iovcnt)
+static ssize_t __do_dixio(int fd, off_t offset, int iocmd,
+			  const struct iovec *iov, int iovcnt)
 {
 	int ret;
 	struct iocb cb = {0};
@@ -82,25 +90,56 @@ static void setup_iov(struct iovec *iov, void *buf, void *prot_buf,
 }
 
 
-ssize_t dixio_pread(int fd, void *buf, void *prot_buf,
-                    size_t count, off_t offset)
+ssize_t do_dixio(int fd, void *buf, void *prot_buf, size_t count, off_t offset,
+		 int iocmd)
 {
 	struct iovec iov[2];
 	int iovcnt = prot_buf ? 2 : 1;
+	void *pbuf = NULL;
+	ssize_t ret = 0;
+	size_t pi_size = 0;
+
+	if (prot_buf && !page_aligned(prot_buf)) {
+		pi_size = get_pi_size(count);
+		pbuf = gsh_malloc_aligned(PAGESIZE, page_roundup(pi_size));
+		if (!pbuf) {
+			perror("could not alloc memory for prot_buf");
+			return -1;
+		}
+
+		if (iocmd == IOCB_CMD_PWRITEV || iocmd == IOCB_CMD_PWRITEVM)
+			memcpy(pbuf, prot_buf, pi_size);
+	}
+
+	setup_iov(iov, buf, pbuf, count, offset);
+	ret = __do_dixio(fd, offset, iocmd, iov, iovcnt);
+
+	if (prot_buf && !page_aligned(prot_buf)) {
+		if (ret > 0 && (iocmd == IOCB_CMD_PREADV ||
+				iocmd == IOCB_CMD_PREADVM))
+			memcpy(prot_buf, pbuf, pi_size);
+
+		gsh_free(pbuf);
+	}
+
+	return ret;
+}
+
+
+ssize_t dixio_pread(int fd, void *buf, void *prot_buf,
+                    size_t count, off_t offset)
+{
 	int iocmd = prot_buf ? IOCB_CMD_PREADVM : IOCB_CMD_PREADV;
 
-	setup_iov(iov, buf, prot_buf, count, offset);
-	return do_dixio(fd, offset, iocmd, iov, iovcnt);
+	return do_dixio(fd, buf, prot_buf, count, offset, iocmd);
 }
 
 
 ssize_t dixio_pwrite(int fd, const void *buf, const void *prot_buf,
                      size_t count, off_t offset)
 {
-	struct iovec iov[2];
-	int iovcnt = prot_buf ? 2 : 1;
 	int iocmd = prot_buf ? IOCB_CMD_PWRITEVM : IOCB_CMD_PWRITEV;
 
-	setup_iov(iov, (void *)buf, (void *)prot_buf, count, offset);
-	return do_dixio(fd, offset, iocmd, iov, iovcnt);
+	return do_dixio(fd, (void *)buf, (void *)prot_buf, count, offset,
+			iocmd);
 }

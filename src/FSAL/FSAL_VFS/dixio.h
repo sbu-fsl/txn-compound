@@ -19,8 +19,8 @@
 #define IOCB_CMD_PREADVM	(9)
 #define IOCB_CMD_PWRITEVM	(10)
 
-ssize_t do_dixio(int fd, off_t offset, int iocmd,
-                 const struct iovec *iov, int iovcnt);
+ssize_t do_dixio(int fd, void *buf, void *prot_buf, size_t count, off_t offset,
+                 int iocmd);
 
 ssize_t dixio_pread(int fd, void *buf, void *prot_buf,
                     size_t count, off_t offset);
