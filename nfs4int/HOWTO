@@ -11,10 +11,13 @@ very old packages.
 
 2. Kernel: 3.14.1
 
-With patches from http://thread.gmane.org/gmane.linux.kernel.aio.general/3904
+Apply patch from <fsl-nfs-ganesha>/nfs4int/pi-patchset-v0/0001-apply-patchset-of-enabling-user-land-DIX-data.patch
 
-There are newer version of the patches, but they did not compile:
+The patch is adopted (with bug fix) from kernel patches
+http://thread.gmane.org/gmane.linux.kernel.aio.general/3904
 
+There are newer version of the kernel patches.  They did not compile, so we
+don't use them:
 https://marc.info/?l=linux-mm&m=139567816228628&w=2
 
 
@@ -40,11 +43,11 @@ The application tag and the reference tag are left intact.  So be careful when
 using "dix -p g".
 
 Create a lun out of the ramdisk.
-	
+
 	ramdisk> cd /loopback
 	loopback> create
 	loopback> cd naa.5001405eaf325048/luns
-	luns> create /backstores/ramdisk/rd1 
+	luns> create /backstores/ramdisk/rd1
 
 After this, you should be able to see a new 10MB device in "fdisk -l" output,
 for example '/dev/sdb'.
@@ -69,11 +72,41 @@ http://thread.gmane.org/gmane.linux.kernel.aio.general/3904
 
 	# gcc -o dix dix.c -laio -L /usr/lib/
 
-	# ./dix -p g -wr -s 10 /dev/sdb 
+	# ./dix -p g -wr -s 10 /dev/sdb
 
 
-Sources
-=======
+Launch NFS-Ganesha
+==================
+1. Make sure this repo is built and installed:
+
+	$ cd <fsl-nfs-ganesha>/src
+	$ mkdir mybuild
+	$ cd mybuild
+	$ cmake -DCMAKE_BUILD_TYPE=Debug ..
+	$ make
+	$ sudo make install
+
+NOTE: to build FSAL_SECNFS, make sure packages listed in
+<fsl-nfs-ganesha>/src/FSAL/Stackable_FSALs/FSAL_SECNFS/README are installed.
+
+2. Setup config file
+
+	# cp <fsl-nfs-ganesha>/nfs4int/vfs.ganesha.conf /etc/ganesha
+	# cp run-vfs.sh mybuild
+	# ./run-vfs.sh &
+
+3. Test from the clients (optionally using pynfs)
+
+	# git clone user@git.fsl.cs.sunysb.edu:/scm/fslgit/fsl-pynfs.git
+	# cd fsl-pynfs/nfs4.1/
+	# ./testserver.py --verbose 130.245.126.199:/vfs0 PIRd
+
+If there is problem mounting, please refer to <nfs4sec>/doc/*.txt
+user@git.fsl.cs.sunysb.edu:/scm/fslgit/nfs4sec.git for help.
+
+
+To understand the kernel patch
+==============================
 Important kernel files:
 
 	block/blk-integrity.c
