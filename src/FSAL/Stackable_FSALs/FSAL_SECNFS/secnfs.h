@@ -34,6 +34,8 @@ typedef enum {
         SECNFS_WRONG_CONFIG,
         SECNFS_KEYFILE_ERROR,
         SECNFS_NOT_ALIGNED,
+        SECNFS_NOT_VERIFIED,
+        SECNFS_INVALID,
 } secnfs_s;
 
 

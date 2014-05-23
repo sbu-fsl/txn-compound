@@ -170,8 +170,6 @@ secnfs_s secnfs_auth_encrypt(secnfs_key_t key, secnfs_key_t iv,
                              uint64_t auth_size, void *auth_msg,
                              void *buffer, void *tag)
 {
-        secnfs_s ret;
-
         if (round_up(offset, AES::BLOCKSIZE) != offset ||
             round_up(size, AES::BLOCKSIZE) != size) {
                 // We require offset and size to be aligned, otherwise, the
@@ -183,7 +181,7 @@ secnfs_s secnfs_auth_encrypt(secnfs_key_t key, secnfs_key_t iv,
 
         try {
                 GCM< AES, GCM_64K_Tables >::Encryption e;
-                e.SetKeyWithIV(key.bytes, AES::DEFAULT_KEYLENGTH, iv.bytes);
+                e.SetKeyWithIV(key.bytes, SECNFS_KEY_LENGTH, iv.bytes);
 
                 AuthenticatedEncryptionFilter aef(
                                 e, new ArraySink(static_cast<byte *>(buffer),
@@ -210,6 +208,48 @@ secnfs_s secnfs_verify_decrypt(secnfs_key_t key, secnfs_key_t iv,
                                uint64_t auth_size, void *auth_msg, void *tag,
                                void *buffer)
 {
+        if (round_up(offset, AES::BLOCKSIZE) != offset ||
+            round_up(size, AES::BLOCKSIZE) != size) {
+                // We require offset and size to be aligned, otherwise, the
+                // misaligned part will not be authenticated.
+                return SECNFS_NOT_ALIGNED;
+        }
+
+        incr_ctr(&iv, SECNFS_KEY_LENGTH, offset / AES::BLOCKSIZE);
+
+        try {
+                GCM< AES, GCM_64K_Tables >::Decryption d;
+                d.SetKeyWithIV(key.bytes, SECNFS_KEY_LENGTH, iv.bytes);
+
+                AuthenticatedDecryptionFilter adf(d, NULL, MAC_AT_BEGIN |
+                                                  THROW_EXCEPTION, TAG_SIZE);
+
+                adf.ChannelPut("", static_cast<byte *>(tag), TAG_SIZE);
+                adf.ChannelPut("AAD", static_cast<byte *>(auth_msg),
+                               auth_size);
+                adf.ChannelPut("", static_cast<byte *>(cipher), size);
+                adf.ChannelMessageEnd("AAD");
+                adf.ChannelMessageEnd("");
+
+                if (!adf.GetLastResult()) {
+                        std::cerr << "verification failed" << std::endl;
+                        return SECNFS_NOT_VERIFIED;
+                }
+
+                adf.SetRetrievalChannel("");
+                uint64_t n = adf.MaxRetrievable();
+                if (n != size) {
+                        std::cerr << "message length mismatch" << std::endl;
+                        return SECNFS_CRYPTO_ERROR;
+                }
+
+                adf.Get(static_cast<byte *>(buffer), n);
+
+        } catch (CryptoPP::Exception &e) {
+                std::cerr << e.what() << std::endl;
+                return SECNFS_CRYPTO_ERROR;
+        }
+
         return SECNFS_OKAY;
 }
 
