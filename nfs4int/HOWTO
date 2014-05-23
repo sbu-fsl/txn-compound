@@ -77,6 +77,15 @@ http://thread.gmane.org/gmane.linux.kernel.aio.general/3904
 
 Launch NFS-Ganesha
 ==================
+0. Install packages:
+
+	$ yum install cmake glog-devel protobuf-devel tbb-devel \
+		jemalloc-devel krb5-devel cryptopp-devel libcap-devel
+
+Manual install "google-test", and set env var:
+
+	$ export GOOGLE_TEST=/path/to/google/test
+
 1. Make sure this repo is built and installed:
 
 	$ cd <fsl-nfs-ganesha>/src

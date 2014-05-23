@@ -27,6 +27,8 @@ SET(fsalvfs_LIB_SRCS
 
 add_library(fsalvfs SHARED ${fsalvfs_LIB_SRCS})
 
+find_library(AIO aio "/usr/lib")
+
 target_link_libraries(fsalvfs
   gos
   pnfs_panfs
@@ -35,7 +37,6 @@ target_link_libraries(fsalvfs
 )
 
 add_executable(dixio_test "dixio_test.c" dixio.h dixio.c)
-find_library(AIO aio "/usr/lib")
 target_link_libraries(dixio_test ${AIO})
 
 set_target_properties(fsalvfs PROPERTIES VERSION 4.2.0 SOVERSION 4)
