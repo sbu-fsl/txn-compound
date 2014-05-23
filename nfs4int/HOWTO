@@ -80,7 +80,8 @@ Launch NFS-Ganesha
 0. Install packages:
 
 	$ yum install cmake glog-devel protobuf-devel tbb-devel \
-		jemalloc-devel krb5-devel cryptopp-devel libcap-devel
+		jemalloc-devel krb5-devel cryptopp-devel libcap-devel \
+		libaio-devel
 
 Manual install "google-test", and set env var:
 
@@ -106,9 +107,21 @@ NOTE: to build FSAL_SECNFS, make sure packages listed in
 
 3. Test from the clients (optionally using pynfs)
 
+3.1 Make sure a test file "test.txt" exists in the root of the exported FS
+
+	# dd if=/dev/urandom of=/vfs-ganesha/test.txt bs=4k count=2
+
+3.2 install packages
+
+	# yum install python-devel krb5-devel
+
+3.3 Test
+
 	# git clone user@git.fsl.cs.sunysb.edu:/scm/fslgit/fsl-pynfs.git
-	# cd fsl-pynfs/nfs4.1/
-	# ./testserver.py --verbose 130.245.126.199:/vfs0 PIRd
+	# cd fsl-pynfs
+	# python setup.py build
+	# cd nfs4.1/
+	# ./testserver.py --maketree --verbose 130.245.126.199:/vfs0 PIRd
 
 If there is problem mounting, please refer to <nfs4sec>/doc/*.txt
 user@git.fsl.cs.sunysb.edu:/scm/fslgit/nfs4sec.git for help.
