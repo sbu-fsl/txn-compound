@@ -25,8 +25,11 @@ namespace secnfs_test {
 const int MSG_SIZE = 40960;
 
 TEST(KeyBlockSizeTest, KeyBlockSize) {
-        EXPECT_GE(AES::BLOCKSIZE, 128 / 8);
-        EXPECT_EQ(SECNFS_KEY_LENGTH, AES::DEFAULT_KEYLENGTH);
+        size_t blocksize = AES::BLOCKSIZE;
+        size_t keylength = AES::DEFAULT_KEYLENGTH;
+
+        EXPECT_GE(blocksize, 128 / 8);
+        EXPECT_EQ(SECNFS_KEY_LENGTH, keylength);
 }
 
 class EncryptTest : public ::testing::Test {
@@ -128,6 +131,12 @@ TEST_F(EncryptTest, RandomOffsets) {
                                            cipher_ + offset, block));
                 EXPECT_SAME(block, plain_ + offset, size);
         }
+}
+
+
+TEST_F(EncryptTest, AuthenticatedEncrypt) {
+        byte buffer[MSG_SIZE + TAG_SIZE];
+
 }
 
 

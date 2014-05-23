@@ -22,6 +22,7 @@ using CryptoPP::ArraySource;
 using CryptoPP::ArraySink;
 using CryptoPP::StreamTransformationFilter;
 using CryptoPP::AuthenticatedEncryptionFilter;
+using CryptoPP::AuthenticatedDecryptionFilter;
 
 #include <cryptopp/aes.h>
 using CryptoPP::AES;
@@ -221,8 +222,11 @@ secnfs_s secnfs_verify_decrypt(secnfs_key_t key, secnfs_key_t iv,
                 GCM< AES, GCM_64K_Tables >::Decryption d;
                 d.SetKeyWithIV(key.bytes, SECNFS_KEY_LENGTH, iv.bytes);
 
-                AuthenticatedDecryptionFilter adf(d, NULL, MAC_AT_BEGIN |
-                                                  THROW_EXCEPTION, TAG_SIZE);
+                AuthenticatedDecryptionFilter adf(
+                        d, NULL,
+                        AuthenticatedDecryptionFilter::MAC_AT_BEGIN |
+                        AuthenticatedDecryptionFilter::THROW_EXCEPTION,
+                        TAG_SIZE);
 
                 adf.ChannelPut("", static_cast<byte *>(tag), TAG_SIZE);
                 adf.ChannelPut("AAD", static_cast<byte *>(auth_msg),
