@@ -21,6 +21,8 @@ extern "C" {
 // TODO allow keyfile to be larger than 4096.
 #define KEY_FILE_SIZE 4096
 
+#define TAG_SIZE 16
+
 typedef struct { uint8_t bytes[SECNFS_KEY_LENGTH + 1]; } secnfs_key_t;
 
 /**
@@ -31,6 +33,7 @@ typedef enum {
         SECNFS_CRYPTO_ERROR = 1,
         SECNFS_WRONG_CONFIG,
         SECNFS_KEYFILE_ERROR,
+        SECNFS_NOT_ALIGNED,
 } secnfs_s;
 
 

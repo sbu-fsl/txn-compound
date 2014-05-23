@@ -24,6 +24,11 @@ namespace secnfs_test {
 
 const int MSG_SIZE = 40960;
 
+TEST(KeyBlockSizeTest, KeyBlockSize) {
+        EXPECT_GE(AES::BLOCKSIZE, 128 / 8);
+        EXPECT_EQ(SECNFS_KEY_LENGTH, AES::DEFAULT_KEYLENGTH);
+}
+
 class EncryptTest : public ::testing::Test {
 protected:
         virtual void SetUp() {
