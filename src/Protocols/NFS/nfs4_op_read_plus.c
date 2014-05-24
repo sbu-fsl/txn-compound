@@ -249,6 +249,11 @@ static int fill_read_plus_res(READ_PLUS4res *rp4res, size_t read_size,
 	read_plus_res4 *rpr4 = &rp4res->READ_PLUS4res_u.rp_resok4;
 	int ret = 0;
 
+	/*
+	 * Right now, we support only one read_plus_content4.
+	 * XXX: how to decide the number of read_plus_content4 if there are
+	 * multiple?
+	 */
 	rpc4 = gsh_calloc(sizeof(*rpc4), 1);
 	if (!rpc4) {
 		rp4res->rp_status = NFS4ERR_SERVERFAULT;

@@ -2034,10 +2034,15 @@ fsal_status_t pxy_read_plus(struct fsal_obj_handle *obj_hdl,
 #define FSAL_READ_NB_OP_ALLOC 2
         nfs_argop4 argoparray[FSAL_READ_NB_OP_ALLOC];
         nfs_resop4 resoparray[FSAL_READ_NB_OP_ALLOC];
-        READ4resok *rok;
+        READ_PLUS4res *rp4res;
+        read_plus_res4 *rpr4;
+        read_plus_content4 rpc4;
 
         if (!obj_hdl || !read_amount || !end_of_file || !opctx)
                 return fsalstat(ERR_FSAL_FAULT, EINVAL);
+
+        offset = data_plus_to_offset(data_plus);
+        buffer_size = data_plus_to_file_dlen(data_plus);
 
         if (!buffer_size) {
                 *read_amount = 0;
@@ -2046,18 +2051,16 @@ fsal_status_t pxy_read_plus(struct fsal_obj_handle *obj_hdl,
         }
 
         ph = container_of(obj_hdl, struct pxy_obj_handle, obj);
-#if 0
-        if ((ph->openflags & (FSAL_O_RDONLY | FSAL_O_RDWR)) == 0)
-                return fsalstat(ERR_FSAL_FILE_OPEN, EBADF);
-#endif
 
         if (buffer_size > obj_hdl->export->ops->fs_maxread(obj_hdl->export))
                 buffer_size = obj_hdl->export->ops->fs_maxread(obj_hdl->export);
 
         COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
-        rok = &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
-        rok->data.data_val = buffer;
-        rok->data.data_len = buffer_size;
+        rp4res = &resoparray[opcnt].nfs_resop4_u.opread_plus;
+        rpr4 = &rp4res->READ_PLUS4res_u.rp_resok4;
+        rpr4->rpr_contents.rpr_contents_len = 1;
+        rpr4->rpr_contents.rpr_contents_val = &rpc4;
+        data_plus_to_read_plus_content(data_plus, &rpc4);
         COMPOUNDV4_ARG_ADD_OP_READ_PLUS(opcnt, argoparray, offset,
                                         buffer_size, data_plus->content_type);
 
@@ -2066,8 +2069,11 @@ fsal_status_t pxy_read_plus(struct fsal_obj_handle *obj_hdl,
         if (rc != NFS4_OK)
                 return nfsstat4_to_fsal(rc);
 
-        *end_of_file = rok->eof;
-        *read_amount = rok->data.data_len;
+        /* TODO: add sanity check of rpc4 against data_plus */
+        data_plus_from_read_plus_content(data_plus, &rpc4);
+
+        *end_of_file = rpr4->rpr_eof;
+        *read_amount = data_plus_to_file_dlen(data_plus);
         return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 

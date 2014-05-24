@@ -117,6 +117,8 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                         ? offset + KEY_FILE_SIZE
                         : offset;
 
+        /* To use read_plus, a struct data_plus need be prepared. */
+
         st = next_ops.obj_ops->read(hdl->next_handle, opctx,
                                     next_offset,
                                     buffer_size, buffer,
