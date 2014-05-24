@@ -2031,20 +2031,22 @@ fsal_status_t pxy_read_plus(struct fsal_obj_handle *obj_hdl,
         int rc;
         int opcnt = 0;
         struct pxy_obj_handle *ph;
-#define FSAL_READ_NB_OP_ALLOC 2
-        nfs_argop4 argoparray[FSAL_READ_NB_OP_ALLOC];
-        nfs_resop4 resoparray[FSAL_READ_NB_OP_ALLOC];
+#define FSAL_READ_PLUS_NB_OP_ALLOC 2
+        nfs_argop4 argoparray[FSAL_READ_PLUS_NB_OP_ALLOC];
+        nfs_resop4 resoparray[FSAL_READ_PLUS_NB_OP_ALLOC];
         READ_PLUS4res *rp4res;
         read_plus_res4 *rpr4;
         read_plus_content4 rpc4;
+        size_t pi_data_len = 0;
 
         if (!obj_hdl || !read_amount || !end_of_file || !opctx)
                 return fsalstat(ERR_FSAL_FAULT, EINVAL);
 
         offset = data_plus_to_offset(data_plus);
         buffer_size = data_plus_to_file_dlen(data_plus);
+        pi_data_len = data_plus_to_pi_dlen(data_plus);
 
-        if (!buffer_size) {
+        if (!buffer_size && !pi_data_len) {
                 *read_amount = 0;
                 *end_of_file = false;
                 return fsalstat(ERR_FSAL_NO_ERROR, 0);
@@ -2086,12 +2088,12 @@ fsal_status_t pxy_write_plus(struct fsal_obj_handle *obj_hdl,
 {
 	int rc;
 	int opcnt = 0;
-#define FSAL_WRITE_NB_OP_ALLOC 2
-	nfs_argop4 argoparray[FSAL_WRITE_NB_OP_ALLOC];
-	nfs_resop4 resoparray[FSAL_WRITE_NB_OP_ALLOC];
+#define FSAL_WRITE_PLUS_NB_OP_ALLOC 2
+	nfs_argop4 argoparray[FSAL_WRITE_PLUS_NB_OP_ALLOC];
+	nfs_resop4 resoparray[FSAL_WRITE_PLUS_NB_OP_ALLOC];
 	WRITE4resok *wok;
 	struct pxy_obj_handle *ph;
-        struct write_plus_arg4 wpa4;
+        write_plus_arg4 wpa4;
 
 	if (!obj_hdl || !write_amount || !opctx)
 		return fsalstat(ERR_FSAL_FAULT, EINVAL);
@@ -2112,7 +2114,7 @@ fsal_status_t pxy_write_plus(struct fsal_obj_handle *obj_hdl,
 	if (size > obj_hdl->export->ops->fs_maxwrite(obj_hdl->export))
 		size = obj_hdl->export->ops->fs_maxwrite(obj_hdl->export);
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
-	wok = &resoparray[opcnt].nfs_resop4_u.opwrite.WRITE4res_u.resok4;
+
         data_plus_to_write_plus_args(data_plus, &wpa4);
 	COMPOUNDV4_ARG_ADD_OP_WRITE_PLUS(opcnt, argoparray, (&wpa4));
 
@@ -2121,8 +2123,9 @@ fsal_status_t pxy_write_plus(struct fsal_obj_handle *obj_hdl,
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
 
-	*write_amount = wok->count;
-	*fsal_stable = false;
+        data_plus_from_write_plus_args(data_plus, &wpa4);
+	*write_amount = wpa4.wr_count;
+	*fsal_stable = wpa4.wr_committed != UNSTABLE4;
 
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
