@@ -21,6 +21,8 @@
 using CryptoPP::ArraySource;
 using CryptoPP::ArraySink;
 using CryptoPP::StreamTransformationFilter;
+using CryptoPP::AuthenticatedEncryptionFilter;
+using CryptoPP::AuthenticatedDecryptionFilter;
 
 #include <cryptopp/aes.h>
 using CryptoPP::AES;
@@ -30,6 +32,10 @@ using CryptoPP::CTR_Mode;
 
 #include <cryptopp/rsa.h>
 using CryptoPP::RSA;
+
+#include <cryptopp/gcm.h>
+using CryptoPP::GCM;
+using CryptoPP::GCM_64K_Tables;
 
 #include <cryptopp/osrng.h>
 using CryptoPP::AutoSeededRandomPool;
@@ -81,6 +87,7 @@ void generate_key_and_iv(secnfs_key_t *key, secnfs_key_t *iv)
  * @brief Check if n is aligned by the encryption block size
  */
 static int is_block_aligned(uint64_t n) { return !(n & (AES::BLOCKSIZE - 1)); }
+
 
 static secnfs_s offset_aligned_encrypt(secnfs_key_t key,
                                        secnfs_key_t iv,
@@ -149,6 +156,104 @@ secnfs_s secnfs_decrypt(secnfs_key_t key,
                         void *cipher,
                         void *buffer) {
         return secnfs_encrypt(key, iv, offset, size, cipher, buffer);
+}
+
+
+secnfs_s secnfs_auth_encrypt(secnfs_key_t key, secnfs_key_t iv,
+                             uint64_t offset, uint64_t size, const void *plain,
+                             uint64_t auth_size, const void *auth_msg,
+                             void *buffer, void *tag)
+{
+        if (round_up(offset, AES::BLOCKSIZE) != offset ||
+            round_up(size, AES::BLOCKSIZE) != size) {
+                // We require offset and size to be aligned, otherwise, the
+                // misaligned part will not be authenticated.
+                return SECNFS_NOT_ALIGNED;
+        }
+
+        incr_ctr(&iv, SECNFS_KEY_LENGTH, offset / AES::BLOCKSIZE);
+
+        try {
+                GCM< AES, GCM_64K_Tables >::Encryption e;
+                e.SetKeyWithIV(key.bytes, SECNFS_KEY_LENGTH, iv.bytes,
+                               SECNFS_KEY_LENGTH);
+
+                AuthenticatedEncryptionFilter aef(
+                                e, new ArraySink(static_cast<byte *>(buffer),
+                                                 size + TAG_SIZE), false,
+                                TAG_SIZE);
+
+                aef.ChannelPut("AAD", static_cast<const byte *>(auth_msg),
+                               auth_size);
+                aef.ChannelMessageEnd("AAD");
+
+                aef.ChannelPut("", static_cast<const byte *>(plain), size);
+                aef.ChannelMessageEnd("");
+        } catch (CryptoPP::Exception &e) {
+                std::cerr << e.what() << std::endl;
+                return SECNFS_CRYPTO_ERROR;
+        }
+
+        memmove(tag, static_cast<byte *>(buffer) + size, TAG_SIZE);
+        return SECNFS_OKAY;
+}
+
+
+secnfs_s secnfs_verify_decrypt(secnfs_key_t key, secnfs_key_t iv,
+                               uint64_t offset, uint64_t size,
+                               const void *cipher, uint64_t auth_size,
+                               const void *auth_msg, const void *tag,
+                               void *buffer)
+{
+        if (round_up(offset, AES::BLOCKSIZE) != offset ||
+            round_up(size, AES::BLOCKSIZE) != size) {
+                // We require offset and size to be aligned, otherwise, the
+                // misaligned part will not be authenticated.
+                return SECNFS_NOT_ALIGNED;
+        }
+
+        incr_ctr(&iv, SECNFS_KEY_LENGTH, offset / AES::BLOCKSIZE);
+
+        try {
+                GCM< AES, GCM_64K_Tables >::Decryption d;
+                d.SetKeyWithIV(key.bytes, SECNFS_KEY_LENGTH, iv.bytes,
+                               SECNFS_KEY_LENGTH);
+
+                AuthenticatedDecryptionFilter adf(
+                        d, NULL,
+                        AuthenticatedDecryptionFilter::MAC_AT_END |
+                        AuthenticatedDecryptionFilter::THROW_EXCEPTION,
+                        TAG_SIZE);
+
+                adf.ChannelPut("AAD", static_cast<const byte *>(auth_msg),
+                               auth_size);
+                adf.ChannelPut("", static_cast<const byte *>(cipher), size);
+                adf.ChannelPut("", static_cast<const byte *>(tag), TAG_SIZE);
+                adf.ChannelMessageEnd("");
+
+                if (!adf.GetLastResult()) {
+                        std::cerr << "verification failed" << std::endl;
+                        return SECNFS_NOT_VERIFIED;
+                }
+
+                adf.SetRetrievalChannel("");
+                uint64_t n = adf.MaxRetrievable();
+                if (n != size) {
+                        std::cerr << "message length mismatch" << std::endl;
+                        return SECNFS_CRYPTO_ERROR;
+                }
+
+                adf.Get(static_cast<byte *>(buffer), n);
+
+        } catch (CryptoPP::HashVerificationFilter::HashVerificationFailed &e) {
+                std::cerr << e.what() << std::endl;
+                return SECNFS_NOT_VERIFIED;
+        } catch (CryptoPP::Exception &e) {
+                std::cerr << e.what() << std::endl;
+                return SECNFS_CRYPTO_ERROR;
+        }
+
+        return SECNFS_OKAY;
 }
 
 

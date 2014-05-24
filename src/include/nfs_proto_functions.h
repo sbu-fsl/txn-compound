@@ -1,5 +1,5 @@
 /*
- *
+ * vim:noexpandtab:shiftwidth=8:tabstop=8:
  *
  * Copyright CEA/DAM/DIF  (2008)
  * contributeur : Philippe DENIEL   philippe.deniel@cea.fr
@@ -753,7 +753,6 @@ void nfs4_op_destroy_session_Free(nfs_resop4 *);
 void nfs4_op_lock_Free(nfs_resop4 *);
 void nfs4_op_lockt_Free(nfs_resop4 *);
 void nfs4_op_locku_Free(nfs_resop4 *);
-void nfs4_op_read_Free(nfs_resop4 *);
 void nfs4_op_sequence_Free(nfs_resop4 *);
 void nfs4_op_set_ssv_Free(nfs_resop4 *);
 void nfs4_op_test_stateid_Free(nfs_resop4 *);
@@ -808,6 +807,19 @@ int nfs4_FSALattr_To_Fattr(struct xdr_attrs_args *, struct bitmap4 *,
 uint64_t nfs_htonl64(uint64_t);
 uint64_t nfs_ntohl64(uint64_t);
 void nfs4_bitmap4_Remove_Unsupported(struct bitmap4 *);
+
+/* NFSv4 end-to-end integrity */
+void get_protection_type4(compound_data_t *compound, nfs_protection_info4 *pi);
+
+int nfs4_op_read_plus(struct nfs_argop4 *, compound_data_t *,
+                      struct nfs_resop4 *);
+
+void nfs4_op_read_plus_Free(nfs_resop4 *);
+
+int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *data,
+		       struct nfs_resop4 *resp);
+
+void nfs4_op_write_plus_Free(nfs_resop4 *resp);
 
 /* Error conversion routines */
 nfsstat4 nfs4_Errno_verbose(cache_inode_status_t, const char *);

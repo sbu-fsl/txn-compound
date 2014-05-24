@@ -35,6 +35,7 @@ SET(cache_inode_STAT_SRCS
    cache_inode_avl.c
    cache_inode_lru.c
    cache_inode_destroyer.c
+   cache_inode_rdwr_plus.c
 )
 
 add_library(cache_inode STATIC ${cache_inode_STAT_SRCS})

@@ -1,0 +1,153 @@
+How to experiment NFS end-to-end integrity?
+
+Software
+========
+1. OS: Fedora
+We use Fedora because it contains the latest version of most packages, some of
+which, such as Python2.7 and targetcli-fb, will be used.
+
+It is just too plainful to do it on CentOS.  Even its latest version contain
+very old packages.
+
+2. Kernel: 3.14.1
+
+Apply patch from <fsl-nfs-ganesha>/nfs4int/pi-patchset-v0/0001-apply-patchset-of-enabling-user-land-DIX-data.patch
+
+The patch is adopted (with bug fix) from kernel patches
+http://thread.gmane.org/gmane.linux.kernel.aio.general/3904
+
+There are newer version of the kernel patches.  They did not compile, so we
+don't use them:
+https://marc.info/?l=linux-mm&m=139567816228628&w=2
+
+
+Create a virtualized SCSI disk using LIO tcm_loop
+=================================================
+
+http://linux-iscsi.org/wiki/Tcm_loop
+
+Make sure you use the targetcli-fb from Andy Grover
+(https://github.com/agrover/targetcli-fb), instead of targetcli from
+www.linux-iscsi.org.  Andy even have some videos about how to use targetcli!
+
+	# targetcli
+	> cd /backstores/ramdisk
+	ramdisk> create size=10MB rd1
+
+Then enable DIX support of the ramdisk:
+
+	echo 3 > /sys/kernel/config/target/core/rd_mcp_1/rd1/attrib/pi_prot_type
+
+We choose to use type 3 of DIF, which only use the CRC guard tag (2 bytes).
+The application tag and the reference tag are left intact.  So be careful when
+using "dix -p g".
+
+Create a lun out of the ramdisk.
+
+	ramdisk> cd /loopback
+	loopback> create
+	loopback> cd naa.5001405eaf325048/luns
+	luns> create /backstores/ramdisk/rd1
+
+After this, you should be able to see a new 10MB device in "fdisk -l" output,
+for example '/dev/sdb'.
+
+Verify integrity is enabled:
+
+	$ cat /sys/block/sdb/integrity/read_verify
+	1
+	$ cat /sys/block/sdb/integrity/write_generate
+	1
+
+
+Add support for passing DIX data from user application to kernel
+================================================================
+
+1. Apply the patch set, compile the kernel and reboot
+http://thread.gmane.org/gmane.linux.kernel.aio.general/3904
+
+2. Install libaio from https://git.fedorahosted.org/cgit/libaio.git/
+
+3. Compile and run
+
+	# gcc -o dix dix.c -laio -L /usr/lib/
+
+	# ./dix -p g -wr -s 10 /dev/sdb
+
+
+Launch NFS-Ganesha
+==================
+0. Install packages:
+
+	$ yum install cmake glog-devel protobuf-devel tbb-devel \
+		jemalloc-devel krb5-devel cryptopp-devel libcap-devel \
+		libaio-devel
+
+Manual install "google-test", and set env var:
+
+	$ export GOOGLE_TEST=/path/to/google/test
+
+1. Make sure this repo is built and installed:
+
+	$ cd <fsl-nfs-ganesha>/src
+	$ mkdir mybuild
+	$ cd mybuild
+	$ cmake -DCMAKE_BUILD_TYPE=Debug ..
+	$ make
+	$ sudo make install
+
+NOTE: to build FSAL_SECNFS, make sure packages listed in
+<fsl-nfs-ganesha>/src/FSAL/Stackable_FSALs/FSAL_SECNFS/README are installed.
+
+2. Setup config file
+
+	# cp <fsl-nfs-ganesha>/nfs4int/vfs.ganesha.conf /etc/ganesha
+	# cp run-vfs.sh mybuild
+	# ./run-vfs.sh &
+
+3. Test from the clients (optionally using pynfs)
+
+3.1 Make sure a test file "test.txt" exists in the root of the exported FS
+
+	# dd if=/dev/urandom of=/vfs-ganesha/test.txt bs=4k count=2
+
+3.2 install packages
+
+	# yum install python-devel krb5-devel
+
+3.3 Test
+
+	# git clone user@git.fsl.cs.sunysb.edu:/scm/fslgit/fsl-pynfs.git
+	# cd fsl-pynfs
+	# python setup.py build
+	# cd nfs4.1/
+	# ./testserver.py --maketree --verbose 130.245.126.199:/vfs0 PIRd
+
+If there is problem mounting, please refer to <nfs4sec>/doc/*.txt
+user@git.fsl.cs.sunysb.edu:/scm/fslgit/nfs4sec.git for help.
+
+
+To understand the kernel patch
+==============================
+Important kernel files:
+
+	block/blk-integrity.c
+	fs/aio.c
+	fs/bio-integrity.c
+	fs/direct-io.c
+	scsi/sd_dif.c
+
+Important functions:
+
+	sd_dif_type3_generate()
+
+
+# References
+
+http://tools.ietf.org/html/draft-cel-nfsv4-end2end-data-protection-00
+
+https://www.kernel.org/doc/ols/2008/ols2008v2-pages-151-156.pdf
+
+http://thread.gmane.org/gmane.linux.kernel.aio.general/3904
+
+http://www.spinics.net/lists/target-devel/msg06044.html

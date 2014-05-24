@@ -1,0 +1,30 @@
+diff --git a/drivers/scsi/sd_dif.c b/drivers/scsi/sd_dif.c
+index bea648b..cbeb10a 100644
+--- a/drivers/scsi/sd_dif.c
++++ b/drivers/scsi/sd_dif.c
+@@ -225,7 +225,7 @@ static int sd_dif_type3_generate(struct blk_integrity_exchg *bix, csum_fn *fn,
+ 	struct sd_dif_tuple *sdt = bix->prot_buf;
+ 	unsigned int i;
+ 
+-	if (flags & (~GENERATE_ALL | GENERATE_REF))
++	if (flags & GENERATE_REF)
+ 		return -EINVAL;
+ 	if (!flags)
+ 		return -ENOTTY;
+@@ -246,12 +246,14 @@ static int sd_dif_type3_generate(struct blk_integrity_exchg *bix, csum_fn *fn,
+ 
+ static void sd_dif_type3_generate_crc(struct blk_integrity_exchg *bix)
+ {
+-	sd_dif_type3_generate(bix, sd_dif_crc_fn, GENERATE_ALL);
++	sd_dif_type3_generate(bix, sd_dif_crc_fn,
++			      GENERATE_GUARD | GENERATE_APP);
+ }
+ 
+ static void sd_dif_type3_generate_ip(struct blk_integrity_exchg *bix)
+ {
+-	sd_dif_type3_generate(bix, sd_dif_ip_fn, GENERATE_ALL);
++	sd_dif_type3_generate(bix, sd_dif_ip_fn,
++			      GENERATE_GUARD | GENERATE_APP);
+ }
+ 
+ static int sd_dif_type3_mod_crc(struct blk_integrity_exchg *bix, int flags)

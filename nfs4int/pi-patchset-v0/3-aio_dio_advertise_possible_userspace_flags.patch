@@ -1,0 +1,221 @@
+aio/dio: advertise possible userspace flags
+
+Expose possible userland flags to the new AIO/DIO PI interface so that
+userspace can discover what flags exist.
+
+Signed-off-by: Darrick J. Wong <darrick.wong@oracle.com>
+---
+ Documentation/ABI/testing/sysfs-block  |   14 ++++++++++++++
+ Documentation/block/data-integrity.txt |   26 +++++++++++++++++++++++++
+ block/blk-integrity.c                  |   33 ++++++++++++++++++++++++++++++++
+ drivers/scsi/sd_dif.c                  |   11 +++++++++++
+ include/linux/blkdev.h                 |    7 +++++++
+ 5 files changed, 91 insertions(+)
+
+
+diff --git a/Documentation/ABI/testing/sysfs-block b/Documentation/ABI/testing/sysfs-block
+index 279da08..989cb80 100644
+--- a/Documentation/ABI/testing/sysfs-block
++++ b/Documentation/ABI/testing/sysfs-block
+@@ -53,6 +53,20 @@ Description:
+ 		512 bytes of data.
+ 
+ 
++What:		/sys/block/<disk>/integrity/tuple_size
++Date:		March 2014
++Contact:	Darrick J. Wong <darrick.wong@oracle.com>
++Description:
++		Size in bytes of the integrity data buffer for each logical
++		block.
++
++What:		/sys/block/<disk>/integrity/write_user_flags
++Date:		March 2014
++Contact:	Darrick J. Wong <darrick.wong@oracle.com>
++Description:
++		Provides a list of flags that userspace can pass to the kernel
++		when supplying integrity data for a write IO.
++
+ What:		/sys/block/<disk>/integrity/write_generate
+ Date:		June 2008
+ Contact:	Martin K. Petersen <martin.petersen@oracle.com>
+diff --git a/Documentation/block/data-integrity.txt b/Documentation/block/data-integrity.txt
+index b72a54f..38a83a7 100644
+--- a/Documentation/block/data-integrity.txt
++++ b/Documentation/block/data-integrity.txt
+@@ -341,7 +341,33 @@ will require extra work due to the application tag.
+       specific to the blk_integrity provider) arrange for pre-processing
+       of the user buffer prior to issuing the IO.
+ 
++      'user_write_flags' points to an array of struct blk_integrity_flag,
++      which maps mod_user_buf_fn flags to a description of what they do.
++
+       See 6.2 for a description of get_tag_fn and set_tag_fn.
+ 
++5.5 PASSING INTEGRITY DATA FROM USERSPACE
++
++    The AIO/DIO interface has been extended with a new API to provide
++    userspace programs the ability to provide PI data with a WRITE, or
++    to receive PI data with a READ.  There are two new AIO commands,
++    IOCB_CMD_PREADVM and IOCB_CMD_PWRITEVM.  They have the same general
++    struct iocb format as IOCB_CMD_PREADV and IOCB_CMD_PWRITEV, respectively.
++    The final struct iovec should point to the buffer that contains the
++    PI data.
++
++    This buffer must be aligned to a page boundary, and it must have the
++    following format: Flags are stored in a 32-bit integer.  There must
++    then be padding out to the next multiple of the tuple size.  After
++    that comes the tuple data.  Valid flag values can be found in
++    /sys/block/*/integrity/user_write_flags.  The tuple size can be found
++    in /sys/block/*/integrity/tuple_size.  Tuples must not split a page
++    boundary.
++
++    In general, the flags allow the user program to ask the in-kernel
++    integrity provider to fill in some parts of the tuples.  For example,
++    the T10 DIF provider can fill in the reference tag (sector number) so
++    that userspace can choose not to care about the reference tag.
++
+ ----------------------------------------------------------------------
+ 2007-12-24 Martin K. Petersen <martin.petersen@oracle.com>
+diff --git a/block/blk-integrity.c b/block/blk-integrity.c
+index 1cb1eb2..557d28e 100644
+--- a/block/blk-integrity.c
++++ b/block/blk-integrity.c
+@@ -307,6 +307,26 @@ static ssize_t integrity_write_show(struct blk_integrity *bi, char *page)
+ 	return sprintf(page, "%d\n", (bi->flags & INTEGRITY_FLAG_WRITE) != 0);
+ }
+ 
++static ssize_t integrity_write_flags_show(struct blk_integrity *bi, char *page)
++{
++	struct blk_integrity_flag *flag = bi->user_write_flags;
++	char *p = page;
++	ssize_t ret = 0;
++
++	while (flag->value) {
++		ret += snprintf(p, PAGE_SIZE - ret, "0x%x: %s\n",
++				flag->value, flag->descr);
++		p = page + ret;
++		flag++;
++	}
++	return ret;
++}
++
++static ssize_t integrity_tuple_size_show(struct blk_integrity *bi, char *page)
++{
++	return sprintf(page, "%d\n", bi->tuple_size);
++}
++
+ static struct integrity_sysfs_entry integrity_format_entry = {
+ 	.attr = { .name = "format", .mode = S_IRUGO },
+ 	.show = integrity_format_show,
+@@ -329,11 +349,23 @@ static struct integrity_sysfs_entry integrity_write_entry = {
+ 	.store = integrity_write_store,
+ };
+ 
++static struct integrity_sysfs_entry integrity_write_flags_entry = {
++	.attr = { .name = "write_user_flags", .mode = S_IRUGO },
++	.show = integrity_write_flags_show,
++};
++
++static struct integrity_sysfs_entry integrity_tuple_size_entry = {
++	.attr = { .name = "tuple_size", .mode = S_IRUGO },
++	.show = integrity_tuple_size_show,
++};
++
+ static struct attribute *integrity_attrs[] = {
+ 	&integrity_format_entry.attr,
+ 	&integrity_tag_size_entry.attr,
+ 	&integrity_read_entry.attr,
+ 	&integrity_write_entry.attr,
++	&integrity_write_flags_entry.attr,
++	&integrity_tuple_size_entry.attr,
+ 	NULL,
+ };
+ 
+@@ -422,6 +454,7 @@ int blk_integrity_register(struct gendisk *disk, struct blk_integrity *template)
+ 		bi->get_tag_fn = template->get_tag_fn;
+ 		bi->tag_size = template->tag_size;
+ 		bi->mod_user_buf_fn = template->mod_user_buf_fn;
++		bi->user_write_flags = template->user_write_flags;
+ 	} else
+ 		bi->name = bi_unsupported_name;
+ 
+diff --git a/drivers/scsi/sd_dif.c b/drivers/scsi/sd_dif.c
+index 74182c9..bea648b 100644
+--- a/drivers/scsi/sd_dif.c
++++ b/drivers/scsi/sd_dif.c
+@@ -182,6 +182,13 @@ static void sd_dif_type1_get_tag(void *prot, void *tag_buf, unsigned int sectors
+ 	}
+ }
+ 
++static struct blk_integrity_flag dif_flags[] = {
++	{GENERATE_GUARD,	"generate guard tag"},
++	{GENERATE_REF,		"generate ref tag"},
++	{GENERATE_APP,		"generate app tag"},
++	{0, NULL},
++};
++
+ static struct blk_integrity dif_type1_integrity_crc = {
+ 	.name			= "T10-DIF-TYPE1-CRC",
+ 	.generate_fn		= sd_dif_type1_generate_crc,
+@@ -191,6 +198,7 @@ static struct blk_integrity dif_type1_integrity_crc = {
+ 	.tuple_size		= sizeof(struct sd_dif_tuple),
+ 	.tag_size		= 0,
+ 	.mod_user_buf_fn	= sd_dif_type1_mod_crc,
++	.user_write_flags	= dif_flags,
+ };
+ 
+ static struct blk_integrity dif_type1_integrity_ip = {
+@@ -202,6 +210,7 @@ static struct blk_integrity dif_type1_integrity_ip = {
+ 	.tuple_size		= sizeof(struct sd_dif_tuple),
+ 	.tag_size		= 0,
+ 	.mod_user_buf_fn	= sd_dif_type1_mod_ip,
++	.user_write_flags	= dif_flags,
+ };
+ 
+ 
+@@ -334,6 +343,7 @@ static struct blk_integrity dif_type3_integrity_crc = {
+ 	.tuple_size		= sizeof(struct sd_dif_tuple),
+ 	.tag_size		= 0,
+ 	.mod_user_buf_fn	= sd_dif_type3_mod_crc,
++	.user_write_flags	= dif_flags,
+ };
+ 
+ static struct blk_integrity dif_type3_integrity_ip = {
+@@ -345,6 +355,7 @@ static struct blk_integrity dif_type3_integrity_ip = {
+ 	.tuple_size		= sizeof(struct sd_dif_tuple),
+ 	.tag_size		= 0,
+ 	.mod_user_buf_fn	= sd_dif_type3_mod_ip,
++	.user_write_flags	= dif_flags,
+ };
+ 
+ /*
+diff --git a/include/linux/blkdev.h b/include/linux/blkdev.h
+index cf1ec22..e8e6401 100644
+--- a/include/linux/blkdev.h
++++ b/include/linux/blkdev.h
+@@ -1428,6 +1428,11 @@ typedef void (integrity_set_tag_fn) (void *, void *, unsigned int);
+ typedef void (integrity_get_tag_fn) (void *, void *, unsigned int);
+ typedef int (integrity_mod_user_buf_fn) (struct blk_integrity_exchg *, int);
+ 
++struct blk_integrity_flag {
++	unsigned int value;
++	const char *descr;
++};
++
+ struct blk_integrity {
+ 	integrity_gen_fn	*generate_fn;
+ 	integrity_vrfy_fn	*verify_fn;
+@@ -1443,6 +1448,8 @@ struct blk_integrity {
+ 	const char		*name;
+ 
+ 	struct kobject		kobj;
++
++	struct blk_integrity_flag	*user_write_flags;
+ };
+ 
+ extern bool blk_integrity_is_initialized(struct gendisk *);
+
+--
+To unsubscribe from this list: send the line "unsubscribe linux-fsdevel" in
+the body of a message to majordomo@vger.kernel.org
+More majordomo info at  http://vger.kernel.org/majordomo-info.html

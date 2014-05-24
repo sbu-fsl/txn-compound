@@ -545,6 +545,8 @@ typedef uint16_t fsal_openflags_t;
 						     * be used as a mask */
 #define FSAL_O_SYNC     0x0004	/* sync */
 
+#define FSAL_O_DIRECT   0x0008  /* direct IO */
+
 /** File system static info. */
 
 /* enums for accessing

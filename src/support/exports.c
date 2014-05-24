@@ -102,6 +102,7 @@
 #define CONF_EXPORT_DELEG              "Use_Delegation"
 #define CONF_EXPORT_USE_COOKIE_VERIFIER "UseCookieVerifier"
 #define CONF_EXPORT_CLIENT_DEF         "Client"
+#define CONF_EXPORT_DIX_PROT_TYPE	"Protection_Type"
 
 /** @todo : add encrypt handles option */
 
@@ -137,6 +138,7 @@
 #define FLAG_EXPORT_CACHE_POLICY    0x080000000
 #define FLAG_EXPORT_USE_UQUOTA      0x100000000
 #define FLAG_EXPORT_USE_COOKIE_VERIFIER 0x400000000
+#define FLAG_EXPORT_DIX_PROT_TYPE   0x800000000
 
 /* limites for nfs_ParseConfLine */
 /* Used in BuildExportEntry() */
@@ -2228,6 +2230,29 @@ static int BuildExportEntry(config_item_t block)
 				err_flag = true;
 				continue;
 			}
+		} else if (!STRCMP(var_name, CONF_EXPORT_DIX_PROT_TYPE)) {
+			int32_t type;
+
+			if (!parse_int32_t(var_value,
+					   1,
+					   USHRT_MAX,
+					   &set_options,
+					   FLAG_EXPORT_DIX_PROT_TYPE,
+					   label,
+					   var_name,
+					   &err_flag,
+					   &type))
+				continue;
+			if (type >= __NFS_PI_TYPELIMIT) {
+				LogMajor(COMPONENT_CONFIG,
+					 "Invalid DIX Protection_Type: %d; "
+					 "Max supported type: %d",
+					 type, (__NFS_PI_TYPELIMIT - 1));
+				err_flag = true;
+				continue;
+			}
+			p_entry->dix_protection_type = type;
+			p_perms->options |= FLAG_EXPORT_DIX_PROT_TYPE;
 		} else {
 			LogWarn(COMPONENT_CONFIG,
 				"NFS READ %s: Unknown option: %s, ignored",

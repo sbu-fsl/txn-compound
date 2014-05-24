@@ -346,7 +346,17 @@ static const struct nfs4_op_desc optabv4[] = {
 		.name = "OP_RECLAIM_COMPLETE",
 		.funct = nfs4_op_reclaim_complete,
 		.free_res = nfs4_op_reclaim_complete_Free,
-		.exp_perm_flags = 0}
+		.exp_perm_flags = 0},
+	[NFS4_OP_WRITE_PLUS] = {
+		.name = "OP_WRITE_PLUS",
+		.funct = nfs4_op_write_plus,
+		.free_res = nfs4_op_write_plus_Free,
+		.exp_perm_flags = EXPORT_OPTION_WRITE_ACCESS},
+	[NFS4_OP_READ_PLUS] = {
+		.name = "OP_READ_PLUS",
+		.funct = nfs4_op_read_plus,
+		.free_res = nfs4_op_read_plus_Free,
+		.exp_perm_flags = EXPORT_OPTION_READ_ACCESS},
 };
 
 /**
@@ -577,7 +587,7 @@ int nfs4_Compound(nfs_arg_t *arg, exportlist_t *export,
 				}
 			}
 
-			if (opcode > NFS4_OP_RECLAIM_COMPLETE)
+			if (opcode > NFS4_OP_READ_PLUS)
 				opcode = 0;
 		}
 		LogDebug(COMPONENT_NFS_V4, "Request %d: opcode %d is %s", i,
@@ -982,6 +992,8 @@ void nfs4_Compound_CopyResOne(nfs_resop4 *res_dst, nfs_resop4 *res_src)
 	case NFS4_OP_WANT_DELEGATION:
 	case NFS4_OP_DESTROY_CLIENTID:
 	case NFS4_OP_RECLAIM_COMPLETE:
+	case NFS4_OP_WRITE_PLUS:
+	case NFS4_OP_READ_PLUS:
 		break;
 
 	case NFS4_OP_ILLEGAL:

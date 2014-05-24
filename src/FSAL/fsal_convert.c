@@ -161,8 +161,8 @@ int fsal2posix_openflags(fsal_openflags_t fsal_flags, int *p_posix_flags)
 		return ERR_FSAL_FAULT;
 
 	/* check that all used flags exist */
-	if (fsal_flags &
-	    ~(FSAL_O_READ | FSAL_O_RDWR | FSAL_O_WRITE | FSAL_O_SYNC))
+	if (fsal_flags & ~(FSAL_O_READ | FSAL_O_RDWR | FSAL_O_WRITE |
+			   FSAL_O_SYNC | FSAL_O_DIRECT))
 		return ERR_FSAL_INVAL;
 
 	/* conversion */
@@ -177,6 +177,9 @@ int fsal2posix_openflags(fsal_openflags_t fsal_flags, int *p_posix_flags)
 
 	if (fsal_flags & FSAL_O_SYNC)
 		*p_posix_flags |= O_SYNC;
+
+	if (fsal_flags & FSAL_O_DIRECT)
+		*p_posix_flags |= O_DIRECT;
 
 	return ERR_FSAL_NO_ERROR;
 }

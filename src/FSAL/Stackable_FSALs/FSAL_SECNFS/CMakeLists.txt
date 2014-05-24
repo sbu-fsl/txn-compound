@@ -19,8 +19,7 @@ message(STATUS "protocol headers: " ${ProtoHeaders})
 
 enable_testing()
 
-#set(GTEST "$ENV{GOOGLE_TEST}")
-set(GTEST "/home/mchen/software/gtest-1.7.0")
+set(GTEST "$ENV{GOOGLE_TEST}")
 
 include_directories(
 	"${GTEST}"

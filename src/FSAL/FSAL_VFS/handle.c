@@ -1,5 +1,8 @@
 /*
- * vim:noexpandtab:shiftwidth=8:tabstop=8:
+ * vim:expandtab:shiftwidth=8:tabstop=8:
+ *
+ * Copyright (C) Stony Brook University, 2014
+ * Author: Ming Chen v.mingchen@gmail.com
  *
  * Copyright (C) Panasas Inc., 2011
  * Author: Jim Lieb jlieb@panasas.com
@@ -1381,6 +1384,8 @@ void vfs_handle_ops_init(struct fsal_obj_ops *ops)
 	ops->status = vfs_status;
 	ops->read = vfs_read;
 	ops->write = vfs_write;
+	ops->read_plus = vfs_read_plus;
+	ops->write_plus = vfs_write_plus;
 	ops->commit = vfs_commit;
 	ops->lock_op = vfs_lock_op;
 	ops->close = vfs_close;
