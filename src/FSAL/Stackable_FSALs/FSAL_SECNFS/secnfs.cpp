@@ -159,16 +159,9 @@ secnfs_s secnfs_decrypt(secnfs_key_t key,
 }
 
 
-/*
- * See http://www.cryptopp.com/wiki/GCM
- *
- * REQUIRES:
- *  1. buffer is large enough for the data and the tag
- *  2. offset and size is aligned to AES::BLOCKSIZE (128bit)
- */
 secnfs_s secnfs_auth_encrypt(secnfs_key_t key, secnfs_key_t iv,
-                             uint64_t offset, uint64_t size, void *plain,
-                             uint64_t auth_size, void *auth_msg,
+                             uint64_t offset, uint64_t size, const void *plain,
+                             uint64_t auth_size, const void *auth_msg,
                              void *buffer, void *tag)
 {
         if (round_up(offset, AES::BLOCKSIZE) != offset ||
@@ -182,11 +175,13 @@ secnfs_s secnfs_auth_encrypt(secnfs_key_t key, secnfs_key_t iv,
 
         try {
                 GCM< AES, GCM_64K_Tables >::Encryption e;
-                e.SetKeyWithIV(key.bytes, SECNFS_KEY_LENGTH, iv.bytes);
+                e.SetKeyWithIV(key.bytes, SECNFS_KEY_LENGTH, iv.bytes,
+                               SECNFS_KEY_LENGTH);
 
                 AuthenticatedEncryptionFilter aef(
                                 e, new ArraySink(static_cast<byte *>(buffer),
-                                                 size), false, TAG_SIZE);
+                                                 size + TAG_SIZE), false,
+                                TAG_SIZE);
 
                 aef.ChannelPut("AAD", static_cast<const byte *>(auth_msg),
                                auth_size);
@@ -205,8 +200,9 @@ secnfs_s secnfs_auth_encrypt(secnfs_key_t key, secnfs_key_t iv,
 
 
 secnfs_s secnfs_verify_decrypt(secnfs_key_t key, secnfs_key_t iv,
-                               uint64_t offset, uint64_t size, void *cipher,
-                               uint64_t auth_size, void *auth_msg, void *tag,
+                               uint64_t offset, uint64_t size,
+                               const void *cipher, uint64_t auth_size,
+                               const void *auth_msg, const void *tag,
                                void *buffer)
 {
         if (round_up(offset, AES::BLOCKSIZE) != offset ||
@@ -220,19 +216,19 @@ secnfs_s secnfs_verify_decrypt(secnfs_key_t key, secnfs_key_t iv,
 
         try {
                 GCM< AES, GCM_64K_Tables >::Decryption d;
-                d.SetKeyWithIV(key.bytes, SECNFS_KEY_LENGTH, iv.bytes);
+                d.SetKeyWithIV(key.bytes, SECNFS_KEY_LENGTH, iv.bytes,
+                               SECNFS_KEY_LENGTH);
 
                 AuthenticatedDecryptionFilter adf(
                         d, NULL,
-                        AuthenticatedDecryptionFilter::MAC_AT_BEGIN |
+                        AuthenticatedDecryptionFilter::MAC_AT_END |
                         AuthenticatedDecryptionFilter::THROW_EXCEPTION,
                         TAG_SIZE);
 
-                adf.ChannelPut("", static_cast<byte *>(tag), TAG_SIZE);
-                adf.ChannelPut("AAD", static_cast<byte *>(auth_msg),
+                adf.ChannelPut("AAD", static_cast<const byte *>(auth_msg),
                                auth_size);
-                adf.ChannelPut("", static_cast<byte *>(cipher), size);
-                adf.ChannelMessageEnd("AAD");
+                adf.ChannelPut("", static_cast<const byte *>(cipher), size);
+                adf.ChannelPut("", static_cast<const byte *>(tag), TAG_SIZE);
                 adf.ChannelMessageEnd("");
 
                 if (!adf.GetLastResult()) {
@@ -249,6 +245,9 @@ secnfs_s secnfs_verify_decrypt(secnfs_key_t key, secnfs_key_t iv,
 
                 adf.Get(static_cast<byte *>(buffer), n);
 
+        } catch (CryptoPP::HashVerificationFilter::HashVerificationFailed &e) {
+                std::cerr << e.what() << std::endl;
+                return SECNFS_NOT_VERIFIED;
         } catch (CryptoPP::Exception &e) {
                 std::cerr << e.what() << std::endl;
                 return SECNFS_CRYPTO_ERROR;

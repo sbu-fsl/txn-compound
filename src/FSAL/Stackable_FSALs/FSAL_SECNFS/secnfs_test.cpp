@@ -133,10 +133,60 @@ TEST_F(EncryptTest, RandomOffsets) {
         }
 }
 
+#include <stdio.h>
+void dumpbytes(const void *data, size_t len) {
+        const byte *bytes = (const byte *)data;
+        for (int i = 0; i < len; ++i) {
+                printf("%02x", bytes[i]);
+        }
+        printf("\n");
+}
 
-TEST_F(EncryptTest, AuthenticatedEncrypt) {
+
+TEST_F(EncryptTest, AuthEncryptBasic) {
+        std::string ptx(16, (char)0x00);
+        std::string msg(16, (char)0x00);
+        byte ctx[16 + 16];
+        byte tag[16];
+        // results from the bottom of www.cryptopp.com/wiki/GCM
+        byte expected_ctx[16] = {0xa3, 0xb2, 0x2b, 0x84, 0x49, 0xaf, 0xaf,
+                0xbc, 0xd6, 0xc0, 0x9f, 0x2c, 0xfa, 0x9d, 0xe2, 0xbe};
+        byte expected_tag[16] = {0xa1, 0x98, 0x37, 0x54, 0x8e, 0x08, 0x99,
+                0xac, 0xae, 0x93, 0x7d, 0x2c, 0x5f, 0x18, 0xdc, 0x2b};
+
+        memset(&key_, 0, sizeof(key_));
+        memset(&iv_, 0, sizeof(iv_));
+
+        EXPECT_OKAY(secnfs_auth_encrypt(key_, iv_, 0, 16, ptx.c_str(), 16,
+                                        msg.c_str(), ctx, tag));
+        //dumpbytes(ctx, 32);
+        EXPECT_SAME(ctx, expected_ctx, 16);
+        EXPECT_SAME(tag, expected_tag, 16);
+
+        byte recovered[16];
+        EXPECT_OKAY(secnfs_verify_decrypt(key_, iv_, 0, 16, ctx, 16,
+                                          msg.c_str(), tag, recovered));
+}
+
+TEST_F(EncryptTest, AuthEncryptVerify) {
         byte buffer[MSG_SIZE + TAG_SIZE];
+        byte *tag = buffer + MSG_SIZE;
+        byte recovered[MSG_SIZE];
+        std::string msg = "MessagesToVerify";
 
+        EXPECT_OKAY(secnfs_auth_encrypt(key_, iv_, 0, MSG_SIZE, plain_,
+                                        msg.size(), msg.c_str(), buffer, tag));
+        EXPECT_OKAY(secnfs_verify_decrypt(key_, iv_, 0, MSG_SIZE, buffer,
+                                          msg.size(), msg.c_str(), tag,
+                                          recovered));
+        EXPECT_SAME(plain_, recovered, MSG_SIZE);
+
+        // tamper msg to "Massage"
+        msg[1] = 'a';
+        EXPECT_EQ(SECNFS_NOT_VERIFIED,
+                  secnfs_verify_decrypt(key_, iv_, 0, MSG_SIZE, buffer,
+                                        msg.size(), msg.c_str(), tag,
+                                        recovered));
 }
 
 
