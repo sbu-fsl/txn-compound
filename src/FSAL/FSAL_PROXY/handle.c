@@ -2091,9 +2091,10 @@ fsal_status_t pxy_write_plus(struct fsal_obj_handle *obj_hdl,
 #define FSAL_WRITE_PLUS_NB_OP_ALLOC 2
 	nfs_argop4 argoparray[FSAL_WRITE_PLUS_NB_OP_ALLOC];
 	nfs_resop4 resoparray[FSAL_WRITE_PLUS_NB_OP_ALLOC];
-	WRITE4resok *wok;
 	struct pxy_obj_handle *ph;
         write_plus_arg4 wpa4;
+        WRITE_PLUS4res *wp4res;
+        write_response4 *wpr4;
 
 	if (!obj_hdl || !write_amount || !opctx)
 		return fsalstat(ERR_FSAL_FAULT, EINVAL);
@@ -2115,6 +2116,8 @@ fsal_status_t pxy_write_plus(struct fsal_obj_handle *obj_hdl,
 		size = obj_hdl->export->ops->fs_maxwrite(obj_hdl->export);
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
 
+        wp4res = &resoparray[opcnt].nfs_resop4_u.opwrite_plus;
+        wpr4 = &wp4res->WRITE_PLUS4res_u.wp_resok4;
         data_plus_to_write_plus_args(data_plus, &wpa4);
 	COMPOUNDV4_ARG_ADD_OP_WRITE_PLUS(opcnt, argoparray, (&wpa4));
 
@@ -2124,10 +2127,10 @@ fsal_status_t pxy_write_plus(struct fsal_obj_handle *obj_hdl,
 		return nfsstat4_to_fsal(rc);
 
         data_plus_from_write_plus_args(data_plus, &wpa4);
-	*write_amount = wpa4.wr_count;
-	*fsal_stable = wpa4.wr_committed != UNSTABLE4;
+	*write_amount = wpr4->wr_count;
+	*fsal_stable = wpr4->wr_committed != UNSTABLE4;
 
-	return fsalstat(ERR_FSAL_NO_ERROR, 0);
+	return fsalstat(wp4res->wp_status, 0);
 }
 
 /* We send all out writes as DATA_SYNC, commit becomes a NO-OP */
