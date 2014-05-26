@@ -2076,7 +2076,7 @@ fsal_status_t pxy_read_plus(struct fsal_obj_handle *obj_hdl,
 
         *end_of_file = rpr4->rpr_eof;
         *read_amount = data_plus_to_file_dlen(data_plus);
-        return fsalstat(ERR_FSAL_NO_ERROR, 0);
+        return nfsstat4_to_fsal(rp4res->rp_status);
 }
 
 fsal_status_t pxy_write_plus(struct fsal_obj_handle *obj_hdl,
@@ -2129,8 +2129,7 @@ fsal_status_t pxy_write_plus(struct fsal_obj_handle *obj_hdl,
         data_plus_from_write_plus_args(data_plus, &wpa4);
 	*write_amount = wpr4->wr_count;
 	*fsal_stable = wpr4->wr_committed != UNSTABLE4;
-
-	return fsalstat(wp4res->wp_status, 0);
+	return nfsstat4_to_fsal(wp4res->wp_status);
 }
 
 /* We send all out writes as DATA_SYNC, commit becomes a NO-OP */
@@ -2172,6 +2171,8 @@ void pxy_handle_ops_init(struct fsal_obj_ops *ops)
 	ops->open = pxy_open;
 	ops->read = pxy_read;
 	ops->write = pxy_write;
+        ops->read_plus = pxy_read_plus;
+        ops->write_plus = pxy_write_plus;
 	ops->commit = pxy_commit;
 	ops->close = pxy_close;
 	ops->handle_is = pxy_handle_is;
