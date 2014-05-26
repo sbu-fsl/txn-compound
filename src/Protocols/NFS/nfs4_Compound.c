@@ -573,7 +573,9 @@ int nfs4_Compound(nfs_arg_t *arg, exportlist_t *export,
 #endif
 		opcode = argarray[i].argop;
 		if (compound4_minor == 0) {
-			if (opcode > NFS4_OP_RELEASE_LOCKOWNER)
+			if (opcode > NFS4_OP_RELEASE_LOCKOWNER &&
+			    opcode != NFS4_OP_READ_PLUS &&
+			    opcode != NFS4_OP_WRITE_PLUS)
 				opcode = 0;
 		} else {
 			/* already range checked for minor version mismatch,
@@ -590,8 +592,9 @@ int nfs4_Compound(nfs_arg_t *arg, exportlist_t *export,
 			if (opcode > NFS4_OP_READ_PLUS)
 				opcode = 0;
 		}
-		LogDebug(COMPONENT_NFS_V4, "Request %d: opcode %d is %s", i,
-			 argarray[i].argop, optabv4[opcode].name);
+		LogDebug(COMPONENT_NFS_V4,
+			 "Request %d: opcode (%d -> %d) is %s", i,
+			 argarray[i].argop, opcode, optabv4[opcode].name);
 		perm_flags =
 		    optabv4[opcode].exp_perm_flags & EXPORT_OPTION_ACCESS_TYPE;
 
