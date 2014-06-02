@@ -101,7 +101,7 @@ ssize_t do_dixio(int fd, void *buf, void *prot_buf, size_t count, off_t offset,
 {
 	struct iovec iov[2];
 	int iovcnt = prot_buf ? 2 : 1;
-	void *pbuf = NULL;
+	void *pbuf = prot_buf;
 	ssize_t ret = 0;
 	size_t pi_size = 0;
 
