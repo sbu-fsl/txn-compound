@@ -23,6 +23,8 @@ extern "C" {
 
 #define TAG_SIZE 16
 
+#define VERSION_SIZE 8
+
 typedef struct { uint8_t bytes[SECNFS_KEY_LENGTH + 1]; } secnfs_key_t;
 
 /**
@@ -50,7 +52,6 @@ typedef struct {
         char plist_file[MAXPATHLEN + 1];        /*!< list of secnfs proxies */
         unsigned create_if_no_context : 1;
 } secnfs_info_t;
-
 
 /*
  * @brief Increase the counter.

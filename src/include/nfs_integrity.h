@@ -17,13 +17,23 @@
 #include "nfsv41.h"
 
 struct sd_dif_tuple {
-       uint16_t guard_tag;	/* Checksum */
-       uint16_t app_tag;		/* Opaque storage */
-       uint32_t ref_tag;		/* Target LBA or indirect LBA */
+       uint16_t guard_tag;      /* Checksum */
+       uint16_t app_tag;        /* Opaque storage */
+       uint32_t ref_tag;        /* Target LBA or indirect LBA */
+};
+
+/* (SEC)NFS DIF for each interval */
+struct nfs_dif {
+        uint64_t version;       /* Additional Authenticated Data */
+        uint8_t tag[16];        /* Authentication Tag (checksum) */
+        uint8_t unused[24];     /* 4096 / 512 * (8-2) - version - tag */
 };
 
 #define PI_INTERVAL_SIZE 4096
 #define PI_INTERVAL_SHIFT 12
+#define PI_DIF_HEADER_SIZE sizeof(struct sd_dif_tuple)
+#define PI_DIF_SIZE (PI_INTERVAL_SIZE >> 9) * sizeof(struct sd_dif_tuple)
+/* DIF size for each PI_INTERVAL (including the guard_tag) */
 
 #define GENERATE_GUARD	(1)
 #define GENERATE_REF	(2)
@@ -139,9 +149,8 @@ static inline uint64_t get_pi_count(uint64_t data_len) {
 }
 
 static inline uint64_t get_pi_size(uint64_t data_len) {
-        /* +1 for the header (user flags such as GENERATE_ALL) */
-        return (get_pi_count(data_len) + 1) * sizeof(struct sd_dif_tuple);
+        /* include DIF header (user flags such as GENERATE_ALL) */
+        return get_pi_count(data_len) * PI_DIF_SIZE + PI_DIF_HEADER_SIZE;
 }
-
 
 #endif				/* _NFS_INTEGRITY_H */
