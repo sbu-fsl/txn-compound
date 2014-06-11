@@ -101,7 +101,7 @@ inline fsal_status_t secnfs_to_fsal_status(secnfs_s s) {
 /* TODO move to include/nfs_integrity.h */
 static inline void dump_pi_buf(uint8_t *pi_buf, size_t pi_size) {
         char *pi_hex, *curr;
-        size_t i, hex_len;
+        int i, hex_len;
         hex_len = pi_size * 2 + pi_size / 8;
         pi_hex = gsh_malloc(hex_len);
         for (i = 0, curr = pi_hex; i < pi_size; i++) {
@@ -120,8 +120,8 @@ static inline void dump_pi_buf(uint8_t *pi_buf, size_t pi_size) {
 /* TODO move to include/nfs_integrity.h */
 static inline void nfs_dif_to_sd_dif(struct nfs_dif *nfs_dif,
                                      uint8_t *pi_buf) {
-        size_t i;
-        uint8_t tmp_buf[sizeof(struct nfs_dif)];
+        int i;
+        uint8_t tmp_buf[PI_NFS_DIF_SIZE];
 
         /* serialize to a contiguous buf */
         for (i = 0; i < VERSION_SIZE; i++)
@@ -130,25 +130,24 @@ static inline void nfs_dif_to_sd_dif(struct nfs_dif *nfs_dif,
         memcpy(tmp_buf + VERSION_SIZE + TAG_SIZE, nfs_dif->unused, 24);
 
         /* copy to noncontiguous sd_dif_buf chunks */
-        for (i = 0; i < sizeof(struct nfs_dif) / 6; i++)
+        for (i = 0; i < PI_NFS_DIF_SIZE / 6; i++)
                 memcpy(pi_buf + i * 8 + 2, tmp_buf + i * 6, 6);
 }
 
 /* TODO move to include/nfs_integrity.h */
 static inline void sd_dif_to_nfs_dif(uint8_t *pi_buf,
                                      struct nfs_dif *nfs_dif) {
-        size_t i;
-        uint8_t tmp_buf[sizeof(struct nfs_dif)];
+        int i;
+        uint8_t tmp_buf[PI_NFS_DIF_SIZE];
 
-        /* sd_dif_buf chunks to contiguous buf */
-        for (i = 0; i < sizeof(struct nfs_dif) / 6; i++)
+        /* sd_dif_buf chunks to a contiguous buf */
+        for (i = 0; i < PI_NFS_DIF_SIZE / 6; i++)
                 memcpy(tmp_buf + i * 6, pi_buf + i * 8 + 2, 6);
 
-        /* deserialize */
+        /* deserialize to nfs_dif */
         nfs_dif->version = 0;
-        for (i = 0; i < VERSION_SIZE; i++)
-                nfs_dif->version =
-                        (nfs_dif->version << 8) | tmp_buf[VERSION_SIZE - i - 1];
+        for (i = VERSION_SIZE - 1; i >= 0; i--)
+                nfs_dif->version = (nfs_dif->version << 8) | tmp_buf[i];
         memcpy(nfs_dif->tag, tmp_buf + VERSION_SIZE, TAG_SIZE);
         memcpy(nfs_dif->unused, tmp_buf + VERSION_SIZE + TAG_SIZE, 24);
 }
@@ -168,7 +167,7 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
         struct nfs_dif nfs_dif;
         void *pi_buf = NULL;
         size_t pi_size;
-        size_t i;
+        int i;
 
         SECNFS_D("hdl = %x; offset = %u, buffer_size = %u",
                  hdl, offset, buffer_size);
@@ -220,7 +219,7 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                 */
 
                 for (i = 0; i < get_pi_count(buffer_size); i++) {
-                        sd_dif_to_nfs_dif(pi_buf + i * PI_DIF_SIZE
+                        sd_dif_to_nfs_dif(pi_buf + i * PI_SD_DIF_SIZE
                                           + PI_DIF_HEADER_SIZE, &nfs_dif);
                         SECNFS_D("hdl = %x; ver(%u) = %llx",
                                         hdl, i, nfs_dif.version);
@@ -256,7 +255,6 @@ out:
 /* secnfs_write
  * concurrency (locks) is managed in cache_inode_*
  */
-
 fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
                            const struct req_op_context *opctx, uint64_t offset,
                            size_t buffer_size, void *buffer,
@@ -270,7 +268,7 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
         size_t pi_size;
         struct nfs_dif nfs_dif;
         fsal_status_t st;
-        size_t i;
+        int i;
 
         SECNFS_D("hdl = %x; write to %u (%u)\n", hdl, offset, buffer_size);
         if (obj_hdl->type == REGULAR_FILE) {
@@ -328,8 +326,9 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
                                         hdl, i, nfs_dif.version);
                         SECNFS_D("hdl = %x; tag(%u) = %02x...%02x",
                                  hdl, i, nfs_dif.tag[0], nfs_dif.tag[15]);
+
                         nfs_dif_to_sd_dif(&nfs_dif,
-                                pi_buf + PI_DIF_HEADER_SIZE + i * PI_DIF_SIZE);
+                                pi_buf + PI_DIF_HEADER_SIZE + i * PI_SD_DIF_SIZE);
                 }
                 dump_pi_buf(pi_buf, pi_size);
         }

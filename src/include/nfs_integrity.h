@@ -31,9 +31,9 @@ struct nfs_dif {
 
 #define PI_INTERVAL_SIZE 4096
 #define PI_INTERVAL_SHIFT 12
-#define PI_DIF_HEADER_SIZE sizeof(struct sd_dif_tuple)
-#define PI_DIF_SIZE (PI_INTERVAL_SIZE >> 9) * sizeof(struct sd_dif_tuple)
-/* DIF size for each PI_INTERVAL (including the guard_tag) */
+#define PI_DIF_HEADER_SIZE 8    /* same size as struct sd_dif_tuple */
+#define PI_SD_DIF_SIZE (PI_INTERVAL_SIZE >> 9) * 8  /* for each PI_INTERVAL */
+#define PI_NFS_DIF_SIZE (PI_INTERVAL_SIZE >> 9) * 6 /* cannot use guard_tag */
 
 #define GENERATE_GUARD	(1)
 #define GENERATE_REF	(2)
@@ -150,7 +150,7 @@ static inline uint64_t get_pi_count(uint64_t data_len) {
 
 static inline uint64_t get_pi_size(uint64_t data_len) {
         /* include DIF header (user flags such as GENERATE_ALL) */
-        return get_pi_count(data_len) * PI_DIF_SIZE + PI_DIF_HEADER_SIZE;
+        return get_pi_count(data_len) * PI_SD_DIF_SIZE + PI_DIF_HEADER_SIZE;
 }
 
 #endif				/* _NFS_INTEGRITY_H */
