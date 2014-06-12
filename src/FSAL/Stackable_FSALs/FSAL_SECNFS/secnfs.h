@@ -10,6 +10,8 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <assert.h>
+#include <string.h>
 #include <sys/param.h>
 
 #ifdef __cplusplus
@@ -21,9 +23,11 @@ extern "C" {
 // TODO allow keyfile to be larger than 4096.
 #define KEY_FILE_SIZE 4096
 
-#define TAG_SIZE 16
-
+#define PI_SECNFS_DIF_SIZE 48 /* 4096 / 512 * (8-2) */
 #define VERSION_SIZE 8
+#define TAG_SIZE 16
+#define DIF_UNUSED_SIZE PI_SECNFS_DIF_SIZE - VERSION_SIZE - TAG_SIZE
+/* 48 - 8 - 16 = 24 */
 
 typedef struct { uint8_t bytes[SECNFS_KEY_LENGTH + 1]; } secnfs_key_t;
 
@@ -52,6 +56,18 @@ typedef struct {
         char plist_file[MAXPATHLEN + 1];        /*!< list of secnfs proxies */
         unsigned create_if_no_context : 1;
 } secnfs_info_t;
+
+
+/**
+ * SECNFS DIF for each protection interval.
+ * The size is PI_SECNFS_DIF_SIZE.
+ */
+typedef struct secnfs_dif {
+        uint64_t version;               /* Additional Authenticated Data */
+        uint8_t tag[TAG_SIZE];          /* Authentication Tag (checksum) */
+        uint8_t unused[DIF_UNUSED_SIZE];
+} secnfs_dif_t;
+
 
 /*
  * @brief Increase the counter.
@@ -209,6 +225,40 @@ secnfs_s secnfs_read_file_key(secnfs_info_t *info,
                               secnfs_key_t *fek,
                               secnfs_key_t *iv,
                               uint32_t *kf_len);
+
+/**
+ * Serialize secnfs_dif_t to a contiguous buf
+ *
+ * @param[in]   dif     sencfs_dif_t
+ * @param[out]  buf     buffer whose size is at least PI_SECNFS_DIF_SIZE
+ */
+static inline void secnfs_dif_to_buf(struct secnfs_dif *dif,
+                                     uint8_t *buf)
+{
+        int i;
+        for (i = 0; i < VERSION_SIZE; i++)
+                buf[i] = (dif->version >> (i * 8)) & 0xff;
+        memcpy(buf + VERSION_SIZE, dif->tag, TAG_SIZE);
+        memcpy(buf + VERSION_SIZE + TAG_SIZE, dif->unused, DIF_UNUSED_SIZE);
+}
+
+/**
+ * Deserialize from buf to secnfs_dif_t
+ *
+ * @param[out]  dif     sencfs_dif_t
+ * @param[in]   buf     buffer containing serilized bytes of secnfs_dif
+ */
+static inline void secnfs_dif_from_buf(struct secnfs_dif *dif,
+                                       uint8_t *buf)
+{
+        int i;
+        dif->version = 0;
+        for (i = VERSION_SIZE - 1; i >= 0; i--)
+                dif->version = (dif->version << 8) | buf[i];
+        memcpy(dif->tag, buf + VERSION_SIZE, TAG_SIZE);
+        memcpy(dif->unused, buf + VERSION_SIZE + TAG_SIZE, DIF_UNUSED_SIZE);
+}
+
 #ifdef __cplusplus
 }
 #endif

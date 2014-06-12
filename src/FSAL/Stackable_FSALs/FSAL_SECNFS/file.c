@@ -98,60 +98,6 @@ inline fsal_status_t secnfs_to_fsal_status(secnfs_s s) {
         return fsal_s;
 }
 
-/* TODO move to include/nfs_integrity.h */
-static inline void dump_pi_buf(uint8_t *pi_buf, size_t pi_size) {
-        char *pi_hex, *curr;
-        int i, hex_len;
-        hex_len = pi_size * 2 + pi_size / 8;
-        pi_hex = gsh_malloc(hex_len);
-        for (i = 0, curr = pi_hex; i < pi_size; i++) {
-                sprintf(curr, "%02x", *(pi_buf + i));
-                curr += 2;
-                if (i % 8 == 7) {
-                        *curr = ' ';
-                        curr += 1;
-                }
-        }
-        *(curr-1) = '\0';
-        LogDebug(COMPONENT_FSAL, "=secnfs=pi_buf: %s", pi_hex);
-        gsh_free(pi_hex);
-}
-
-/* TODO move to include/nfs_integrity.h */
-static inline void nfs_dif_to_sd_dif(struct nfs_dif *nfs_dif,
-                                     uint8_t *pi_buf) {
-        int i;
-        uint8_t tmp_buf[PI_NFS_DIF_SIZE];
-
-        /* serialize to a contiguous buf */
-        for (i = 0; i < VERSION_SIZE; i++)
-                tmp_buf[i] = (nfs_dif->version >> (i * 8)) & 0xff;
-        memcpy(tmp_buf + VERSION_SIZE, nfs_dif->tag, TAG_SIZE);
-        memcpy(tmp_buf + VERSION_SIZE + TAG_SIZE, nfs_dif->unused, 24);
-
-        /* copy to noncontiguous sd_dif_buf chunks */
-        for (i = 0; i < PI_NFS_DIF_SIZE / 6; i++)
-                memcpy(pi_buf + i * 8 + 2, tmp_buf + i * 6, 6);
-}
-
-/* TODO move to include/nfs_integrity.h */
-static inline void sd_dif_to_nfs_dif(uint8_t *pi_buf,
-                                     struct nfs_dif *nfs_dif) {
-        int i;
-        uint8_t tmp_buf[PI_NFS_DIF_SIZE];
-
-        /* sd_dif_buf chunks to a contiguous buf */
-        for (i = 0; i < PI_NFS_DIF_SIZE / 6; i++)
-                memcpy(tmp_buf + i * 6, pi_buf + i * 8 + 2, 6);
-
-        /* deserialize to nfs_dif */
-        nfs_dif->version = 0;
-        for (i = VERSION_SIZE - 1; i >= 0; i--)
-                nfs_dif->version = (nfs_dif->version << 8) | tmp_buf[i];
-        memcpy(nfs_dif->tag, tmp_buf + VERSION_SIZE, TAG_SIZE);
-        memcpy(nfs_dif->unused, tmp_buf + VERSION_SIZE + TAG_SIZE, 24);
-}
-
 /*
  * concurrency (locks) is managed in cache_inode_*
  */
@@ -164,7 +110,8 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
         fsal_status_t st;
         uint64_t next_offset;
         struct data_plus data_plus;
-        struct nfs_dif nfs_dif;
+        struct secnfs_dif secnfs_dif;
+        uint8_t *secnfs_dif_buf = NULL;
         void *pi_buf = NULL;
         size_t pi_size;
         int i;
@@ -210,13 +157,21 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                                               buffer_size, buffer, buffer);
                 */
 
+                secnfs_dif_buf = gsh_malloc(PI_SECNFS_DIF_SIZE);
+                if (pi_buf == NULL) {
+                        st = fsalstat(ERR_FSAL_NOMEM, 0);
+                        goto out;
+                }
+
                 for (i = 0; i < get_pi_count(buffer_size); i++) {
-                        sd_dif_to_nfs_dif(pi_buf + i * PI_SD_DIF_SIZE
-                                          + PI_DIF_HEADER_SIZE, &nfs_dif);
+                        extract_from_sd_dif(pi_buf + PI_DIF_HEADER_SIZE
+                                        + i * PI_SD_DIF_SIZE, secnfs_dif_buf,
+                                        PI_SECNFS_DIF_SIZE, 1);
+                        secnfs_dif_from_buf(&secnfs_dif, secnfs_dif_buf);
                         SECNFS_D("hdl = %x; ver(%u) = %llx",
-                                        hdl, i, nfs_dif.version);
+                                        hdl, i, secnfs_dif.version);
                         SECNFS_D("hdl = %x; tag(%u) = %02x...%02x",
-                                 hdl, i, nfs_dif.tag[0], nfs_dif.tag[15]);
+                                 hdl, i, secnfs_dif.tag[0], secnfs_dif.tag[15]);
 
                         secnfs_s ret = secnfs_verify_decrypt(
                                         hdl->fk,
@@ -225,8 +180,8 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                                         PI_INTERVAL_SIZE,
                                         buffer + i * PI_INTERVAL_SIZE,
                                         VERSION_SIZE,
-                                        &(nfs_dif.version),
-                                        nfs_dif.tag,
+                                        &(secnfs_dif.version),
+                                        secnfs_dif.tag,
                                         buffer + i * PI_INTERVAL_SIZE);
 
                         if (ret != SECNFS_OKAY) {
@@ -240,6 +195,7 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
 
 out:
         gsh_free(pi_buf);
+        gsh_free(secnfs_dif_buf);
 
         return st;
 }
@@ -258,7 +214,8 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
         uint8_t *pd_buf = NULL;
         uint8_t *pi_buf = NULL;
         size_t pi_size;
-        struct nfs_dif nfs_dif = {0};
+        struct secnfs_dif secnfs_dif = {0};
+        uint8_t *secnfs_dif_buf = NULL;
         fsal_status_t st;
         int i;
 
@@ -293,8 +250,13 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
                 memset(pi_buf, 0, PI_DIF_HEADER_SIZE);
                 pi_buf[0] = GENERATE_GUARD; /* required DIF header */
 
-                nfs_dif.version = 0x1234567812345678;
+                secnfs_dif_buf = gsh_malloc(PI_SECNFS_DIF_SIZE);
+                if (pi_buf == NULL) {
+                        st = fsalstat(ERR_FSAL_NOMEM, 0);
+                        goto out;
+                }
 
+                secnfs_dif.version = 0x1234567890abcdef;
                 /* XXX assume plaintext is aligned currently */
                 for (i = 0; i < get_pi_count(buffer_size); i++) {
                         secnfs_s ret = secnfs_auth_encrypt(
@@ -304,9 +266,9 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
                                                 PI_INTERVAL_SIZE,
                                                 buffer + i * PI_INTERVAL_SIZE,
                                                 VERSION_SIZE,
-                                                &nfs_dif.version,
+                                                &secnfs_dif.version,
                                                 pd_buf + i * PI_INTERVAL_SIZE,
-                                                nfs_dif.tag);
+                                                secnfs_dif.tag);
 
                         if (ret != SECNFS_OKAY) {
                                 st = secnfs_to_fsal_status(ret);
@@ -314,12 +276,14 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
                         }
 
                         SECNFS_D("hdl = %x; ver(%u) = %llx",
-                                        hdl, i, nfs_dif.version);
+                                        hdl, i, secnfs_dif.version);
                         SECNFS_D("hdl = %x; tag(%u) = %02x...%02x",
-                                 hdl, i, nfs_dif.tag[0], nfs_dif.tag[15]);
+                                 hdl, i, secnfs_dif.tag[0], secnfs_dif.tag[15]);
 
-                        nfs_dif_to_sd_dif(&nfs_dif,
-                              pi_buf + PI_DIF_HEADER_SIZE + i * PI_SD_DIF_SIZE);
+                        secnfs_dif_to_buf(&secnfs_dif, secnfs_dif_buf);
+                        fill_sd_dif(pi_buf + PI_DIF_HEADER_SIZE
+                                        + i * PI_SD_DIF_SIZE, secnfs_dif_buf,
+                                        PI_SECNFS_DIF_SIZE, 1);
                 }
                 dump_pi_buf(pi_buf, pi_size);
         }
@@ -339,6 +303,7 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
 out:
         gsh_free(pd_buf);
         gsh_free(pi_buf);
+        gsh_free(secnfs_dif_buf);
 
         return st;
 }
