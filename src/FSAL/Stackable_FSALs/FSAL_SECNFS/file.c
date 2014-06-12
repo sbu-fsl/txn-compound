@@ -177,22 +177,15 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                         : offset;
 
         /* To use read_plus, a struct data_plus need be prepared. */
-        memset(&data_plus, 0, sizeof(data_plus));
         pi_size = get_pi_size(buffer_size);
         pi_buf = gsh_malloc(pi_size);
         if (pi_buf == NULL) {
                 st = fsalstat(ERR_FSAL_NOMEM, 0);
                 goto out;
         }
-
-        data_plus.content_type = NFS4_CONTENT_PROTECTED_DATA;
-        data_plus.u.pdata.pd_type.pi_type = NFS_PI_TYPE5;
-        data_plus.u.pdata.pd_type.pi_other_data = 1;
-        data_plus.u.pdata.pd_offset = next_offset;
-        data_plus.u.pdata.pd_allocated = 1;
-        data_plus.u.pdata.pd_info.pd_info_val = pi_buf;
-        data_plus.u.pdata.pd_data.pd_data_len = buffer_size;
-        data_plus.u.pdata.pd_data.pd_data_val = buffer;
+        data_plus_type_protected_data_init(&data_plus, next_offset,
+                                           pi_size, pi_buf,
+                                           buffer_size, buffer);
 
         st = next_ops.obj_ops->read_plus(hdl->next_handle,
                                          opctx,
@@ -207,7 +200,6 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
         /* TODO pd_info_len may not equal pi_size due to partial read */
         SECNFS_D("hdl = %x; pd_info_len = %u", hdl,
                         data_plus.u.pdata.pd_info.pd_info_len);
-        SECNFS_D("hdl = %x; pd_offset = %u", hdl, data_plus.u.pdata.pd_offset);
         dump_pi_buf(pi_buf, pi_size);
 
         if (obj_hdl->type == REGULAR_FILE) {
@@ -266,7 +258,7 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
         uint8_t *pd_buf = NULL;
         uint8_t *pi_buf = NULL;
         size_t pi_size;
-        struct nfs_dif nfs_dif;
+        struct nfs_dif nfs_dif = {0};
         fsal_status_t st;
         int i;
 
@@ -298,10 +290,9 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
                         st = fsalstat(ERR_FSAL_NOMEM, 0);
                         goto out;
                 }
-                memset(pi_buf, 0, pi_size);
-                *pi_buf = GENERATE_GUARD; /* required DIF header */
+                memset(pi_buf, 0, PI_DIF_HEADER_SIZE);
+                pi_buf[0] = GENERATE_GUARD; /* required DIF header */
 
-                memset(nfs_dif.unused, 0, sizeof(nfs_dif.unused));
                 nfs_dif.version = 0x1234567812345678;
 
                 /* XXX assume plaintext is aligned currently */
@@ -328,22 +319,16 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
                                  hdl, i, nfs_dif.tag[0], nfs_dif.tag[15]);
 
                         nfs_dif_to_sd_dif(&nfs_dif,
-                                pi_buf + PI_DIF_HEADER_SIZE + i * PI_SD_DIF_SIZE);
+                              pi_buf + PI_DIF_HEADER_SIZE + i * PI_SD_DIF_SIZE);
                 }
                 dump_pi_buf(pi_buf, pi_size);
         }
 
         /* prepare data_plus for write_plus */
-        memset(&data_plus, 0, sizeof(data_plus));
-        data_plus.content_type = NFS4_CONTENT_PROTECTED_DATA;
-        data_plus.u.pdata.pd_type.pi_type = NFS_PI_TYPE5;
-        data_plus.u.pdata.pd_type.pi_other_data = 1;
-        data_plus.u.pdata.pd_offset = next_offset;
-        data_plus.u.pdata.pd_allocated = 1;
-        data_plus.u.pdata.pd_info.pd_info_len = pi_size;
-        data_plus.u.pdata.pd_info.pd_info_val = pi_buf;
-        data_plus.u.pdata.pd_data.pd_data_len = buffer_size;
-        data_plus.u.pdata.pd_data.pd_data_val = pd_buf;
+        /* XXX assume regular file */
+        data_plus_type_protected_data_init(&data_plus, next_offset,
+                                           pi_size, pi_buf,
+                                           buffer_size, pd_buf);
 
         st = next_ops.obj_ops->write_plus(next_handle(obj_hdl),
                                           opctx,

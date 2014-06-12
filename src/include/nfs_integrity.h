@@ -140,6 +140,25 @@ static inline char* data_plus_to_file_data(struct data_plus *dp) {
         }
 }
 
+/* initialize data_plus whose content type is NFS4_CONTENT_PROTECTED_DATA */
+static inline void data_plus_type_protected_data_init(struct data_plus *dp,
+                                                      uint64_t offset,
+                                                      size_t pi_size,
+                                                      void *pi_buf,
+                                                      size_t pd_size,
+                                                      void *pd_buf) {
+
+        dp->content_type = NFS4_CONTENT_PROTECTED_DATA;
+        dp->u.pdata.pd_type.pi_type = NFS_PI_TYPE5;
+        dp->u.pdata.pd_type.pi_other_data = 1;
+        dp->u.pdata.pd_offset = offset;
+        dp->u.pdata.pd_allocated = 1;
+        dp->u.pdata.pd_info.pd_info_len = pi_size;
+        dp->u.pdata.pd_info.pd_info_val = pi_buf;
+        dp->u.pdata.pd_data.pd_data_len = pd_size;
+        dp->u.pdata.pd_data.pd_data_val = pd_buf;
+}
+
 static inline bool is_pi_aligned(uint64_t data_len) {
         return (data_len & (PI_INTERVAL_SIZE - 1)) == 0;
 }
