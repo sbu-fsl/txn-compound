@@ -225,4 +225,60 @@ TEST(CreateKeyFileTest, Basic) {
         delete info;
 }
 
+TEST(SecnfsDifTest, Serialization) {
+        struct secnfs_dif secnfs_dif = {
+                .version = 0x1234567890abcdef,
+                .tag = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+                        0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff},
+                .unused = {0}
+        };
+        byte expected[48] = {0xef, 0xcd, 0xab, 0x90, 0x78, 0x56, 0x34, 0x12,
+                             0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+                             0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
+                             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+        byte secnfs_dif_buf[48];
+
+        secnfs_dif_to_buf(&secnfs_dif, secnfs_dif_buf);
+        EXPECT_SAME(expected, secnfs_dif_buf, 48);
+
+        struct secnfs_dif secnfs_dif_new;
+        secnfs_dif_from_buf(&secnfs_dif_new, secnfs_dif_buf);
+        EXPECT_EQ(secnfs_dif.version, secnfs_dif_new.version);
+        EXPECT_SAME(secnfs_dif.tag, secnfs_dif_new.tag, TAG_SIZE);
+        EXPECT_SAME(secnfs_dif.unused, secnfs_dif_new.unused, DIF_UNUSED_SIZE);
+}
+
+#include "nfs_dix.h"
+TEST(SecnfsDifTest, FillSdDif) {
+        struct secnfs_dif secnfs_dif = {
+                .version = 0x1234567890abcdef,
+                .tag = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+                        0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff},
+                .unused = {0}
+        };
+        byte expected[64] = {0x00, 0x00, 0xef, 0xcd, 0xab, 0x90, 0x78, 0x56,
+                             0x00, 0x00, 0x34, 0x12, 0x00, 0x11, 0x22, 0x33,
+                             0x00, 0x00, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99,
+                             0x00, 0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
+                             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+        byte secnfs_dif_buf[48];
+        byte sd_dif_buf[64] = {0};
+
+        secnfs_dif_to_buf(&secnfs_dif, secnfs_dif_buf);
+        fill_sd_dif(sd_dif_buf, secnfs_dif_buf, PI_SECNFS_DIF_SIZE, 1);
+        EXPECT_SAME(expected, sd_dif_buf, PI_SD_DIF_SIZE);
+
+        struct secnfs_dif secnfs_dif_new;
+        extract_from_sd_dif(sd_dif_buf, secnfs_dif_buf, PI_SECNFS_DIF_SIZE, 1);
+        secnfs_dif_from_buf(&secnfs_dif_new, secnfs_dif_buf);
+        EXPECT_EQ(secnfs_dif.version, secnfs_dif_new.version);
+        EXPECT_SAME(secnfs_dif.tag, secnfs_dif_new.tag, TAG_SIZE);
+        EXPECT_SAME(secnfs_dif.unused, secnfs_dif_new.unused, DIF_UNUSED_SIZE);
+}
+
 }

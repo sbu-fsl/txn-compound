@@ -15,22 +15,7 @@
 #define _NFS_INTEGRITY_H
 
 #include "nfsv41.h"
-
-struct sd_dif_tuple {
-       uint16_t guard_tag;      /* Checksum */
-       uint16_t app_tag;        /* Opaque storage */
-       uint32_t ref_tag;        /* Target LBA or indirect LBA */
-};
-
-#define PI_INTERVAL_SIZE 4096
-#define PI_INTERVAL_SHIFT 12
-#define PI_DIF_HEADER_SIZE 8    /* same size as struct sd_dif_tuple */
-#define PI_SD_DIF_SIZE (PI_INTERVAL_SIZE >> 9) * 8  /* for each PI_INTERVAL */
-
-#define GENERATE_GUARD	(1)
-#define GENERATE_REF	(2)
-#define GENERATE_APP	(4)
-#define GENERATE_ALL	(7)
+#include "nfs_dix.h"
 
 struct data_plus {
         data_content4 content_type;
@@ -151,49 +136,8 @@ static inline void data_plus_type_protected_data_init(struct data_plus *dp,
         dp->u.pdata.pd_data.pd_data_val = pd_buf;
 }
 
-/**
- * Fill sd_dif buffer that comprises a sequence of sd_dif_tuple (8 bytes).
- * For each tuple, only fill the last 6 bytes (application & reference tag).
- *
- * @param[out]  dif_buf         sd_dif buffer to be filled
- * @param[in]   obj_buf         buffer containing object(s)
- * @param[in]   obj_size        size of one object, should be multiple of 48
- * @param[in]   num             number of objects
- *
- * dif_buf should be large enough to contain obj_buf (obj_size * num) as well
- * as intact guard tags (2 bytes for each sd_dif_tuple).
- */
-static inline void fill_sd_dif(uint8_t *dif_buf, uint8_t *obj_buf,
-                               size_t obj_size, size_t num)
+static inline void dump_pi_buf(uint8_t *pi_buf, size_t pi_size)
 {
-        int i;
-        assert(obj_size % 48 == 0);
-        for (i = 0; i < obj_size * num / 6; i++)
-                memcpy(dif_buf + i * 8 + 2, obj_buf + i * 6, 6);
-}
-
-/**
- * Extract content from sd_dif buffer to obj_buf.
- * For each sd_dif_tuple in sd_dif buffer, extract the last 6 bytes
- * (application & reference tag) and concatenate them into obj_buf.
- *
- * @param[in]   dif_buf         sd_dif buffer to be filled
- * @param[out]  obj_buf         buffer containing object(s)
- * @param[in]   obj_size        size of one object, should be multiple of 48
- * @param[in]   num             number of objects
- *
- * obj_buf should be at least obj_size * num large.
- */
-static inline void extract_from_sd_dif(uint8_t *dif_buf, uint8_t *obj_buf,
-                                       size_t obj_size, size_t num)
-{
-        int i;
-        assert(obj_size % 48 == 0);
-        for (i = 0; i < obj_size * num / 6; i++)
-                memcpy(obj_buf + i * 6, dif_buf + i * 8 + 2, 6);
-}
-
-static inline void dump_pi_buf(uint8_t *pi_buf, size_t pi_size) {
         char *pi_hex, *curr;
         int i, hex_len;
         hex_len = pi_size * 2 + pi_size / 8;
@@ -209,19 +153,6 @@ static inline void dump_pi_buf(uint8_t *pi_buf, size_t pi_size) {
         *(curr-1) = '\0';
         LogDebug(COMPONENT_FSAL, "=secnfs=pi_buf: %s", pi_hex);
         gsh_free(pi_hex);
-}
-
-static inline bool is_pi_aligned(uint64_t data_len) {
-        return (data_len & (PI_INTERVAL_SIZE - 1)) == 0;
-}
-
-static inline uint64_t get_pi_count(uint64_t data_len) {
-        return (data_len + PI_INTERVAL_SIZE - 1) >> PI_INTERVAL_SHIFT;
-}
-
-static inline uint64_t get_pi_size(uint64_t data_len) {
-        /* include DIF header (user flags such as GENERATE_ALL) */
-        return get_pi_count(data_len) * PI_SD_DIF_SIZE + PI_DIF_HEADER_SIZE;
 }
 
 #endif				/* _NFS_INTEGRITY_H */
