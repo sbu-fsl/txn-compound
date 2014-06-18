@@ -169,9 +169,11 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                                         PI_SECNFS_DIF_SIZE, 1);
                         secnfs_dif_from_buf(&secnfs_dif, secnfs_dif_buf);
                         SECNFS_D("hdl = %x; ver(%u) = %llx",
-                                        hdl, i, secnfs_dif.version);
+                                 hdl, i + (offset >> PI_INTERVAL_SHIFT),
+                                 secnfs_dif.version);
                         SECNFS_D("hdl = %x; tag(%u) = %02x...%02x",
-                                 hdl, i, secnfs_dif.tag[0], secnfs_dif.tag[15]);
+                                 hdl, i + (offset >> PI_INTERVAL_SHIFT),
+                                 secnfs_dif.tag[0], secnfs_dif.tag[15]);
 
                         secnfs_s ret = secnfs_verify_decrypt(
                                         hdl->fk,
@@ -276,9 +278,11 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
                         }
 
                         SECNFS_D("hdl = %x; ver(%u) = %llx",
-                                        hdl, i, secnfs_dif.version);
+                                 hdl, i + (offset >> PI_INTERVAL_SHIFT),
+                                 secnfs_dif.version);
                         SECNFS_D("hdl = %x; tag(%u) = %02x...%02x",
-                                 hdl, i, secnfs_dif.tag[0], secnfs_dif.tag[15]);
+                                 hdl, i + (offset >> PI_INTERVAL_SHIFT),
+                                 secnfs_dif.tag[0], secnfs_dif.tag[15]);
 
                         secnfs_dif_to_buf(&secnfs_dif, secnfs_dif_buf);
                         fill_sd_dif(pi_buf + PI_DIF_HEADER_SIZE
