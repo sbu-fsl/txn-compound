@@ -182,6 +182,7 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
         void *pd_buf = NULL;
         void *pi_buf = NULL;
         size_t pi_size;
+        bool align;
         int i;
 
         SECNFS_D("hdl = %x; read from %u (%u)\n", hdl, offset, buffer_size);
@@ -198,6 +199,7 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
         next_offset = offset_align + KEY_FILE_SIZE;
         size_align = round_up(offset + buffer_size, PI_INTERVAL_SIZE)
                         - offset_align;
+        align = (offset == offset_align && buffer_size == size_align) ? 1 : 0;
 
         SECNFS_D("hdl = %x; offset_align = %u, size_align = %u",
                  hdl, offset_align, size_align);
@@ -211,8 +213,8 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                 st = fsalstat(ERR_FSAL_NOMEM, 0);
                 goto out;
         }
-        /* TODO do not malloc if already align */
-        pd_buf = gsh_malloc(size_align);
+
+        pd_buf = align ? buffer : gsh_malloc(size_align);
         if (pd_buf == NULL) {
                 st = fsalstat(ERR_FSAL_NOMEM, 0);
                 goto out;
@@ -257,7 +259,7 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                          hdl, i + (offset_align >> PI_INTERVAL_SHIFT),
                          secnfs_dif.tag[0], secnfs_dif.tag[15]);
 
-                /* TODO optimization: decrypt directly to 'buffer'? */
+                /* may carefully decrypt to 'buffer' to save memcpy */
                 secnfs_s ret = secnfs_verify_decrypt(
                                         hdl->fk,
                                         hdl->iv,
@@ -279,8 +281,9 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
         /* update effective read_amount to user */
         if (*read_amount > 0) {
                 *read_amount = (*read_amount == size_align) ?
-                        buffer_size : *read_amount - offset_moved;
-                memcpy(buffer, pd_buf + offset_moved, *read_amount);
+                               buffer_size : *read_amount - offset_moved;
+                if (!align)
+                        memcpy(buffer, pd_buf + offset_moved, *read_amount);
         }
 
         /* clear inaccurate EOF flag */
@@ -290,7 +293,7 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
         st = secnfs_to_fsal_status(SECNFS_OKAY);
 
 out:
-        gsh_free(pd_buf);
+        if (!align) gsh_free(pd_buf);
         gsh_free(pi_buf);
         gsh_free(secnfs_dif_buf);
 
