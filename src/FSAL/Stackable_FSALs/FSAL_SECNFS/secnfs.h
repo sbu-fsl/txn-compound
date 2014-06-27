@@ -42,6 +42,7 @@ typedef enum {
         SECNFS_NOT_ALIGNED,
         SECNFS_NOT_VERIFIED,
         SECNFS_INVALID,
+        SECNFS_READ_UPDATE_FAIL,
 } secnfs_s;
 
 
