@@ -54,7 +54,7 @@ public:
 
 /**
  * Encode key into string
- * 
+ *
  * @params[in]  key     key to encode
  * @params[out] result  output
  *

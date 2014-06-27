@@ -66,13 +66,13 @@ secnfs_key_t *incr_ctr(secnfs_key_t *iv, unsigned size, int incr)
         int i = size - 1;
         int carry = incr;
 
-	for (; carry && i >= 0; --i) {
-		carry += ctr[i];
-		ctr[i] = carry & 0xFF;
-		carry >>= 8;
-	}
+        for (; carry && i >= 0; --i) {
+                carry += ctr[i];
+                ctr[i] = carry & 0xFF;
+                carry >>= 8;
+        }
 
-	return iv;
+        return iv;
 }
 
 
@@ -109,10 +109,10 @@ static secnfs_s offset_aligned_encrypt(secnfs_key_t key,
                                             static_cast<byte *>(buffer),
                                             size)));
 
-	} catch (const CryptoPP::Exception& e) {
+        } catch (const CryptoPP::Exception& e) {
                 std::cerr << e.what() << std::endl;
                 return SECNFS_CRYPTO_ERROR;
-	}
+        }
 
         return SECNFS_OKAY;
 }
