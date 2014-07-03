@@ -194,6 +194,13 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                                               read_amount, end_of_file);
         }
 
+        /* avoid unnecessary read */
+        if (offset >= get_filesize(hdl)) {
+                *read_amount = 0;
+                *end_of_file = 1;
+                return fsalstat(ERR_FSAL_NO_ERROR, 0);
+        }
+
         offset_align = round_down(offset, PI_INTERVAL_SIZE);
         offset_moved = offset - offset_align;
         next_offset = offset_align + KEY_FILE_SIZE;
@@ -282,6 +289,13 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
         if (*read_amount > 0) {
                 *read_amount = (*read_amount == size_align) ?
                                buffer_size : *read_amount - offset_moved;
+
+                if (offset + *read_amount > get_filesize(hdl)) {
+                        /* EOF should already be set */
+                        *read_amount = get_filesize(hdl) - offset;
+                        assert(*read_amount > 0);
+                }
+
                 if (!align)
                         memcpy(buffer, pd_buf + offset_moved, *read_amount);
         }
