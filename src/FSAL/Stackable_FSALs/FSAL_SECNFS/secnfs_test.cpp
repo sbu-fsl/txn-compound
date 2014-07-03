@@ -207,18 +207,21 @@ TEST(CreateKeyFileTest, Basic) {
         Context *context = static_cast<Context *>(info->context);
         secnfs_key_t key, iv;
         uint32_t buf_size;
+        uint64_t filesize;
         void *buf;
 
-        EXPECT_OKAY(secnfs_create_keyfile(info, &key, &iv, &buf, &buf_size));
+        generate_key_and_iv(&key, &iv);
+        EXPECT_OKAY(secnfs_create_header(info, &key, &iv, 88, &buf, &buf_size));
 
         secnfs_key_t rkey, riv;
-        uint32_t kf_len;
+        uint32_t header_len;
 
-        EXPECT_OKAY(secnfs_read_file_key(info, buf, buf_size,
-                                         &rkey, &riv, &kf_len));
+        EXPECT_OKAY(secnfs_read_header(info, buf, buf_size,
+                                       &rkey, &riv, &filesize, &header_len));
 
         EXPECT_SAME(iv.bytes, riv.bytes, SECNFS_KEY_LENGTH);
         EXPECT_SAME(key.bytes, rkey.bytes, SECNFS_KEY_LENGTH);
+        EXPECT_EQ(88, filesize);
 
         free(buf);
         delete context;

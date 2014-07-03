@@ -78,11 +78,6 @@ bool Context::AddCurrentProxy() {
 
 void Context::GenerateKeyFile(byte* key, byte* iv, int len, KeyFile* kf)
 {
-        AutoSeededRandomPool prng;
-        prng.GenerateBlock(key, len);
-        prng.GenerateBlock(iv, len);
-        key[len] = iv[len] = 0;
-
         kf->set_iv(std::string(reinterpret_cast<char*>(iv), len));
 
         for (size_t i = 0; i < pm_.proxies_size(); ++i) {

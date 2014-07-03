@@ -44,8 +44,11 @@
         struct fsal_obj_handle *next_hdl = next_handle(obj_hdl);            \
         fsal_status_t st = next_ops.obj_ops->func(next_hdl, ## args);       \
         if (!FSAL_IS_ERROR(st)) {                                           \
+                uint64_t effective_size = obj_hdl->attributes.filesize;     \
                 obj_hdl->attributes = next_hdl->attributes;                 \
                 adjust_attributes_up(&obj_hdl->attributes, obj_hdl->type);  \
+                if (obj_hdl->type == REGULAR_FILE)                          \
+                        obj_hdl->attributes.filesize = effective_size;      \
         }                                                                   \
         return st;
 
@@ -59,7 +62,7 @@
                 LogCrit(COMPONENT_FSAL, "secnfs " #func " failed");         \
                 return st;                                                  \
         }                                                                   \
-        return make_handle_from_next(parent->export, next_hdl, handle);
+        return make_handle_from_next(parent->export, opctx, next_hdl, handle);
 
 
 extern struct next_ops next_ops;
@@ -93,8 +96,7 @@ static void adjust_attributes_up(struct attrlist *attr,
                                  object_file_type_t type)
 {
         if (type == REGULAR_FILE && attr->filesize >= 0) {
-                assert(attr->filesize >= KEY_FILE_SIZE);
-                attr->filesize -= KEY_FILE_SIZE;
+                assert(attr->filesize >= FILE_HEADER_SIZE);
         }
 }
 
@@ -102,8 +104,9 @@ static void adjust_attributes_up(struct attrlist *attr,
 static void adjust_attributes_down(struct attrlist *attr,
                                    object_file_type_t type)
 {
-        if (type == REGULAR_FILE && attr->filesize >= 0) {
-                attr->filesize += KEY_FILE_SIZE;
+        if (type == REGULAR_FILE && (attr->mask & ATTR_SIZE)) {
+                attr->filesize = round_up(attr->filesize, PI_INTERVAL_SIZE)
+                                 + FILE_HEADER_SIZE;
         }
 }
 
@@ -112,12 +115,14 @@ static void adjust_attributes_down(struct attrlist *attr,
  * Create a SECNFS obj handle from a corresponding handle of the next layer.
  *
  * @param[IN]       exp      SECNFS export
+ * @param[IN]       opctx    request op context
  * @param[IN/OUT]   next_hdl handle of the next layer
  * @param[OUT]      handle   resultant SECNFS handle
  *
  * NOTE: next_hdl will be released on failure!
  */
 static fsal_status_t make_handle_from_next(struct fsal_export *exp,
+                                           const struct req_op_context *opctx,
                                            struct fsal_obj_handle *next_hdl,
                                            struct fsal_obj_handle **handle)
 {
@@ -134,6 +139,17 @@ static fsal_status_t make_handle_from_next(struct fsal_export *exp,
 
         secnfs_hdl->next_handle = next_hdl;
         *handle = &secnfs_hdl->obj_handle;
+
+        if (next_hdl->type == REGULAR_FILE &&
+                        next_hdl->attributes.filesize > 0) {
+                fsal_status_t st = read_header(*handle, opctx);
+                if (FSAL_IS_ERROR(st)) {
+                        LogMajor(COMPONENT_FSAL,
+                                        "cannot allocate secnfs handle");
+                        next_ops.obj_ops->release(next_hdl);
+                        return st;
+                }
+        }
 
         return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
@@ -152,18 +168,19 @@ static fsal_status_t lookup(struct fsal_obj_handle *parent,
 }
 
 
-fsal_status_t read_keyfile(struct fsal_obj_handle *fsal_hdl,
-                           const struct req_op_context *opctx)
+fsal_status_t read_header(struct fsal_obj_handle *fsal_hdl,
+                          const struct req_op_context *opctx)
 {
         struct secnfs_fsal_obj_handle *hdl = secnfs_handle(fsal_hdl);
         fsal_status_t st;
         void *buf;
-        uint32_t buf_size, kf_len;
+        uint32_t buf_size, header_len;
         size_t n, read_amount = 0;
         bool end_of_file = false;
+        uint64_t filesize;
         secnfs_s ret;
 
-        buf_size = KEY_FILE_SIZE;
+        buf_size = FILE_HEADER_SIZE;
         buf = gsh_malloc(buf_size);
         assert(buf);
 
@@ -176,20 +193,22 @@ fsal_status_t read_keyfile(struct fsal_obj_handle *fsal_hdl,
                                             &n,
                                             &end_of_file);
                 if (FSAL_IS_ERROR(st)) {
-                        LogCrit(COMPONENT_FSAL, "cannot read secnfs keyfile");
+                        LogCrit(COMPONENT_FSAL, "cannot read secnfs header");
                         goto out;
                 }
-                assert(!end_of_file);
                 read_amount += n;
-        } while (read_amount < KEY_FILE_SIZE);
+        } while (read_amount < FILE_HEADER_SIZE);
 
-        ret = secnfs_read_file_key(hdl->info,
-                                   buf,
-                                   buf_size,
-                                   &hdl->fk,
-                                   &hdl->iv,
-                                   &kf_len);
+        ret = secnfs_read_header(hdl->info,
+                                 buf,
+                                 buf_size,
+                                 &hdl->fk,
+                                 &hdl->iv,
+                                 &filesize,
+                                 &header_len);
         assert(ret == SECNFS_OKAY);
+
+        fsal_hdl->attributes.filesize = filesize;
 
         hdl->key_initialized = 1;
 
@@ -199,8 +218,8 @@ out:
 }
 
 
-fsal_status_t write_keyfile(struct fsal_obj_handle *fsal_hdl,
-                            const struct req_op_context *opctx)
+fsal_status_t write_header(struct fsal_obj_handle *fsal_hdl,
+                           const struct req_op_context *opctx)
 {
         struct secnfs_fsal_obj_handle *hdl = secnfs_handle(fsal_hdl);
         fsal_status_t st;
@@ -210,10 +229,11 @@ fsal_status_t write_keyfile(struct fsal_obj_handle *fsal_hdl,
         int ret;
         bool stable;
 
-        ret = secnfs_create_keyfile(hdl->info, &hdl->fk,
-                                    &hdl->iv, &buf, &buf_size);
+        ret = secnfs_create_header(hdl->info, &hdl->fk, &hdl->iv,
+                                   get_filesize(hdl), &buf, &buf_size);
+
         assert(ret == SECNFS_OKAY);
-        assert(buf_size == KEY_FILE_SIZE);
+        assert(buf_size == FILE_HEADER_SIZE);
 
         hdl->data_offset = buf_size;
 
@@ -225,11 +245,13 @@ fsal_status_t write_keyfile(struct fsal_obj_handle *fsal_hdl,
                                              &n,
                                              &stable);
                 if (FSAL_IS_ERROR(st)) {
-                        LogCrit(COMPONENT_FSAL, "cannot write secnfs keyfile");
+                        LogCrit(COMPONENT_FSAL, "cannot write secnfs header");
                         goto out;
                 }
                 write_amount += n;
         } while (write_amount < buf_size);
+
+        hdl->has_dirty_meta = 0;
 
 out:
         free(buf);
@@ -247,7 +269,7 @@ static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
         struct secnfs_fsal_obj_handle *new_hdl;
         fsal_status_t st;
 
-        SECNFS_D("hdl = %x; key = %d", hdl, hdl->key_initialized);
+        SECNFS_D("CREATING '%s' in dir hdl (%x)", name, hdl);
 
         st = next_ops.obj_ops->create(hdl->next_handle, opctx, name,
                                       attrib, &next_hdl);
@@ -255,7 +277,7 @@ static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
                 return st;
         }
 
-        st = make_handle_from_next(dir_hdl->export, next_hdl, handle);
+        st = make_handle_from_next(dir_hdl->export, opctx, next_hdl, handle);
         if (FSAL_IS_ERROR(st)) {
                 LogCrit(COMPONENT_FSAL, "cannot create secnfs handle");
                 return st;
@@ -265,8 +287,9 @@ static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
                 new_hdl = secnfs_handle(*handle);
                 generate_key_and_iv(&new_hdl->fk, &new_hdl->iv);
                 new_hdl->key_initialized = 1;
+                new_hdl->has_dirty_meta = 0;
                 SECNFS_D("key in new handle (%x) initialized", new_hdl);
-                st = write_keyfile(*handle, opctx);
+                st = write_header(*handle, opctx);
         }
 
         return st;
@@ -381,6 +404,14 @@ static fsal_status_t setattrs(struct fsal_obj_handle *obj_hdl,
          * sometimes, "attrs->type" is NO_FILE_TYPE.  For example, when
          * we "truncate" a file.
          */
+
+        /* TODO handle "truncate" to a smaller size (non-zero) or larger size */
+        assert(!((attrs->mask & ATTR_SIZE) && attrs->filesize > 0));
+
+        /* PASS_DOWN will preserve effective filesize, so we set it first */
+        if (attrs->mask & ATTR_SIZE && attrs->filesize == 0)
+                update_filesize(secnfs_handle(obj_hdl), 0);
+
         adjust_attributes_down(attrs, obj_hdl->type);
         PASS_DOWN(setattrs, obj_hdl, opctx, attrs);
 }
@@ -512,7 +543,7 @@ fsal_status_t secnfs_lookup_path(struct fsal_export *exp_hdl,
                 return st;
         }
 
-        return make_handle_from_next(exp_hdl, next_hdl, handle);
+        return make_handle_from_next(exp_hdl, opctx, next_hdl, handle);
 }
 
 
@@ -546,5 +577,5 @@ fsal_status_t secnfs_create_handle(struct fsal_export *exp,
 
         SECNFS_F("handle created by secnfs_create_handle\n");
 
-        return make_handle_from_next(exp, next_hdl, handle);
+        return make_handle_from_next(exp, opctx, next_hdl, handle);
 }

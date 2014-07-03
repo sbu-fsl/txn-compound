@@ -59,6 +59,7 @@ struct secnfs_fsal_obj_handle {
         /* NFSv4.2' support for sparse file will help us */
         uint32_t data_offset;                   /*< beginning of data file */
         uint32_t key_initialized;
+        uint32_t has_dirty_meta;
 };
 
 static inline struct secnfs_fsal_obj_handle*
@@ -89,6 +90,34 @@ static inline struct fsal_export* next_export(struct fsal_export *exp)
         return secnfs_export(exp)->next_export;
 }
 
+/* TODO move to other header file? */
+static inline uint64_t round_up(uint64_t n, uint64_t m)
+{
+        assert((m & (m - 1)) == 0);
+        return (n + m - 1) & ~(m - 1);
+}
+static inline uint64_t round_down(uint64_t n, uint64_t m)
+{
+        assert((m & (m - 1)) == 0);
+        return n & ~(m - 1);
+}
+
+/* get effective filesize */
+static inline uint64_t get_filesize(struct secnfs_fsal_obj_handle *hdl)
+{
+        return hdl->obj_handle.attributes.filesize;
+}
+
+/* update effective filesize */
+static inline void update_filesize(struct secnfs_fsal_obj_handle *hdl,
+                                   uint64_t s)
+{
+        if (s != hdl->obj_handle.attributes.filesize) {
+                hdl->obj_handle.attributes.filesize = s;
+                hdl->has_dirty_meta = 1;
+        }
+}
+
 int secnfs_fsal_open(struct secnfs_fsal_obj_handle *, int, fsal_errors_t *);
 int secnfs_fsal_readlink(struct secnfs_fsal_obj_handle *, fsal_errors_t *);
 
@@ -102,11 +131,11 @@ static inline bool secnfs_unopenable_type(object_file_type_t type)
 	}
 }
 
-fsal_status_t read_keyfile(struct fsal_obj_handle *fsal_hdl,
-                           const struct req_op_context *opctx);
+fsal_status_t read_header(struct fsal_obj_handle *fsal_hdl,
+                          const struct req_op_context *opctx);
 
-fsal_status_t write_keyfile(struct fsal_obj_handle *fsal_hdl,
-                            const struct req_op_context *opctx);
+fsal_status_t write_header(struct fsal_obj_handle *fsal_hdl,
+                           const struct req_op_context *opctx);
 
 	/* I/O management */
 fsal_status_t secnfs_open(struct fsal_obj_handle * obj_hdl,

@@ -21,7 +21,7 @@ extern "C" {
 #define SECNFS_KEY_LENGTH 16
 
 // TODO allow keyfile to be larger than 4096.
-#define KEY_FILE_SIZE 4096
+#define FILE_HEADER_SIZE 4096
 
 #define PI_SECNFS_DIF_SIZE 48 /* 4096 / 512 * (8-2) */
 #define VERSION_SIZE 8
@@ -191,41 +191,44 @@ void secnfs_destroy_context(secnfs_info_t *info);
 
 
 /**
- * @brief Create new key file.
+ * @brief Create new file header.
  *
  * @param[in]   context SECNFS Context
  * @param[out]  fek     File Encryption Key
  * @param[out]  iv      Initialization vector
- * @param[out]  keyfile KeyFile data
- * @param[out]  kf_len  Length of KeyFile data
+ * @param[out]  buf     header data
+ * @param[out]  len     Length of header data
  *
  * The caller is the owner of the returned buf and should free them properly.
  *
  * @return SECNFS_OKAY on success.
  */
-secnfs_s secnfs_create_keyfile(secnfs_info_t *info,
-                               secnfs_key_t *fek,
-                               secnfs_key_t *iv,
-                               void **keyfile,
-                               uint32_t *kf_len);
+secnfs_s secnfs_create_header(secnfs_info_t *info,
+                              secnfs_key_t *fek,
+                              secnfs_key_t *iv,
+                              uint64_t filesize,
+                              void **buf,
+                              uint32_t *len);
 
 
 /**
- * Read and decrypt file encryption key from keyfile.
+ * Read and decrypt file encryption key, meta data from file header.
  *
  * @param[in]   info        secnfs info, containing the context
  * @param[in]   buf         buffer holding the keyfile data
  * @param[in]   buf_size    size of the buffer
  * @param[out]  fek         the resultant file encryption key
  * @param[out]  iv          iv used for file data encryption/decryption
- * @param[out]  kf_len      real lenght of the keyfile
+ * @param[out]  filesize    effective file size
+ * @param[out]  len         real length of the header
  */
-secnfs_s secnfs_read_file_key(secnfs_info_t *info,
-                              void *buf,
-                              uint32_t buf_size,
-                              secnfs_key_t *fek,
-                              secnfs_key_t *iv,
-                              uint32_t *kf_len);
+secnfs_s secnfs_read_header(secnfs_info_t *info,
+                            void *buf,
+                            uint32_t buf_size,
+                            secnfs_key_t *fek,
+                            secnfs_key_t *iv,
+                            uint64_t *filesize,
+                            uint32_t *len);
 
 /**
  * Serialize secnfs_dif_t to a contiguous buf

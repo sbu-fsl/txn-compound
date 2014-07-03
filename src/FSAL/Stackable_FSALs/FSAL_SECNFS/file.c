@@ -44,7 +44,7 @@
 
 extern struct next_ops next_ops;
 
-static bool should_read_keyfile(const struct secnfs_fsal_obj_handle *hdl)
+static bool should_read_header(const struct secnfs_fsal_obj_handle *hdl)
 {
         return hdl->obj_handle.type == REGULAR_FILE
                 && hdl->obj_handle.attributes.filesize > 0
@@ -66,9 +66,9 @@ fsal_status_t secnfs_open(struct fsal_obj_handle *obj_hdl,
 
         st = next_ops.obj_ops->open(hdl->next_handle, opctx, openflags);
 
-        if (!FSAL_IS_ERROR(st) && should_read_keyfile(hdl)) {
-                // read file key and iv
-                st = read_keyfile(obj_hdl, opctx);
+        if (!FSAL_IS_ERROR(st) && should_read_header(hdl)) {
+                // read file key, iv and meta
+                st = read_header(obj_hdl, opctx);
         }
 
         return st;
@@ -96,24 +96,6 @@ inline fsal_status_t secnfs_to_fsal_status(secnfs_s s) {
         }
 
         return fsal_s;
-}
-
-/* TODO move to header file? */
-inline uint64_t round_up(uint64_t n, uint64_t m)
-{
-        assert((m & (m - 1)) == 0);
-        return (n + m - 1) & ~(m - 1);
-}
-inline uint64_t round_down(uint64_t n, uint64_t m)
-{
-        assert((m & (m - 1)) == 0);
-        return n & ~(m - 1);
-}
-/* get effective filesize */
-inline uint64_t get_filesize(struct secnfs_fsal_obj_handle *hdl)
-{
-        /* TODO read secnfs file header or local db? */
-        return hdl->obj_handle.attributes.filesize;
 }
 
 inline secnfs_s read_update_one(uint8_t *dst, void *src,
@@ -203,7 +185,7 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
 
         offset_align = round_down(offset, PI_INTERVAL_SIZE);
         offset_moved = offset - offset_align;
-        next_offset = offset_align + KEY_FILE_SIZE;
+        next_offset = offset_align + FILE_HEADER_SIZE;
         size_align = round_up(offset + buffer_size, PI_INTERVAL_SIZE)
                         - offset_align;
         align = (offset == offset_align && buffer_size == size_align) ? 1 : 0;
@@ -343,9 +325,10 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
         SECNFS_D("hdl = %x; write to %u (%u)\n", hdl, offset, buffer_size);
 
         if (obj_hdl->type != REGULAR_FILE) {
-                return next_ops.obj_ops->write(next_handle(obj_hdl), opctx,
+                return next_ops.obj_ops->write(hdl->next_handle, opctx,
                                                offset,
-                                               buffer_size, buffer, write_amount,
+                                               buffer_size, buffer,
+                                               write_amount,
                                                fsal_stable);
         }
 
@@ -354,7 +337,7 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
 
         offset_align = round_down(offset, PI_INTERVAL_SIZE);
         offset_moved = offset - offset_align;
-        next_offset = offset_align + KEY_FILE_SIZE;
+        next_offset = offset_align + FILE_HEADER_SIZE;
         size_align = round_up(offset + buffer_size, PI_INTERVAL_SIZE)
                         - offset_align;
         align = (offset == offset_align && buffer_size == size_align) ? 1 : 0;
@@ -477,7 +460,7 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
                                            pi_size, pi_buf,
                                            size_align, pd_buf);
 
-        st = next_ops.obj_ops->write_plus(next_handle(obj_hdl),
+        st = next_ops.obj_ops->write_plus(hdl->next_handle,
                                           opctx,
                                           next_offset, size_align,
                                           pd_buf, write_amount,
@@ -487,7 +470,9 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
         *write_amount = round_down(*write_amount, PI_INTERVAL_SIZE);
         *write_amount = (*write_amount == size_align) ?
                         buffer_size : *write_amount - offset_moved;
-        /* TODO record new filesize if we extended the file */
+
+        if (offset + *write_amount > get_filesize(hdl))
+                update_filesize(hdl, offset + *write_amount);
 
         SECNFS_D("hdl = %x; client_size = %d; write_amount = %d\n", obj_hdl,
                         obj_hdl->attributes.filesize, *write_amount);
@@ -536,6 +521,32 @@ fsal_status_t secnfs_lock_op(struct fsal_obj_handle *obj_hdl,
  */
 fsal_status_t secnfs_close(struct fsal_obj_handle *obj_hdl)
 {
+        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
+
+        if (obj_hdl->type == REGULAR_FILE && hdl->has_dirty_meta) {
+                struct req_op_context opctx = {0};
+                fsal_status_t st;
+
+                SECNFS_D("Closing hdl = %x; write header (filesize: %u)",
+                         hdl, get_filesize(hdl));
+
+                st = write_header(obj_hdl, &opctx);
+
+                if (FSAL_IS_ERROR(st)) {
+                        /* when unlink a pinned file, fsal_close will not be
+                         * called. But cache_inode_lru_clean() will eventually
+                         * call this fsal_close, resulting in write_header
+                         * to a nonexistent remote handle.
+                         */
+                        if (st.major == ERR_FSAL_STALE) {
+                                SECNFS_D("stale remote handle(maybe unlinked)");
+                        } else {
+                                SECNFS_D("write_header failed: %d", st.major);
+                                return st;
+                        }
+                }
+        }
+
         return next_ops.obj_ops->close(next_handle(obj_hdl));
 }
 

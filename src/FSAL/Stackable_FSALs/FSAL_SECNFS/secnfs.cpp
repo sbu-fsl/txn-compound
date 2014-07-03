@@ -76,11 +76,16 @@ secnfs_key_t *incr_ctr(secnfs_key_t *iv, unsigned size, int incr)
 }
 
 
+/**
+ * @brief Generate a key and an IV from a crypto PRNG.
+ */
 void generate_key_and_iv(secnfs_key_t *key, secnfs_key_t *iv)
 {
         AutoSeededRandomPool prng;
         prng.GenerateBlock(key->bytes, SECNFS_KEY_LENGTH);
         prng.GenerateBlock(iv->bytes, SECNFS_KEY_LENGTH);
+        key->bytes[SECNFS_KEY_LENGTH + 1] = 0;
+        iv->bytes[SECNFS_KEY_LENGTH + 1] = 0;
 }
 
 /*
@@ -339,44 +344,56 @@ void secnfs_destroy_context(secnfs_info_t *info) {
 }
 
 
-secnfs_s secnfs_create_keyfile(secnfs_info_t *info,
-                               secnfs_key_t *fek,
-                               secnfs_key_t *iv,
-                               void **keyfile,
-                               uint32_t *kf_len) {
+secnfs_s secnfs_create_header(secnfs_info_t *info,
+                              secnfs_key_t *fek,
+                              secnfs_key_t *iv,
+                              uint64_t filesize,
+                              void **buf,
+                              uint32_t *len) {
         Context *ctx = get_context(info);
 
-        KeyFile kf;
-        ctx->GenerateKeyFile(fek->bytes, iv->bytes,
-                             SECNFS_KEY_LENGTH, &kf);
-        kf.set_creator(ctx->name());
+        FileHeader header;
 
-        if (!EncodeMessage(kf, keyfile, kf_len, KEY_FILE_SIZE)) {
+        KeyFile *kf = header.mutable_keyfile();
+        ctx->GenerateKeyFile(fek->bytes, iv->bytes,
+                             SECNFS_KEY_LENGTH, kf);
+        kf->set_creator(ctx->name());
+
+        FileMeta *meta = header.mutable_meta();
+        meta->set_filesize(filesize);
+
+        if (!EncodeMessage(header, buf, len, FILE_HEADER_SIZE)) {
                 LOG(ERROR) << "cannot write keyfile";
                 return SECNFS_WRONG_CONFIG;
         }
 
-        assert(*kf_len == KEY_FILE_SIZE);
+        assert(*len == FILE_HEADER_SIZE);
 
         return SECNFS_OKAY;
 }
 
 
-secnfs_s secnfs_read_file_key(secnfs_info_t *info,
-                              void *buf,
-                              uint32_t buf_size,
-                              secnfs_key_t *fek,
-                              secnfs_key_t *iv,
-                              uint32_t *kf_len) {
+secnfs_s secnfs_read_header(secnfs_info_t *info,
+                            void *buf,
+                            uint32_t buf_size,
+                            secnfs_key_t *fek,
+                            secnfs_key_t *iv,
+                            uint64_t *filesize,
+                            uint32_t *len) {
         Context *ctx = get_context(info);
-        KeyFile kf;
+        FileHeader header;
 
-        if (!DecodeMessage(&kf, buf, buf_size, kf_len)) {
+        if (!DecodeMessage(&header, buf, buf_size, len)) {
                 LOG(ERROR) << "cannot decode keyfile";
                 return SECNFS_KEYFILE_ERROR;
         }
 
-        assert(kf.ByteSize() == *kf_len);
+        assert(header.ByteSize() == *len);
+
+        if (header.has_meta())
+                *filesize = header.meta().filesize();
+
+        const KeyFile &kf = header.keyfile();
 
         str_to_key(kf.iv(), iv);
 

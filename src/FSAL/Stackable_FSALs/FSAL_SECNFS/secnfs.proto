@@ -1,5 +1,14 @@
 package secnfs;
 
+message FileHeader {
+  required KeyFile keyfile = 1;
+  optional FileMeta meta = 2;
+}
+
+message FileMeta {
+  optional uint64 filesize = 1;
+}
+
 message KeyFile {
   required string creator = 1;
   required bytes iv = 2;
