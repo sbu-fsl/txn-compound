@@ -80,6 +80,7 @@ void Context::GenerateKeyFile(byte* key, byte* iv, int len, KeyFile* kf)
 {
         kf->set_iv(std::string(reinterpret_cast<char*>(iv), len));
 
+        // TODO cache the result
         for (size_t i = 0; i < pm_.proxies_size(); ++i) {
                 const SecureProxy& p = pm_.proxies(i);
 

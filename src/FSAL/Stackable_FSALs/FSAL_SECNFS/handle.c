@@ -196,7 +196,14 @@ fsal_status_t read_header(struct fsal_obj_handle *fsal_hdl,
                         LogCrit(COMPONENT_FSAL, "cannot read secnfs header");
                         goto out;
                 }
+
                 read_amount += n;
+
+                if (read_amount < FILE_HEADER_SIZE && end_of_file) {
+                        st = fsalstat(ERR_FSAL_IO, 0);
+                        LogCrit(COMPONENT_FSAL, "invalid secnfs header size");
+                        goto out;
+                }
         } while (read_amount < FILE_HEADER_SIZE);
 
         ret = secnfs_read_header(hdl->info,

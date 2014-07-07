@@ -432,6 +432,7 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
 
         secnfs_dif.version = 0x1234567890abcdef;
         for (i = 0; i < get_pi_count(size_align); i++) {
+                /* TODO make secnfs_dif.version endianness-independent */
                 ret = secnfs_auth_encrypt(
                                 hdl->fk,
                                 hdl->iv,
