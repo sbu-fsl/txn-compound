@@ -36,7 +36,7 @@ www.linux-iscsi.org.  Andy even have some videos about how to use targetcli!
 
 Then enable DIX support of the ramdisk:
 
-	echo 3 > /sys/kernel/config/target/core/rd_mcp_1/rd1/attrib/pi_prot_type
+	echo 3 > /sys/kernel/config/target/core/rd_mcp_0/rd1/attrib/pi_prot_type
 
 We choose to use type 3 of DIF, which only use the CRC guard tag (2 bytes).
 The application tag and the reference tag are left intact.  So be careful when
@@ -59,6 +59,8 @@ Verify integrity is enabled:
 	$ cat /sys/block/sdb/integrity/write_generate
 	1
 
+You may restore your previous config after reboot:
+	# targetcli restoreconfig /etc/target/saveconfig.json
 
 Add support for passing DIX data from user application to kernel
 ================================================================
