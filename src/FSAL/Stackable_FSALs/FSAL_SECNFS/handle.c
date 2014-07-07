@@ -44,11 +44,7 @@
         struct fsal_obj_handle *next_hdl = next_handle(obj_hdl);            \
         fsal_status_t st = next_ops.obj_ops->func(next_hdl, ## args);       \
         if (!FSAL_IS_ERROR(st)) {                                           \
-                uint64_t effective_size = obj_hdl->attributes.filesize;     \
-                obj_hdl->attributes = next_hdl->attributes;                 \
-                adjust_attributes_up(&obj_hdl->attributes, obj_hdl->type);  \
-                if (obj_hdl->type == REGULAR_FILE)                          \
-                        obj_hdl->attributes.filesize = effective_size;      \
+                adjust_attributes_up(obj_hdl, next_hdl);                    \
         }                                                                   \
         return st;
 
@@ -92,11 +88,15 @@ static struct secnfs_fsal_obj_handle *alloc_handle(struct fsal_export *exp,
 }
 
 
-static void adjust_attributes_up(struct attrlist *attr,
-                                 object_file_type_t type)
+static void adjust_attributes_up(struct fsal_obj_handle *obj_hdl,
+                                 struct fsal_obj_handle *next_hdl)
 {
-        if (type == REGULAR_FILE && attr->filesize >= 0) {
-                assert(attr->filesize >= FILE_HEADER_SIZE);
+        if (obj_hdl->type == REGULAR_FILE) {
+                uint64_t effective_size = obj_hdl->attributes.filesize;
+                obj_hdl->attributes = next_hdl->attributes;
+                obj_hdl->attributes.filesize = effective_size;
+        } else {
+                obj_hdl->attributes = next_hdl->attributes;
         }
 }
 
