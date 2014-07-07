@@ -272,8 +272,14 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                 *read_amount = (*read_amount == size_align) ?
                                buffer_size : *read_amount - offset_moved;
 
+                /* user's buffer_size may be larger than effective amount */
                 if (offset + *read_amount > get_filesize(hdl)) {
-                        /* EOF should already be set */
+                        /* if EOF is not set, effective filesize in header
+                         * does not match the real size on remote disk. */
+                        if (!*end_of_file) {
+                                SECNFS_I("hdl = %x; size unsynchronized?", hdl);
+                                *end_of_file = 1;
+                        }
                         *read_amount = get_filesize(hdl) - offset;
                         assert(*read_amount > 0);
                 }
