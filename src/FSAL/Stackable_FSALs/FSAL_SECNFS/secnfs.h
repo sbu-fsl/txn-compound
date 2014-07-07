@@ -29,7 +29,7 @@ extern "C" {
 #define DIF_UNUSED_SIZE PI_SECNFS_DIF_SIZE - VERSION_SIZE - TAG_SIZE
 /* 48 - 8 - 16 = 24 */
 
-typedef struct { uint8_t bytes[SECNFS_KEY_LENGTH + 1]; } secnfs_key_t;
+typedef struct { uint8_t bytes[SECNFS_KEY_LENGTH]; } secnfs_key_t;
 
 /**
  * Status codes of SECNFS.

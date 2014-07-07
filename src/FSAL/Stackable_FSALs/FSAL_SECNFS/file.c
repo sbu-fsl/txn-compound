@@ -533,7 +533,7 @@ fsal_status_t secnfs_close(struct fsal_obj_handle *obj_hdl)
                 struct req_op_context opctx = {0};
                 fsal_status_t st;
 
-                SECNFS_D("Closing hdl = %x; write header (filesize: %u)",
+                SECNFS_D("Closing hdl = %x; writing header (filesize: %u)",
                          hdl, get_filesize(hdl));
 
                 st = write_header(obj_hdl, &opctx);

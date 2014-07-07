@@ -84,8 +84,6 @@ void generate_key_and_iv(secnfs_key_t *key, secnfs_key_t *iv)
         AutoSeededRandomPool prng;
         prng.GenerateBlock(key->bytes, SECNFS_KEY_LENGTH);
         prng.GenerateBlock(iv->bytes, SECNFS_KEY_LENGTH);
-        key->bytes[SECNFS_KEY_LENGTH + 1] = 0;
-        iv->bytes[SECNFS_KEY_LENGTH + 1] = 0;
 }
 
 /*
