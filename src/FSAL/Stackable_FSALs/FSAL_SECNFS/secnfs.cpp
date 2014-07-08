@@ -55,8 +55,7 @@ extern "C" {
 
 static void str_to_key(const std::string &sk, secnfs_key_t *key) {
         assert(sk.length() == SECNFS_KEY_LENGTH);
-        memmove(key->bytes, sk.c_str(), SECNFS_KEY_LENGTH);
-        key->bytes[SECNFS_KEY_LENGTH] = 0;
+        memcpy(key->bytes, sk.data(), SECNFS_KEY_LENGTH);
 }
 
 
@@ -157,7 +156,8 @@ secnfs_s secnfs_decrypt(secnfs_key_t key,
                         uint64_t offset,
                         uint64_t size,
                         void *cipher,
-                        void *buffer) {
+                        void *buffer)
+{
         return secnfs_encrypt(key, iv, offset, size, cipher, buffer);
 }
 
@@ -260,7 +260,8 @@ secnfs_s secnfs_verify_decrypt(secnfs_key_t key, secnfs_key_t iv,
 }
 
 
-secnfs_s secnfs_create_context(secnfs_info_t *info) {
+secnfs_s secnfs_create_context(secnfs_info_t *info)
+{
         int ret;
         struct stat st;
         Context *ctx = new Context(info->secnfs_name);
@@ -312,7 +313,8 @@ secnfs_s secnfs_create_context(secnfs_info_t *info) {
 }
 
 
-secnfs_s secnfs_init_info(secnfs_info_t *info) {
+secnfs_s secnfs_init_info(secnfs_info_t *info)
+{
         secnfs_s ss;
 
         // Log files will be saved into /tmp/, for example
@@ -332,13 +334,53 @@ secnfs_s secnfs_init_info(secnfs_info_t *info) {
 }
 
 
-static inline secnfs_key_t *new_secnfs_key() {
+static inline secnfs_key_t *new_secnfs_key()
+{
         return static_cast<secnfs_key_t*>(calloc(1, sizeof(secnfs_key_t)));
 }
 
 
-void secnfs_destroy_context(secnfs_info_t *info) {
+void secnfs_destroy_context(secnfs_info_t *info)
+{
         delete get_context(info);
+}
+
+
+secnfs_s create_meta(FileMeta *meta,
+                     secnfs_key_t *fek, secnfs_key_t *iv,
+                     uint64_t filesize)
+{
+        uint8_t filesize_buf[8];
+        secnfs_s ret;
+
+        uint64_to_bytes(filesize_buf, filesize);
+
+        ret = secnfs_encrypt(*fek, *iv, 0, 8, filesize_buf, filesize_buf);
+        if (ret != SECNFS_OKAY)
+                return ret;
+
+        meta->set_filesize(filesize_buf, 8);
+
+        return SECNFS_OKAY;
+}
+
+
+secnfs_s read_meta(const FileMeta &meta,
+                   secnfs_key_t *fek, secnfs_key_t *iv,
+                   uint64_t *filesize)
+{
+        uint8_t filesize_buf[8];
+        secnfs_s ret;
+
+        memcpy(filesize_buf, meta.filesize().data(), 8);
+
+        ret = secnfs_decrypt(*fek, *iv, 0, 8, filesize_buf, filesize_buf);
+        if (ret != SECNFS_OKAY)
+                return ret;
+
+        uint64_from_bytes(filesize_buf, filesize);
+
+        return SECNFS_OKAY;
 }
 
 
@@ -347,10 +389,11 @@ secnfs_s secnfs_create_header(secnfs_info_t *info,
                               secnfs_key_t *iv,
                               uint64_t filesize,
                               void **buf,
-                              uint32_t *len) {
+                              uint32_t *len)
+{
         Context *ctx = get_context(info);
-
         FileHeader header;
+        secnfs_s ret;
 
         KeyFile *kf = header.mutable_keyfile();
         ctx->GenerateKeyFile(fek->bytes, iv->bytes,
@@ -358,7 +401,11 @@ secnfs_s secnfs_create_header(secnfs_info_t *info,
         kf->set_creator(ctx->name());
 
         FileMeta *meta = header.mutable_meta();
-        meta->set_filesize(filesize);
+        ret = create_meta(meta, fek, iv, filesize);
+        if (ret != SECNFS_OKAY) {
+                LOG(ERROR) << "create meta failed";
+                return ret;
+        }
 
         if (!EncodeMessage(header, buf, len, FILE_HEADER_SIZE)) {
                 LOG(ERROR) << "cannot write keyfile";
@@ -377,7 +424,8 @@ secnfs_s secnfs_read_header(secnfs_info_t *info,
                             secnfs_key_t *fek,
                             secnfs_key_t *iv,
                             uint64_t *filesize,
-                            uint32_t *len) {
+                            uint32_t *len)
+{
         Context *ctx = get_context(info);
         FileHeader header;
 
@@ -385,14 +433,9 @@ secnfs_s secnfs_read_header(secnfs_info_t *info,
                 LOG(ERROR) << "cannot decode keyfile";
                 return SECNFS_KEYFILE_ERROR;
         }
-
         assert(header.ByteSize() == *len);
 
-        if (header.has_meta())
-                *filesize = header.meta().filesize();
-
         const KeyFile &kf = header.keyfile();
-
         str_to_key(kf.iv(), iv);
 
         for (int i = 0; i < kf.key_blocks_size(); ++i) {
@@ -402,7 +445,7 @@ secnfs_s secnfs_read_header(secnfs_info_t *info,
                         RSADecrypt(ctx->pri_key(), kb.encrypted_key(), &rkey);
                         str_to_key(rkey, fek);
                         memmove(fek->bytes, rkey.c_str(), SECNFS_KEY_LENGTH);
-                        return SECNFS_OKAY;
+                        return read_meta(header.meta(), fek, iv, filesize);
                 }
         }
 

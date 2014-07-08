@@ -6,7 +6,7 @@ message FileHeader {
 }
 
 message FileMeta {
-  optional uint64 filesize = 1;
+  optional bytes filesize = 1;
 }
 
 message KeyFile {

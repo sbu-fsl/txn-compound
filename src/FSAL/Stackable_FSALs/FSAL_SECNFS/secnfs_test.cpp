@@ -211,7 +211,8 @@ TEST(CreateKeyFileTest, Basic) {
         void *buf;
 
         generate_key_and_iv(&key, &iv);
-        EXPECT_OKAY(secnfs_create_header(info, &key, &iv, 88, &buf, &buf_size));
+        EXPECT_OKAY(secnfs_create_header(info, &key, &iv, 0x1234,
+                                         &buf, &buf_size));
 
         secnfs_key_t rkey, riv;
         uint32_t header_len;
@@ -221,7 +222,7 @@ TEST(CreateKeyFileTest, Basic) {
 
         EXPECT_SAME(iv.bytes, riv.bytes, SECNFS_KEY_LENGTH);
         EXPECT_SAME(key.bytes, rkey.bytes, SECNFS_KEY_LENGTH);
-        EXPECT_EQ(88, filesize);
+        EXPECT_EQ(0x1234, filesize);
 
         free(buf);
         delete context;
