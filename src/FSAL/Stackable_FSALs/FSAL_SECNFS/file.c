@@ -26,7 +26,7 @@
  */
 
 /* file.c
- * File I/O methods for VFS module
+ * File I/O methods for SECNFS module
  */
 
 #include "config.h"
@@ -161,6 +161,7 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
         struct data_plus data_plus;
         struct secnfs_dif secnfs_dif;
         uint8_t *secnfs_dif_buf = NULL;
+        uint8_t version_buf[8];
         void *pd_buf = NULL;
         void *pi_buf = NULL;
         size_t pi_size;
@@ -240,6 +241,7 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                                     + i * PI_SD_DIF_SIZE, secnfs_dif_buf,
                                     PI_SECNFS_DIF_SIZE, 1);
                 secnfs_dif_from_buf(&secnfs_dif, secnfs_dif_buf);
+                uint64_to_bytes(version_buf, secnfs_dif.version);
 
                 SECNFS_D("hdl = %x; ver(%u) = %llx",
                          hdl, i + (offset_align >> PI_INTERVAL_SHIFT),
@@ -256,7 +258,7 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                                         PI_INTERVAL_SIZE,
                                         pd_buf + i * PI_INTERVAL_SIZE,
                                         VERSION_SIZE,
-                                        &(secnfs_dif.version),
+                                        version_buf,
                                         secnfs_dif.tag,
                                         pd_buf + i * PI_INTERVAL_SIZE);
 
@@ -323,6 +325,7 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
         size_t pi_size;
         struct secnfs_dif secnfs_dif = {0};
         uint8_t *secnfs_dif_buf = NULL;
+        uint8_t version_buf[8];
         fsal_status_t st;
         secnfs_s ret;
         bool align;
@@ -431,6 +434,8 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
         }
 
         secnfs_dif.version = 0x1234567890abcdef;
+        uint64_to_bytes(version_buf, secnfs_dif.version);
+
         for (i = 0; i < get_pi_count(size_align); i++) {
                 /* TODO make secnfs_dif.version endianness-independent */
                 ret = secnfs_auth_encrypt(
@@ -440,7 +445,7 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
                                 PI_INTERVAL_SIZE,
                                 plain_align + i * PI_INTERVAL_SIZE,
                                 VERSION_SIZE,
-                                &secnfs_dif.version,
+                                version_buf,
                                 pd_buf + i * PI_INTERVAL_SIZE,
                                 secnfs_dif.tag);
 

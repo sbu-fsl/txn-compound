@@ -229,6 +229,26 @@ secnfs_s secnfs_read_header(secnfs_info_t *info,
                             secnfs_key_t *iv,
                             uint64_t *filesize,
                             uint32_t *len);
+/**
+ * Serialize uint64_t to "little-endian" byte array
+ */
+static inline void uint64_to_bytes(uint8_t *buf, uint64_t n)
+{
+        int i;
+        for (i = 0; i < 8; i++)
+                buf[i] = (n >> i * 8) & 0xff;
+}
+
+/**
+ * Deserialize from byte array to uint64_t
+ */
+static inline void uint64_from_bytes(uint8_t *buf, uint64_t *n)
+{
+        int i;
+        *n = 0;
+        for (i = 7; i >= 0; i--)
+                *n = (*n << 8) | buf[i];
+}
 
 /**
  * Serialize secnfs_dif_t to a contiguous buf
@@ -239,9 +259,7 @@ secnfs_s secnfs_read_header(secnfs_info_t *info,
 static inline void secnfs_dif_to_buf(struct secnfs_dif *dif,
                                      uint8_t *buf)
 {
-        int i;
-        for (i = 0; i < VERSION_SIZE; i++)
-                buf[i] = (dif->version >> (i * 8)) & 0xff;
+        uint64_to_bytes(buf, dif->version);
         memcpy(buf + VERSION_SIZE, dif->tag, TAG_SIZE);
         memcpy(buf + VERSION_SIZE + TAG_SIZE, dif->unused, DIF_UNUSED_SIZE);
 }
@@ -255,10 +273,7 @@ static inline void secnfs_dif_to_buf(struct secnfs_dif *dif,
 static inline void secnfs_dif_from_buf(struct secnfs_dif *dif,
                                        uint8_t *buf)
 {
-        int i;
-        dif->version = 0;
-        for (i = VERSION_SIZE - 1; i >= 0; i--)
-                dif->version = (dif->version << 8) | buf[i];
+        uint64_from_bytes(buf, &dif->version);
         memcpy(dif->tag, buf + VERSION_SIZE, TAG_SIZE);
         memcpy(dif->unused, buf + VERSION_SIZE + TAG_SIZE, DIF_UNUSED_SIZE);
 }
