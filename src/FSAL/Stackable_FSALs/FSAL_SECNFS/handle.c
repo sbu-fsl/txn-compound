@@ -92,6 +92,7 @@ static void adjust_attributes_up(struct fsal_obj_handle *obj_hdl,
                                  struct fsal_obj_handle *next_hdl)
 {
         if (obj_hdl->type == REGULAR_FILE) {
+                /* preserve effective filesize */
                 uint64_t effective_size = obj_hdl->attributes.filesize;
                 obj_hdl->attributes = next_hdl->attributes;
                 obj_hdl->attributes.filesize = effective_size;
@@ -104,10 +105,8 @@ static void adjust_attributes_up(struct fsal_obj_handle *obj_hdl,
 static void adjust_attributes_down(struct attrlist *attr,
                                    object_file_type_t type)
 {
-        if (type == REGULAR_FILE && (attr->mask & ATTR_SIZE)) {
-                attr->filesize = round_up(attr->filesize, PI_INTERVAL_SIZE)
-                                 + FILE_HEADER_SIZE;
-        }
+        if (type == REGULAR_FILE && (attr->mask & ATTR_SIZE))
+                attr->filesize = pi_round_up(attr->filesize) + FILE_HEADER_SIZE;
 }
 
 
@@ -406,19 +405,27 @@ static fsal_status_t setattrs(struct fsal_obj_handle *obj_hdl,
 			      const struct req_op_context *opctx,
 			      struct attrlist *attrs)
 {
+        if (attrs->mask & ATTR_SIZE && obj_hdl->type == REGULAR_FILE) {
+                struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
+
+                if (attrs->filesize != 0) {
+                        fsal_status_t st;
+                        st = secnfs_truncate(hdl, opctx, attrs->filesize);
+                        if (FSAL_IS_ERROR(st)) {
+                                LogCrit(COMPONENT_FSAL, "truncate failed");
+                                return st;
+                        }
+                } else {
+                        SECNFS_D("hdl = %x; truncating to 0", hdl);
+                        update_filesize(hdl, 0);
+                }
+        }
+
         /*
          * We use the "obj_hdl->type", instead of "attrs->type" because,
          * sometimes, "attrs->type" is NO_FILE_TYPE.  For example, when
          * we "truncate" a file.
          */
-
-        /* TODO handle "truncate" to a smaller size (non-zero) or larger size */
-        assert(!((attrs->mask & ATTR_SIZE) && attrs->filesize > 0));
-
-        /* PASS_DOWN will preserve effective filesize, so we set it first */
-        if (attrs->mask & ATTR_SIZE && attrs->filesize == 0)
-                update_filesize(secnfs_handle(obj_hdl), 0);
-
         adjust_attributes_down(attrs, obj_hdl->type);
         PASS_DOWN(setattrs, obj_hdl, opctx, attrs);
 }

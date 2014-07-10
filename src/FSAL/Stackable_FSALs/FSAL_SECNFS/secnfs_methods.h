@@ -101,6 +101,19 @@ static inline uint64_t round_down(uint64_t n, uint64_t m)
         assert((m & (m - 1)) == 0);
         return n & ~(m - 1);
 }
+static inline is_aligned(uint64_t n, uint64_t m)
+{
+        assert((m & (m - 1)) == 0);
+        return (n & (m - 1)) == 0;
+}
+static inline uint64_t pi_round_up(uint64_t n)
+{
+        return round_up(n, PI_INTERVAL_SIZE);
+}
+static inline uint64_t pi_round_down(uint64_t n)
+{
+        return round_down(n, PI_INTERVAL_SIZE);
+}
 
 /* get effective filesize */
 static inline uint64_t get_filesize(struct secnfs_fsal_obj_handle *hdl)
@@ -108,7 +121,7 @@ static inline uint64_t get_filesize(struct secnfs_fsal_obj_handle *hdl)
         return hdl->obj_handle.attributes.filesize;
 }
 
-/* update effective filesize */
+/* update effective filesize in handle */
 static inline void update_filesize(struct secnfs_fsal_obj_handle *hdl,
                                    uint64_t s)
 {
@@ -150,6 +163,9 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
 			   const struct req_op_context *opctx, uint64_t offset,
 			   size_t buffer_size, void *buffer,
 			   size_t * write_amount, bool * fsal_stable);
+fsal_status_t secnfs_truncate(struct secnfs_fsal_obj_handle *hdl,
+                              const struct req_op_context *opctx,
+                              uint64_t newsize);
 fsal_status_t secnfs_commit(struct fsal_obj_handle *obj_hdl,	/* sync */
 			    off_t offset, size_t len);
 fsal_status_t secnfs_lock_op(struct fsal_obj_handle *obj_hdl,
