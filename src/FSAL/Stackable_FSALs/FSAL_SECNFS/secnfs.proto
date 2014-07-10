@@ -12,13 +12,13 @@ message FileMeta {
 message KeyFile {
   required string creator = 1;
   required bytes iv = 2;
-	repeated KeyBlock key_blocks = 3;
-	optional bytes signature = 4;
+  repeated KeyBlock key_blocks = 3;
+  optional bytes signature = 4;
 }
 
 message KeyBlock {
-	required string proxy_name = 1;
-	required bytes encrypted_key = 2;
+  required string proxy_name = 1;
+  required bytes encrypted_key = 2;
 }
 
 message SecureContextConfig {

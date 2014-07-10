@@ -456,7 +456,7 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
         assert(offset_moved < PI_INTERVAL_SIZE);
 
         /* offset is beyond the current filesize, pad with zero.
-         * need not fill last block that is already paded;
+         * need not fill last block that is already padded;
          * need not fill subsequent one block if we will write on it. */
         if (offset_align >= pi_round_up(get_filesize(hdl)) + PI_INTERVAL_SIZE) {
                 ret = secnfs_fill_zero(hdl, opctx,

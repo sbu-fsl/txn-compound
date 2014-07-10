@@ -389,30 +389,43 @@ secnfs_s secnfs_create_header(secnfs_info_t *info,
                               secnfs_key_t *iv,
                               uint64_t filesize,
                               void **buf,
-                              uint32_t *len)
+                              uint32_t *len,
+                              void **kf_cache)
 {
         Context *ctx = get_context(info);
         FileHeader header;
+        KeyFile *kf;
         secnfs_s ret;
 
-        KeyFile *kf = header.mutable_keyfile();
-        ctx->GenerateKeyFile(fek->bytes, iv->bytes,
-                             SECNFS_KEY_LENGTH, kf);
-        kf->set_creator(ctx->name());
+        kf = static_cast<KeyFile *>(*kf_cache);
+        if (!kf) {
+                kf = new KeyFile;
+                *kf_cache = kf;
+        }
+        header.set_allocated_keyfile(kf);
 
-        FileMeta *meta = header.mutable_meta();
-        ret = create_meta(meta, fek, iv, filesize);
+        if (!kf->has_creator()) { // check cache
+                ctx->GenerateKeyFile(fek->bytes, iv->bytes,
+                                SECNFS_KEY_LENGTH, kf);
+                kf->set_creator(ctx->name());
+        }
+
+        ret = create_meta(header.mutable_meta(), fek, iv, filesize);
         if (ret != SECNFS_OKAY) {
                 LOG(ERROR) << "create meta failed";
-                return ret;
+                goto out;
         }
 
         if (!EncodeMessage(header, buf, len, FILE_HEADER_SIZE)) {
                 LOG(ERROR) << "cannot write keyfile";
-                return SECNFS_WRONG_CONFIG;
+                ret = SECNFS_WRONG_CONFIG;
+                goto out;
         }
 
         assert(*len == FILE_HEADER_SIZE);
+
+out:
+        header.release_keyfile(); /* avoid cleanup by header's destructor */
 
         return SECNFS_OKAY;
 }
@@ -424,36 +437,54 @@ secnfs_s secnfs_read_header(secnfs_info_t *info,
                             secnfs_key_t *fek,
                             secnfs_key_t *iv,
                             uint64_t *filesize,
-                            uint32_t *len)
+                            uint32_t *len,
+                            void **kf_cache)
 {
         Context *ctx = get_context(info);
+
         FileHeader header;
+        KeyFile *kf;
+
+        assert(*kf_cache == NULL);
+        kf = new KeyFile;
+        *kf_cache = kf;
+        header.set_allocated_keyfile(kf);
 
         if (!DecodeMessage(&header, buf, buf_size, len)) {
                 LOG(ERROR) << "cannot decode keyfile";
-                return SECNFS_KEYFILE_ERROR;
+                goto err;
         }
         assert(header.ByteSize() == *len);
 
-        const KeyFile &kf = header.keyfile();
-        str_to_key(kf.iv(), iv);
+        str_to_key(kf->iv(), iv);
 
-        for (int i = 0; i < kf.key_blocks_size(); ++i) {
-                const KeyBlock &kb = kf.key_blocks(i);
+        for (int i = 0; i < kf->key_blocks_size(); ++i) {
+                const KeyBlock &kb = kf->key_blocks(i);
                 if (kb.proxy_name() == ctx->name()) {
                         std::string rkey;
                         RSADecrypt(ctx->pri_key(), kb.encrypted_key(), &rkey);
                         str_to_key(rkey, fek);
                         memmove(fek->bytes, rkey.c_str(), SECNFS_KEY_LENGTH);
+                        header.release_keyfile();
                         return read_meta(header.meta(), fek, iv, filesize);
                 }
         }
 
         LOG(ERROR) << "key not found for " << ctx->name();
 
+err:
+        header.release_keyfile();
+        delete kf;
+        *kf_cache = NULL;
+
         return SECNFS_KEYFILE_ERROR;
 }
 
+void secnfs_release_keyfile_cache(void **kf_cache)
+{
+        delete static_cast<KeyFile *>(*kf_cache);
+        *kf_cache = NULL;
+}
 
 #ifdef __cplusplus
 }

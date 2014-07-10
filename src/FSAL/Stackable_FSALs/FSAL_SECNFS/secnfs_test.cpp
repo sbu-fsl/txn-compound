@@ -209,22 +209,41 @@ TEST(CreateKeyFileTest, Basic) {
         uint32_t buf_size;
         uint64_t filesize;
         void *buf;
+        void *kf_cache = NULL;
+        KeyFile *kf;
 
         generate_key_and_iv(&key, &iv);
         EXPECT_OKAY(secnfs_create_header(info, &key, &iv, 0x1234,
-                                         &buf, &buf_size));
+                                         &buf, &buf_size, &kf_cache));
+
+        kf = static_cast<KeyFile *>(kf_cache);
+        EXPECT_TRUE(kf->has_creator());
+        EXPECT_SAME(iv.bytes, kf->iv().data(), SECNFS_KEY_LENGTH);
+        delete kf;
+        kf_cache = NULL;
 
         secnfs_key_t rkey, riv;
         uint32_t header_len;
-
         EXPECT_OKAY(secnfs_read_header(info, buf, buf_size,
-                                       &rkey, &riv, &filesize, &header_len));
+                                       &rkey, &riv, &filesize,
+                                       &header_len, &kf_cache));
+
+        kf = static_cast<KeyFile *>(kf_cache);
+        EXPECT_TRUE(kf->has_creator());
+        EXPECT_SAME(iv.bytes, kf->iv().data(), SECNFS_KEY_LENGTH);
+
 
         EXPECT_SAME(iv.bytes, riv.bytes, SECNFS_KEY_LENGTH);
         EXPECT_SAME(key.bytes, rkey.bytes, SECNFS_KEY_LENGTH);
         EXPECT_EQ(0x1234, filesize);
 
+        // create from cache
+        EXPECT_OKAY(secnfs_create_header(info, &key, &iv, 0x1234,
+                                         &buf, &buf_size, &kf_cache));
+        EXPECT_EQ(kf, kf_cache);
+
         free(buf);
+        delete static_cast<KeyFile *>(kf_cache);
         delete context;
         delete info;
 }

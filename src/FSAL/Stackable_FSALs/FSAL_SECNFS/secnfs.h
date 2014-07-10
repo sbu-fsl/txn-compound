@@ -194,13 +194,17 @@ void secnfs_destroy_context(secnfs_info_t *info);
 /**
  * @brief Create new file header.
  *
- * @param[in]   context SECNFS Context
- * @param[out]  fek     File Encryption Key
- * @param[out]  iv      Initialization vector
- * @param[out]  buf     header data
- * @param[out]  len     Length of header data
+ * @param[in]   context         SECNFS Context
+ * @param[in]   fek             File Encryption Key
+ * @param[in]   iv              Initialization vector
+ * @param[in]   filesize        effective file size
+ * @param[out]  buf             header data
+ * @param[out]  len             Length of header data
+ * @param[in/out]  kf_cache     keyfile cache pointer
  *
  * The caller is the owner of the returned buf and should free them properly.
+ * If kf_cache is presented, header will reuse the cached keyfile.
+ * If not, kf_cache will point to the new keyfile.
  *
  * @return SECNFS_OKAY on success.
  */
@@ -209,7 +213,8 @@ secnfs_s secnfs_create_header(secnfs_info_t *info,
                               secnfs_key_t *iv,
                               uint64_t filesize,
                               void **buf,
-                              uint32_t *len);
+                              uint32_t *len,
+                              void **kf_cache);
 
 
 /**
@@ -222,6 +227,9 @@ secnfs_s secnfs_create_header(secnfs_info_t *info,
  * @param[out]  iv          iv used for file data encryption/decryption
  * @param[out]  filesize    effective file size
  * @param[out]  len         real length of the header
+ * @param[out]  kf_cache    keyfile cache pointer
+ *
+ * Keyfile will be cached in kf_cache.
  */
 secnfs_s secnfs_read_header(secnfs_info_t *info,
                             void *buf,
@@ -229,7 +237,12 @@ secnfs_s secnfs_read_header(secnfs_info_t *info,
                             secnfs_key_t *fek,
                             secnfs_key_t *iv,
                             uint64_t *filesize,
-                            uint32_t *len);
+                            uint32_t *len,
+                            void **kf_cache);
+
+/* destruct keyfile cache */
+void secnfs_release_keyfile_cache(void **kf_cache);
+
 /**
  * Serialize uint64_t to "little-endian" byte array
  */

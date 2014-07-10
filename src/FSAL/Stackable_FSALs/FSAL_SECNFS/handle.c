@@ -211,7 +211,8 @@ fsal_status_t read_header(struct fsal_obj_handle *fsal_hdl,
                                  &hdl->fk,
                                  &hdl->iv,
                                  &filesize,
-                                 &header_len);
+                                 &header_len,
+                                 &hdl->kf_cache);
         assert(ret == SECNFS_OKAY);
 
         fsal_hdl->attributes.filesize = filesize;
@@ -236,7 +237,8 @@ fsal_status_t write_header(struct fsal_obj_handle *fsal_hdl,
         bool stable;
 
         ret = secnfs_create_header(hdl->info, &hdl->fk, &hdl->iv,
-                                   get_filesize(hdl), &buf, &buf_size);
+                                   get_filesize(hdl), &buf, &buf_size,
+                                   &hdl->kf_cache);
 
         assert(ret == SECNFS_OKAY);
         assert(buf_size == FILE_HEADER_SIZE);
@@ -492,7 +494,10 @@ static fsal_status_t release(struct fsal_obj_handle *obj_hdl)
                 return fsalstat(ERR_FSAL_DELAY, EBUSY);
         }
 
+        if (secnfs_hdl->kf_cache)
+                secnfs_release_keyfile_cache(&secnfs_hdl->kf_cache);
         gsh_free(secnfs_hdl);
+
 	return next_ops.obj_ops->release(next_hdl);
 }
 
