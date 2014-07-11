@@ -29,6 +29,8 @@ extern "C" {
 #define DIF_UNUSED_SIZE PI_SECNFS_DIF_SIZE - VERSION_SIZE - TAG_SIZE
 /* 48 - 8 - 16 = 24 */
 
+#define TRUNC_BUFFER_SIZE 1048576
+
 typedef struct { uint8_t bytes[SECNFS_KEY_LENGTH]; } secnfs_key_t;
 
 /**
