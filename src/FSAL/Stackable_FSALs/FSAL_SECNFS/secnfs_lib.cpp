@@ -126,4 +126,123 @@ bool DecodeMessage(google::protobuf::Message *msg, void *buf,
         return msg->ParseFromCodedStream(&cis);
 }
 
+BlockMap::BlockMap() {
+        // initialize mutex, same as FSAL/fsal_commonlib.c
+        pthread_mutexattr_t attrs;
+        pthread_mutexattr_init(&attrs);
+#if defined(__linux__)
+        pthread_mutexattr_settype(&attrs, PTHREAD_MUTEX_ADAPTIVE_NP);
+#endif
+        pthread_mutex_init(&mutex, &attrs);
+}
+
+
+BlockMap::~BlockMap() {
+        pthread_mutex_destroy(&mutex);
+}
+
+bool compare_offset(const Range &a, const Range &b) {
+        return a.offset() < b.offset();
+}
+
+/* try to insert a segment
+ * if overlapping with existing segments, only insert leading
+ * non-overlapping part.
+ * return inserted length. 0 indicates no space to insert.
+ */
+uint64_t BlockMap::try_insert(uint64_t offset, uint64_t length) {
+        assert(length > 0);
+        deque<Range>::iterator pos, prev;
+        Range seg;
+
+        seg.set_offset(offset);
+        seg.set_length(length);
+
+        lock();
+        if (segs.empty()) {
+                segs.push_back(seg);
+                goto out;
+        }
+
+        pos = std::lower_bound(segs.begin(), segs.end(), seg, compare_offset);
+
+        if (pos > segs.begin()) {
+                prev = pos - 1;
+                if (prev->offset() + prev->length() > offset) {
+                        length = 0;
+                        goto out;
+                }
+        }
+
+        if (pos != segs.end()) {
+                if (pos->offset() == offset) {
+                        length = 0;
+                        goto out;
+                } else if (offset + length > pos->offset()) {
+                        length = pos->offset() - offset;
+                        seg.set_length(length);
+                }
+        }
+
+        pos = segs.insert(pos, seg);
+        assert(valid(pos));
+out:
+        unlock();
+        return length;
+}
+
+
+// caller should hold the lock and make sure no overlap
+void BlockMap::insert(uint64_t offset, uint64_t length) {
+        assert(length > 0);
+        deque<Range>::iterator pos;
+        Range seg;
+
+        seg.set_offset(offset);
+        seg.set_length(length);
+
+        pos = std::lower_bound(segs.begin(), segs.end(), seg, compare_offset);
+        pos = segs.insert(pos, seg);
+
+        assert(valid(pos));
+}
+
+
+// reverse operation of try_insert (assume inserted)
+void BlockMap::remove(uint64_t offset, uint64_t length) {
+        deque<Range>::iterator pos;
+        Range seg;
+
+        seg.set_offset(offset);
+        seg.set_length(length);
+
+        lock();
+        pos = std::lower_bound(segs.begin(), segs.end(), seg, compare_offset);
+
+        assert(pos != segs.end());
+        assert(pos->length() == length);
+
+        segs.erase(pos);
+        unlock();
+}
+
+
+// return false if overlap
+bool BlockMap::valid(deque<Range>::iterator pos) {
+        deque<Range>::iterator prev, next;
+
+        if (pos != segs.begin()) {
+                prev = pos - 1;
+                if (prev->offset() + prev->length() > pos->offset())
+                        return false;
+        }
+        if (pos != segs.end() - 1) {
+                next = pos + 1;
+                if (pos->offset() + pos->length() > next->offset())
+                        return false;
+        }
+
+        return true;
+}
+
 };

@@ -70,4 +70,21 @@ TEST(MessageCoding, Basic) {
         }
 }
 
+TEST(BlockMap, Basic) {
+        BlockMap bm;
+        EXPECT_EQ(2, bm.try_insert(0, 2));
+        EXPECT_EQ(3, bm.try_insert(4, 3));
+        EXPECT_EQ(0, bm.try_insert(5, 3));
+        EXPECT_EQ(1, bm.try_insert(3, 9));
+        EXPECT_EQ(0, bm.try_insert(3, 9));
+        bm.remove(0, 2);
+        EXPECT_EQ(3, bm.try_insert(0, 9));
+        EXPECT_EQ(9, bm.try_insert(10, 9));
+        EXPECT_EQ(0, bm.try_insert(12, 9));
+        bm.remove(10, 9);
+        EXPECT_EQ(9, bm.try_insert(12, 9));
+        EXPECT_EQ(2, bm.try_insert(10, 9));
+        EXPECT_EQ(1, bm.try_insert(8, 1));
+}
+
 };
