@@ -63,13 +63,27 @@ public:
         ~BlockMap();
         uint64_t try_insert(uint64_t offset, uint64_t length);
         void remove(uint64_t offset, uint64_t length);
-        void lock() {pthread_mutex_lock(&mutex);};
-        void unlock() {pthread_mutex_unlock(&mutex);};
 private:
-        void insert(uint64_t offset, uint64_t length);
         bool valid(deque<Range>::iterator pos);
-        deque<Range> segs;
-        pthread_mutex_t mutex; /* protect segs */
+        void lock() {pthread_mutex_lock(&mutex_);};
+        void unlock() {pthread_mutex_unlock(&mutex_);};
+
+        deque<Range> segs_;
+        pthread_mutex_t mutex_; /* protect segs */
+};
+
+
+class MutexLock {
+public:
+        MutexLock(pthread_mutex_t &m)
+                : m_(m) {
+                pthread_mutex_lock(&m);
+        }
+        ~MutexLock() {
+                pthread_mutex_unlock(&m_);
+        };
+private:
+        pthread_mutex_t &m_;
 };
 
 

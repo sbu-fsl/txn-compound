@@ -133,15 +133,15 @@ BlockMap::BlockMap() {
 #if defined(__linux__)
         pthread_mutexattr_settype(&attrs, PTHREAD_MUTEX_ADAPTIVE_NP);
 #endif
-        pthread_mutex_init(&mutex, &attrs);
+        pthread_mutex_init(&mutex_, &attrs);
 }
 
 
 BlockMap::~BlockMap() {
-        pthread_mutex_destroy(&mutex);
+        pthread_mutex_destroy(&mutex_);
 }
 
-bool compare_offset(const Range &a, const Range &b) {
+static bool compare_offset(const Range &a, const Range &b) {
         return a.offset() < b.offset();
 }
 
@@ -158,53 +158,34 @@ uint64_t BlockMap::try_insert(uint64_t offset, uint64_t length) {
         seg.set_offset(offset);
         seg.set_length(length);
 
-        lock();
-        if (segs.empty()) {
-                segs.push_back(seg);
-                goto out;
+        MutexLock lock(mutex_);
+        if (segs_.empty()) {
+                segs_.push_back(seg);
+                return length;
         }
 
-        pos = std::lower_bound(segs.begin(), segs.end(), seg, compare_offset);
+        pos = std::lower_bound(segs_.begin(), segs_.end(), seg, compare_offset);
 
-        if (pos > segs.begin()) {
+        if (pos > segs_.begin()) {
                 prev = pos - 1;
-                if (prev->offset() + prev->length() > offset) {
-                        length = 0;
-                        goto out;
-                }
+                if (prev->offset() + prev->length() > offset)
+                        return 0;
         }
 
-        if (pos != segs.end()) {
-                if (pos->offset() == offset) {
-                        length = 0;
-                        goto out;
-                } else if (offset + length > pos->offset()) {
+        if (pos != segs_.end()) {
+                /* pos points to next segment of out seg if inserted */
+                if (pos->offset() == offset)
+                        return 0;
+                if (offset + length > pos->offset()) {
                         length = pos->offset() - offset;
                         seg.set_length(length);
                 }
         }
 
-        pos = segs.insert(pos, seg);
+        pos = segs_.insert(pos, seg);
         assert(valid(pos));
-out:
-        unlock();
+
         return length;
-}
-
-
-// caller should hold the lock and make sure no overlap
-void BlockMap::insert(uint64_t offset, uint64_t length) {
-        assert(length > 0);
-        deque<Range>::iterator pos;
-        Range seg;
-
-        seg.set_offset(offset);
-        seg.set_length(length);
-
-        pos = std::lower_bound(segs.begin(), segs.end(), seg, compare_offset);
-        pos = segs.insert(pos, seg);
-
-        assert(valid(pos));
 }
 
 
@@ -217,12 +198,12 @@ void BlockMap::remove(uint64_t offset, uint64_t length) {
         seg.set_length(length);
 
         lock();
-        pos = std::lower_bound(segs.begin(), segs.end(), seg, compare_offset);
+        pos = std::lower_bound(segs_.begin(), segs_.end(), seg, compare_offset);
 
-        assert(pos != segs.end());
+        assert(pos != segs_.end());
         assert(pos->length() == length);
 
-        segs.erase(pos);
+        segs_.erase(pos);
         unlock();
 }
 
@@ -231,12 +212,12 @@ void BlockMap::remove(uint64_t offset, uint64_t length) {
 bool BlockMap::valid(deque<Range>::iterator pos) {
         deque<Range>::iterator prev, next;
 
-        if (pos != segs.begin()) {
+        if (pos != segs_.begin()) {
                 prev = pos - 1;
                 if (prev->offset() + prev->length() > pos->offset())
                         return false;
         }
-        if (pos != segs.end() - 1) {
+        if (pos != segs_.end() - 1) {
                 next = pos + 1;
                 if (pos->offset() + pos->length() > next->offset())
                         return false;

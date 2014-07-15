@@ -85,6 +85,12 @@ TEST(BlockMap, Basic) {
         EXPECT_EQ(9, bm.try_insert(12, 9));
         EXPECT_EQ(2, bm.try_insert(10, 9));
         EXPECT_EQ(1, bm.try_insert(8, 1));
+
+        BlockMap bm2;
+        EXPECT_EQ(8192, bm2.try_insert(4096, 8192));
+        bm2.remove(4096, 8192);
+        EXPECT_EQ(8192, bm2.try_insert(0, 8192));
+        EXPECT_EQ(8192, bm2.try_insert(8192, 8192));
 }
 
 };
