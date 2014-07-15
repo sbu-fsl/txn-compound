@@ -269,56 +269,30 @@ out:
         return ret;
 }
 
-/*
- * concurrency (locks) is managed in cache_inode_*
+
+/* do_aligned_read for regular file
+ * concurrency (locks) is managed by caller
  */
-fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
-                          const struct req_op_context *opctx, uint64_t offset,
-                          size_t buffer_size, void *buffer,
-                          size_t *read_amount, bool *end_of_file)
+fsal_status_t do_aligned_read(struct secnfs_fsal_obj_handle *hdl,
+                              const struct req_op_context *opctx,
+                              uint64_t offset_align, size_t size_align,
+                              void *buffer_align, size_t *read_amount,
+                              bool *end_of_file)
 {
-        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
-        fsal_status_t st;
         uint64_t next_offset; /* include file header */
-        uint64_t offset_align;
-        uint64_t offset_moved;
-        size_t size_align;
         struct data_plus data_plus;
         struct secnfs_dif secnfs_dif;
         uint8_t *secnfs_dif_buf = NULL;
         uint8_t version_buf[8];
-        void *pd_buf = NULL;
-        void *pi_buf = NULL;
+        void *pi_buf = NULL; /* protection information */
         size_t pi_size;
-        bool align;
+        fsal_status_t st;
         int i;
 
-        SECNFS_D("hdl = %x; read from %u (%u)\n", hdl, offset, buffer_size);
+        assert(is_pi_aligned(offset_align));
+        assert(is_pi_aligned(size_align));
 
-        if (obj_hdl->type != REGULAR_FILE) {
-                return next_ops.obj_ops->read(hdl->next_handle, opctx,
-                                              offset,
-                                              buffer_size, buffer,
-                                              read_amount, end_of_file);
-        }
-
-        /* avoid unnecessary read */
-        if (offset >= get_filesize(hdl)) {
-                *read_amount = 0;
-                *end_of_file = 1;
-                return fsalstat(ERR_FSAL_NO_ERROR, 0);
-        }
-
-        offset_align = pi_round_down(offset);
-        offset_moved = offset - offset_align;
         next_offset = offset_align + FILE_HEADER_SIZE;
-        size_align = pi_round_up(offset + buffer_size) - offset_align;
-        align = (offset == offset_align && buffer_size == size_align) ? 1 : 0;
-
-        SECNFS_D("hdl = %x; offset_align = %u, size_align = %u",
-                 hdl, offset_align, size_align);
-        assert(hdl->key_initialized);
-        assert(offset_moved < PI_INTERVAL_SIZE);
 
         /* To use read_plus, a struct data_plus need be prepared. */
         pi_size = get_pi_size(size_align);
@@ -328,24 +302,20 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                 goto out;
         }
 
-        pd_buf = align ? buffer : gsh_malloc(size_align);
-        if (pd_buf == NULL) {
-                st = fsalstat(ERR_FSAL_NOMEM, 0);
-                goto out;
-        }
         data_plus_type_protected_data_init(&data_plus, next_offset,
                                            pi_size, pi_buf,
-                                           size_align, pd_buf);
+                                           size_align, buffer_align);
 
         st = next_ops.obj_ops->read_plus(hdl->next_handle,
                                          opctx,
                                          next_offset, size_align,
-                                         pd_buf, read_amount,
+                                         buffer_align, read_amount,
                                          &data_plus,
                                          end_of_file);
-
-        if (FSAL_IS_ERROR(st))
+        if (FSAL_IS_ERROR(st)) {
+                SECNFS_D("hdl = %x; read_plus failed: %u", hdl, st.major);
                 goto out;
+        }
 
         SECNFS_D("hdl = %x; read_amount = %u", hdl, *read_amount);
         *read_amount = pi_round_down(*read_amount);
@@ -355,7 +325,7 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
         dump_pi_buf(pi_buf, data_plus_to_pi_dlen(&data_plus));
 
         secnfs_dif_buf = gsh_malloc(PI_SECNFS_DIF_SIZE);
-        if (pi_buf == NULL) {
+        if (!pi_buf) {
                 st = fsalstat(ERR_FSAL_NOMEM, 0);
                 goto out;
         }
@@ -374,18 +344,19 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                          hdl, i + (offset_align >> PI_INTERVAL_SHIFT),
                          secnfs_dif.tag[0], secnfs_dif.tag[15]);
 
-                /* may carefully decrypt to 'buffer' to save memcpy */
+                /* may carefully decrypt to user buffer to save memcpy */
                 secnfs_s ret = secnfs_verify_decrypt(
                                         hdl->fk,
                                         hdl->iv,
                                         offset_align + i * PI_INTERVAL_SIZE,
                                         PI_INTERVAL_SIZE,
-                                        pd_buf + i * PI_INTERVAL_SIZE,
+                                        buffer_align + i * PI_INTERVAL_SIZE,
                                         VERSION_SIZE,
                                         version_buf,
                                         secnfs_dif.tag,
-                                        pd_buf + i * PI_INTERVAL_SIZE);
+                                        buffer_align + i * PI_INTERVAL_SIZE);
 
+                /* or return partial buffer ? */
                 if (ret != SECNFS_OKAY) {
                         SECNFS_D("hdl = %x; ret(%u) = %d", hdl, i, ret);
                         st = secnfs_to_fsal_status(ret);
@@ -393,12 +364,70 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                 }
         }
 
+out:
+        gsh_free(pi_buf);
+        gsh_free(secnfs_dif_buf);
+
+        return st;
+}
+
+/*
+ * concurrency (locks) is managed in cache_inode_*
+ */
+fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
+                          const struct req_op_context *opctx, uint64_t offset,
+                          size_t buffer_size, void *buffer,
+                          size_t *read_amount, bool *end_of_file)
+{
+        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
+        fsal_status_t st;
+        uint64_t offset_align;
+        uint64_t offset_moved;
+        size_t size_align;
+        void *buffer_align = NULL;
+        bool align;
+
+        SECNFS_D("hdl = %x; read from %u (%u)\n", hdl, offset, buffer_size);
+
+        if (obj_hdl->type != REGULAR_FILE) {
+                return next_ops.obj_ops->read(hdl->next_handle, opctx,
+                                              offset,
+                                              buffer_size, buffer,
+                                              read_amount, end_of_file);
+        }
+        assert(hdl->key_initialized);
+
+        /* avoid unnecessary read */
+        if (offset >= get_filesize(hdl)) {
+                *read_amount = 0;
+                *end_of_file = 1;
+                return fsalstat(ERR_FSAL_NO_ERROR, 0);
+        }
+
+        offset_align = pi_round_down(offset);
+        offset_moved = offset - offset_align;
+        size_align = pi_round_up(offset + buffer_size) - offset_align;
+        align = (offset == offset_align && buffer_size == size_align) ? 1 : 0;
+        SECNFS_D("hdl = %x; offset_align = %u, size_align = %u",
+                 hdl, offset_align, size_align);
+
+        buffer_align = align ? buffer : gsh_malloc(size_align);
+        if (!buffer_align) {
+                st = fsalstat(ERR_FSAL_NOMEM, 0);
+                goto out;
+        }
+
+        st = do_aligned_read(hdl, opctx, offset_align, size_align,
+                             buffer_align, read_amount, end_of_file);
+        if (FSAL_IS_ERROR(st))
+                goto out;
+
         /* update effective read_amount to user */
         if (*read_amount > 0) {
                 *read_amount = (*read_amount == size_align) ?
                                buffer_size : *read_amount - offset_moved;
 
-                /* user's buffer_size may be larger than effective amount */
+                /* buffer_size may be larger than effective amount */
                 if (offset + *read_amount > get_filesize(hdl)) {
                         /* if EOF is not set, effective filesize in header
                          * does not match the real size on remote disk. */
@@ -407,23 +436,19 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                                 *end_of_file = 1;
                         }
                         *read_amount = get_filesize(hdl) - offset;
-                        assert(*read_amount > 0);
                 }
 
                 if (!align)
-                        memcpy(buffer, pd_buf + offset_moved, *read_amount);
+                        memcpy(buffer, buffer_align + offset_moved,
+                               *read_amount);
         }
 
         /* clear inaccurate EOF flag */
         if (*end_of_file && offset + *read_amount < get_filesize(hdl))
                 *end_of_file = 0;
 
-        st = secnfs_to_fsal_status(SECNFS_OKAY);
-
 out:
-        if (!align) gsh_free(pd_buf);
-        gsh_free(pi_buf);
-        gsh_free(secnfs_dif_buf);
+        if (!align) gsh_free(buffer_align);
 
         return st;
 }
@@ -484,8 +509,8 @@ secnfs_s prepare_aligned_buffer(struct secnfs_fsal_obj_handle *hdl,
 }
 
 
-/* do_aligned_write
- * concurrency (locks) is managed in secnfs_write
+/* do_aligned_write for regular file
+ * concurrency (locks) is managed by caller
  */
 fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
                                const struct req_op_context *opctx,
@@ -619,6 +644,7 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
                                                write_amount,
                                                fsal_stable);
         }
+        assert(hdl->key_initialized);
 
         if (buffer_size == 0)
                 return fsalstat(ERR_FSAL_NO_ERROR, 0);
@@ -627,10 +653,8 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
         offset_moved = offset - offset_align;
         size_align = pi_round_up(offset + buffer_size) - offset_align;
         align = (offset == offset_align && buffer_size == size_align) ? 1 : 0;
-
         SECNFS_D("hdl = %x; offset_align = %u, size_align = %u",
                  hdl, offset_align, size_align);
-        assert(hdl->key_initialized);
 
         /* offset is beyond the current filesize, pad with zero.
          * need not fill last block that is already padded;
@@ -668,6 +692,7 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
         if (FSAL_IS_ERROR(st))
                 goto out;
 
+        /* get effective write_amount */
         *write_amount = (*write_amount == size_align) ?
                         buffer_size : *write_amount - offset_moved;
 
