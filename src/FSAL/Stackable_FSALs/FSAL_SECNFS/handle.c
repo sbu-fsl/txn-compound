@@ -126,31 +126,42 @@ static fsal_status_t make_handle_from_next(struct fsal_export *exp,
                                            struct fsal_obj_handle **handle)
 {
         struct secnfs_fsal_obj_handle *secnfs_hdl;
+        fsal_status_t st;
 
         secnfs_hdl = alloc_handle(exp, &next_hdl->attributes);
         if (!secnfs_hdl) {
                 LogMajor(COMPONENT_FSAL, "cannot allocate secnfs handle");
-
                 next_ops.obj_ops->release(next_hdl);
-
-                return fsalstat(ERR_FSAL_NOMEM, ENOMEM);
+                return fsalstat(ERR_FSAL_NOMEM, 0);
         }
 
         secnfs_hdl->next_handle = next_hdl;
         *handle = &secnfs_hdl->obj_handle;
 
-        if (next_hdl->type == REGULAR_FILE &&
-                        next_hdl->attributes.filesize > 0) {
-                fsal_status_t st = read_header(*handle, opctx);
-                if (FSAL_IS_ERROR(st)) {
-                        LogMajor(COMPONENT_FSAL,
-                                        "cannot allocate secnfs handle");
-                        next_ops.obj_ops->release(next_hdl);
-                        return st;
+        if (next_hdl->type == REGULAR_FILE) {
+                if (!(secnfs_hdl->range_lock = secnfs_alloc_blockmap()) ||
+                        !(secnfs_hdl->holes = secnfs_alloc_blockmap())) {
+                        st = fsalstat(ERR_FSAL_NOMEM, 0);
+                        goto err;
+                }
+
+                if (next_hdl->attributes.filesize > 0) {
+                        st = read_header(*handle, opctx);
+                        if (FSAL_IS_ERROR(st))
+                                goto err;
                 }
         }
 
         return fsalstat(ERR_FSAL_NO_ERROR, 0);
+
+err:
+        LogMajor(COMPONENT_FSAL, "cannot allocate secnfs handle");
+        secnfs_release_blockmap(&secnfs_hdl->range_lock);
+        secnfs_release_blockmap(&secnfs_hdl->holes);
+        gsh_free(secnfs_hdl);
+        next_ops.obj_ops->release(next_hdl);
+
+        return st;
 }
 
 
@@ -494,8 +505,9 @@ static fsal_status_t release(struct fsal_obj_handle *obj_hdl)
                 return fsalstat(ERR_FSAL_DELAY, EBUSY);
         }
 
-        if (secnfs_hdl->kf_cache)
-                secnfs_release_keyfile_cache(&secnfs_hdl->kf_cache);
+        secnfs_release_keyfile_cache(&secnfs_hdl->kf_cache);
+        secnfs_release_blockmap(&secnfs_hdl->range_lock);
+        secnfs_release_blockmap(&secnfs_hdl->holes);
         gsh_free(secnfs_hdl);
 
 	return next_ops.obj_ops->release(next_hdl);

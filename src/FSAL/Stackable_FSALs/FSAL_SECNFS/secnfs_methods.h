@@ -60,6 +60,8 @@ struct secnfs_fsal_obj_handle {
         uint32_t data_offset;                   /*< beginning of data file */
         uint32_t key_initialized;
         uint32_t has_dirty_meta;
+        void *range_lock;
+        void *holes;
         void *kf_cache;                         /* cached keyfile */
 };
 

@@ -5,6 +5,7 @@
  */
 
 #include "secnfs_lib.h"
+#include <iostream>
 
 #include <cryptopp/osrng.h>
 using CryptoPP::AutoSeededRandomPool;
@@ -141,9 +142,11 @@ BlockMap::~BlockMap() {
         pthread_mutex_destroy(&mutex_);
 }
 
-static bool compare_offset(const Range &a, const Range &b) {
-        return a.offset() < b.offset();
+
+static bool cmp_offset(const Range &a, const uint64_t &b) {
+        return a.offset() < b;
 }
+
 
 /* try to insert a segment
  * if overlapping with existing segments, only insert leading
@@ -164,7 +167,7 @@ uint64_t BlockMap::try_insert(uint64_t offset, uint64_t length) {
                 return length;
         }
 
-        pos = std::lower_bound(segs_.begin(), segs_.end(), seg, compare_offset);
+        pos = std::lower_bound(segs_.begin(), segs_.end(), offset, cmp_offset);
 
         if (pos > segs_.begin()) {
                 prev = pos - 1;
@@ -173,7 +176,7 @@ uint64_t BlockMap::try_insert(uint64_t offset, uint64_t length) {
         }
 
         if (pos != segs_.end()) {
-                /* pos points to next segment of out seg if inserted */
+                /* pos points to next segment of our seg if inserted */
                 if (pos->offset() == offset)
                         return 0;
                 if (offset + length > pos->offset()) {
@@ -189,22 +192,116 @@ uint64_t BlockMap::try_insert(uint64_t offset, uint64_t length) {
 }
 
 
-// reverse operation of try_insert (assume inserted)
-void BlockMap::remove(uint64_t offset, uint64_t length) {
+// reverse operation of try_insert (assume inserted previously)
+void BlockMap::remove_match(uint64_t offset, uint64_t length) {
         deque<Range>::iterator pos;
-        Range seg;
 
-        seg.set_offset(offset);
-        seg.set_length(length);
-
-        lock();
-        pos = std::lower_bound(segs_.begin(), segs_.end(), seg, compare_offset);
+        MutexLock lock(mutex_);
+        pos = std::lower_bound(segs_.begin(), segs_.end(), offset, cmp_offset);
 
         assert(pos != segs_.end());
         assert(pos->length() == length);
 
         segs_.erase(pos);
-        unlock();
+}
+
+
+// push back without search (assume no overlap)
+void BlockMap::push_back(uint64_t offset, uint64_t length) {
+        Range seg;
+
+        seg.set_offset(offset);
+        seg.set_length(length);
+
+        MutexLock lock(mutex_);
+        segs_.push_back(seg);
+        assert(valid(--segs_.end()));
+}
+
+
+// remove segments that overlap with [offset, offset + length)
+// may cut existing segment if partially overlapping
+void BlockMap::remove_overlap(uint64_t offset, uint64_t length)
+{
+        deque<Range>::iterator pos;
+
+        MutexLock lock(mutex_);
+        if (segs_.empty())
+                return;
+        pos = std::lower_bound(segs_.begin(), segs_.end(), offset, cmp_offset);
+
+        // should check previous segment whose offset is smaller
+        // but length may be large
+        if (pos != segs_.begin())
+                pos--;
+
+        uint64_t right = offset + length;
+        uint64_t pos_right;
+        while (pos != segs_.end() && pos->offset() < right) {
+                pos_right = pos->offset() + pos->length();
+                // segment above is located at pos
+                //   -------     -->
+                // -----------        ----------
+                if (pos->offset() >= offset && pos_right <= right) {
+                        pos = segs_.erase(pos);
+                        continue;
+                }
+                // --------      -->   ---
+                //   ---------            ---------
+                if (pos->offset() < offset && pos_right > offset &&
+                                pos_right <= right) {
+                        pos->set_length(offset - pos->offset());
+                        pos++;
+                        continue;
+                }
+                // -----------    --> ---     ---
+                //    -----
+                if (pos->offset() < offset && pos_right > right) {
+                        pos->set_length(offset - pos->offset());
+                        Range new_seg;
+                        new_seg.set_offset(right);
+                        new_seg.set_length(pos_right - right);
+                        segs_.insert(++pos, new_seg);
+                        break;
+                }
+                //     --------  -->            ---
+                // ---------           ---------
+                if (pos_right > right) {
+                        pos->set_offset(right);
+                        pos->set_length(pos_right - right);
+                        break;
+                }
+                pos++;
+        }
+}
+
+
+// find next segment that contains the offset
+void BlockMap::find_next(uint64_t offset,
+                         uint64_t *nxt_offset, uint64_t *nxt_length)
+{
+        deque<Range>::iterator it, prev;
+
+        *nxt_offset = 0;
+        *nxt_length = 0;
+
+        MutexLock lock(mutex_);
+        if (segs_.empty())
+                return;
+
+        it = std::lower_bound(segs_.begin(), segs_.end(), offset, cmp_offset);
+        if (it != segs_.begin()) {
+                prev = it - 1;
+                if (offset < prev->offset() + prev->length()) {
+                        *nxt_offset = prev->offset();
+                        *nxt_length = prev->length();
+                        return;
+                }
+        }
+        if (it != segs_.end()) {
+                *nxt_offset = it->offset();
+                *nxt_length = it->length();
+        }
 }
 
 
@@ -225,5 +322,21 @@ bool BlockMap::valid(deque<Range>::iterator pos) {
 
         return true;
 }
+
+
+void BlockMap::print() {
+        deque<Range>::iterator it;
+        MutexLock lock(mutex_);
+
+        std::cout << "Segments(" << segs_.size() << "):" << std::endl;
+        for (it = segs_.begin(); it < segs_.end(); ++it)
+                std::cout << it - segs_.begin()
+                          << ": " << it->offset()
+                          << " ("  << it->length() << ")"
+                          << std::endl;
+
+        std::cout << std::endl;
+}
+
 
 };

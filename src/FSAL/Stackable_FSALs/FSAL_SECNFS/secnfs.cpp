@@ -379,6 +379,7 @@ secnfs_s read_meta(const FileMeta &meta,
                 return ret;
 
         uint64_from_bytes(filesize_buf, filesize);
+        /* TODO load holes */
 
         return SECNFS_OKAY;
 }
@@ -441,12 +442,13 @@ secnfs_s secnfs_read_header(secnfs_info_t *info,
                             void **kf_cache)
 {
         Context *ctx = get_context(info);
-
         FileHeader header;
-        KeyFile *kf;
+        KeyFile *kf = NULL;
 
         assert(*kf_cache == NULL);
         kf = new KeyFile;
+        if (!kf)
+                goto err;
         *kf_cache = kf;
         header.set_allocated_keyfile(kf);
 
@@ -480,12 +482,64 @@ err:
         return SECNFS_KEYFILE_ERROR;
 }
 
+
 void secnfs_release_keyfile_cache(void **kf_cache)
 {
         delete static_cast<KeyFile *>(*kf_cache);
         *kf_cache = NULL;
 }
 
+
+void *secnfs_alloc_blockmap()
+{
+        return new BlockMap;
+}
+
+
+void secnfs_release_blockmap(void **p)
+{
+        delete static_cast<BlockMap *>(*p);
+        *p = NULL;
+}
+
+
+uint64_t secnfs_range_try_lock(void *p, uint64_t offset, uint64_t length)
+{
+        BlockMap *range_lock = static_cast<BlockMap *>(p);
+        return range_lock->try_insert(offset, length);
+}
+
+
+void secnfs_range_unlock(void *p, uint64_t offset, uint64_t length)
+{
+        BlockMap *range_lock = static_cast<BlockMap *>(p);
+        range_lock->remove_match(offset, length);
+}
+
+
+void secnfs_hole_add(void *p, uint64_t offset, uint64_t length)
+{
+        BlockMap *holes = static_cast<BlockMap *>(p);
+        /* new hole is always at the end */
+        holes->push_back(offset, length);
+        holes->print();
+}
+
+
+void secnfs_hole_remove(void *p, uint64_t offset, uint64_t length)
+{
+        BlockMap *holes = static_cast<BlockMap *>(p);
+        holes->remove_overlap(offset, length);
+        holes->print();
+}
+
+
+void secnfs_hole_find_next(void *p, uint64_t offset,
+                           uint64_t *nxt_offset, uint64_t *nxt_length)
+{
+        BlockMap *holes = static_cast<BlockMap *>(p);
+        holes->find_next(offset, nxt_offset, nxt_length);
+}
 #ifdef __cplusplus
 }
 #endif

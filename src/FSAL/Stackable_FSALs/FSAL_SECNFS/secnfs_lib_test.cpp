@@ -70,27 +70,72 @@ TEST(MessageCoding, Basic) {
         }
 }
 
-TEST(BlockMap, Basic) {
+TEST(BlockMap, RangeLock) {
         BlockMap bm;
         EXPECT_EQ(2, bm.try_insert(0, 2));
         EXPECT_EQ(3, bm.try_insert(4, 3));
         EXPECT_EQ(0, bm.try_insert(5, 3));
         EXPECT_EQ(1, bm.try_insert(3, 9));
         EXPECT_EQ(0, bm.try_insert(3, 9));
-        bm.remove(0, 2);
+        bm.remove_match(0, 2);
         EXPECT_EQ(3, bm.try_insert(0, 9));
         EXPECT_EQ(9, bm.try_insert(10, 9));
         EXPECT_EQ(0, bm.try_insert(12, 9));
-        bm.remove(10, 9);
+        bm.remove_match(10, 9);
         EXPECT_EQ(9, bm.try_insert(12, 9));
         EXPECT_EQ(2, bm.try_insert(10, 9));
         EXPECT_EQ(1, bm.try_insert(8, 1));
 
         BlockMap bm2;
         EXPECT_EQ(8192, bm2.try_insert(4096, 8192));
-        bm2.remove(4096, 8192);
+        bm2.remove_match(4096, 8192);
         EXPECT_EQ(8192, bm2.try_insert(0, 8192));
         EXPECT_EQ(8192, bm2.try_insert(8192, 8192));
+}
+
+TEST(BlockMap, Holes) {
+        BlockMap holes;
+        uint64_t off, len;
+        // TODO add more cases and compare result
+        holes.push_back(0, 2);
+        holes.push_back(3, 2);
+        holes.push_back(8, 3);
+        holes.print();
+
+        holes.find_next(0, &off, &len);
+        EXPECT_EQ(0, off);
+        EXPECT_EQ(2, len);
+        holes.find_next(1, &off, &len);
+        EXPECT_EQ(0, off);
+        EXPECT_EQ(2, len);
+        holes.find_next(2, &off, &len);
+        EXPECT_EQ(3, off);
+        EXPECT_EQ(2, len);
+        holes.find_next(7, &off, &len);
+        EXPECT_EQ(8, off);
+        EXPECT_EQ(3, len);
+        holes.find_next(11, &off, &len);
+        EXPECT_EQ(0, off);
+        EXPECT_EQ(0, len);
+
+        holes.remove_overlap(1, 9);
+        holes.print();
+
+        BlockMap holes2;
+        holes2.remove_overlap(0, 100);
+        holes2.push_back(0, 100);
+        holes2.remove_overlap(0, 50);
+        holes2.print();
+
+        BlockMap holes3;
+        holes3.push_back(0, 100);
+        holes3.remove_overlap(25, 50);
+        holes3.print();
+
+        BlockMap holes4;
+        holes4.push_back(0, 50);
+        holes4.remove_overlap(100, 50);
+        holes4.print();
 }
 
 };

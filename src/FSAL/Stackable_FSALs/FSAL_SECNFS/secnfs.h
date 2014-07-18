@@ -245,13 +245,27 @@ secnfs_s secnfs_read_header(secnfs_info_t *info,
 /* destruct keyfile cache */
 void secnfs_release_keyfile_cache(void **kf_cache);
 
+/* blockmap init / release */
+void *secnfs_alloc_blockmap();
+void secnfs_release_blockmap(void **p);
+
+/* range lock */
+uint64_t secnfs_range_try_lock(void *p, uint64_t offset, uint64_t length);
+void secnfs_range_unlock(void *p, uint64_t offset, uint64_t length);
+
+/* file hole */
+void secnfs_hole_add(void *p, uint64_t offset, uint64_t length);
+void secnfs_hole_remove(void *p, uint64_t offset, uint64_t length);
+void secnfs_hole_find_next(void *p, uint64_t offset,
+                           uint64_t *nxt_offset, uint64_t *nxt_length);
+
 /**
  * Serialize uint64_t to "little-endian" byte array
  */
 static inline void uint64_to_bytes(uint8_t *buf, uint64_t n)
 {
         int i;
-        for (i = 0; i < 8; i++)
+        for (i = 0; i < 8; ++i)
                 buf[i] = (n >> i * 8) & 0xff;
 }
 
@@ -262,7 +276,7 @@ static inline void uint64_from_bytes(uint8_t *buf, uint64_t *n)
 {
         int i;
         *n = 0;
-        for (i = 7; i >= 0; i--)
+        for (i = 7; i >= 0; --i)
                 *n = (*n << 8) | buf[i];
 }
 
