@@ -211,9 +211,14 @@ TEST(CreateKeyFileTest, Basic) {
         void *buf;
         void *kf_cache = NULL;
         KeyFile *kf;
+        BlockMap *holes = new BlockMap;
+        uint64_t off, len;
 
         generate_key_and_iv(&key, &iv);
-        EXPECT_OKAY(secnfs_create_header(info, &key, &iv, 0x1234,
+
+        holes->push_back(0, 4096);
+        holes->push_back(4096, 8192);
+        EXPECT_OKAY(secnfs_create_header(info, &key, &iv, 0x1234, holes,
                                          &buf, &buf_size, &kf_cache));
 
         kf = static_cast<KeyFile *>(kf_cache);
@@ -224,26 +229,38 @@ TEST(CreateKeyFileTest, Basic) {
 
         secnfs_key_t rkey, riv;
         uint32_t header_len;
+        holes->clear();
         EXPECT_OKAY(secnfs_read_header(info, buf, buf_size,
-                                       &rkey, &riv, &filesize,
+                                       &rkey, &riv, &filesize, holes,
                                        &header_len, &kf_cache));
 
+        // check cache
         kf = static_cast<KeyFile *>(kf_cache);
         EXPECT_TRUE(kf->has_creator());
         EXPECT_SAME(iv.bytes, kf->iv().data(), SECNFS_KEY_LENGTH);
 
-
-        EXPECT_SAME(iv.bytes, riv.bytes, SECNFS_KEY_LENGTH);
-        EXPECT_SAME(key.bytes, rkey.bytes, SECNFS_KEY_LENGTH);
+        // check meta
         EXPECT_EQ(0x1234, filesize);
 
+        holes->find_next(0, &off, &len);
+        EXPECT_EQ(0, off);
+        EXPECT_EQ(4096, len);
+        holes->find_next(4096, &off, &len);
+        EXPECT_EQ(4096, off);
+        EXPECT_EQ(8192, len);
+
+        // check key
+        EXPECT_SAME(iv.bytes, riv.bytes, SECNFS_KEY_LENGTH);
+        EXPECT_SAME(key.bytes, rkey.bytes, SECNFS_KEY_LENGTH);
+
         // create from cache
-        EXPECT_OKAY(secnfs_create_header(info, &key, &iv, 0x1234,
+        EXPECT_OKAY(secnfs_create_header(info, &key, &iv, 0x1234, holes,
                                          &buf, &buf_size, &kf_cache));
         EXPECT_EQ(kf, kf_cache);
 
         free(buf);
         delete static_cast<KeyFile *>(kf_cache);
+        delete holes;
         delete context;
         delete info;
 }

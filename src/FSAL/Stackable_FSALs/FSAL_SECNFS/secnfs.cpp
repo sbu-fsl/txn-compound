@@ -348,18 +348,21 @@ void secnfs_destroy_context(secnfs_info_t *info)
 
 secnfs_s create_meta(FileMeta *meta,
                      secnfs_key_t *fek, secnfs_key_t *iv,
-                     uint64_t filesize)
+                     uint64_t filesize, void *holes)
 {
         uint8_t filesize_buf[8];
         secnfs_s ret;
 
         uint64_to_bytes(filesize_buf, filesize);
-
         ret = secnfs_encrypt(*fek, *iv, 0, 8, filesize_buf, filesize_buf);
         if (ret != SECNFS_OKAY)
                 return ret;
 
         meta->set_filesize(filesize_buf, 8);
+
+        static_cast<BlockMap *>(holes)->dump_to_pb(meta->mutable_holes());
+
+        // TODO encrypt holes, limit holes amount
 
         return SECNFS_OKAY;
 }
@@ -367,7 +370,7 @@ secnfs_s create_meta(FileMeta *meta,
 
 secnfs_s read_meta(const FileMeta &meta,
                    secnfs_key_t *fek, secnfs_key_t *iv,
-                   uint64_t *filesize)
+                   uint64_t *filesize, void *holes)
 {
         uint8_t filesize_buf[8];
         secnfs_s ret;
@@ -379,7 +382,8 @@ secnfs_s read_meta(const FileMeta &meta,
                 return ret;
 
         uint64_from_bytes(filesize_buf, filesize);
-        /* TODO load holes */
+
+        static_cast<BlockMap *>(holes)->load_from_pb(meta.holes());
 
         return SECNFS_OKAY;
 }
@@ -389,6 +393,7 @@ secnfs_s secnfs_create_header(secnfs_info_t *info,
                               secnfs_key_t *fek,
                               secnfs_key_t *iv,
                               uint64_t filesize,
+                              void *holes,
                               void **buf,
                               uint32_t *len,
                               void **kf_cache)
@@ -411,7 +416,7 @@ secnfs_s secnfs_create_header(secnfs_info_t *info,
                 kf->set_creator(ctx->name());
         }
 
-        ret = create_meta(header.mutable_meta(), fek, iv, filesize);
+        ret = create_meta(header.mutable_meta(), fek, iv, filesize, holes);
         if (ret != SECNFS_OKAY) {
                 LOG(ERROR) << "create meta failed";
                 goto out;
@@ -438,6 +443,7 @@ secnfs_s secnfs_read_header(secnfs_info_t *info,
                             secnfs_key_t *fek,
                             secnfs_key_t *iv,
                             uint64_t *filesize,
+                            void *holes,
                             uint32_t *len,
                             void **kf_cache)
 {
@@ -468,7 +474,8 @@ secnfs_s secnfs_read_header(secnfs_info_t *info,
                         str_to_key(rkey, fek);
                         memmove(fek->bytes, rkey.c_str(), SECNFS_KEY_LENGTH);
                         header.release_keyfile();
-                        return read_meta(header.meta(), fek, iv, filesize);
+                        return read_meta(header.meta(), fek, iv,
+                                         filesize, holes);
                 }
         }
 

@@ -222,6 +222,7 @@ fsal_status_t read_header(struct fsal_obj_handle *fsal_hdl,
                                  &hdl->fk,
                                  &hdl->iv,
                                  &filesize,
+                                 hdl->holes,
                                  &header_len,
                                  &hdl->kf_cache);
         assert(ret == SECNFS_OKAY);
@@ -248,8 +249,8 @@ fsal_status_t write_header(struct fsal_obj_handle *fsal_hdl,
         bool stable;
 
         ret = secnfs_create_header(hdl->info, &hdl->fk, &hdl->iv,
-                                   get_filesize(hdl), &buf, &buf_size,
-                                   &hdl->kf_cache);
+                                   get_filesize(hdl), hdl->holes,
+                                   &buf, &buf_size, &hdl->kf_cache);
 
         assert(ret == SECNFS_OKAY);
         assert(buf_size == FILE_HEADER_SIZE);

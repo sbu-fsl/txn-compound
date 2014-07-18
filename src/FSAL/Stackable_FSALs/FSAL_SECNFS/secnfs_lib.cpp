@@ -335,6 +335,34 @@ bool BlockMap::valid(deque<Range>::iterator pos) {
 }
 
 
+void BlockMap::dump_to_pb(RepeatedPtrField<Range> *ranges)
+{
+        deque<Range>::iterator it;
+        Range *seg;
+
+        ranges->Clear();
+        for (it = segs_.begin(); it < segs_.end(); ++it) {
+                seg = ranges->Add();
+                seg->set_offset(it->offset());
+                seg->set_length(it->length());
+        }
+}
+
+
+void BlockMap::load_from_pb(const RepeatedPtrField<Range> &ranges)
+{
+        Range seg;
+        RepeatedPtrIterator<const Range> it;
+
+        segs_.clear();
+        for (it = ranges.begin(); it < ranges.end(); ++it) {
+                seg.set_offset(it->offset());
+                seg.set_length(it->length());
+                segs_.push_back(seg);
+        }
+}
+
+
 void BlockMap::print() {
         deque<Range>::iterator it;
         MutexLock lock(mutex_);

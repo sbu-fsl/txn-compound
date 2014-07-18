@@ -21,7 +21,7 @@ extern "C" {
 #define SECNFS_KEY_LENGTH 16
 
 // TODO allow keyfile to be larger than 4096.
-#define FILE_HEADER_SIZE 4096
+#define FILE_HEADER_SIZE 8192
 
 #define PI_SECNFS_DIF_SIZE 48 /* 4096 / 512 * (8-2) */
 #define VERSION_SIZE 8
@@ -200,6 +200,7 @@ void secnfs_destroy_context(secnfs_info_t *info);
  * @param[in]   fek             File Encryption Key
  * @param[in]   iv              Initialization vector
  * @param[in]   filesize        effective file size
+ * @param[in]   holes           blockmap pointer to file holes
  * @param[out]  buf             header data
  * @param[out]  len             Length of header data
  * @param[in/out]  kf_cache     keyfile cache pointer
@@ -214,6 +215,7 @@ secnfs_s secnfs_create_header(secnfs_info_t *info,
                               secnfs_key_t *fek,
                               secnfs_key_t *iv,
                               uint64_t filesize,
+                              void *holes,
                               void **buf,
                               uint32_t *len,
                               void **kf_cache);
@@ -228,6 +230,7 @@ secnfs_s secnfs_create_header(secnfs_info_t *info,
  * @param[out]  fek         the resultant file encryption key
  * @param[out]  iv          iv used for file data encryption/decryption
  * @param[out]  filesize    effective file size
+ * @param[out]  holes       blockmap pointer to file holes
  * @param[out]  len         real length of the header
  * @param[out]  kf_cache    keyfile cache pointer
  *
@@ -239,6 +242,7 @@ secnfs_s secnfs_read_header(secnfs_info_t *info,
                             secnfs_key_t *fek,
                             secnfs_key_t *iv,
                             uint64_t *filesize,
+                            void *holes,
                             uint32_t *len,
                             void **kf_cache);
 

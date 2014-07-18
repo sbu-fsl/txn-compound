@@ -20,6 +20,8 @@ using CryptoPP::RSAFunction;
 #include <google/protobuf/message.h>
 
 #include "secnfs.pb.h"
+using google::protobuf::RepeatedPtrField;
+using google::protobuf::internal::RepeatedPtrIterator;
 
 namespace secnfs {
 
@@ -57,27 +59,6 @@ public:
 };
 
 
-class BlockMap {
-public:
-        BlockMap();
-        ~BlockMap();
-        uint64_t try_insert(uint64_t offset, uint64_t length);
-        void push_back(uint64_t offset, uint64_t length);
-        void remove_match(uint64_t offset, uint64_t length);
-        size_t remove_overlap(uint64_t offset, uint64_t length);
-        void find_next(uint64_t offset, uint64_t *nxt_offset,
-                       uint64_t *nxt_length);
-        void print();
-private:
-        bool valid(deque<Range>::iterator pos);
-        void lock() {pthread_mutex_lock(&mutex_);};
-        void unlock() {pthread_mutex_unlock(&mutex_);};
-
-        deque<Range> segs_;
-        pthread_mutex_t mutex_; /* protect segs */
-};
-
-
 class MutexLock {
 public:
         MutexLock(pthread_mutex_t &m)
@@ -89,6 +70,30 @@ public:
         };
 private:
         pthread_mutex_t &m_;
+};
+
+
+class BlockMap {
+public:
+        BlockMap();
+        ~BlockMap();
+        uint64_t try_insert(uint64_t offset, uint64_t length);
+        void push_back(uint64_t offset, uint64_t length);
+        void remove_match(uint64_t offset, uint64_t length);
+        size_t remove_overlap(uint64_t offset, uint64_t length);
+        void find_next(uint64_t offset, uint64_t *nxt_offset,
+                       uint64_t *nxt_length);
+        void dump_to_pb(RepeatedPtrField<Range> *ranges);
+        void load_from_pb(const RepeatedPtrField<Range> &ranges);
+        void clear() {MutexLock lock(mutex_); segs_.clear();};
+        void print();
+private:
+        bool valid(deque<Range>::iterator pos);
+        void lock() {pthread_mutex_lock(&mutex_);};
+        void unlock() {pthread_mutex_unlock(&mutex_);};
+
+        deque<Range> segs_;
+        pthread_mutex_t mutex_; /* protect segs */
 };
 
 

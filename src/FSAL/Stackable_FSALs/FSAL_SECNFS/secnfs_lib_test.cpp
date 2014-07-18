@@ -96,11 +96,9 @@ TEST(BlockMap, RangeLock) {
 TEST(BlockMap, Holes) {
         BlockMap holes;
         uint64_t off, len;
-        // TODO add more cases and compare result
         holes.push_back(0, 2);
         holes.push_back(3, 2);
         holes.push_back(8, 3);
-        holes.print();
 
         holes.find_next(0, &off, &len);
         EXPECT_EQ(0, off);
@@ -119,23 +117,35 @@ TEST(BlockMap, Holes) {
         EXPECT_EQ(0, len);
 
         holes.remove_overlap(1, 9);
-        holes.print();
+        holes.find_next(8, &off, &len);
+        EXPECT_EQ(10, off);
+        EXPECT_EQ(1, len);
+
 
         BlockMap holes2;
         holes2.remove_overlap(0, 100);
         holes2.push_back(0, 100);
         holes2.remove_overlap(0, 50);
-        holes2.print();
+        holes2.find_next(0, &off, &len);
+        EXPECT_EQ(50, off);
+        EXPECT_EQ(50, len);
 
         BlockMap holes3;
         holes3.push_back(0, 100);
         holes3.remove_overlap(25, 50);
-        holes3.print();
+        holes3.find_next(0, &off, &len);
+        EXPECT_EQ(0, off);
+        EXPECT_EQ(25, len);
+        holes3.find_next(50, &off, &len);
+        EXPECT_EQ(75, off);
+        EXPECT_EQ(25, len);
 
         BlockMap holes4;
         holes4.push_back(0, 50);
         holes4.remove_overlap(100, 50);
-        holes4.print();
+        holes4.find_next(0, &off, &len);
+        EXPECT_EQ(0, off);
+        EXPECT_EQ(50, len);
 }
 
 };
