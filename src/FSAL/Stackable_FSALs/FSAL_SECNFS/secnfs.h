@@ -255,7 +255,7 @@ void secnfs_range_unlock(void *p, uint64_t offset, uint64_t length);
 
 /* file hole */
 void secnfs_hole_add(void *p, uint64_t offset, uint64_t length);
-void secnfs_hole_remove(void *p, uint64_t offset, uint64_t length);
+size_t secnfs_hole_remove(void *p, uint64_t offset, uint64_t length);
 void secnfs_hole_find_next(void *p, uint64_t offset,
                            uint64_t *nxt_offset, uint64_t *nxt_length);
 

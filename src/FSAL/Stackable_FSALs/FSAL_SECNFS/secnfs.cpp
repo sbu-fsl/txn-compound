@@ -506,6 +506,7 @@ void secnfs_release_blockmap(void **p)
 uint64_t secnfs_range_try_lock(void *p, uint64_t offset, uint64_t length)
 {
         BlockMap *range_lock = static_cast<BlockMap *>(p);
+        assert(length);
         return range_lock->try_insert(offset, length);
 }
 
@@ -513,6 +514,7 @@ uint64_t secnfs_range_try_lock(void *p, uint64_t offset, uint64_t length)
 void secnfs_range_unlock(void *p, uint64_t offset, uint64_t length)
 {
         BlockMap *range_lock = static_cast<BlockMap *>(p);
+        assert(length);
         range_lock->remove_match(offset, length);
 }
 
@@ -521,16 +523,19 @@ void secnfs_hole_add(void *p, uint64_t offset, uint64_t length)
 {
         BlockMap *holes = static_cast<BlockMap *>(p);
         /* new hole is always at the end */
+        assert(length);
         holes->push_back(offset, length);
         holes->print();
 }
 
 
-void secnfs_hole_remove(void *p, uint64_t offset, uint64_t length)
+size_t secnfs_hole_remove(void *p, uint64_t offset, uint64_t length)
 {
         BlockMap *holes = static_cast<BlockMap *>(p);
-        holes->remove_overlap(offset, length);
-        holes->print();
+        size_t affected = holes->remove_overlap(offset, length);
+        if (affected)
+                holes->print();
+        return affected;
 }
 
 

@@ -221,13 +221,18 @@ void BlockMap::push_back(uint64_t offset, uint64_t length) {
 
 // remove segments that overlap with [offset, offset + length)
 // may cut existing segment if partially overlapping
-void BlockMap::remove_overlap(uint64_t offset, uint64_t length)
+// return number of affected holes
+size_t BlockMap::remove_overlap(uint64_t offset, uint64_t length)
 {
         deque<Range>::iterator pos;
+        size_t affected = 0;
+
+        if (!length)
+                return affected;
 
         MutexLock lock(mutex_);
         if (segs_.empty())
-                return;
+                return affected;
         pos = std::lower_bound(segs_.begin(), segs_.end(), offset, cmp_offset);
 
         // should check previous segment whose offset is smaller
@@ -244,6 +249,7 @@ void BlockMap::remove_overlap(uint64_t offset, uint64_t length)
                 // -----------        ----------
                 if (pos->offset() >= offset && pos_right <= right) {
                         pos = segs_.erase(pos);
+                        affected++;
                         continue;
                 }
                 // --------      -->   ---
@@ -252,6 +258,7 @@ void BlockMap::remove_overlap(uint64_t offset, uint64_t length)
                                 pos_right <= right) {
                         pos->set_length(offset - pos->offset());
                         pos++;
+                        affected++;
                         continue;
                 }
                 // -----------    --> ---     ---
@@ -262,6 +269,7 @@ void BlockMap::remove_overlap(uint64_t offset, uint64_t length)
                         new_seg.set_offset(right);
                         new_seg.set_length(pos_right - right);
                         segs_.insert(++pos, new_seg);
+                        affected++;
                         break;
                 }
                 //     --------  -->            ---
@@ -269,14 +277,17 @@ void BlockMap::remove_overlap(uint64_t offset, uint64_t length)
                 if (pos_right > right) {
                         pos->set_offset(right);
                         pos->set_length(pos_right - right);
+                        affected++;
                         break;
                 }
                 pos++;
         }
+
+        return affected;
 }
 
 
-// find next segment that contains the offset
+// find segment that contains the offset or after the offset
 void BlockMap::find_next(uint64_t offset,
                          uint64_t *nxt_offset, uint64_t *nxt_length)
 {

@@ -64,7 +64,7 @@ public:
         uint64_t try_insert(uint64_t offset, uint64_t length);
         void push_back(uint64_t offset, uint64_t length);
         void remove_match(uint64_t offset, uint64_t length);
-        void remove_overlap(uint64_t offset, uint64_t length);
+        size_t remove_overlap(uint64_t offset, uint64_t length);
         void find_next(uint64_t offset, uint64_t *nxt_offset,
                        uint64_t *nxt_length);
         void print();

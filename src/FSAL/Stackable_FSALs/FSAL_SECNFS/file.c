@@ -147,7 +147,10 @@ fsal_status_t do_aligned_read(struct secnfs_fsal_obj_handle *hdl,
         }
 
         SECNFS_D("hdl = %x; read_amount = %u", hdl, *read_amount);
-        *read_amount = pi_round_down(*read_amount);
+        if (*read_amount != pi_round_down(*read_amount)) {
+                *read_amount = pi_round_down(*read_amount);
+                end_of_file = 0;
+        }
         SECNFS_D("hdl = %x; read_amount_align = %u", hdl, *read_amount);
         SECNFS_D("hdl = %x; pd_info_len = %u", hdl,
                         data_plus_to_pi_dlen(&data_plus));
@@ -490,6 +493,9 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
         uint64_t offset_align;
         uint64_t offset_moved;
         size_t size_align;
+        uint64_t hole_off;
+        uint64_t hole_len;
+        bool should_fill_zero;
         void *buffer_align = NULL;
         bool align;
 
@@ -503,7 +509,7 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
         }
         assert(hdl->key_initialized);
 
-        /* avoid unnecessary read */
+        /* skip unnecessary read */
         if (offset >= get_filesize(hdl)) {
                 *read_amount = 0;
                 *end_of_file = 1;
@@ -516,8 +522,18 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
         align = (offset == offset_align && buffer_size == size_align) ? 1 : 0;
         SECNFS_D("hdl = %x; offset_align = %u, size_align = %u",
                  hdl, offset_align, size_align);
-        /* TODO read till next hole */
-        /* TODO return zero if encounter hole */
+
+        secnfs_hole_find_next(hdl->holes, offset_align, &hole_off, &hole_len);
+        should_fill_zero = 0;
+        if (hole_len > 0) {
+                if (offset_align >= hole_off) { /* in hole */
+                        size_align = MIN(hole_off + hole_len - offset_align,
+                                         size_align);
+                        should_fill_zero = 1;
+                } else { /* read till next hole */
+                        size_align = MIN(hole_off - offset_align, size_align);
+                }
+        }
 
         buffer_align = align ? buffer : gsh_malloc(size_align);
         if (!buffer_align) {
@@ -525,35 +541,40 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                 goto out;
         }
 
-        st = do_aligned_read(hdl, opctx, offset_align, size_align,
-                             buffer_align, read_amount, end_of_file);
-        if (FSAL_IS_ERROR(st))
-                goto out;
+        if (should_fill_zero) {
+                SECNFS_D("hdl = %x; return hole (size: %u)", hdl, size_align);
+                memset(buffer_align, 0, size_align);
+                *read_amount = size_align;
+                st = fsalstat(ERR_FSAL_NO_ERROR, 0);
+        } else {
+                st = do_aligned_read(hdl, opctx, offset_align, size_align,
+                                buffer_align, read_amount, end_of_file);
+                if (FSAL_IS_ERROR(st))
+                        goto out;
+        }
 
-        /* update effective read_amount to user */
+        /* update effective read_amount & EOF to user */
         if (*read_amount > 0) {
-                *read_amount = (*read_amount == size_align) ?
-                               buffer_size : *read_amount - offset_moved;
+                /* check if read completely */
+                if (offset_align + *read_amount >= offset + buffer_size)
+                        *read_amount = buffer_size;
+                else
+                        *read_amount = *read_amount - offset_moved;
 
+                PTHREAD_MUTEX_lock(&obj_hdl->lock);
                 /* buffer_size may be larger than effective amount */
-                if (offset + *read_amount > get_filesize(hdl)) {
-                        /* if EOF is not set, effective filesize in header
-                         * does not match the real size on remote disk. */
-                        if (!*end_of_file) {
-                                SECNFS_I("hdl = %x; size unsynchronized?", hdl);
-                                *end_of_file = 1;
-                        }
+                if (offset + *read_amount >= get_filesize(hdl)) {
+                        *end_of_file = 1;
                         *read_amount = get_filesize(hdl) - offset;
+                } else {
+                        *end_of_file = 0;
                 }
+                PTHREAD_MUTEX_unlock(&obj_hdl->lock);
 
                 if (!align)
                         memcpy(buffer, buffer_align + offset_moved,
                                *read_amount);
         }
-
-        /* clear inaccurate EOF flag */
-        if (*end_of_file && offset + *read_amount < get_filesize(hdl))
-                *end_of_file = 0;
 
 out:
         if (!align) gsh_free(buffer_align);
@@ -694,14 +715,18 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
                         buffer_size : *write_amount - offset_moved;
 
         PTHREAD_MUTEX_lock(&obj_hdl->lock);
-        secnfs_hole_remove(hdl->holes, offset_align, *write_amount);
+        if (secnfs_hole_remove(hdl->holes, offset_align, *write_amount))
+                hdl->has_dirty_meta = 1;
         if (offset + *write_amount > get_filesize(hdl)) {
                 uint64_t filesize_up = pi_round_up(get_filesize(hdl));
                 if (offset_align >= filesize_up + PI_INTERVAL_SIZE) {
-                /* offset is beyond the current filesize, add file hole.
-                * need not add last block that is already padded with zero */
+                        /* offset is beyond the current filesize, add file hole.
+                        * do not add last block that is already padded with 0 */
+                        SECNFS_D("hdl = %x; add file hole %u (%u)", hdl,
+                                 filesize_up, offset_align - filesize_up);
                         secnfs_hole_add(hdl->holes, filesize_up,
                                         offset_align - filesize_up);
+                        hdl->has_dirty_meta = 1;
                 }
                 update_filesize(hdl, offset + *write_amount);
         }
