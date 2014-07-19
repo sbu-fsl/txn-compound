@@ -420,18 +420,11 @@ static fsal_status_t setattrs(struct fsal_obj_handle *obj_hdl,
 			      struct attrlist *attrs)
 {
         if (attrs->mask & ATTR_SIZE && obj_hdl->type == REGULAR_FILE) {
-                struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
-
-                if (attrs->filesize != 0) {
-                        fsal_status_t st;
-                        st = secnfs_truncate(hdl, opctx, attrs->filesize);
-                        if (FSAL_IS_ERROR(st)) {
-                                LogCrit(COMPONENT_FSAL, "truncate failed");
-                                return st;
-                        }
-                } else {
-                        SECNFS_D("hdl = %x; truncating to 0", hdl);
-                        update_filesize(hdl, 0);
+                fsal_status_t st;
+                st = secnfs_truncate(obj_hdl, opctx, attrs->filesize);
+                if (FSAL_IS_ERROR(st)) {
+                        LogCrit(COMPONENT_FSAL, "truncate failed");
+                        return st;
                 }
         }
 

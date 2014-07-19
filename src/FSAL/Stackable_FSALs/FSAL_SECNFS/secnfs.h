@@ -29,7 +29,7 @@ extern "C" {
 #define DIF_UNUSED_SIZE PI_SECNFS_DIF_SIZE - VERSION_SIZE - TAG_SIZE
 /* 48 - 8 - 16 = 24 */
 
-#define TRUNC_BUFFER_SIZE 1048576
+#define FILL_ZERO_BUFFER_SIZE 1048576
 
 typedef struct { uint8_t bytes[SECNFS_KEY_LENGTH]; } secnfs_key_t;
 
@@ -262,6 +262,7 @@ void secnfs_hole_add(void *p, uint64_t offset, uint64_t length);
 size_t secnfs_hole_remove(void *p, uint64_t offset, uint64_t length);
 void secnfs_hole_find_next(void *p, uint64_t offset,
                            uint64_t *nxt_offset, uint64_t *nxt_length);
+bool secnfs_offset_in_hole(void *p, uint64_t offset);
 
 /**
  * Serialize uint64_t to "little-endian" byte array

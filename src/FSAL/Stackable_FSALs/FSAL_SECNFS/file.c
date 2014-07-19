@@ -205,7 +205,9 @@ out:
 
 
 /* do_aligned_write for regular file
- * concurrency (locks) is managed by caller
+ * concurrency (locks) is managed by caller.
+ * write_amount will be truncated (pi_round_down) if not aligned.
+ * caller should maintain the file holes.
  */
 fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
                                const struct req_op_context *opctx,
@@ -227,6 +229,9 @@ fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
 
         assert(is_pi_aligned(offset_align));
         assert(is_pi_aligned(size_align));
+
+        SECNFS_D("hdl = %x; do aligned write to %u (%u)\n", hdl,
+                 offset_align, size_align);
 
         next_offset = offset_align + FILE_HEADER_SIZE;
 
@@ -318,6 +323,7 @@ out:
  * fill it with new content (src) at position dst_offset.
  *
  * dst should be large enough to hold one block (PI_INTERVAL_SIZE).
+ * caller should hold lock to ensure the consistency.
  */
 inline secnfs_s read_modify_one(uint8_t *dst, void *src,
                                 uint64_t dst_offset, size_t src_size,
@@ -335,7 +341,8 @@ inline secnfs_s read_modify_one(uint8_t *dst, void *src,
         if (dst_offset == 0 && src_size == PI_INTERVAL_SIZE)
                 goto update;
 
-        if (file_offset < get_filesize(hdl)) {
+        if (file_offset < get_filesize(hdl) &&
+                        !secnfs_offset_in_hole(hdl->holes, file_offset)) {
                 SECNFS_D("hdl = %x; READ remote block for update", hdl);
                 st = do_aligned_read(hdl, opctx, file_offset, PI_INTERVAL_SIZE,
                                      dst, &read_amount, &end_of_file);
@@ -343,13 +350,10 @@ inline secnfs_s read_modify_one(uint8_t *dst, void *src,
                         return SECNFS_READ_UPDATE_FAIL;
 
                 if (read_amount == 0) {
-                        if (end_of_file) {
-                                /* remote returned empty & EOF, continue */
+                        if (end_of_file) /* we can still continue */
                                 memset(dst, 0, PI_INTERVAL_SIZE);
-                        } else {
-                                /* probably partial read, abort */
+                        else             /* probably partial read, abort */
                                 return SECNFS_READ_UPDATE_FAIL;
-                        }
                 }
         } else {
                 /* extending the file: need not to read, but to fill zero */
@@ -364,23 +368,19 @@ update:
 
 
 /* Fill the file with zero at position [left, right).
+ * Caller should hold file lock or cache entry WRITE lock.
+ * For simplicity, 'right' should be aligned.
+ * NOTE: Effective file size will not be updated.
  *
- * NOTE: effective filesize in handle WILL be updated!
- *
- * REQUIREMENTS:
- * 1. round_down(left) <= round_up(filesize)
- * 2. for simplicity, 'right' should be aligned.
- *
- * ASSUMPTION: remote physical file is aligned (with zero padding).
+ * ASSUMPTION: If filesize is not aligned, the last block is padded with zero.
  */
 secnfs_s secnfs_fill_zero(struct secnfs_fsal_obj_handle *hdl,
                           const struct req_op_context *opctx,
                           size_t left, size_t right)
 {
-        /* TODO limit the range, e.g., check max_filesize */
-        size_t left_align; /* offset_aligned */
+        size_t left_down;
         size_t size_align;
-        size_t filesize_align;
+        size_t filesize_up;
         char *buffer = NULL;
         size_t size;
         size_t buffer_size;
@@ -391,46 +391,44 @@ secnfs_s secnfs_fill_zero(struct secnfs_fsal_obj_handle *hdl,
         fsal_status_t st;
         secnfs_s ret;
 
+        /* TODO limit the range, e.g., check max_filesize */
         SECNFS_D("hdl = %x; filling zero [%u, %u)", hdl, left, right);
 
         /* nothing to fill */
         if (left == right)
                 return SECNFS_OKAY;
 
-        left_align = pi_round_down(left);
-        filesize_align = pi_round_up(get_filesize(hdl));
-        assert(left_align <= filesize_align);
+        left_down = pi_round_down(left);
         assert(is_pi_aligned(right));
         assert(left < right);
 
+        filesize_up = pi_round_up(get_filesize(hdl));
         if (left >= get_filesize(hdl)) {
                 /* based on assumption, already zero filled */
-                if (right == filesize_align) {
-                        update_filesize(hdl, right);
+                if (right == filesize_up)
                         return SECNFS_OKAY;
-                }
 
-                /* skip the last block which is already zero padded */
-                if (left < filesize_align) {
-                        left = filesize_align;
-                        left_align = left;
+                /* skip the last block which is already zero */
+                if (left < filesize_up) {
+                        left = filesize_up;
+                        left_down = left;
                 }
         }
 
-        size_align = right - left_align;
-        /* truncate or seek can be arbitrarily large, allocate fixed buffer */
+        size_align = right - left_down;
+        /* filling size can be arbitrarily large, allocate fixed buffer */
         fs_maxwrite = hdl->obj_handle.export->ops->fs_maxwrite(hdl->obj_handle.export);
-        buffer_size = MIN(MIN(size_align, TRUNC_BUFFER_SIZE), fs_maxwrite);
+        buffer_size = MIN(MIN(size_align, FILL_ZERO_BUFFER_SIZE), fs_maxwrite);
         buffer = gsh_calloc(1, buffer_size);
 
         /* need read and modify with zero */
         if (left < get_filesize(hdl)) {
-                uint64_t left_moved = left - left_align;
+                uint64_t left_moved = left - left_down;
 
                 /* pass NULL to do read without modifying */
                 ret = read_modify_one(buffer, NULL,
                                       0, 0,
-                                      left_align,
+                                      left_down,
                                       hdl, opctx);
                 if (ret != SECNFS_OKAY)
                         goto out;
@@ -445,14 +443,14 @@ secnfs_s secnfs_fill_zero(struct secnfs_fsal_obj_handle *hdl,
         size = buffer_size;
         do {
                 st = do_aligned_write(hdl, opctx,
-                                      left_align + write_amount,
+                                      left_down + write_amount,
                                       size,
                                       buffer + write_amount % buffer_size,
                                       &n,
                                       &stable);
                 if (FSAL_IS_ERROR(st)) {
                         SECNFS_ERR("hdl = %x; filling zero failed at %u",
-                                   hdl, left_align + write_amount);
+                                   hdl, left_down + write_amount);
                         ret = SECNFS_FILL_ZERO_FAIL;
                         goto out;
                 }
@@ -469,7 +467,6 @@ secnfs_s secnfs_fill_zero(struct secnfs_fsal_obj_handle *hdl,
                         memset(buffer, 0, size);
                 }
         } while (write_amount < size_align);
-        /* note that filesize in handle has been modified in secnfs_write */
 
         ret = SECNFS_OKAY;
 
@@ -715,8 +712,10 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
                         buffer_size : *write_amount - offset_moved;
 
         PTHREAD_MUTEX_lock(&obj_hdl->lock);
+
         if (secnfs_hole_remove(hdl->holes, offset_align, *write_amount))
                 hdl->has_dirty_meta = 1;
+
         if (offset + *write_amount > get_filesize(hdl)) {
                 uint64_t filesize_up = pi_round_up(get_filesize(hdl));
                 if (offset_align >= filesize_up + PI_INTERVAL_SIZE) {
@@ -730,8 +729,10 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
                 }
                 update_filesize(hdl, offset + *write_amount);
         }
+
         SECNFS_D("hdl = %x; client_size = %d; write_amount = %d\n", hdl,
                  get_filesize(hdl), *write_amount);
+
         PTHREAD_MUTEX_unlock(&obj_hdl->lock);
 
 out:
@@ -743,33 +744,47 @@ out:
 
 
 /* secnfs_truncate
- * TODO use hdl->holes */
-fsal_status_t secnfs_truncate(struct secnfs_fsal_obj_handle *hdl,
+ * called by setattrs (with ATTR_SIZE mask) which holds cache write lock
+ */
+fsal_status_t secnfs_truncate(struct fsal_obj_handle *obj_hdl,
                               const struct req_op_context *opctx,
                               uint64_t newsize)
 {
-        uint64_t newsize_align;
-        uint64_t filesize = get_filesize(hdl); /* current size */
+        struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
+        uint64_t newsize_up;
+        uint64_t newsize_down;
+        uint64_t filesize_up;
         secnfs_s ret;
 
-        SECNFS_D("hdl = %x; truncating to %u", hdl, newsize);
+        SECNFS_D("hdl = %x; truncating to %u (current: %u)", hdl,
+                  newsize, get_filesize(hdl));
 
-        if (newsize == filesize)
+        if (newsize == get_filesize(hdl))
                 return fsalstat(ERR_FSAL_NO_ERROR, 0);
 
-        newsize_align = pi_round_up(newsize);
-        if (newsize < filesize)
-                ret = secnfs_fill_zero(hdl, opctx, newsize, newsize_align);
-        else
-                ret = secnfs_fill_zero(hdl, opctx, filesize, newsize_align);
+        newsize_up = pi_round_up(newsize);
+        if (newsize != newsize_up) {
+                /* If newsize not aligned, explicitly fill zero for last
+                 * block, since our file hole must be aligned. */ 
+                ret = secnfs_fill_zero(hdl, opctx, newsize, newsize_up);
+                if (ret != SECNFS_OKAY)
+                        return secnfs_to_fsal_status(ret);
+        }
 
-        if (ret == SECNFS_OKAY)
-                update_filesize(hdl, newsize);
+        newsize_down = pi_round_down(newsize);
+        filesize_up = pi_round_up(get_filesize(hdl));
+        if (newsize < filesize_up) {
+                /* explicit zero padding is not counted as hole */
+                secnfs_hole_remove(hdl->holes, newsize_down,
+                                   filesize_up - newsize_down);
+        } else if (newsize_down - filesize_up >= PI_INTERVAL_SIZE) {
+                secnfs_hole_add(hdl->holes, filesize_up,
+                                newsize_down - filesize_up);
+        }
 
-        SECNFS_D("hdl = %x; filesize after truncation: %u",
-                 hdl, get_filesize(hdl));
+        update_filesize(hdl, newsize);
 
-        return secnfs_to_fsal_status(ret);
+        return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
 

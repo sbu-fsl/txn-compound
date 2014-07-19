@@ -546,12 +546,26 @@ size_t secnfs_hole_remove(void *p, uint64_t offset, uint64_t length)
 }
 
 
+// find next hole that contains offset of after offset
 void secnfs_hole_find_next(void *p, uint64_t offset,
                            uint64_t *nxt_offset, uint64_t *nxt_length)
 {
         BlockMap *holes = static_cast<BlockMap *>(p);
         holes->find_next(offset, nxt_offset, nxt_length);
 }
+
+
+bool secnfs_offset_in_hole(void *p, uint64_t offset)
+{
+        uint64_t hole_off, hole_len;
+        secnfs_hole_find_next(p, offset, &hole_off, &hole_len);
+        if (!hole_len)
+                return 0;
+
+        return hole_off <= offset;
+}
+
+
 #ifdef __cplusplus
 }
 #endif

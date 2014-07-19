@@ -166,7 +166,7 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
 			   const struct req_op_context *opctx, uint64_t offset,
 			   size_t buffer_size, void *buffer,
 			   size_t * write_amount, bool * fsal_stable);
-fsal_status_t secnfs_truncate(struct secnfs_fsal_obj_handle *hdl,
+fsal_status_t secnfs_truncate(struct fsal_obj_handle *obj_hdl,
                               const struct req_op_context *opctx,
                               uint64_t newsize);
 fsal_status_t secnfs_commit(struct fsal_obj_handle *obj_hdl,	/* sync */
