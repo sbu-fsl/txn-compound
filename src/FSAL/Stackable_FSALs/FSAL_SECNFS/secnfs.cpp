@@ -346,46 +346,67 @@ void secnfs_destroy_context(secnfs_info_t *info)
 }
 
 
-secnfs_s create_meta(FileMeta *meta,
+secnfs_s create_meta(FileHeader &header,
                      secnfs_key_t *fek, secnfs_key_t *iv,
                      uint64_t filesize, void *holes)
 {
-        uint8_t filesize_buf[8];
         secnfs_s ret;
+        FileMeta meta;
+        void *meta_buf;
+        uint32_t meta_len;
 
-        uint64_to_bytes(filesize_buf, filesize);
-        ret = secnfs_encrypt(*fek, *iv, 0, 8, filesize_buf, filesize_buf);
-        if (ret != SECNFS_OKAY)
-                return ret;
+        meta.set_filesize(filesize);
+        static_cast<BlockMap *>(holes)->dump_to_pb(meta.mutable_holes());
 
-        meta->set_filesize(filesize_buf, 8);
+        if (!EncodeMessage(meta, &meta_buf, &meta_len, FILE_META_SIZE)) {
+                LOG(ERROR) << "cannot encode meta";
+                ret = SECNFS_WRONG_CONFIG;
+                goto out;
+        }
+        assert(meta_len == FILE_META_SIZE);
 
-        static_cast<BlockMap *>(holes)->dump_to_pb(meta->mutable_holes());
+        ret = secnfs_encrypt(*fek, *iv, 0, meta_len, meta_buf, meta_buf);
+        header.set_meta(meta_buf, meta_len);
 
-        // TODO encrypt holes, limit holes amount
+out:
+        free(meta_buf);
 
-        return SECNFS_OKAY;
+        return ret;
 }
 
 
-secnfs_s read_meta(const FileMeta &meta,
+secnfs_s read_meta(FileHeader &header,
                    secnfs_key_t *fek, secnfs_key_t *iv,
                    uint64_t *filesize, void *holes)
 {
-        uint8_t filesize_buf[8];
+        FileMeta meta;
+        void *meta_buf;
+        uint32_t meta_len;
         secnfs_s ret;
 
-        memcpy(filesize_buf, meta.filesize().data(), 8);
+        meta_buf = malloc(FILE_META_SIZE);
+        assert(header.meta().size() == FILE_META_SIZE);
+        ret = secnfs_decrypt(*fek, *iv, 0, header.meta().size(),
+                             const_cast<char *>(header.meta().data()),
+                             meta_buf);
+        if (ret != SECNFS_OKAY) {
+                LOG(ERROR) << "cannot decrypt meta";
+                goto out;
+        }
 
-        ret = secnfs_decrypt(*fek, *iv, 0, 8, filesize_buf, filesize_buf);
-        if (ret != SECNFS_OKAY)
-                return ret;
+        if (!DecodeMessage(&meta, meta_buf, FILE_META_SIZE, &meta_len)) {
+                LOG(ERROR) << "cannot decode meta buffer";
+                goto out;
+        }
 
-        uint64_from_bytes(filesize_buf, filesize);
-
+        *filesize = meta.filesize();
         static_cast<BlockMap *>(holes)->load_from_pb(meta.holes());
 
-        return SECNFS_OKAY;
+        ret = SECNFS_OKAY;
+out:
+        free(meta_buf);
+
+        return ret;
 }
 
 
@@ -415,8 +436,9 @@ secnfs_s secnfs_create_header(secnfs_info_t *info,
                                 SECNFS_KEY_LENGTH, kf);
                 kf->set_creator(ctx->name());
         }
+        // TODO handle header version
 
-        ret = create_meta(header.mutable_meta(), fek, iv, filesize, holes);
+        ret = create_meta(header, fek, iv, filesize, holes);
         if (ret != SECNFS_OKAY) {
                 LOG(ERROR) << "create meta failed";
                 goto out;
@@ -429,11 +451,12 @@ secnfs_s secnfs_create_header(secnfs_info_t *info,
         }
 
         assert(*len == FILE_HEADER_SIZE);
+        ret = SECNFS_OKAY;
 
 out:
         header.release_keyfile(); /* avoid cleanup by header's destructor */
 
-        return SECNFS_OKAY;
+        return ret;
 }
 
 
@@ -474,8 +497,7 @@ secnfs_s secnfs_read_header(secnfs_info_t *info,
                         str_to_key(rkey, fek);
                         memmove(fek->bytes, rkey.c_str(), SECNFS_KEY_LENGTH);
                         header.release_keyfile();
-                        return read_meta(header.meta(), fek, iv,
-                                         filesize, holes);
+                        return read_meta(header, fek, iv, filesize, holes);
                 }
         }
 
@@ -546,7 +568,7 @@ size_t secnfs_hole_remove(void *p, uint64_t offset, uint64_t length)
 }
 
 
-// find next hole that contains offset of after offset
+// find next hole that contains offset or after offset
 void secnfs_hole_find_next(void *p, uint64_t offset,
                            uint64_t *nxt_offset, uint64_t *nxt_length)
 {

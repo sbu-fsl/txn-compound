@@ -22,6 +22,7 @@ extern "C" {
 
 // TODO allow keyfile to be larger than 4096.
 #define FILE_HEADER_SIZE 8192
+#define FILE_META_SIZE 4096
 
 #define PI_SECNFS_DIF_SIZE 48 /* 4096 / 512 * (8-2) */
 #define VERSION_SIZE 8

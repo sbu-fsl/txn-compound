@@ -2,11 +2,12 @@ package secnfs;
 
 message FileHeader {
   required KeyFile keyfile = 1;
-  optional FileMeta meta = 2;
+  optional bytes meta = 2;	// encrypted meta
+  optional bytes version = 3;	// version of header
 }
 
 message FileMeta {
-  optional bytes filesize = 1;
+  optional uint64 filesize = 1;
   repeated Range holes = 3;
 }
 
