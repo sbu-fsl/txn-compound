@@ -68,6 +68,7 @@ fsal_status_t secnfs_open(struct fsal_obj_handle *obj_hdl,
 
         if (!FSAL_IS_ERROR(st) && should_read_header(hdl)) {
                 // read file key, iv and meta
+                SECNFS_D("hdl = %x; reading header\n", hdl);
                 st = read_header(obj_hdl, opctx);
         }
 
@@ -707,14 +708,14 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
                 goto out;
         }
 
-        /* get effective write_amount */
-        *write_amount = (*write_amount == size_align) ?
-                        buffer_size : *write_amount - offset_moved;
-
         PTHREAD_MUTEX_lock(&obj_hdl->lock);
 
         if (secnfs_hole_remove(hdl->holes, offset_align, *write_amount))
                 hdl->has_dirty_meta = 1;
+
+        /* get effective write_amount */
+        *write_amount = (*write_amount == size_align) ?
+                        buffer_size : *write_amount - offset_moved;
 
         if (offset + *write_amount > get_filesize(hdl)) {
                 uint64_t filesize_up = pi_round_up(get_filesize(hdl));
@@ -775,8 +776,9 @@ fsal_status_t secnfs_truncate(struct fsal_obj_handle *obj_hdl,
         filesize_up = pi_round_up(get_filesize(hdl));
         if (newsize < filesize_up) {
                 /* explicit zero padding is not counted as hole */
-                secnfs_hole_remove(hdl->holes, newsize_down,
-                                   filesize_up - newsize_down);
+                if (secnfs_hole_remove(hdl->holes, newsize_down,
+                                       filesize_up - newsize_down))
+                        hdl->has_dirty_meta = 1;
         } else if (newsize_down - filesize_up >= PI_INTERVAL_SIZE) {
                 secnfs_hole_add(hdl->holes, filesize_up,
                                 newsize_down - filesize_up);

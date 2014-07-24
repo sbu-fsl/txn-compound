@@ -146,6 +146,7 @@ static fsal_status_t make_handle_from_next(struct fsal_export *exp,
                 }
 
                 if (next_hdl->attributes.filesize > 0) {
+                        SECNFS_D("hdl = %x; reading header\n", secnfs_hdl);
                         st = read_header(*handle, opctx);
                         if (FSAL_IS_ERROR(st))
                                 goto err;
@@ -445,6 +446,7 @@ static fsal_status_t file_unlink(struct fsal_obj_handle *dir_hdl,
 				 const struct req_op_context *opctx,
 				 const char *name)
 {
+        SECNFS_D("Unlink %s", name);
         return next_ops.obj_ops->unlink(next_handle(dir_hdl), opctx, name);
 }
 
