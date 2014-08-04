@@ -310,6 +310,10 @@ fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
         }
 
         *write_amount = pi_round_down(*write_amount);
+        SECNFS_D("hdl = %x; write_amount_align = %u", hdl, *write_amount);
+        // assert(*write_amount <= size_align);
+        if (*write_amount > size_align)
+                SECNFS_ERR("hdl = %x; write_amount > size_align", hdl);
 
 out:
         gsh_free(pd_buf);
@@ -775,7 +779,7 @@ fsal_status_t secnfs_truncate(struct fsal_obj_handle *obj_hdl,
         newsize_down = pi_round_down(newsize);
         filesize_up = pi_round_up(get_filesize(hdl));
         if (newsize < filesize_up) {
-                /* explicit zero padding is not counted as hole */
+                /* note that explicit zero padding is not counted as hole */
                 if (secnfs_hole_remove(hdl->holes, newsize_down,
                                        filesize_up - newsize_down))
                         hdl->has_dirty_meta = 1;
