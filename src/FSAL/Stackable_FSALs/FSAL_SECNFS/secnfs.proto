@@ -8,6 +8,7 @@ message FileHeader {
 
 message FileMeta {
   optional uint64 filesize = 1;
+  optional bool encrypted = 2;
   repeated Range holes = 3;
 }
 

@@ -63,6 +63,7 @@ struct secnfs_fsal_obj_handle {
         void *range_lock;
         void *holes;
         void *kf_cache;                         /* cached keyfile */
+        bool encrypted;
 };
 
 static inline struct secnfs_fsal_obj_handle*

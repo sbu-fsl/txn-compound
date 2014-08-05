@@ -391,9 +391,9 @@ void secnfs_destroy_context(secnfs_info_t *info)
 }
 
 
-secnfs_s create_meta(FileHeader &header,
+static secnfs_s create_meta(FileHeader &header,
                      secnfs_key_t *fek, secnfs_key_t *iv,
-                     uint64_t filesize, void *holes)
+                     uint64_t filesize, bool encrypted, void *holes)
 {
         secnfs_s ret;
         FileMeta meta;
@@ -401,6 +401,7 @@ secnfs_s create_meta(FileHeader &header,
         uint32_t meta_len;
 
         meta.set_filesize(filesize);
+        meta.set_encrypted(encrypted);
         static_cast<BlockMap *>(holes)->dump_to_pb(meta.mutable_holes());
 
         if (!EncodeMessage(meta, &meta_buf, &meta_len, FILE_META_SIZE)) {
@@ -420,9 +421,9 @@ out:
 }
 
 
-secnfs_s read_meta(FileHeader &header,
+static secnfs_s read_meta(FileHeader &header,
                    secnfs_key_t *fek, secnfs_key_t *iv,
-                   uint64_t *filesize, void *holes)
+                   uint64_t *filesize, bool *encrypted, void *holes)
 {
         FileMeta meta;
         void *meta_buf;
@@ -445,6 +446,7 @@ secnfs_s read_meta(FileHeader &header,
         }
 
         *filesize = meta.filesize();
+        *encrypted = meta.encrypted();
         static_cast<BlockMap *>(holes)->load_from_pb(meta.holes());
 
         ret = SECNFS_OKAY;
@@ -459,6 +461,7 @@ secnfs_s secnfs_create_header(secnfs_info_t *info,
                               secnfs_key_t *fek,
                               secnfs_key_t *iv,
                               uint64_t filesize,
+                              bool encrypted,
                               void *holes,
                               void **buf,
                               uint32_t *len,
@@ -483,7 +486,7 @@ secnfs_s secnfs_create_header(secnfs_info_t *info,
         }
         // TODO handle header version
 
-        ret = create_meta(header, fek, iv, filesize, holes);
+        ret = create_meta(header, fek, iv, filesize, encrypted, holes);
         if (ret != SECNFS_OKAY) {
                 LOG(ERROR) << "create meta failed";
                 goto out;
@@ -511,6 +514,7 @@ secnfs_s secnfs_read_header(secnfs_info_t *info,
                             secnfs_key_t *fek,
                             secnfs_key_t *iv,
                             uint64_t *filesize,
+                            bool *encrypted,
                             void *holes,
                             uint32_t *len,
                             void **kf_cache)
@@ -542,7 +546,7 @@ secnfs_s secnfs_read_header(secnfs_info_t *info,
                         str_to_key(rkey, fek);
                         memmove(fek->bytes, rkey.c_str(), SECNFS_KEY_LENGTH);
                         header.release_keyfile();
-                        return read_meta(header, fek, iv, filesize, holes);
+                        return read_meta(header, fek, iv, filesize, encrypted, holes);
                 }
         }
 

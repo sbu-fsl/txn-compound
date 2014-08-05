@@ -117,6 +117,7 @@ fsal_status_t do_aligned_read(struct secnfs_fsal_obj_handle *hdl,
         void *pi_buf = NULL; /* protection information */
         size_t pi_size;
         fsal_status_t st;
+        secnfs_s ret;
         int i;
 
         assert(is_pi_aligned(offset_align));
@@ -178,17 +179,17 @@ fsal_status_t do_aligned_read(struct secnfs_fsal_obj_handle *hdl,
                          secnfs_dif.tag[0], secnfs_dif.tag[15]);
 
                 /* may carefully decrypt to user buffer to save memcpy */
-                secnfs_s ret = secnfs_verify_decrypt(
-                                        hdl->fk,
-                                        hdl->iv,
-                                        offset_align + i * PI_INTERVAL_SIZE,
-                                        PI_INTERVAL_SIZE,
-                                        buffer_align + i * PI_INTERVAL_SIZE,
-                                        VERSION_SIZE,
-                                        version_buf,
-                                        secnfs_dif.tag,
-                                        buffer_align + i * PI_INTERVAL_SIZE,
-                                        0);
+                ret = secnfs_verify_decrypt(
+                                hdl->fk,
+                                hdl->iv,
+                                offset_align + i * PI_INTERVAL_SIZE,
+                                PI_INTERVAL_SIZE,
+                                buffer_align + i * PI_INTERVAL_SIZE,
+                                VERSION_SIZE,
+                                version_buf,
+                                secnfs_dif.tag,
+                                buffer_align + i * PI_INTERVAL_SIZE,
+                                !hdl->encrypted);
 
                 /* or return partial buffer ? */
                 if (ret != SECNFS_OKAY) {
@@ -220,7 +221,7 @@ fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
         struct data_plus data_plus;
         uint64_t next_offset;
         size_t pi_size;
-        uint8_t *pd_buf = NULL;
+        uint8_t *pd_buf;
         uint8_t *pi_buf = NULL;
         uint8_t *secnfs_dif_buf = NULL;
         struct secnfs_dif secnfs_dif = {0};
@@ -237,10 +238,13 @@ fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
 
         next_offset = offset_align + FILE_HEADER_SIZE;
 
-        /* allocate buffer for ciphertext */
-        pd_buf = gsh_malloc(size_align + TAG_SIZE);
-        if (!pd_buf)
-                return fsalstat(ERR_FSAL_NOMEM, 0);
+        /* allocate buffer for ciphertext in encryption mode */
+        pd_buf = plain_align;
+        if (hdl->encrypted) {
+                pd_buf = gsh_malloc(size_align + TAG_SIZE);
+                if (!pd_buf)
+                        return fsalstat(ERR_FSAL_NOMEM, 0);
+        }
 
         /* allocate buffer for protection info (DIF) */
         pi_size = get_pi_size(size_align);
@@ -274,7 +278,7 @@ fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
                                 version_buf,
                                 pd_buf + i * PI_INTERVAL_SIZE,
                                 secnfs_dif.tag,
-                                0);
+                                !hdl->encrypted);
 
                 if (ret != SECNFS_OKAY) {
                         st = secnfs_to_fsal_status(ret);
@@ -305,7 +309,6 @@ fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
                                           pd_buf, write_amount,
                                           &data_plus,
                                           fsal_stable);
-
         if (FSAL_IS_ERROR(st)) {
                 SECNFS_D("hdl = %x; write_plus failed: %u", hdl, st.major);
                 goto out;
@@ -318,7 +321,7 @@ fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
                 SECNFS_ERR("hdl = %x; write_amount > size_align", hdl);
 
 out:
-        gsh_free(pd_buf);
+        if (hdl->encrypted) gsh_free(pd_buf);
         gsh_free(pi_buf);
         gsh_free(secnfs_dif_buf);
 

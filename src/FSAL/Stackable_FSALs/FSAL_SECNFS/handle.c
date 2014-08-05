@@ -150,6 +150,8 @@ static fsal_status_t make_handle_from_next(struct fsal_export *exp,
                         st = read_header(*handle, opctx);
                         if (FSAL_IS_ERROR(st))
                                 goto err;
+                        SECNFS_D("hdl = %x; file encrypted: %d\n",
+                                 secnfs_hdl, secnfs_hdl->encrypted);
                 }
         }
 
@@ -223,6 +225,7 @@ fsal_status_t read_header(struct fsal_obj_handle *fsal_hdl,
                                  &hdl->fk,
                                  &hdl->iv,
                                  &filesize,
+                                 &hdl->encrypted,
                                  hdl->holes,
                                  &header_len,
                                  &hdl->kf_cache);
@@ -250,7 +253,9 @@ fsal_status_t write_header(struct fsal_obj_handle *fsal_hdl,
         bool stable;
 
         ret = secnfs_create_header(hdl->info, &hdl->fk, &hdl->iv,
-                                   get_filesize(hdl), hdl->holes,
+                                   get_filesize(hdl),
+                                   hdl->encrypted,
+                                   hdl->holes,
                                    &buf, &buf_size, &hdl->kf_cache);
 
         assert(ret == SECNFS_OKAY);
@@ -294,9 +299,8 @@ static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
 
         st = next_ops.obj_ops->create(hdl->next_handle, opctx, name,
                                       attrib, &next_hdl);
-        if (FSAL_IS_ERROR(st)) {
+        if (FSAL_IS_ERROR(st))
                 return st;
-        }
 
         st = make_handle_from_next(dir_hdl->export, opctx, next_hdl, handle);
         if (FSAL_IS_ERROR(st)) {
@@ -309,7 +313,10 @@ static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
                 generate_key_and_iv(&new_hdl->fk, &new_hdl->iv);
                 new_hdl->key_initialized = 1;
                 new_hdl->has_dirty_meta = 0;
-                SECNFS_D("key in new handle (%x) initialized", new_hdl);
+                 /* TODO mechanism to enable / disable encryption */
+                new_hdl->encrypted = 0;
+                SECNFS_D("key in new handle (%x) initialized; encryption %s",
+                         new_hdl, new_hdl->encrypted ? "enabled" : "disabled");
                 st = write_header(*handle, opctx);
         }
 

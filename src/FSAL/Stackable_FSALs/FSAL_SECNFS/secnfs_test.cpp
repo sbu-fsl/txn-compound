@@ -189,7 +189,7 @@ TEST_F(EncryptTest, AuthEncryptVerify) {
                                         recovered, 0));
 }
 
-TEST_F(EncryptTest, AuthBasic) {
+TEST_F(EncryptTest, AuthIntegrity) {
         std::string ptx(16, (char)0x01);
         std::string auth(VERSION_SIZE, (char)0x02);
         byte tag[16];
@@ -235,6 +235,7 @@ TEST(CreateKeyFileTest, Basic) {
         secnfs_key_t key, iv;
         uint32_t buf_size;
         uint64_t filesize;
+        bool encrypted;
         void *buf;
         void *kf_cache = NULL;
         KeyFile *kf;
@@ -245,7 +246,7 @@ TEST(CreateKeyFileTest, Basic) {
 
         holes->push_back(0, 4096);
         holes->push_back(4096, 8192);
-        EXPECT_OKAY(secnfs_create_header(info, &key, &iv, 0x1234, holes,
+        EXPECT_OKAY(secnfs_create_header(info, &key, &iv, 0x1234, 1, holes,
                                          &buf, &buf_size, &kf_cache));
 
         kf = static_cast<KeyFile *>(kf_cache);
@@ -258,7 +259,8 @@ TEST(CreateKeyFileTest, Basic) {
         uint32_t header_len;
         holes->clear();
         EXPECT_OKAY(secnfs_read_header(info, buf, buf_size,
-                                       &rkey, &riv, &filesize, holes,
+                                       &rkey, &riv,
+                                       &filesize, &encrypted, holes,
                                        &header_len, &kf_cache));
 
         // check cache
@@ -268,7 +270,7 @@ TEST(CreateKeyFileTest, Basic) {
 
         // check meta
         EXPECT_EQ(0x1234, filesize);
-
+        EXPECT_EQ(1, encrypted);
         holes->find_next(0, &off, &len);
         EXPECT_EQ(0, off);
         EXPECT_EQ(4096, len);
@@ -281,7 +283,7 @@ TEST(CreateKeyFileTest, Basic) {
         EXPECT_SAME(key.bytes, rkey.bytes, SECNFS_KEY_LENGTH);
 
         // create from cache
-        EXPECT_OKAY(secnfs_create_header(info, &key, &iv, 0x1234, holes,
+        EXPECT_OKAY(secnfs_create_header(info, &key, &iv, 0x1234, 1, holes,
                                          &buf, &buf_size, &kf_cache));
         EXPECT_EQ(kf, kf_cache);
 
