@@ -158,14 +158,14 @@ TEST_F(EncryptTest, AuthEncryptBasic) {
         memset(&iv_, 0, sizeof(iv_));
 
         EXPECT_OKAY(secnfs_auth_encrypt(key_, iv_, 0, 16, ptx.c_str(), 16,
-                                        msg.c_str(), ctx, tag));
+                                        msg.c_str(), ctx, tag, 0));
         //dumpbytes(ctx, 32);
         EXPECT_SAME(ctx, expected_ctx, 16);
         EXPECT_SAME(tag, expected_tag, 16);
 
         byte recovered[16];
         EXPECT_OKAY(secnfs_verify_decrypt(key_, iv_, 0, 16, ctx, 16,
-                                          msg.c_str(), tag, recovered));
+                                          msg.c_str(), tag, recovered, 0));
 }
 
 TEST_F(EncryptTest, AuthEncryptVerify) {
@@ -175,10 +175,10 @@ TEST_F(EncryptTest, AuthEncryptVerify) {
         std::string msg = "MessagesToVerify";
 
         EXPECT_OKAY(secnfs_auth_encrypt(key_, iv_, 0, MSG_SIZE, plain_,
-                                        msg.size(), msg.c_str(), buffer, tag));
+                                        msg.size(), msg.c_str(), buffer, tag, 0));
         EXPECT_OKAY(secnfs_verify_decrypt(key_, iv_, 0, MSG_SIZE, buffer,
                                           msg.size(), msg.c_str(), tag,
-                                          recovered));
+                                          recovered, 0));
         EXPECT_SAME(plain_, recovered, MSG_SIZE);
 
         // tamper msg to "Massage"
@@ -186,7 +186,34 @@ TEST_F(EncryptTest, AuthEncryptVerify) {
         EXPECT_EQ(SECNFS_NOT_VERIFIED,
                   secnfs_verify_decrypt(key_, iv_, 0, MSG_SIZE, buffer,
                                         msg.size(), msg.c_str(), tag,
-                                        recovered));
+                                        recovered, 0));
+}
+
+TEST_F(EncryptTest, AuthBasic) {
+        std::string ptx(16, (char)0x01);
+        std::string auth(VERSION_SIZE, (char)0x02);
+        byte tag[16];
+
+        memset(&key_, 0, sizeof(key_));
+        memset(&iv_, 0, sizeof(iv_));
+
+        EXPECT_OKAY(secnfs_auth_encrypt(key_, iv_, 0, 16, ptx.c_str(),
+                                        VERSION_SIZE, auth.c_str(), NULL, tag, 1));
+        // dumpbytes(tag, 16);
+
+        EXPECT_OKAY(secnfs_verify_decrypt(key_, iv_, 0, 16, ptx.c_str(),
+                                          VERSION_SIZE, auth.c_str(), tag, NULL, 1));
+        // tamper tag
+        tag[0] = tag[0] + 1;
+        EXPECT_EQ(SECNFS_NOT_VERIFIED,
+                  secnfs_verify_decrypt(key_, iv_, 0, 16, ptx.c_str(),
+                                        VERSION_SIZE, auth.c_str(), tag, NULL, 1));
+        tag[0] = tag[0] - 1;
+        // tamper plain
+        ptx[0] = ptx[0] + 1;
+        EXPECT_EQ(SECNFS_NOT_VERIFIED,
+                  secnfs_verify_decrypt(key_, iv_, 0, 16, ptx.c_str(),
+                                        VERSION_SIZE, auth.c_str(), tag, NULL, 1));
 }
 
 

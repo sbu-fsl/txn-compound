@@ -165,7 +165,7 @@ secnfs_s secnfs_decrypt(secnfs_key_t key,
 secnfs_s secnfs_auth_encrypt(secnfs_key_t key, secnfs_key_t iv,
                              uint64_t offset, uint64_t size, const void *plain,
                              uint64_t auth_size, const void *auth_msg,
-                             void *buffer, void *tag)
+                             void *buffer, void *tag, bool auth_only)
 {
         if (round_up(offset, AES::BLOCKSIZE) != offset ||
             round_up(size, AES::BLOCKSIZE) != size) {
@@ -181,23 +181,45 @@ secnfs_s secnfs_auth_encrypt(secnfs_key_t key, secnfs_key_t iv,
                 e.SetKeyWithIV(key.bytes, SECNFS_KEY_LENGTH, iv.bytes,
                                SECNFS_KEY_LENGTH);
 
-                AuthenticatedEncryptionFilter aef(
-                                e, new ArraySink(static_cast<byte *>(buffer),
-                                                 size + TAG_SIZE), false,
-                                TAG_SIZE);
+                size_t sink_size = auth_only ? TAG_SIZE : size + TAG_SIZE;
+                void *sink_buffer = auth_only ? tag : buffer;
+                AuthenticatedEncryptionFilter aef(e,
+                                new ArraySink(static_cast<byte *>(sink_buffer),
+                                              sink_size),
+                                false, TAG_SIZE);
 
-                aef.ChannelPut("AAD", static_cast<const byte *>(auth_msg),
-                               auth_size);
-                aef.ChannelMessageEnd("AAD");
+                if (auth_only) {
+                        byte auth_pad[AES::BLOCKSIZE] = {0};
+                        if (auth_size < AES::BLOCKSIZE) {
+                                memcpy(auth_pad, auth_msg, auth_size);
+                                auth_msg = auth_pad;
+                                auth_size = AES::BLOCKSIZE;
+                        }
+                        aef.ChannelPut("AAD", static_cast<const byte *>(plain),
+                                        size);
+                        aef.ChannelPut("AAD",
+                                        static_cast<const byte *>(auth_msg),
+                                        auth_size);
+                        aef.ChannelMessageEnd("AAD");
+                        aef.ChannelMessageEnd("");
+                } else {
+                        aef.ChannelPut("AAD",
+                                        static_cast<const byte *>(auth_msg),
+                                        auth_size);
+                        aef.ChannelMessageEnd("AAD");
+                        aef.ChannelPut("", static_cast<const byte *>(plain),
+                                        size);
+                        aef.ChannelMessageEnd("");
+                }
 
-                aef.ChannelPut("", static_cast<const byte *>(plain), size);
-                aef.ChannelMessageEnd("");
         } catch (CryptoPP::Exception &e) {
                 std::cerr << e.what() << std::endl;
                 return SECNFS_CRYPTO_ERROR;
         }
 
-        memmove(tag, static_cast<byte *>(buffer) + size, TAG_SIZE);
+        if (!auth_only)
+                memmove(tag, static_cast<byte *>(buffer) + size, TAG_SIZE);
+
         return SECNFS_OKAY;
 }
 
@@ -206,7 +228,7 @@ secnfs_s secnfs_verify_decrypt(secnfs_key_t key, secnfs_key_t iv,
                                uint64_t offset, uint64_t size,
                                const void *cipher, uint64_t auth_size,
                                const void *auth_msg, const void *tag,
-                               void *buffer)
+                               void *buffer, bool auth_only)
 {
         if (round_up(offset, AES::BLOCKSIZE) != offset ||
             round_up(size, AES::BLOCKSIZE) != size) {
@@ -228,16 +250,39 @@ secnfs_s secnfs_verify_decrypt(secnfs_key_t key, secnfs_key_t iv,
                         AuthenticatedDecryptionFilter::THROW_EXCEPTION,
                         TAG_SIZE);
 
-                adf.ChannelPut("AAD", static_cast<const byte *>(auth_msg),
-                               auth_size);
-                adf.ChannelPut("", static_cast<const byte *>(cipher), size);
-                adf.ChannelPut("", static_cast<const byte *>(tag), TAG_SIZE);
-                adf.ChannelMessageEnd("");
+                if (auth_only) {
+                        byte auth_pad[AES::BLOCKSIZE] = {0};
+                        if (auth_size < AES::BLOCKSIZE) {
+                                memcpy(auth_pad, auth_msg, auth_size);
+                                auth_msg = auth_pad;
+                                auth_size = AES::BLOCKSIZE;
+                        }
+                        adf.ChannelPut("AAD", static_cast<const byte *>(cipher),
+                                        size);
+                        adf.ChannelPut("AAD",
+                                        static_cast<const byte *>(auth_msg),
+                                        auth_size);
+                        adf.ChannelPut("", static_cast<const byte *>(tag),
+                                        TAG_SIZE);
+                        adf.ChannelMessageEnd("");
+                } else {
+                        adf.ChannelPut("AAD",
+                                        static_cast<const byte *>(auth_msg),
+                                        auth_size);
+                        adf.ChannelPut("", static_cast<const byte *>(cipher),
+                                        size);
+                        adf.ChannelPut("", static_cast<const byte *>(tag),
+                                        TAG_SIZE);
+                        adf.ChannelMessageEnd("");
+                }
 
                 if (!adf.GetLastResult()) {
                         std::cerr << "verification failed" << std::endl;
                         return SECNFS_NOT_VERIFIED;
                 }
+
+                if (auth_only)
+                        return SECNFS_OKAY;
 
                 adf.SetRetrievalChannel("");
                 uint64_t n = adf.MaxRetrievable();

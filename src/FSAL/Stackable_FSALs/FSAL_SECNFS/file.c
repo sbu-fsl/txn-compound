@@ -187,7 +187,8 @@ fsal_status_t do_aligned_read(struct secnfs_fsal_obj_handle *hdl,
                                         VERSION_SIZE,
                                         version_buf,
                                         secnfs_dif.tag,
-                                        buffer_align + i * PI_INTERVAL_SIZE);
+                                        buffer_align + i * PI_INTERVAL_SIZE,
+                                        0);
 
                 /* or return partial buffer ? */
                 if (ret != SECNFS_OKAY) {
@@ -272,7 +273,8 @@ fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
                                 VERSION_SIZE,
                                 version_buf,
                                 pd_buf + i * PI_INTERVAL_SIZE,
-                                secnfs_dif.tag);
+                                secnfs_dif.tag,
+                                0);
 
                 if (ret != SECNFS_OKAY) {
                         st = secnfs_to_fsal_status(ret);
