@@ -1,0 +1,49 @@
+probe kernel.function("__generic_file_aio_write").return {
+	if (execname() == "dixio_test")
+		printf("%s(%d) %s %d\n", execname(), pid(), probefunc(), $return);
+} 
+
+probe kernel.function("__blockdev_direct_IO").return {
+	if (execname() == "dixio_test")
+		printf("%s(%d) %s %d\n", execname(), pid(), probefunc(), $return);
+} 
+probe kernel.function("do_blockdev_direct_IO").return {
+	if (execname() == "dixio_test")
+		printf("%s(%d) %s %d\n", execname(), pid(), probefunc(), $return);
+} 
+probe kernel.function("dio_complete").return {
+	if (execname() == "dixio_test")
+		printf("%s(%d) %s %d\n", execname(), pid(), probefunc(), $return);
+} 
+probe kernel.function("generic_file_direct_write").return {
+	if (execname() == "dixio_test")
+		printf("%s(%d) %s %d %d %d\n", execname(), pid(), probefunc(), $count, $ocount, $return);
+} 
+probe kernel.function("generic_file_aio_write").return {
+	if (execname() == "dixio_test")
+		printf("%s(%d) %s %d\n", execname(), pid(), probefunc(), $return);
+} 
+probe module("ext4").function("ext4_file_write").return {
+	if (execname() == "dixio_test")
+		printf("dix_debug %s(%d) %s %d\n", execname(), pid(), probefunc(), $return);
+} 
+probe module("ext4").function("ext4_file_write") {
+	if (execname() == "dixio_test")
+		printf("dix_debug %s(%d) %s\n", execname(), pid(), probefunc());
+} 
+probe module("ext4").function("ext4_direct_IO").return {
+	if (execname() == "dixio_test")
+		printf("%s(%d) %s %d\n", execname(), pid(), probefunc(), $return);
+} 
+probe module("ext4").function("ext4_get_block").return {
+	if (execname() == "dixio_test")
+		printf("%s(%d) %s %d\n", execname(), pid(), probefunc(), $return);
+} 
+probe module("ext4").function("_ext4_get_block").return {
+	if (execname() == "dixio_test")
+		printf("%s(%d) %s %d\n", execname(), pid(), probefunc(), $return);
+} 
+probe module("ext4").function("ext4_map_blocks").return {
+	if (execname() == "dixio_test")
+		printf("%s(%d) %s %d\n", execname(), pid(), probefunc(), $return);
+} 

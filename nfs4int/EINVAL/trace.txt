@@ -1,0 +1,252 @@
+# tracer: function_graph
+#
+# CPU  DURATION                  FUNCTION CALLS
+# |     |   |                     |   |   |   |
+  1)   0.457 us    |  update_cfs_rq_blocked_load();
+  1)   0.071 us    |  update_cfs_rq_blocked_load();
+  1)   0.049 us    |  update_cfs_rq_blocked_load();
+  1)               |  __set_current_blocked() {
+  1)   0.173 us    |    __set_task_blocked();
+  1)   0.787 us    |  }
+  1)   0.362 us    |  get_pageblock_flags_group();
+  1)   0.264 us    |  update_cfs_rq_blocked_load();
+  1)   0.195 us    |  update_cfs_rq_blocked_load();
+  1)               |  __set_current_blocked() {
+  1)   0.166 us    |    __set_task_blocked();
+  1)   0.863 us    |  }
+  2)   0.271 us    |  get_pageblock_flags_group();
+  1)               |  __set_current_blocked() {
+  1)   0.099 us    |    __set_task_blocked();
+  1)   0.650 us    |  }
+  1)               |  __set_current_blocked() {
+  1)   0.084 us    |    __set_task_blocked();
+  1)   0.682 us    |  }
+  1)               |  __set_current_blocked() {
+  1)   0.044 us    |    __set_task_blocked();
+  1)   0.470 us    |  }
+  1)   0.088 us    |  update_cfs_rq_blocked_load();
+  1)   0.085 us    |  update_cfs_rq_blocked_load();
+  1)               |  update_blocked_averages() {
+  1)   0.064 us    |    update_cfs_rq_blocked_load();
+  1)   0.056 us    |    update_cfs_rq_blocked_load();
+  1)   1.368 us    |  }
+  2)               |  __set_current_blocked() {
+  2)   0.481 us    |    __set_task_blocked();
+  2)   1.150 us    |  }
+  3)   0.163 us    |  get_pageblock_flags_group();
+  3)               |  __find_get_block() {
+  3)   2.393 us    |    __find_get_block_slow();
+  3)   4.039 us    |  }
+  3)   1.642 us    |  generic_file_aio_read();
+  3)   0.679 us    |  generic_file_aio_read();
+  3)   0.191 us    |  generic_file_aio_read();
+  3)   0.777 us    |  generic_file_aio_read();
+  3)   0.053 us    |  exit_aio();
+  3)   0.156 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.051 us    |  get_pageblock_flags_group();
+  3)   0.046 us    |  get_pageblock_flags_group();
+  3)   0.053 us    |  get_pageblock_flags_group();
+  3)   0.050 us    |  get_pageblock_flags_group();
+  3)   0.051 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.049 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.045 us    |  get_pageblock_flags_group();
+  3)   0.049 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.045 us    |  get_pageblock_flags_group();
+  3)   0.045 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.065 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.053 us    |  get_pageblock_flags_group();
+  3)   0.046 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.045 us    |  get_pageblock_flags_group();
+  3)   0.043 us    |  get_pageblock_flags_group();
+  3)   0.045 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.049 us    |  get_pageblock_flags_group();
+  3)   0.050 us    |  get_pageblock_flags_group();
+  3)   0.046 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.051 us    |  get_pageblock_flags_group();
+  3)   0.051 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.045 us    |  get_pageblock_flags_group();
+  3)   0.071 us    |  get_pageblock_flags_group();
+  3)   0.704 us    |  generic_file_aio_read();
+  3)   0.115 us    |  update_cfs_rq_blocked_load();
+  3)   0.054 us    |  update_cfs_rq_blocked_load();
+  3)   1.672 us    |  generic_file_aio_read();
+  3)   1.187 us    |  generic_file_aio_read();
+  3)               |  blocking_notifier_call_chain() {
+  3)   0.186 us    |    __blocking_notifier_call_chain();
+  3)   0.812 us    |  }
+  3)   0.163 us    |  get_pageblock_flags_group();
+  3)   0.140 us    |  update_cfs_rq_blocked_load();
+  3)   0.075 us    |  update_cfs_rq_blocked_load();
+  3)               |  ext4_writepage_trans_blocks [ext4]() {
+  3)   0.050 us    |    jbd2_journal_blocks_per_page [jbd2]();
+  3)               |    ext4_meta_trans_blocks [ext4]() {
+  3)   0.049 us    |      ext4_ext_index_trans_blocks [ext4]();
+  3)   0.900 us    |    }
+  3)   2.593 us    |  }
+  3)   0.632 us    |  __find_get_block();
+  3)   0.045 us    |  ext4_superblock_csum_set [ext4]();
+  3)   0.157 us    |  __find_get_block();
+  3)   0.077 us    |  __find_get_block();
+  3)   0.060 us    |  __find_get_block();
+  3)   0.040 us    |  ext4_superblock_csum_set [ext4]();
+  3)   0.060 us    |  __find_get_block();
+  3)   0.061 us    |  __find_get_block();
+  3)   0.101 us    |  update_cfs_rq_blocked_load();
+  3)   0.078 us    |  update_cfs_rq_blocked_load();
+  3)   0.082 us    |  update_cfs_rq_blocked_load();
+  3)   0.070 us    |  update_cfs_rq_blocked_load();
+  3)   0.077 us    |  update_cfs_rq_blocked_load();
+  3)   0.073 us    |  update_cfs_rq_blocked_load();
+  3)   0.074 us    |  aio_ring_mmap();
+  3)               |  SyS_io_submit() {
+  3)               |    do_io_submit() {
+  3)   0.065 us    |      blk_start_plug();
+  3)               |      ext4_file_write [ext4]() {		# aio_run_iocb -> file->f_op->aio_write -> ext4_file_write
+  3)   0.041 us    |        blk_start_plug();
+  3)               |        __generic_file_aio_write() {	# filemap.c:2483  err = -EINVAL
+  3)   0.416 us    |          __find_get_block();
+  3)   0.107 us    |          __find_get_block();
+  3)               |          generic_file_direct_write() {	# return 0.  why ?
+  3)               |            ext4_direct_IO [ext4]() {
+  3)               |              ext4_ind_direct_IO [ext4]() {
+  3)   0.082 us    |                __find_get_block();
+  3)   0.040 us    |                ext4_superblock_csum_set [ext4]();
+  3)               |                __blockdev_direct_IO() {
+  3)   0.146 us    |                  get_pageblock_flags_group();
+  3)   0.056 us    |                  blk_start_plug();
+  3)               |                  ext4_get_block [ext4]() {
+  3)               |                    _ext4_get_block [ext4]() {
+  3)               |                      ext4_map_blocks [ext4]() {
+  3)   1.935 us    |                        ext4_ext_map_blocks [ext4]();
+  3)   2.895 us    |                      }
+  3)   3.569 us    |                    }
+  3)   4.129 us    |                  }
+  3)               |                  blk_finish_plug() {
+  3)   0.335 us    |                    blk_flush_plug_list();
+  3)   0.762 us    |                  }
+  3)   1.128 us    |                  dio_complete();
+  3) + 16.165 us   |                }
+  3)   0.087 us    |                __find_get_block();
+  3)   0.040 us    |                ext4_superblock_csum_set [ext4]();
+  3) + 21.865 us   |              }
+  3) + 22.860 us   |            }
+  3) + 23.955 us   |          }
+  3) + 38.155 us   |        }
+  3)               |        blk_finish_plug() {
+  3)   0.066 us    |          blk_flush_plug_list();
+  3)   0.355 us    |        }
+  3) + 40.634 us   |      }
+  3)   6.320 us    |      aio_complete();
+  3)               |      blk_finish_plug() {
+  3)   0.056 us    |        blk_flush_plug_list();
+  3)   0.479 us    |      }
+  3) ! 125.088 us  |    }
+  3) ! 125.708 us  |  }
+  3)   0.070 us    |  update_cfs_rq_blocked_load();
+  3)   0.097 us    |  update_cfs_rq_blocked_load();
+  3)               |  SyS_io_getevents() {
+  3)   5.044 us    |    aio_read_events();
+  3)   6.428 us    |  }
+  3)   0.047 us    |  update_cfs_rq_blocked_load();
+  3)   0.073 us    |  update_cfs_rq_blocked_load();
+  3)   0.073 us    |  update_cfs_rq_blocked_load();
+  3)   0.071 us    |  update_cfs_rq_blocked_load();
+  3)   0.111 us    |  update_cfs_rq_blocked_load();
+  3)   0.109 us    |  update_cfs_rq_blocked_load();
+  3)               |  blocking_notifier_call_chain() {
+  3)   0.174 us    |    __blocking_notifier_call_chain();
+  3)   0.831 us    |  }
+  3)               |  exit_aio() {
+  3)   0.253 us    |    aio_nr_sub();
+  3)   3.298 us    |  }
+  3)   0.149 us    |  get_pageblock_flags_group();
+  3)   0.074 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.049 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.053 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.051 us    |  get_pageblock_flags_group();
+  3)   0.046 us    |  get_pageblock_flags_group();
+  3)   0.046 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.046 us    |  get_pageblock_flags_group();
+  3)   0.046 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.043 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.051 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.049 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.064 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.046 us    |  get_pageblock_flags_group();
+  3)   0.045 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.366 us    |  get_pageblock_flags_group();
+  3)   0.049 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.050 us    |  get_pageblock_flags_group();
+  3)   0.055 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.052 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.046 us    |  get_pageblock_flags_group();
+  3)   0.048 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.047 us    |  get_pageblock_flags_group();
+  3)   0.152 us    |  update_cfs_rq_blocked_load();
+  3)   0.116 us    |  update_cfs_rq_blocked_load();
+  3)   0.162 us    |  update_cfs_rq_blocked_load();
+  3)   0.117 us    |  update_cfs_rq_blocked_load();
+  3)               |  update_blocked_averages() {
+  3)   0.209 us    |    update_cfs_rq_blocked_load();
+  3)   0.102 us    |    update_cfs_rq_blocked_load();
+  3)   0.086 us    |    update_cfs_rq_blocked_load();
+  3)   0.070 us    |    update_cfs_rq_blocked_load();
+  3)   3.404 us    |  }
+  1)               |  __set_current_blocked() {
+  1)   0.169 us    |    __set_task_blocked();
+  1)   0.904 us    |  }
+  1)               |  __set_current_blocked() {
+  1)   0.049 us    |    __set_task_blocked();
+  1)   0.350 us    |  }
+  1)               |  set_current_blocked() {
+  1)               |    __set_current_blocked() {
+  1)   0.056 us    |      __set_task_blocked();
+  1)   0.349 us    |    }
+  1)   0.741 us    |  }
+  1)   2.487 us    |  generic_file_aio_read();
+  1)   0.156 us    |  update_cfs_rq_blocked_load();
+  1)   0.142 us    |  update_cfs_rq_blocked_load();
+  1)   0.509 us    |  blk_complete_request();
+  1)   0.068 us    |  update_cfs_rq_blocked_load();
+  1)   0.074 us    |  update_cfs_rq_blocked_load();
