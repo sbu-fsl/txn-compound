@@ -235,9 +235,8 @@ fsal_status_t vfs_write_plus(struct fsal_obj_handle *obj_hdl,
 
 	if (offset == -1 || nb_written < 0) {
 		LogWarn(COMPONENT_FSAL, "dixio_pwrite failed: %s",
-			strerror(-nb_written));
-		retval = errno;
-		fsal_error = posix2fsal_error(retval);
+			strerror(errno));
+		fsal_error = posix2fsal_error(errno);
 		goto out;
 	}
 

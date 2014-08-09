@@ -48,7 +48,8 @@ static ssize_t __do_dixio(int fd, off_t offset, int iocmd,
 
 	if (io_queue_init(MAX_AIO_EVENTS, &ioctx)) {
 		DIX_ERR("io_queue_init");
-		return -EIO;
+		errno = EIO;
+		return -1;
 	}
 
 	cb.aio_fildes = fd;
@@ -71,7 +72,8 @@ static ssize_t __do_dixio(int fd, off_t offset, int iocmd,
 	}
 
 	if ((ret = (signed)events[0].res) < 0) {
-		fprintf(stderr, "do_dixio %d failed\n", iocmd);
+		errno = -ret;
+		fprintf(stderr, "do_dixio %d failed: %d\n", iocmd, errno);
 		return ret;
 	}
 
@@ -110,6 +112,7 @@ ssize_t do_dixio(int fd, void *buf, void *prot_buf, size_t count, off_t offset,
 		pbuf = gsh_malloc_aligned(PAGESIZE, page_roundup(pi_size));
 		if (!pbuf) {
 			DIX_ERR("could not alloc memory for prot_buf");
+			errno = ENOMEM;
 			return -1;
 		}
 
