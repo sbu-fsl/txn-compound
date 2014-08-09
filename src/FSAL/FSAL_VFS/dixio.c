@@ -23,6 +23,12 @@
 #define PAGESIZE 4096
 #define PAGESHIFT 12
 
+#ifdef COMPONENT_FSAL
+#define DIX_ERR(msg, args...) LogError(COMPONENT_FSAL, msg, ##args)
+#else
+#define DIX_ERR(msg, args...) perror(msg)
+#endif
+
 static inline size_t page_roundup(size_t size) {
 	return (size + PAGESIZE - 1) >> PAGESHIFT;
 }
@@ -41,7 +47,7 @@ static ssize_t __do_dixio(int fd, off_t offset, int iocmd,
 	io_context_t ioctx;
 
 	if (io_queue_init(MAX_AIO_EVENTS, &ioctx)) {
-		perror("io_queue_init");
+		DIX_ERR("io_queue_init");
 		return -EIO;
 	}
 
@@ -54,13 +60,13 @@ static ssize_t __do_dixio(int fd, off_t offset, int iocmd,
 
 	ret = io_submit(ioctx, 1, iocbps);
 	if (ret < 0) {
-		perror("io_submit");
+		DIX_ERR("io_submit");
 		return ret;
 	}
 
 	ret = io_getevents(ioctx, 1, 1, events, NULL);
 	if (ret < 0) {
-		perror("io_getevents");
+		DIX_ERR("io_getevents");
 		return ret;
 	}
 
@@ -95,7 +101,7 @@ ssize_t do_dixio(int fd, void *buf, void *prot_buf, size_t count, off_t offset,
 {
 	struct iovec iov[2];
 	int iovcnt = prot_buf ? 2 : 1;
-	void *pbuf = NULL;
+	void *pbuf = prot_buf;
 	ssize_t ret = 0;
 	size_t pi_size = 0;
 
@@ -103,7 +109,7 @@ ssize_t do_dixio(int fd, void *buf, void *prot_buf, size_t count, off_t offset,
 		pi_size = get_pi_size(count);
 		pbuf = gsh_malloc_aligned(PAGESIZE, page_roundup(pi_size));
 		if (!pbuf) {
-			perror("could not alloc memory for prot_buf");
+			DIX_ERR("could not alloc memory for prot_buf");
 			return -1;
 		}
 
