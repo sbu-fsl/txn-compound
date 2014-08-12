@@ -637,6 +637,17 @@ bool secnfs_offset_in_hole(void *p, uint64_t offset)
 }
 
 
+bool secnfs_range_has_hole(void *p, uint64_t offset, uint64_t size)
+{
+        uint64_t hole_off, hole_len;
+        secnfs_hole_find_next(p, offset, &hole_off, &hole_len);
+        if (!hole_len)
+                return 0;
+
+        return hole_off <= offset || hole_off < offset + size;
+}
+
+
 #ifdef __cplusplus
 }
 #endif

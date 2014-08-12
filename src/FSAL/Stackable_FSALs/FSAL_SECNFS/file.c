@@ -424,7 +424,8 @@ secnfs_s secnfs_fill_zero(struct secnfs_fsal_obj_handle *hdl,
 
         size_align = right - left_down;
         /* filling size can be arbitrarily large, allocate fixed buffer */
-        fs_maxwrite = hdl->obj_handle.export->ops->fs_maxwrite(hdl->obj_handle.export);
+        fs_maxwrite = hdl->obj_handle.export->ops->fs_maxwrite(
+                                                        hdl->obj_handle.export);
         buffer_size = MIN(MIN(size_align, FILL_ZERO_BUFFER_SIZE), fs_maxwrite);
         buffer = gsh_calloc(1, buffer_size);
 
@@ -470,7 +471,7 @@ secnfs_s secnfs_fill_zero(struct secnfs_fsal_obj_handle *hdl,
                                 size = buffer_size;
                         else
                                 size = size_align - write_amount;
-                        /* buffer will be modified by secnfs_write */
+                        /* buffer will be modified by encrypted aligned_write */
                         memset(buffer, 0, size);
                 }
         } while (write_amount < size_align);
@@ -684,7 +685,7 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
         size_align_lock = secnfs_range_try_lock(hdl->range_lock,
                                                 offset_align, size_align);
         if (!size_align_lock) {
-                SECNFS_D("hdl = %x; delayed");
+                SECNFS_D("hdl = %x; write delayed");
                 return fsalstat(ERR_FSAL_DELAY, 0);
         }
 

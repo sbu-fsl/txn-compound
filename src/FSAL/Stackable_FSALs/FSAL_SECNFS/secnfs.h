@@ -270,6 +270,7 @@ size_t secnfs_hole_remove(void *p, uint64_t offset, uint64_t length);
 void secnfs_hole_find_next(void *p, uint64_t offset,
                            uint64_t *nxt_offset, uint64_t *nxt_length);
 bool secnfs_offset_in_hole(void *p, uint64_t offset);
+bool secnfs_range_has_hole(void *p, uint64_t offset, uint64_t size);
 
 /**
  * Serialize uint64_t to "little-endian" byte array
