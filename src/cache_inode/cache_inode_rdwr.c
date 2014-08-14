@@ -121,15 +121,13 @@ cache_inode_rdwr(cache_entry_t *entry,
 	PTHREAD_RWLOCK_rdlock(&entry->content_lock);
 	content_locked = true;
 	loflags = obj_hdl->ops->status(obj_hdl);
-	while ((!is_open(entry))
-	       || (loflags && loflags != FSAL_O_RDWR
-		       && (loflags & openflags) != openflags)) {
+	while (!is_open(entry) ||
+			(loflags && (loflags & openflags) != openflags)) {
 		PTHREAD_RWLOCK_unlock(&entry->content_lock);
 		PTHREAD_RWLOCK_wrlock(&entry->content_lock);
 		loflags = obj_hdl->ops->status(obj_hdl);
-		if ((!is_open(entry))
-		    || (loflags && loflags != FSAL_O_RDWR
-			&& (loflags & openflags) != openflags)) {
+		if (!is_open(entry) ||
+			(loflags && (loflags & openflags) != openflags)) {
 			status =
 			    cache_inode_open(entry, openflags, req_ctx,
 					     (CACHE_INODE_FLAG_CONTENT_HAVE |
