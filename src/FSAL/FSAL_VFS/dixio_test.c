@@ -27,9 +27,6 @@ static uint32_t ref_tag = 0xbeaf;
 
 static uint32_t pi_flags = GENERATE_GUARD;
 
-#define buf_len (N << 9)
-#define pbuf_len ((N + 1) * sizeof(struct sd_dif_tuple))
-
 /* Table generated using the following polynomium:
  * x^16 + x^15 + x^11 + x^9 + x^8 + x^7 + x^5 + x^4 + x^2 + x + 1
  * gt: 0x8bb7
@@ -88,8 +85,8 @@ static void stamp_pi_buffer(struct sd_dif_tuple *t,
 	uint16_t csum = crc_t10dif(0, sec_data, SEC);
 
 	t->guard_tag = pi_flags & GENERATE_GUARD ? 0 : htons(csum);
-	t->app_tag = pi_flags & GENERATE_APP ? 0 : htons(app_tag);
-	t->ref_tag = pi_flags & GENERATE_REF ? 0 : htonl(ref_tag);
+	t->app_tag = htons(app_tag);
+	t->ref_tag = htonl(ref_tag);
 }
 
 
@@ -110,11 +107,13 @@ static void dump_buffer(char *buf, size_t len)
 	printf("\n");
 }
 
-static void test_normal_dio(int fd, off_t offset)
+static void test_normal_dio(int fd, off_t offset, size_t block)
 {
 	ssize_t ret;
 	void *buf, *buf2;
 	struct iovec iov[1];
+
+	size_t buf_len = block * PAGESIZE;
 
 	if (posix_memalign(&buf, PAGESIZE, buf_len) ||
 	    posix_memalign(&buf2, PAGESIZE, buf_len)) {
@@ -142,11 +141,14 @@ static void test_normal_dio(int fd, off_t offset)
 }
 
 
-static void test_dixio(int fd, off_t offset)
+static void test_dixio(int fd, off_t offset, size_t block)
 {
 	int i, ret;
 	void *pb, *buf, *buf2, *prot_buf, *prot_buf2;
 	struct sd_dif_tuple *pp;
+
+	size_t buf_len = block * PAGESIZE;
+	size_t pbuf_len = block * 8 * sizeof(struct sd_dif_tuple);
 
 	if (posix_memalign(&buf, PAGESIZE, buf_len) ||
 	    posix_memalign(&buf2, PAGESIZE, buf_len) ||
@@ -155,11 +157,9 @@ static void test_dixio(int fd, off_t offset)
 		error(1, ENOMEM, "memalign");
 	}
 
-	/*  XXX: how is this flag used? */
-	memcpy(prot_buf, &pi_flags, sizeof(pi_flags));
-	memset(buf, magic_byte, N * SEC);
-	for (i = 0, pb = buf, pp = prot_buf + sizeof(struct sd_dif_tuple);
-	     i < N; ++i, pb += SEC, ++pp) {
+	memset(buf, magic_byte, buf_len);
+	for (i = 0, pb = buf, pp = prot_buf;
+	     i < block * 8; ++i, pb += SEC, ++pp) {
 		stamp_pi_buffer(pp, pb, pi_flags, 0, ref_tag);
 	}
 
@@ -170,7 +170,6 @@ static void test_dixio(int fd, off_t offset)
 		error(1, -ret, "dixio_pwrite");
 	}
 
-	memcpy(prot_buf2, &pi_flags, sizeof(pi_flags));
 	ret = dixio_pread(fd, buf2, prot_buf2, buf_len, offset);
 	if (ret < 0) {
 		error(1, -ret, "dixio_pread");
@@ -193,18 +192,20 @@ static void test_dixio(int fd, off_t offset)
 }
 
 
-static void test_dixread(int fd, off_t offset)
+static void test_dixread(int fd, off_t offset, size_t block)
 {
 	int i, ret;
 	void *pb, *buf, *prot_buf;
 	struct sd_dif_tuple *pp;
+
+	size_t buf_len = block * PAGESIZE;
+	size_t pbuf_len = block * 8 * sizeof(struct sd_dif_tuple);
 
 	if (posix_memalign(&buf, PAGESIZE, buf_len) ||
 	    posix_memalign(&prot_buf, PAGESIZE, pbuf_len)) {
 		error(1, ENOMEM, "memalign");
 	}
 
-	memcpy(prot_buf, &pi_flags, sizeof(pi_flags));
 	ret = dixio_pread(fd, buf, prot_buf, buf_len, offset);
 	if (ret < 0) {
 		error(1, -ret, "dixio_pread");
@@ -217,12 +218,13 @@ static void test_dixread(int fd, off_t offset)
 }
 
 
-static void test_dixwrite(int fd, off_t offset)
+static void test_dixwrite(int fd, off_t offset, size_t block)
 {
-	test_dixio(fd, offset);
+	test_dixio(fd, offset, block);
 }
 
 const char *option_str = " -h	    print help\n"
+	" -n 	create a new file\n"
 	" -o offset	file offset\n"
 	" -r ref_tag	reference tag value\n"
 	" -b byte	magic byte value\n"
@@ -244,11 +246,15 @@ int main(int argc, char *argv[])
 	size_t fsize;
 	off_t offset = 0;
 	char op = 'x';
+	int new = 0;
 
-	while ((opt = getopt(argc, argv, "o:p:r:b:h")) != -1) {
+	while ((opt = getopt(argc, argv, "no:p:r:b:h")) != -1) {
 		switch(opt) {
 		case 'o':
 			offset = strtoull(optarg, NULL, 0);
+			break;
+		case 'n':
+			new = O_CREAT | O_EXCL;
 			break;
 		case 'p':
 			op = optarg[0];
@@ -273,7 +279,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	fd = open(argv[optind], O_DIRECT | O_SYNC | O_RDWR);
+	fd = open(argv[optind], O_DIRECT | O_SYNC | O_RDWR | new, 0644);
 	if (fd < 0) {
 		error(1, errno, argv[optind]);
 	}
@@ -284,16 +290,23 @@ int main(int argc, char *argv[])
 
 	switch (op) {
 	case 'd':
-		test_normal_dio(fd, offset);
+		test_normal_dio(fd, offset, 1);
 		break;
 	case 'x':
-		test_dixio(fd, offset);
+		test_dixio(fd, offset, 1);
 		break;
 	case 'r':
-		test_dixread(fd, offset);
+		test_dixread(fd, offset, 1);
 		break;
 	case 'w':
-		test_dixwrite(fd, offset);
+		test_dixwrite(fd, offset, 1);
+		break;
+	case 'c': // custom
+		test_normal_dio(fd, 0, 2);
+		ftruncate(fd, 8192);
+		test_dixwrite(fd, 8192, 1);
+		test_normal_dio(fd, 0, 2);
+		test_dixread(fd, 8192, 1);
 		break;
 	default:
 		error(1, EINVAL, "unknown opcode: %s", optarg);
