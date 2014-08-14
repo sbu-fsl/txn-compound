@@ -84,8 +84,7 @@ static inline uint64_t get_pi_count(uint64_t data_len)
 
 static inline uint64_t get_pi_size(uint64_t data_len)
 {
-        /* include DIF header (user flags such as GENERATE_ALL) */
-        return get_pi_count(data_len) * PI_SD_DIF_SIZE + PI_DIF_HEADER_SIZE;
+        return get_pi_count(data_len) * PI_SD_DIF_SIZE;
 }
 
 #endif				/* _NFS_DIX_H */
