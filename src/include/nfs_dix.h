@@ -27,7 +27,6 @@ struct sd_dif_tuple {
 
 #define PI_INTERVAL_SIZE 4096
 #define PI_INTERVAL_SHIFT 12
-#define PI_DIF_HEADER_SIZE 8    /* same size as struct sd_dif_tuple */
 #define PI_SD_DIF_SIZE (PI_INTERVAL_SIZE >> 9) * 8  /* for each PI_INTERVAL */
 
 /**

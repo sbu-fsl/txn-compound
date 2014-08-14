@@ -165,8 +165,7 @@ fsal_status_t do_aligned_read(struct secnfs_fsal_obj_handle *hdl,
         }
 
         for (i = 0; i < get_pi_count(*read_amount); i++) {
-                extract_from_sd_dif(pi_buf + PI_DIF_HEADER_SIZE
-                                    + i * PI_SD_DIF_SIZE, secnfs_dif_buf,
+                extract_from_sd_dif(pi_buf + i * PI_SD_DIF_SIZE, secnfs_dif_buf,
                                     PI_SECNFS_DIF_SIZE, 1);
                 secnfs_dif_from_buf(&secnfs_dif, secnfs_dif_buf);
                 uint64_to_bytes(version_buf, secnfs_dif.version);
@@ -254,8 +253,6 @@ fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
                 st = fsalstat(ERR_FSAL_NOMEM, 0);
                 goto out;
         }
-        memset(pi_buf, 0, PI_DIF_HEADER_SIZE);
-        pi_buf[0] = GENERATE_GUARD; /* required DIF header */
 
         /* allocate buffer for serialization of secnfs_dif_t */
         secnfs_dif_buf = gsh_malloc(PI_SECNFS_DIF_SIZE);
@@ -293,8 +290,8 @@ fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
                          secnfs_dif.tag[0], secnfs_dif.tag[15]);
 
                 secnfs_dif_to_buf(&secnfs_dif, secnfs_dif_buf);
-                fill_sd_dif(pi_buf + PI_DIF_HEADER_SIZE + i * PI_SD_DIF_SIZE,
-                                secnfs_dif_buf, PI_SECNFS_DIF_SIZE, 1);
+                fill_sd_dif(pi_buf + i * PI_SD_DIF_SIZE, secnfs_dif_buf,
+                            PI_SECNFS_DIF_SIZE, 1);
         }
         // dump_pi_buf(pi_buf, pi_size);
 
