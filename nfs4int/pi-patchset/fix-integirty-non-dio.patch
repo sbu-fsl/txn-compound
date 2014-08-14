@@ -1,0 +1,54 @@
+diff --git a/drivers/scsi/sd_dif.c b/drivers/scsi/sd_dif.c
+index bea648b..ca87038 100644
+--- a/drivers/scsi/sd_dif.c
++++ b/drivers/scsi/sd_dif.c
+@@ -225,7 +225,7 @@ static int sd_dif_type3_generate(struct blk_integrity_exchg *bix, csum_fn *fn,
+ 	struct sd_dif_tuple *sdt = bix->prot_buf;
+ 	unsigned int i;
+ 
+-	if (flags & (~GENERATE_ALL | GENERATE_REF))
++	if (flags & GENERATE_REF)
+ 		return -EINVAL;
+ 	if (!flags)
+ 		return -ENOTTY;
+@@ -246,12 +246,12 @@ static int sd_dif_type3_generate(struct blk_integrity_exchg *bix, csum_fn *fn,
+ 
+ static void sd_dif_type3_generate_crc(struct blk_integrity_exchg *bix)
+ {
+-	sd_dif_type3_generate(bix, sd_dif_crc_fn, GENERATE_ALL);
++	sd_dif_type3_generate(bix, sd_dif_crc_fn, GENERATE_GUARD | GENERATE_APP);
+ }
+ 
+ static void sd_dif_type3_generate_ip(struct blk_integrity_exchg *bix)
+ {
+-	sd_dif_type3_generate(bix, sd_dif_ip_fn, GENERATE_ALL);
++	sd_dif_type3_generate(bix, sd_dif_ip_fn, GENERATE_GUARD | GENERATE_APP);
+ }
+ 
+ static int sd_dif_type3_mod_crc(struct blk_integrity_exchg *bix, int flags)
+diff --git a/fs/direct-io.c b/fs/direct-io.c
+index 6740638..9d032bb 100644
+--- a/fs/direct-io.c
++++ b/fs/direct-io.c
+@@ -1263,7 +1263,8 @@ do_blockdev_direct_IO(int rw, struct kiocb *iocb, struct inode *inode,
+ 
+ 	retval = 0;
+ #ifdef CONFIG_BLK_DEV_INTEGRITY
+-	sdio.pi_iter = iocb->ki_ioext->ke_pi_iter;
++	if (iocb->ki_ioext)
++		sdio.pi_iter = iocb->ki_ioext->ke_pi_iter;
+ #endif
+ 	sdio.blkbits = blkbits;
+ 	sdio.blkfactor = i_blkbits - blkbits;
+diff --git a/mm/filemap.c b/mm/filemap.c
+index d35ddb3..043cb5f 100644
+--- a/mm/filemap.c
++++ b/mm/filemap.c
+@@ -2479,6 +2479,7 @@ ssize_t __generic_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
+ 			goto out;
+ 
+ 		if (iocb->ki_flags & KIOCB_DIO_ONLY) {
++			WARN_ON(written == 0);
+ 			err = -EINVAL;
+ 			goto out;
+ 		}
