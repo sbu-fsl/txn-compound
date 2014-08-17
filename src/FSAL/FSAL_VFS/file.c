@@ -106,7 +106,13 @@ fsal_status_t vfs_read(struct fsal_obj_handle *obj_hdl,
 	assert(myself->u.file.fd >= 0
 	       && myself->u.file.openflags != FSAL_O_CLOSED);
 
-	nb_read = pread(myself->u.file.fd, buffer, buffer_size, offset);
+	/* XXX WORKAROUND: use dixio interface (DIRECT_IO) */
+	if (obj_hdl->type == REGULAR_FILE)
+		nb_read = dixio_pread(myself->u.file.fd,
+				      buffer, NULL,
+				      buffer_size, offset);
+	else
+		nb_read = pread(myself->u.file.fd, buffer, buffer_size, offset);
 
 	if (offset == -1 || nb_read == -1) {
 		retval = errno;
@@ -145,7 +151,14 @@ fsal_status_t vfs_write(struct fsal_obj_handle *obj_hdl,
 	       && myself->u.file.openflags != FSAL_O_CLOSED);
 
 	fsal_set_credentials(opctx->creds);
-	nb_written = pwrite(myself->u.file.fd, buffer, buffer_size, offset);
+	/* XXX WORKAROUND: use dixio interface (DIRECT_IO) */
+	if (obj_hdl->type == REGULAR_FILE)
+		nb_written = dixio_pwrite(myself->u.file.fd,
+					  buffer, NULL,
+					  buffer_size, offset);
+	else
+		nb_written = pwrite(myself->u.file.fd, buffer, buffer_size,
+				    offset);
 
 	if (offset == -1 || nb_written == -1) {
 		retval = errno;

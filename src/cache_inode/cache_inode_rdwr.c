@@ -104,6 +104,9 @@ cache_inode_rdwr(cache_entry_t *entry,
 		if (*sync)
 			openflags |= FSAL_O_SYNC;
 	}
+	/* XXX WORKAROUND: write header via dixio (require O_DIRECT) */
+	openflags |= FSAL_O_DIRECT;
+	openflags |= FSAL_O_SYNC;
 
 	assert(obj_hdl != NULL);
 
