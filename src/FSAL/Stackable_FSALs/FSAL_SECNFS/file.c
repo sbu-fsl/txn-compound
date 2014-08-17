@@ -308,7 +308,36 @@ fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
                                           fsal_stable);
         if (FSAL_IS_ERROR(st)) {
                 SECNFS_D("hdl = %x; write_plus failed: %u", hdl, st.major);
-                goto out;
+                /* XXX WORKAROUND for EINVAL kernel bug */
+                if (!(st.major == ERR_FSAL_INVAL &&
+                        secnfs_range_has_hole(hdl->holes, offset_align,
+                                              size_align)))
+                        goto out;
+        }
+        /* XXX WORKAROUND for EINVAL kernel bug */
+        if (st.major == ERR_FSAL_INVAL &&
+                secnfs_range_has_hole(hdl->holes, offset_align, size_align)) {
+                SECNFS_D("hdl = %x; WORKAROUND write-then-write_plus", hdl);
+                st = next_ops.obj_ops->write(hdl->next_handle,
+                                             opctx,
+                                             next_offset, size_align,
+                                             pd_buf, write_amount,
+                                             fsal_stable);
+                if (FSAL_IS_ERROR(st)) {
+                        SECNFS_D("hdl = %x; *write* failed: %u", hdl, st.major);
+                        goto out;
+                }
+                st = next_ops.obj_ops->write_plus(hdl->next_handle,
+                                                  opctx,
+                                                  next_offset, size_align,
+                                                  pd_buf, write_amount,
+                                                  &data_plus,
+                                                  fsal_stable);
+                if (FSAL_IS_ERROR(st)) {
+                        SECNFS_D("hdl = %x; write_plus still failed: %u",
+                                 hdl, st.major);
+                        goto out;
+                }
         }
 
         *write_amount = pi_round_down(*write_amount);
