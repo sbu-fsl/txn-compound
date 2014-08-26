@@ -46,7 +46,6 @@
 #include <pthread.h>
 #include <assert.h>
 #include <arpa/inet.h>
-#include "nlm_list.h"
 #include "fsal.h"
 #include "nfs_core.h"
 #include "nfs_req_queue.h"
@@ -74,10 +73,16 @@ static inline void nfs_rpc_cb_init_ccache(const char *ccache)
 {
 	int code = 0;
 
-	if (mkdir(ccache, 700) < 0)
-		LogWarn(COMPONENT_INIT,
-			"mkdir failed creating credential cache directory: %s (%d)",
-			ccache, errno);
+	if (mkdir(ccache, 700) < 0) {
+		if (errno == EEXIST)
+			LogEvent(COMPONENT_INIT,
+				 "Callback creds directory (%s) already exists",
+				 ccache);
+		else
+			LogWarn(COMPONENT_INIT,
+				"Could not create credential cache directory: %s (%s)",
+				ccache, strerror(errno));
+	}
 	ccachesearch[0] = nfs_param.krb5_param.ccache_dir;
 
 	code = gssd_refresh_krb5_machine_credential(host_name, NULL,
@@ -104,12 +109,9 @@ void nfs_rpc_cb_pkginit(void)
 	rpc_call_pool = pool_init("RPC Call Pool",
 				  sizeof(rpc_call_t), pool_basic_substrate,
 				  NULL, nfs_rpc_init_call, NULL);
-	if (!(rpc_call_pool)) {
-		LogCrit(COMPONENT_INIT,
+	if (!(rpc_call_pool))
+		LogFatal(COMPONENT_INIT,
 			"Error while allocating rpc call pool");
-		LogError(COMPONENT_INIT, ERR_SYS, ERR_MALLOC, errno);
-		Fatal();
-	}
 
 	/* ccache */
 	nfs_rpc_cb_init_ccache(nfs_param.krb5_param.ccache_dir);
@@ -300,8 +302,7 @@ void nfs_set_client_location(nfs_client_id_t *clientid,
 static inline int32_t nfs_clid_connected_socket(nfs_client_id_t *clientid,
 						int *fd, int *proto)
 {
-	struct sockaddr_in *sin;
-	struct sockaddr_in6 *sin6;
+	int domain, sock_type, protocol, sock_size;
 	int nfd, code = 0;
 
 	assert(clientid->cid_minorversion == 0);
@@ -309,62 +310,53 @@ static inline int32_t nfs_clid_connected_socket(nfs_client_id_t *clientid,
 	*fd = 0;
 	*proto = -1;
 
-	switch (clientid->cid_cb.v40.cb_addr.ss.ss_family) {
-	case AF_INET:
-		sin = (struct sockaddr_in *)&clientid->cid_cb.v40.cb_addr.ss;
-		switch (clientid->cid_cb.v40.cb_addr.nc) {
-		case _NC_TCP:
-			nfd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
-			*proto = IPPROTO_TCP;
-			break;
-		case _NC_UDP:
-			nfd = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
-			*proto = IPPROTO_UDP;
-			break;
-		default:
-			code = EINVAL;
-			goto out;
-			break;
-		}
-
-		code = connect(nfd, (struct sockaddr *)sin,
-			       sizeof(struct sockaddr_in));
-		if (code == -1) {
-			LogWarn(COMPONENT_NFS_CB, "connect fail errno %d",
-				errno);
-			goto out;
-		}
-		*fd = nfd;
+	switch (clientid->cid_cb.v40.cb_addr.nc) {
+	case _NC_TCP:
+	case _NC_TCP6:
+		sock_type = SOCK_STREAM;
+		protocol = IPPROTO_TCP;
 		break;
-	case AF_INET6:
-		sin6 = (struct sockaddr_in6 *)&clientid->cid_cb.v40.cb_addr.ss;
-		switch (clientid->cid_cb.v40.cb_addr.nc) {
-		case _NC_TCP6:
-			nfd = socket(PF_INET6, SOCK_STREAM, IPPROTO_TCP);
-			*proto = IPPROTO_TCP;
-			break;
-		case _NC_UDP6:
-			nfd = socket(PF_INET6, SOCK_DGRAM, IPPROTO_UDP);
-			*proto = IPPROTO_UDP;
-			break;
-		default:
-			code = EINVAL;
-			goto out;
-			break;
-		}
-		code = connect(nfd, (struct sockaddr *)sin6,
-			       sizeof(struct sockaddr_in6));
-		if (code == -1) {
-			LogWarn(COMPONENT_NFS_CB, "connect fail errno %d",
-				errno);
-			goto out;
-		}
-		*fd = nfd;
+	case _NC_UDP6:
+	case _NC_UDP:
+		sock_type = SOCK_DGRAM;
+		protocol = IPPROTO_UDP;
 		break;
 	default:
 		code = EINVAL;
-		break;
+		goto out;
 	}
+	switch (clientid->cid_cb.v40.cb_addr.ss.ss_family) {
+	case AF_INET:
+		domain = PF_INET;
+		sock_size = sizeof(struct sockaddr_in);
+		break;
+	case AF_INET6:
+		domain = PF_INET6;
+		sock_size = sizeof(struct sockaddr_in6);
+		break;
+	default:
+		code = EINVAL;
+		goto out;
+	}
+	nfd = socket(domain, sock_type, protocol);
+	if (nfd < 0) {
+		code = errno;
+		LogWarn(COMPONENT_NFS_CB,
+			"socket failed %d (%s)", code, strerror(code));
+		goto out;
+	}
+	code = connect(nfd,
+		       (struct sockaddr *)&clientid->cid_cb.v40.cb_addr.ss,
+		       sock_size);
+	if (code < 0) {
+		code = errno;
+		LogWarn(COMPONENT_NFS_CB, "connect fail errno %d (%s)",
+			code, strerror(code));
+		close(nfd);
+		goto out;
+	}
+	*proto = protocol;
+	*fd = nfd;
 
  out:
 	return code;
@@ -583,6 +575,7 @@ int nfs_rpc_create_chan_v40(nfs_client_id_t *clientid, uint32_t flags)
 	}
 
 	if (!chan->clnt) {
+		close(fd);
 		code = EINVAL;
 		goto out;
 	}
@@ -992,6 +985,7 @@ int32_t nfs_rpc_dispatch_call(rpc_call_t *call, uint32_t flags)
 {
 	int code = 0;
 	struct timeval CB_TIMEOUT = { 15, 0 };	/* XXX */
+	rpc_call_hook hook_status = RPC_CALL_COMPLETE;
 
 	/* send the call, set states, wake waiters, etc */
 	pthread_mutex_lock(&call->we.mtx);
@@ -1024,8 +1018,10 @@ int32_t nfs_rpc_dispatch_call(rpc_call_t *call, uint32_t flags)
 
 	/* If a call fails, we have to assume path down, or equally fatal
 	 * error.  We may need back-off. */
-	if (call->stat != RPC_SUCCESS)
+	if (call->stat != RPC_SUCCESS) {
 		_nfs_rpc_destroy_chan(call->chan);
+		hook_status = RPC_CALL_ABORT;
+	}
 
  unlock:
 	pthread_mutex_unlock(&call->chan->mtx);
@@ -1040,7 +1036,7 @@ int32_t nfs_rpc_dispatch_call(rpc_call_t *call, uint32_t flags)
 	pthread_mutex_unlock(&call->we.mtx);
 
 	/* call completion hook */
-	RPC_CALL_HOOK(call, RPC_CALL_COMPLETE, call->completion_arg,
+	RPC_CALL_HOOK(call, hook_status, call->completion_arg,
 		      NFS_RPC_CALL_NONE);
 
 	return code;
@@ -1148,13 +1144,15 @@ static void free_single_call(rpc_call_t *call)
 	CB_SEQUENCE4args *sequence =
 	    (&call->cbt.v_u.v4.args.argarray.argarray_val[0].nfs_cb_argop4_u.
 	     opcbsequence);
-	if (sequence->csa_referring_call_lists.csa_referring_call_lists_val->
-	    rcl_referring_calls.rcl_referring_calls_val) {
-		gsh_free(sequence->csa_referring_call_lists.
-			 csa_referring_call_lists_val->rcl_referring_calls.
-			 rcl_referring_calls_val);
-	}
 	if (sequence->csa_referring_call_lists.csa_referring_call_lists_val) {
+		if (sequence->csa_referring_call_lists.
+		    csa_referring_call_lists_val->
+		    rcl_referring_calls.rcl_referring_calls_val) {
+			gsh_free(sequence->csa_referring_call_lists.
+				 csa_referring_call_lists_val->
+				 rcl_referring_calls.
+				 rcl_referring_calls_val);
+		}
 		gsh_free(sequence->csa_referring_call_lists.
 			 csa_referring_call_lists_val);
 	}
@@ -1341,4 +1339,49 @@ void nfs41_complete_single(rpc_call_t *call, rpc_call_hook hook, void *arg,
 			call->cbt.v_u.v4.args.argarray.argarray_val[0]
 			.nfs_cb_argop4_u.opcbsequence.csa_slotid, true);
 	free_single_call(call);
+}
+
+/**
+ * @brief test the state of callback channel for a clientid using NULL.
+ * @return  enum clnt_stat
+ */
+
+enum clnt_stat nfs_test_cb_chan(nfs_client_id_t *pclientid)
+{
+	int32_t tries;
+	struct timeval CB_TIMEOUT = {15, 0};
+	rpc_call_channel_t *chan;
+	enum clnt_stat stat = RPC_SUCCESS;
+	assert(pclientid);
+	/* create (fix?) channel */
+	for (tries = 0; tries < 2; ++tries) {
+
+		chan = nfs_rpc_get_chan(pclientid, NFS_RPC_FLAG_NONE);
+		if (!chan) {
+			LogCrit(COMPONENT_NFS_CB, "nfs_rpc_get_chan failed");
+			stat = RPC_SYSTEMERROR;
+			goto out;
+		}
+
+		if (!chan->clnt) {
+			LogCrit(COMPONENT_NFS_CB,
+				"nfs_rpc_get_chan failed (no clnt)");
+			stat = RPC_SYSTEMERROR;
+			goto out;
+		}
+
+		/* try the CB_NULL proc -- inline here, should be ok-ish */
+		stat = rpc_cb_null(chan, CB_TIMEOUT, false);
+		LogDebug(COMPONENT_NFS_CB,
+			"rpc_cb_null on client %p returns %d",
+			pclientid, stat);
+
+		/* RPC_INTR indicates that we should refresh the
+		 *      * channel and retry */
+		if (stat != RPC_INTR)
+			break;
+	}
+
+out:
+	return stat;
 }

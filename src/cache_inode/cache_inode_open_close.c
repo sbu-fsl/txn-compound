@@ -95,7 +95,7 @@ is_open_for_write(cache_entry_t *entry)
 	if ((entry == NULL) || (entry->type != REGULAR_FILE))
 		return false;
 	openflags = entry->obj_handle->ops->status(entry->obj_handle);
-	return ((openflags == FSAL_O_RDWR) || (openflags == FSAL_O_WRITE));
+	return openflags & FSAL_O_WRITE;
 }
 
 /**
@@ -116,7 +116,7 @@ bool is_open_for_read(cache_entry_t *entry)
 	if ((entry == NULL) || (entry->type != REGULAR_FILE))
 		return false;
 	openflags = entry->obj_handle->ops->status(entry->obj_handle);
-	return ((openflags == FSAL_O_RDWR) || (openflags == FSAL_O_READ));
+	return openflags & FSAL_O_READ;
 }
 
 /**
@@ -127,7 +127,6 @@ bool is_open_for_read(cache_entry_t *entry)
  *
  * @param[in]  entry     Cache entry representing the file to open
  * @param[in]  openflags The type of access for which to open
- * @param[in]  req_ctx   FSAL operation context
  * @param[in]  flags     Flags indicating lock status
  *
  * @return CACHE_INODE_SUCCESS if successful, errors otherwise
@@ -136,7 +135,6 @@ bool is_open_for_read(cache_entry_t *entry)
 cache_inode_status_t
 cache_inode_open(cache_entry_t *entry,
 		 fsal_openflags_t openflags,
-		 struct req_op_context *req_ctx,
 		 uint32_t flags)
 {
 	/* Error return from FSAL */
@@ -144,6 +142,8 @@ cache_inode_open(cache_entry_t *entry,
 	fsal_openflags_t current_flags;
 	struct fsal_obj_handle *obj_hdl;
 	cache_inode_status_t status = CACHE_INODE_SUCCESS;
+	struct fsal_export *fsal_export;
+	bool closed;
 
 	assert(entry->obj_handle != NULL);
 
@@ -166,9 +166,22 @@ cache_inode_open(cache_entry_t *entry,
 	current_flags = obj_hdl->ops->status(obj_hdl);
 	/* Open file need to be closed, unless it is already open as
 	 * read/write */
-	if (current_flags != FSAL_O_CLOSED && (current_flags & openflags) !=
-	    openflags) {
-		fsal_status = obj_hdl->ops->close(obj_hdl);
+	if ((current_flags & openflags) != openflags &&
+		(current_flags != FSAL_O_CLOSED)) {
+		/* If the FSAL has reopen method, we just use it instead
+		 * of closing and opening the file again. This avoids
+		 * losing any lock state due to closing the file!
+		 */
+		fsal_export = op_ctx->fsal_export;
+		if (fsal_export->ops->fs_supports(fsal_export,
+						  fso_reopen_method)) {
+			fsal_status = obj_hdl->ops->reopen(obj_hdl,
+							   openflags);
+			closed = false;
+		} else {
+			fsal_status = obj_hdl->ops->close(obj_hdl);
+			closed = true;
+		}
 		if (FSAL_IS_ERROR(fsal_status)
 		    && (fsal_status.major != ERR_FSAL_NOT_OPENED)) {
 			status = cache_inode_error_convert(fsal_status);
@@ -186,21 +199,15 @@ cache_inode_open(cache_entry_t *entry,
 			goto unlock;
 		}
 
-		if (!FSAL_IS_ERROR(fsal_status)) {
-			if (release_fd() == (size_t)(-1)) {
-				print_stack();
-				LogFatal(COMPONENT_CACHE_INODE,
-					 "FD double release detected!\n"
-					 "current_flags = %x", current_flags);
-			}
-		}
+		if (!FSAL_IS_ERROR(fsal_status) && closed)
+			atomic_dec_size_t(&open_fd_count);
 
 		/* Force re-openning */
 		current_flags = obj_hdl->ops->status(obj_hdl);
 	}
 
 	if ((current_flags == FSAL_O_CLOSED)) {
-		fsal_status = obj_hdl->ops->open(obj_hdl, req_ctx, openflags);
+		fsal_status = obj_hdl->ops->open(obj_hdl, openflags);
 		if (FSAL_IS_ERROR(fsal_status)) {
 			status = cache_inode_error_convert(fsal_status);
 			LogDebug(COMPONENT_CACHE_INODE,
@@ -218,7 +225,13 @@ cache_inode_open(cache_entry_t *entry,
 		/* This is temporary code, until Jim Lieb makes FSALs cache
 		   their own file descriptors.  Under that regime, the LRU
 		   thread will interrogate FSALs for their FD use. */
-		acquire_fd();
+		atomic_inc_size_t(&open_fd_count);
+
+
+		LogDebug(COMPONENT_CACHE_INODE,
+			 "cache_inode_open: pentry %p: openflags = %d, "
+			 "open_fd_count = %zd", entry, openflags,
+			 atomic_fetch_size_t(&open_fd_count));
 	}
 
 	status = CACHE_INODE_SUCCESS;
@@ -281,8 +294,10 @@ cache_inode_close(cache_entry_t *entry, uint32_t flags)
 		goto unlock;
 	}
 
+
 	if (!cache_inode_lru_caching_fds()
-	    || (flags & CACHE_INODE_FLAG_REALLYCLOSE)) {
+	    || (flags & CACHE_INODE_FLAG_REALLYCLOSE)
+	    || (entry->obj_handle->attributes.numlinks == 0)) {
 		LogFullDebug(COMPONENT_CACHE_INODE, "Closing entry %p", entry);
 		fsal_status = entry->obj_handle->ops->close(entry->obj_handle);
 		if (FSAL_IS_ERROR(fsal_status)
@@ -311,6 +326,70 @@ unlock:
 
 out:
 	return status;
+}
+
+/**
+ * @brief adjust open flags of a file
+ *
+ * This function adjusts the current mode of open flags by doing reopen.
+ * If all open states that need write access are gone, this function
+ * will do reopen and remove the write open flag by calling FSAL's
+ * reopen method if present.
+ *
+ * @param[in]  entry  Cache entry to adjust open flags
+ *
+ * entry->state_lock should be held while calling this.
+ *
+ * NOTE: This currently adjusts only the write mode open flag!
+ */
+void cache_inode_adjust_openflags(cache_entry_t *entry)
+{
+	struct fsal_export *fsal_export = op_ctx->fsal_export;
+	struct fsal_obj_handle *obj_hdl;
+	fsal_openflags_t openflags;
+	fsal_status_t fsal_status;
+
+	if (entry->type != REGULAR_FILE) {
+		LogFullDebug(COMPONENT_CACHE_INODE,
+			     "Entry %p File not a REGULAR_FILE", entry);
+		return;
+	}
+
+	/*
+	 * If the file needs to be in write mode, we shouldn't downgrage.
+	 * If the fsal doesn't support reopen method, we can't downgrade.
+	 */
+	if (entry->object.file.share_state.share_access_write > 0 ||
+	    !fsal_export->ops->fs_supports(fsal_export, fso_reopen_method))
+		return;
+
+	obj_hdl = entry->obj_handle;
+	PTHREAD_RWLOCK_wrlock(&entry->content_lock);
+	openflags = obj_hdl->ops->status(obj_hdl);
+	if (!(openflags & FSAL_O_WRITE)) /* nothing to downgrade */
+		goto unlock;
+
+	/*
+	 * Open or a reopen requires either a WRITE or a READ mode flag.
+	 * If the file is not already opened with READ mode, then we
+	 * can't downgrade, but the file will eventually be closed later
+	 * as no other NFSv4 open (or NFSv4 anonymous read) can race
+	 * as cache inode entry's state lock is held until we close the
+	 * file.
+	 */
+	if (!(openflags & FSAL_O_READ))
+		goto unlock;
+
+	openflags &= ~FSAL_O_WRITE;
+	fsal_status = obj_hdl->ops->reopen(obj_hdl, openflags);
+	if (FSAL_IS_ERROR(fsal_status)) {
+		LogWarn(COMPONENT_CACHE_INODE,
+			"fsal reopen method returned: %d(%d)",
+			fsal_status.major, fsal_status.minor);
+	}
+
+unlock:
+	PTHREAD_RWLOCK_unlock(&entry->content_lock);
 }
 
 /** @} */

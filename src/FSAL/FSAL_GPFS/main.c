@@ -36,7 +36,6 @@
 #include <pthread.h>
 #include <string.h>
 #include <sys/types.h>
-#include "nlm_list.h"
 #include "fsal_internal.h"
 #include "FSAL/fsal_init.h"
 
@@ -46,7 +45,6 @@
 struct gpfs_fsal_module {
 	struct fsal_module fsal;
 	struct fsal_staticfsinfo_t fs_info;
-	fsal_init_info_t fsal_info;
 	/* gpfsfs_specific_initinfo_t specific_info;  placeholder */
 };
 
@@ -54,12 +52,12 @@ const char myname[] = "GPFS";
 
 /* filesystem info for GPFS */
 static struct fsal_staticfsinfo_t default_posix_info = {
-	.maxfilesize = 0xFFFFFFFFFFFFFFFFLL,	/* (64bits) */
+	.maxfilesize = UINT64_MAX,
 	.maxlink = _POSIX_LINK_MAX,
 	.maxnamelen = 1024,
 	.maxpathlen = 1024,
 	.no_trunc = true,
-	.chown_restricted = true,
+	.chown_restricted = false,
 	.case_insensitive = false,
 	.case_preserving = true,
 	.link_support = true,
@@ -70,20 +68,53 @@ static struct fsal_staticfsinfo_t default_posix_info = {
 	.named_attr = true,
 	.unique_handles = true,
 	.lease_time = {10, 0},
-	.acl_support = FSAL_ACLSUPPORT_ALLOW,
+	.acl_support = FSAL_ACLSUPPORT_ALLOW | FSAL_ACLSUPPORT_DENY,
 	.cansettime = true,
 	.homogenous = true,
 	.supported_attrs = GPFS_SUPPORTED_ATTRIBUTES,
-	.maxread = 1048576,
-	.maxwrite = 1048576,
+	.maxread = FSAL_MAXIOSIZE,
+	.maxwrite = FSAL_MAXIOSIZE,
 	.umask = 0,
-	.auth_exportpath_xdev = false,
-	.xattr_access_rights = 0400,	/* root=RW, owner=R */
+	.auth_exportpath_xdev = true,
+	.xattr_access_rights = 0,
 	.accesscheck_support = true,
 	.share_support = true,
 	.share_support_owner = false,
 	.delegations = false,	/* not working with pNFS */
 	.pnfs_file = true,
+	.fsal_trace = true,
+	.reopen_method = true,
+};
+
+static struct config_item gpfs_params[] = {
+	CONF_ITEM_BOOL("link_support", true,
+		       fsal_staticfsinfo_t, link_support),
+	CONF_ITEM_BOOL("symlink_support", true,
+		       fsal_staticfsinfo_t, symlink_support),
+	CONF_ITEM_BOOL("cansettime", true,
+		       fsal_staticfsinfo_t, cansettime),
+	CONF_ITEM_MODE("umask", 0, 0777, 0,
+		       fsal_staticfsinfo_t, umask),
+	CONF_ITEM_BOOL("auth_xdev_export", false,
+		       fsal_staticfsinfo_t, auth_exportpath_xdev),
+	CONF_ITEM_MODE("xattr_access_rights", 0, 0777, 0400,
+		       fsal_staticfsinfo_t, xattr_access_rights),
+	CONF_ITEM_BOOL("delegations", false,
+		       fsal_staticfsinfo_t, delegations),
+	CONF_ITEM_BOOL("pnfs_file", false,
+		       fsal_staticfsinfo_t, pnfs_file),
+	CONF_ITEM_BOOL("fsal_trace", true,
+		       fsal_staticfsinfo_t, fsal_trace),
+	CONFIG_EOL
+};
+
+struct config_block gpfs_param = {
+	.dbus_interface_name = "org.ganesha.nfsd.config.fsal.gpfs",
+	.blk_desc.name = "GPFS",
+	.blk_desc.type = CONFIG_BLOCK,
+	.blk_desc.u.blk.init = noop_conf_init,
+	.blk_desc.u.blk.params = gpfs_params,
+	.blk_desc.u.blk.commit = noop_conf_commit
 };
 
 /* private helper for export object
@@ -101,47 +132,40 @@ struct fsal_staticfsinfo_t *gpfs_staticinfo(struct fsal_module *hdl)
  * must be called with a reference taken (via lookup_fsal)
  */
 
-static int log_to_gpfs(struct log_facility *facility, log_levels_t level,
+static int log_to_gpfs(log_header_t headers, void *private,
+		       log_levels_t level,
 		       struct display_buffer *buffer, char *compstr,
 		       char *message)
 {
 	struct trace_arg targ;
+	int retval = 0;
 
 	if (level > 0) {
 		targ.level = level;
 		targ.len = strlen(compstr);
 		targ.str = compstr;
-		gpfs_ganesha(OPENHANDLE_TRACE_ME, &targ);
+		retval = gpfs_ganesha(OPENHANDLE_TRACE_ME, &targ);
 	}
-	return 0;
+	return retval;
 }
-
-struct log_facility facility = {
-	{NULL, NULL}, {NULL, NULL},
-	"GPFS", NIV_FULL_DEBUG,
-	LH_COMPONENT, log_to_gpfs, NULL
-};
 
 static fsal_status_t init_config(struct fsal_module *fsal_hdl,
 				 config_file_t config_struct)
 {
 	struct gpfs_fsal_module *gpfs_me =
 	    container_of(fsal_hdl, struct gpfs_fsal_module, fsal);
-	fsal_status_t fsal_status;
+	struct config_error_type err_type;
+	int rc;
 
-	gpfs_me->fs_info = default_posix_info;	/* get a copy of the defaults */
+	gpfs_me->fs_info = default_posix_info; /* get a copy of the defaults */
 
-	fsal_status =
-	    fsal_load_config(fsal_hdl->ops->get_name(fsal_hdl), config_struct,
-			     &gpfs_me->fsal_info, &gpfs_me->fs_info, NULL);
-
-	if (FSAL_IS_ERROR(fsal_status))
-		return fsal_status;
-	/* if we have fsal specific params, do them here
-	 * fsal_hdl->name is used to find the block containing the
-	 * params.
-	 */
-
+	(void) load_config_from_parse(config_struct,
+				      &gpfs_param,
+				      &gpfs_me->fs_info,
+				      true,
+				      &err_type);
+	if (!config_error_is_harmless(&err_type))
+		return fsalstat(ERR_FSAL_INVAL, 0);
 	display_fsinfo(&gpfs_me->fs_info);
 	LogFullDebug(COMPONENT_FSAL,
 		     "Supported attributes constant = 0x%" PRIx64,
@@ -153,7 +177,20 @@ static fsal_status_t init_config(struct fsal_module *fsal_hdl,
 		 "FSAL INIT: Supported attributes mask = 0x%" PRIx64,
 		 gpfs_me->fs_info.supported_attrs);
 
-	activate_custom_log_facility(&facility);
+	rc = create_log_facility("GPFS", log_to_gpfs,
+				 NIV_FULL_DEBUG, LH_COMPONENT, NULL);
+	if (rc != 0)
+		LogCrit(COMPONENT_FSAL,
+			"Could not create GPFS logger (%s)",
+			strerror(-rc));
+	if (gpfs_me->fs_info.fsal_trace)
+		rc = enable_log_facility("GPFS");
+	else
+		rc = disable_log_facility("GPFS");
+	if (rc != 0)
+		LogCrit(COMPONENT_FSAL,
+			"Could not enable GPFS logger (%s)",
+			strerror(-rc));
 
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
@@ -162,12 +199,8 @@ static fsal_status_t init_config(struct fsal_module *fsal_hdl,
  */
 
 fsal_status_t gpfs_create_export(struct fsal_module *fsal_hdl,
-				 const char *export_path,
-				 const char *fs_options,
-				 struct exportlist *exp_entry,
-				 struct fsal_module *next_fsal,
-				 const struct fsal_up_vector *up_ops,
-				 struct fsal_export **export);
+				 void *parse_node,
+				 const struct fsal_up_vector *up_ops);
 
 /* Module initialization.
  * Called by dlopen() to register the module
@@ -187,23 +220,23 @@ MODULE_INIT void gpfs_init(void)
 	int retval;
 	struct fsal_module *myself = &GPFS.fsal;
 
-	retval =
-	    register_fsal(myself, myname, FSAL_MAJOR_VERSION,
-			  FSAL_MINOR_VERSION);
+	retval = register_fsal(myself, myname, FSAL_MAJOR_VERSION,
+			       FSAL_MINOR_VERSION, FSAL_ID_GPFS);
 	if (retval != 0) {
 		fprintf(stderr, "GPFS module failed to register");
 		return;
 	}
 	myself->ops->create_export = gpfs_create_export;
 	myself->ops->init_config = init_config;
-	init_fsal_parameters(&GPFS.fsal_info);
+	myself->ops->getdeviceinfo = getdeviceinfo;
+	myself->ops->fs_da_addr_size = fs_da_addr_size;
 }
 
 MODULE_FINI void gpfs_unload(void)
 {
 	int retval;
 
-	unregister_log_facility(&facility);
+	release_log_facility("GPFS");
 
 	retval = unregister_fsal(&GPFS.fsal);
 	if (retval != 0) {

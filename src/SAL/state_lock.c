@@ -50,11 +50,10 @@
 #include "sal_functions.h"
 #include "nlm_util.h"
 #include "cache_inode_lru.h"
+#include "export_mgr.h"
 
 /* Forward declaration */
 static state_status_t do_lock_op(cache_entry_t *entry,
-				 exportlist_t *export,
-				 struct req_op_context *req_ctx,
 				 fsal_lock_op_t lock_op,
 				 state_owner_t *owner,
 				 fsal_lock_param_t *lock,
@@ -83,14 +82,6 @@ static state_status_t do_lock_op(cache_entry_t *entry,
  * a parallel cancel/unlock won't endup freeing the datastructure. The
  * last release on the data structure ensure that it is freed.
  */
-
-/**
- * @brief Number of errors before giving up on recovery
- *
- * We set a maximum because the recovery routines need to terminate at
- * some point.
- */
-#define STATE_ERR_MAX 100
 
 #ifdef DEBUG_SAL
 /**
@@ -121,16 +112,32 @@ state_owner_t unknown_owner;
 /**
  * @brief Blocking lock cookies
  */
-hash_table_t *ht_lock_cookies;
+
+/**
+ * Parameters used for lock cookie hash table initialization.
+ *
+ * @todo Switch the cookie table to something else and get rid
+ * of this.
+ */
+
+static hash_parameter_t cookie_param = {
+	.index_size = PRIME_STATE,
+	.hash_func_key = lock_cookie_value_hash_func,
+	.hash_func_rbt = lock_cookie_rbt_hash_func,
+	.compare_key = compare_lock_cookie_key,
+	.key_to_str = display_lock_cookie_key,
+	.val_to_str = display_lock_cookie_val,
+	.flags = HT_FLAG_NONE,
+};
+
+static hash_table_t *ht_lock_cookies;
 
 /**
  * @brief Initalize locking
  *
- * @param[in] cookie_param Hash parameters for cookie table
- *
  * @return State status.
  */
-state_status_t state_lock_init(hash_parameter_t cookie_param)
+state_status_t state_lock_init(void)
 {
 	state_status_t status = STATE_SUCCESS;
 
@@ -323,7 +330,7 @@ static void LogEntry(const char *reason, state_lock_entry_t *le)
 			     ", export=%u, type=%s, start=0x%llx, end=0x%llx, blocked=%s/%p, state=%p, refcount=%d, type %d owner={%s}",
 			     reason, le, le->sle_entry,
 			     (uint64_t) le->sle_entry->obj_handle->attributes.
-			     fileid, (unsigned int)le->sle_export->id,
+			     fileid, (unsigned int)le->sle_export->export_id,
 			     str_lockt(le->sle_lock.lock_type),
 			     (unsigned long long)le->sle_lock.lock_start,
 			     (unsigned long long)lock_end(&le->sle_lock),
@@ -363,7 +370,8 @@ static bool LogList(const char *reason, cache_entry_t *entry,
 
 		glist_for_each(glist, list) {
 			found_entry =
-			    glist_entry(glist, state_lock_entry_t, sle_list);
+				glist_entry(glist, state_lock_entry_t,
+					    sle_list);
 			LogEntry(reason, found_entry);
 			if (found_entry->sle_entry == NULL)
 				break;
@@ -516,7 +524,7 @@ void dump_all_locks(const char *label)
  * @return The new entry or NULL.
  */
 static state_lock_entry_t *create_state_lock_entry(cache_entry_t *entry,
-						   exportlist_t *export,
+						   struct gsh_export *export,
 						   state_blocking_t blocked,
 						   state_owner_t *owner,
 						   state_t *state,
@@ -557,20 +565,19 @@ static state_lock_entry_t *create_state_lock_entry(cache_entry_t *entry,
 
 		pthread_mutex_lock(&owner->so_owner.so_nlm_owner.so_client
 				   ->slc_nsm_client->ssc_mutex);
-
 		glist_add_tail(&owner->so_owner.so_nlm_owner.so_client->
 			       slc_nsm_client->ssc_lock_list,
 			       &new_entry->sle_client_locks);
 
 		pthread_mutex_unlock(&owner->so_owner.so_nlm_owner.so_client
 				     ->slc_nsm_client->ssc_mutex);
-
-		/* Add to list of locks owned by export */
-		pthread_mutex_lock(&export->exp_state_mutex);
-		glist_add_tail(&export->exp_lock_list,
-			       &new_entry->sle_export_locks);
-		pthread_mutex_unlock(&export->exp_state_mutex);
 	}
+
+	/* Add to list of locks owned by export */
+	PTHREAD_RWLOCK_wrlock(&export->lock);
+	glist_add_tail(&export->exp_lock_list,
+		       &new_entry->sle_export_locks);
+	PTHREAD_RWLOCK_unlock(&export->lock);
 
 	/* Add to list of locks owned by owner */
 	inc_state_owner_ref(owner);
@@ -705,14 +712,12 @@ static void remove_from_locklist(state_lock_entry_t *lock_entry)
 
 			dec_nsm_client_ref(owner->so_owner.so_nlm_owner.
 					   so_client->slc_nsm_client);
-
-			/* Remove from list of locks owned by export */
-			pthread_mutex_lock(&lock_entry->sle_export
-					   ->exp_state_mutex);
-			glist_del(&lock_entry->sle_export_locks);
-			pthread_mutex_unlock(&lock_entry->sle_export
-					     ->exp_state_mutex);
 		}
+
+		/* Remove from list of locks owned by export */
+		PTHREAD_RWLOCK_wrlock(&lock_entry->sle_export->lock);
+		glist_del(&lock_entry->sle_export_locks);
+		PTHREAD_RWLOCK_unlock(&lock_entry->sle_export->lock);
 
 		/* Remove from list of locks owned by owner */
 		pthread_mutex_lock(&owner->so_mutex);
@@ -1025,6 +1030,48 @@ static state_status_t subtract_lock_from_entry(cache_entry_t *entry,
 }
 
 /**
+ * @brief Subtract a delegation from a list of delegations
+ *
+ * Subtract a delegation from a list of delegations
+ *
+ * @param[in,out] entry   Cache entry on which to operate
+ * @param[in]     owner   Client owner of delegation
+ * @param[in]     state   Associated lock state
+ * @param[in]     lock    Delegation to remove
+ * @param[out]    removed True if an entry was removed
+ * @param[in,out] list    List of locks to modify
+ *
+ * @return State status.
+ */
+static state_status_t subtract_deleg_from_list(cache_entry_t *entry,
+					       state_owner_t *owner,
+					       state_t *state,
+					       bool *removed,
+					       struct glist_head *list)
+{
+	state_lock_entry_t *found_entry;
+	struct glist_head *glist, *glistn;
+	state_status_t status = STATE_SUCCESS;
+
+	*removed = false;
+
+	glist_for_each_safe(glist, glistn, list) {
+		found_entry = glist_entry(glist, state_lock_entry_t, sle_list);
+		if (owner != NULL
+		    && different_owners(found_entry->sle_owner, owner))
+			continue;
+
+		if (found_entry->sle_type != LEASE_LOCK)
+			continue;
+
+		/* Tell GPFS delegation is returned then remove from list. */
+		glist_del(&found_entry->sle_list);
+		*removed = true;
+	}
+	return status;
+}
+
+/**
  * @brief Subtract a lock from a list of locks
  *
  * This function possibly splits entries in the list.
@@ -1158,8 +1205,7 @@ static state_status_t subtract_list_from_list(cache_entry_t *entry,
  *
  ******************************************************************************/
 
-static void grant_blocked_locks(cache_entry_t *entry,
-				struct req_op_context *req_ctx);
+static void grant_blocked_locks(cache_entry_t *entry);
 
 /**
  * @brief Display lock cookie in hash table
@@ -1355,7 +1401,6 @@ void free_cookie(state_cookie_entry_t *cookie_entry, bool unblock)
  * @brief Add a grant cookie to a blocked lock
  *
  * @param[in]  entry        File to operate on
- * @param[in]  req_ctx  Request context
  * @param[in]  cookie       Cookie to add
  * @param[in]  cookie_size  Cookie length
  * @param[in]  lock_entry   Lock entry
@@ -1364,7 +1409,6 @@ void free_cookie(state_cookie_entry_t *cookie_entry, bool unblock)
  * @return State status.
  */
 state_status_t state_add_grant_cookie(cache_entry_t *entry,
-				      struct req_op_context *req_ctx,
 				      void *cookie, int cookie_size,
 				      state_lock_entry_t *lock_entry,
 				      state_cookie_entry_t **cookie_entry)
@@ -1442,22 +1486,20 @@ state_status_t state_add_grant_cookie(cache_entry_t *entry,
 		/* Now that we are sure we can continue, acquire the FSAL lock.
 		 * If we get STATE_LOCK_BLOCKED we need to return...
 		 */
-		status =
-		    do_lock_op(entry, lock_entry->sle_export, req_ctx,
-			       FSAL_OP_LOCKB, lock_entry->sle_owner,
-			       &lock_entry->sle_lock, NULL, NULL, false,
-			       POSIX_LOCK);
+		status = do_lock_op(entry, FSAL_OP_LOCKB,
+				    lock_entry->sle_owner,
+				    &lock_entry->sle_lock,
+				    NULL, NULL, false, POSIX_LOCK);
 		break;
 
 	case STATE_GRANT_INTERNAL:
 		/* Now that we are sure we can continue, acquire the FSAL lock.
 		 * If we get STATE_LOCK_BLOCKED we need to return...
 		 */
-		status =
-		    do_lock_op(entry, lock_entry->sle_export, req_ctx,
-			       FSAL_OP_LOCK, lock_entry->sle_owner,
-			       &lock_entry->sle_lock, NULL, NULL, false,
-			       POSIX_LOCK);
+		status = do_lock_op(entry, FSAL_OP_LOCK,
+				    lock_entry->sle_owner,
+				    &lock_entry->sle_lock,
+				    NULL, NULL, false, POSIX_LOCK);
 		break;
 
 	case STATE_GRANT_FSAL:
@@ -1501,18 +1543,14 @@ state_status_t state_add_grant_cookie(cache_entry_t *entry,
  * @brief Cancel a lock grant from the FSAL
  *
  * @param[in] cookie_entry Entry for the lock grant
- * @param[in] req_ctx  Request context
  *
  * @return State status.
  */
-state_status_t state_cancel_grant(state_cookie_entry_t *cookie_entry,
-				  struct req_op_context *req_ctx)
+state_status_t state_cancel_grant(state_cookie_entry_t *cookie_entry)
 {
 	state_status_t status = 0;
 	/* We had acquired an FSAL lock, need to release it. */
 	status = do_lock_op(cookie_entry->sce_entry,
-			    cookie_entry->sce_lock_entry->sle_export,
-			    req_ctx,
 			    FSAL_OP_UNLOCK,
 			    cookie_entry->sce_lock_entry->sle_owner,
 			    &cookie_entry->sce_lock_entry->sle_lock,
@@ -1586,11 +1624,9 @@ state_status_t state_find_grant(void *cookie, int cookie_size,
  * @brief Grant a blocked lock
  *
  * @param[in] entry      File on which to grant it
- * @param[in] req_ctx  Request context
  * @param[in] lock_entry Lock entry
  */
 void grant_blocked_lock_immediate(cache_entry_t *entry,
-				  struct req_op_context *req_ctx,
 				  state_lock_entry_t *lock_entry)
 {
 	state_cookie_entry_t *cookie = NULL;
@@ -1637,7 +1673,7 @@ void grant_blocked_lock_immediate(cache_entry_t *entry,
 	LogEntry("Immediate Granted entry", lock_entry);
 
 	/* A lock downgrade could unblock blocked locks */
-	grant_blocked_locks(entry, req_ctx);
+	grant_blocked_locks(entry);
 }
 
 /**
@@ -1646,11 +1682,9 @@ void grant_blocked_lock_immediate(cache_entry_t *entry,
  * Do bookkeeping and merge the lock into the lock list.
  *
  * @param[in] cookie_entry Entry describing the grant
- * @param[in] req_ctx  Request context
  */
 
-void state_complete_grant(state_cookie_entry_t *cookie_entry,
-			  struct req_op_context *req_ctx)
+void state_complete_grant(state_cookie_entry_t *cookie_entry)
 {
 	state_lock_entry_t *lock_entry;
 	cache_entry_t *entry;
@@ -1678,7 +1712,7 @@ void state_complete_grant(state_cookie_entry_t *cookie_entry,
 		LogEntry("Granted entry", lock_entry);
 
 		/* A lock downgrade could unblock blocked locks */
-		grant_blocked_locks(entry, req_ctx);
+		grant_blocked_locks(entry);
 	}
 
 	/* Free cookie and unblock lock.
@@ -1691,7 +1725,7 @@ void state_complete_grant(state_cookie_entry_t *cookie_entry,
 	 * we must release the pin reference.
 	 */
 	if (glist_empty(&entry->object.file.lock_list))
-		cache_inode_dec_pin_ref(entry, FALSE);
+		cache_inode_dec_pin_ref(entry, false);
 
 	PTHREAD_RWLOCK_unlock(&entry->state_lock);
 }
@@ -1700,15 +1734,15 @@ void state_complete_grant(state_cookie_entry_t *cookie_entry,
  * @brief Attempt to grant a blocked lock
  *
  * @param[in] lock_entry Lock entry to grant
- * @param[in] req_ctx  Request context
  */
 
-void try_to_grant_lock(state_lock_entry_t *lock_entry,
-		       struct req_op_context *req_ctx)
+void try_to_grant_lock(state_lock_entry_t *lock_entry)
 {
 	granted_callback_t call_back;
 	state_blocking_t blocked;
 	state_status_t status;
+	struct root_op_context root_op_context;
+	struct gsh_export *export = lock_entry->sle_export;
 
 	/* Try to grant if not cancelled and has block data */
 	if (lock_entry->sle_blocked != STATE_CANCELED
@@ -1725,7 +1759,19 @@ void try_to_grant_lock(state_lock_entry_t *lock_entry,
 			lock_entry->sle_block_data->sbd_grant_type =
 			    STATE_GRANT_INTERNAL;
 
-		status = call_back(lock_entry->sle_entry, req_ctx, lock_entry);
+		/* Initialize a root context */
+		get_gsh_export_ref(export);
+
+		init_root_op_context(&root_op_context,
+				     export, export->fsal_export,
+				     0, 0, UNKNOWN_REQUEST);
+
+		status = call_back(lock_entry->sle_entry,
+				   lock_entry);
+
+		put_gsh_export(export);
+
+		release_root_op_context();
 		if (status == STATE_LOCK_BLOCKED) {
 			/* The lock is still blocked,
 			 * restore it's type and leave it in the list
@@ -1750,11 +1796,9 @@ void try_to_grant_lock(state_lock_entry_t *lock_entry,
  * @brief Routine to be called from the FSAL upcall handler
  *
  * @param[in] block_data Data describing blocked lock
- * @param[in] req_ctx  Request context
  */
 
-void process_blocked_lock_upcall(state_block_data_t *block_data,
-				 struct req_op_context *req_ctx)
+void process_blocked_lock_upcall(state_block_data_t *block_data)
 {
 	state_lock_entry_t *lock_entry = block_data->sbd_lock_entry;
 	cache_entry_t *entry = lock_entry->sle_entry;
@@ -1767,13 +1811,13 @@ void process_blocked_lock_upcall(state_block_data_t *block_data,
 
 	PTHREAD_RWLOCK_wrlock(&entry->state_lock);
 
-	try_to_grant_lock(lock_entry, req_ctx);
+	try_to_grant_lock(lock_entry);
 
 	/* In case all locks have wound up free,
 	 * we must release the pin reference.
 	 */
 	if (glist_empty(&entry->object.file.lock_list))
-		cache_inode_dec_pin_ref(entry, FALSE);
+		cache_inode_dec_pin_ref(entry, false);
 
 	PTHREAD_RWLOCK_unlock(&entry->state_lock);
 }
@@ -1782,15 +1826,13 @@ void process_blocked_lock_upcall(state_block_data_t *block_data,
  * @brief Attempt to grant all blocked locks on a file
  *
  * @param[in] entry Cache entry for the file
- * @param[in] req_ctx  Request context
  */
 
-static void grant_blocked_locks(cache_entry_t *entry,
-				struct req_op_context *req_ctx)
+static void grant_blocked_locks(cache_entry_t *entry)
 {
 	state_lock_entry_t *found_entry;
 	struct glist_head *glist, *glistn;
-	struct fsal_export *export = entry->obj_handle->export;
+	struct fsal_export *export = op_ctx->export->fsal_export;
 
 	/* If FSAL supports async blocking locks,
 	 * allow it to grant blocked locks.
@@ -1814,7 +1856,7 @@ static void grant_blocked_locks(cache_entry_t *entry,
 			continue;
 
 		/* Found an entry that might work, try to grant it. */
-		try_to_grant_lock(found_entry, req_ctx);
+		try_to_grant_lock(found_entry);
 	}
 }
 
@@ -1822,14 +1864,13 @@ static void grant_blocked_locks(cache_entry_t *entry,
  * @brief Cancel a blocked lock
  *
  * @param[in] entry      File on which to cancel the lock
- * @param[in] req_ctx  Request context
  * @param[in] lock_entry Lock to cancel
  *
  * @return State status.
  */
-state_status_t cancel_blocked_lock(cache_entry_t *entry,
-				   struct req_op_context *req_ctx,
-				   state_lock_entry_t *lock_entry)
+static
+void cancel_blocked_lock(cache_entry_t *entry,
+			 state_lock_entry_t *lock_entry)
 {
 	state_cookie_entry_t *cookie = NULL;
 	state_status_t state_status;
@@ -1849,9 +1890,9 @@ state_status_t cancel_blocked_lock(cache_entry_t *entry,
 		/* Cookie is attached, try to get it */
 		cookie = lock_entry->sle_block_data->sbd_blocked_cookie;
 
-		state_status =
-		    state_find_grant(cookie->sce_cookie,
-				     cookie->sce_cookie_size, &cookie);
+		state_status = state_find_grant(cookie->sce_cookie,
+						cookie->sce_cookie_size,
+						&cookie);
 
 		if (state_status == STATE_SUCCESS) {
 			/* We've got the cookie,
@@ -1874,8 +1915,6 @@ state_status_t cancel_blocked_lock(cache_entry_t *entry,
 		 * the lock must still be in a state of needing cancelling.
 		 */
 		state_status = do_lock_op(entry,
-					  lock_entry->sle_export,
-					  req_ctx,
 					  FSAL_OP_CANCEL,
 					  lock_entry->sle_owner,
 					  &lock_entry->sle_lock,
@@ -1890,15 +1929,13 @@ state_status_t cancel_blocked_lock(cache_entry_t *entry,
 			 */
 			LogEntry("Unable to cancel (grant upcall expected)",
 				 lock_entry);
-			return STATE_SUCCESS;
+			return;
 		}
 	}
 
 	/* Remove the lock from the lock list */
 	LogEntry("Removing", lock_entry);
 	remove_from_locklist(lock_entry);
-
-	return state_status;
 }
 
 /**
@@ -1922,13 +1959,11 @@ state_status_t cancel_blocked_lock(cache_entry_t *entry,
  * retry the remainder lock that should have still been blocking.
  *
  * @param[in,out] entry File on which to operate
- * @param[in]     req_ctx  Request context
  * @param[in]     owner The state owner for the lock
  * @param[in]     state Associated state
  * @param[in]     lock  Lock description
  */
 void cancel_blocked_locks_range(cache_entry_t *entry,
-				struct req_op_context *req_ctx,
 				state_owner_t *owner, state_t *state,
 				fsal_lock_param_t *lock)
 {
@@ -1963,7 +1998,7 @@ void cancel_blocked_locks_range(cache_entry_t *entry,
 		if ((found_entry_end >= lock->lock_start)
 		    && (found_entry->sle_lock.lock_start <= range_end)) {
 			/* lock overlaps, cancel it. */
-			(void)cancel_blocked_lock(entry, req_ctx, found_entry);
+			cancel_blocked_lock(entry, found_entry);
 		}
 	}
 }
@@ -1972,12 +2007,10 @@ void cancel_blocked_locks_range(cache_entry_t *entry,
  * @brief Release a lock grant
  *
  * @param[in] cookie_entry Grant entry
- * @param[in] req_ctx  Request context
  *
  * @return State status.
  */
-state_status_t state_release_grant(state_cookie_entry_t *cookie_entry,
-				   struct req_op_context *req_ctx)
+state_status_t state_release_grant(state_cookie_entry_t *cookie_entry)
 {
 	state_lock_entry_t *lock_entry;
 	cache_entry_t *entry;
@@ -2004,8 +2037,6 @@ state_status_t state_release_grant(state_cookie_entry_t *cookie_entry,
 
 		/* We had acquired an FSAL lock, need to release it. */
 		status = do_lock_op(entry,
-				    lock_entry->sle_export,
-				    req_ctx,
 				    FSAL_OP_UNLOCK,
 				    lock_entry->sle_owner,
 				    &lock_entry->sle_lock,
@@ -2035,13 +2066,13 @@ state_status_t state_release_grant(state_cookie_entry_t *cookie_entry,
 	free_cookie(cookie_entry, true);
 
 	/* Check to see if we can grant any blocked locks. */
-	grant_blocked_locks(entry, req_ctx);
+	grant_blocked_locks(entry);
 
 	/* In case all locks have wound up free,
 	 * we must release the pin reference.
 	 */
 	if (glist_empty(&entry->object.file.lock_list))
-		cache_inode_dec_pin_ref(entry, FALSE);
+		cache_inode_dec_pin_ref(entry, false);
 
 	PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
@@ -2099,12 +2130,10 @@ inline const char *fsal_lock_op_str(fsal_lock_op_t op)
  *
  * @param[in] entry    File on which to operate
  * @param[in] export   Export through which the file is accessed
- * @param[in] req_ctx  Request context
  * @param[in] lock     Lock descriptor
  * @param[in] sle_type Lock type
  */
-state_status_t do_unlock_no_owner(cache_entry_t *entry, exportlist_t *export,
-				  struct req_op_context *req_ctx,
+state_status_t do_unlock_no_owner(cache_entry_t *entry,
 				  fsal_lock_param_t *lock,
 				  lock_type_t sle_type)
 {
@@ -2117,7 +2146,7 @@ state_status_t do_unlock_no_owner(cache_entry_t *entry, exportlist_t *export,
 	fsal_lock_param_t *punlock;
 
 	unlock_entry = create_state_lock_entry(entry,
-					       export,
+					       op_ctx->export,
 					       STATE_NON_BLOCKING,
 					       &unknown_owner,
 					       NULL, /* no real state */
@@ -2155,9 +2184,12 @@ state_status_t do_unlock_no_owner(cache_entry_t *entry, exportlist_t *export,
 		LogEntry("FSAL Unlock", found_entry);
 
 		fsal_status =
-		    entry->obj_handle->ops->lock_op(entry->obj_handle, req_ctx,
+		    entry->obj_handle->ops->lock_op(entry->obj_handle,
 						    NULL, FSAL_OP_UNLOCK,
 						    punlock, NULL);
+
+		if (fsal_status.major == ERR_FSAL_STALE)
+			cache_inode_kill_entry(entry);
 
 		t_status = state_error_convert(fsal_status);
 
@@ -2186,7 +2218,6 @@ state_status_t do_unlock_no_owner(cache_entry_t *entry, exportlist_t *export,
  *
  * @param[in]  entry    File on which to operate
  * @param[in]  export   Export holding file
- * @param[in]  req_ctx  Request context
  * @param[in]  lock_op  Operation to perform
  * @param[in]  owner    Lock operation
  * @param[in]  lock     Lock description
@@ -2198,8 +2229,6 @@ state_status_t do_unlock_no_owner(cache_entry_t *entry, exportlist_t *export,
  * @return State status.
  */
 static state_status_t do_lock_op(cache_entry_t *entry,
-				 exportlist_t *export,
-				 struct req_op_context *req_ctx,
 				 fsal_lock_op_t lock_op,
 				 state_owner_t *owner,
 				 fsal_lock_param_t *lock,
@@ -2211,7 +2240,7 @@ static state_status_t do_lock_op(cache_entry_t *entry,
 	fsal_status_t fsal_status;
 	state_status_t status = STATE_SUCCESS;
 	fsal_lock_param_t conflicting_lock;
-	struct fsal_export *fsal_export = entry->obj_handle->export;
+	struct fsal_export *fsal_export = op_ctx->fsal_export;
 
 	lock->lock_sle_type = sle_type;
 
@@ -2249,7 +2278,6 @@ static state_status_t do_lock_op(cache_entry_t *entry,
 
 		fsal_status = entry->obj_handle->ops->lock_op(
 			entry->obj_handle,
-			req_ctx,
 			fsal_export->ops->fs_supports(
 				fsal_export,
 				fso_lock_support_owner)
@@ -2271,12 +2299,8 @@ static state_status_t do_lock_op(cache_entry_t *entry,
 			status = STATE_FSAL_ERROR;
 		}
 	} else {
-#ifdef _USE_9P
-		if (owner->so_type != STATE_LOCK_OWNER_9P)
-#endif				/* _USE_9P */
-			status =
-			    do_unlock_no_owner(entry, export, req_ctx, lock,
-					       sle_type);
+		if (!LOCK_OWNER_9P(owner))
+			status = do_unlock_no_owner(entry, lock, sle_type);
 	}
 
 	if (status == STATE_LOCK_CONFLICT) {
@@ -2329,7 +2353,6 @@ void copy_conflict(state_lock_entry_t *found_entry, state_owner_t **holder,
  *
  * @param[in]  entry    Entry to test
  * @param[in]  export   Export through which the entry is accessed
- * @param[in]  req_ctx  Request context
  * @param[in]  owner    Lock owner making the test
  * @param[in]  lock     Lock description
  * @param[out] holder   Owner that holds conflicting lock
@@ -2337,8 +2360,8 @@ void copy_conflict(state_lock_entry_t *found_entry, state_owner_t **holder,
  *
  * @return State status.
  */
-state_status_t state_test(cache_entry_t *entry, exportlist_t *export,
-			  struct req_op_context *req_ctx, state_owner_t *owner,
+state_status_t state_test(cache_entry_t *entry,
+			  state_owner_t *owner,
 			  fsal_lock_param_t *lock, state_owner_t **holder,
 			  fsal_lock_param_t *conflict)
 {
@@ -2356,12 +2379,12 @@ state_status_t state_test(cache_entry_t *entry, exportlist_t *export,
 		return status;
 	}
 
-	cache_status = cache_inode_open(entry, FSAL_O_RDWR, req_ctx, 0);
+	cache_status = cache_inode_open(entry, FSAL_O_READ, 0);
 	if (cache_status != CACHE_INODE_SUCCESS) {
 		status = cache_inode_status_to_state_status(cache_status);
 		LogFullDebug(COMPONENT_STATE, "Could not open file");
 
-		cache_inode_dec_pin_ref(entry, FALSE);
+		cache_inode_dec_pin_ref(entry, false);
 
 		return status;
 	}
@@ -2377,9 +2400,8 @@ state_status_t state_test(cache_entry_t *entry, exportlist_t *export,
 		status = STATE_LOCK_CONFLICT;
 	} else {
 		/* Prepare to make call to FSAL for this lock */
-		status =
-		    do_lock_op(entry, export, req_ctx, FSAL_OP_LOCKT, owner,
-			       lock, holder, conflict, false, POSIX_LOCK);
+		status = do_lock_op(entry, FSAL_OP_LOCKT, owner,
+				    lock, holder, conflict, false, POSIX_LOCK);
 
 		if (status != STATE_SUCCESS && status != STATE_LOCK_CONFLICT) {
 			LogMajor(COMPONENT_STATE,
@@ -2399,7 +2421,7 @@ state_status_t state_test(cache_entry_t *entry, exportlist_t *export,
 
 	PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
-	cache_inode_dec_pin_ref(entry, FALSE);
+	cache_inode_dec_pin_ref(entry, false);
 
 	return status;
 }
@@ -2409,7 +2431,6 @@ state_status_t state_test(cache_entry_t *entry, exportlist_t *export,
  *
  * @param[in]  entry      Entry to lock
  * @param[in]  export     Export through which entry is accessed
- * @param[in]  req_ctx    Request context
  * @param[in]  owner      Lock owner
  * @param[in]  state      Associated state for the lock
  * @param[in]  blocking   Blocking type
@@ -2421,8 +2442,7 @@ state_status_t state_test(cache_entry_t *entry, exportlist_t *export,
  *
  * @return State status.
  */
-state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
-			  struct req_op_context *req_ctx,
+state_status_t state_lock(cache_entry_t *entry,
 			  state_owner_t *owner, state_t *state,
 			  state_blocking_t blocking,
 			  state_block_data_t *block_data,
@@ -2435,9 +2455,10 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 	uint64_t found_entry_end;
 	uint64_t range_end = lock_end(lock);
 	cache_inode_status_t cache_status;
-	struct fsal_export *fsal_export = entry->obj_handle->export;
+	struct fsal_export *fsal_export = op_ctx->fsal_export;
 	fsal_lock_op_t lock_op;
 	state_status_t status = 0;
+	fsal_openflags_t openflags;
 
 	cache_status = cache_inode_inc_pin_ref(entry);
 
@@ -2447,10 +2468,30 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 		return status;
 	}
 
-	cache_status = cache_inode_open(entry, FSAL_O_RDWR, req_ctx, 0);
+	/*
+	 * If we already have a read lock, and then get a write lock
+	 * request, we need to close the file that was already open for
+	 * read, and then open the file for readwrite for the write lock
+	 * request.  Closing the file loses all lock state, so we just
+	 * open the file for readwrite for any kind of lock request.
+	 *
+	 * If the FSAL supports atomicaly updating the read only fd to
+	 * readwrite fd, then we don't need to open a file for readwrite
+	 * for read only lock request. This helps with delegations as
+	 * well.
+	 */
+	if (lock->lock_type == FSAL_LOCK_R &&
+	    fsal_export->ops->fs_supports(fsal_export, fso_reopen_method))
+		openflags = FSAL_O_READ;
+	else
+		openflags = FSAL_O_RDWR;
+	cache_status = cache_inode_open(entry,
+					openflags,
+					(lock->lock_reclaim) ?
+						CACHE_INODE_FLAG_RECLAIM : 0);
 
 	if (cache_status != CACHE_INODE_SUCCESS) {
-		cache_inode_dec_pin_ref(entry, FALSE);
+		cache_inode_dec_pin_ref(entry, false);
 		status = cache_inode_status_to_state_status(cache_status);
 		LogFullDebug(COMPONENT_STATE, "Could not open file");
 		return status;
@@ -2475,16 +2516,17 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 			 * already has a lock on this file via a different
 			 * export.
 			 */
-			if (found_entry->sle_export != export) {
+			if (found_entry->sle_export != op_ctx->export) {
 				PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
-				cache_inode_dec_pin_ref(entry, FALSE);
+				cache_inode_dec_pin_ref(entry, false);
 
 				LogEvent(COMPONENT_STATE,
 					 "Lock Owner Export Conflict, Lock held for export %d (%s), request for export %d (%s)",
-					 found_entry->sle_export->id,
+					 found_entry->sle_export->export_id,
 					 found_entry->sle_export->fullpath,
-					 export->id, export->fullpath);
+					 op_ctx->export->export_id,
+					 op_ctx->export->fullpath);
 				LogEntry(
 					"Found lock entry belonging to another export",
 					found_entry);
@@ -2500,7 +2542,7 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 
 			PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
-			cache_inode_dec_pin_ref(entry, FALSE);
+			cache_inode_dec_pin_ref(entry, false);
 
 			/* We have matched all atribute of the existing lock.
 			 * Just return with blocked status. Client may be
@@ -2515,20 +2557,30 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 	glist_for_each(glist, &entry->object.file.lock_list) {
 		found_entry = glist_entry(glist, state_lock_entry_t, sle_list);
 
+		/* Delegations owned by a client won't conflict with delegations
+		   to that same client, but maybe we should just return
+		   success. */
+		if (found_entry->sle_type == LEASE_LOCK &&
+		    lock->lock_sle_type == FSAL_LEASE_LOCK &&
+		    owner->so_owner.so_nfs4_owner.so_clientid ==
+		    found_entry->sle_owner->so_owner.so_nfs4_owner.so_clientid)
+			continue;
+
 		/* Need to reject lock request if this lock owner already has
 		 * a lock on this file via a different export.
 		 */
-		if (found_entry->sle_export != export
+		if (found_entry->sle_export != op_ctx->export
 		    && !different_owners(found_entry->sle_owner, owner)) {
 			PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
-			cache_inode_dec_pin_ref(entry, FALSE);
+			cache_inode_dec_pin_ref(entry, false);
 
 			LogEvent(COMPONENT_STATE,
 				 "Lock Owner Export Conflict, Lock held for export %d (%s), request for export %d (%s)",
-				 found_entry->sle_export->id,
-				 found_entry->sle_export->fullpath, export->id,
-				 export->fullpath);
+				 found_entry->sle_export->export_id,
+				 found_entry->sle_export->fullpath,
+				 op_ctx->export->export_id,
+				 op_ctx->export->fullpath);
 
 			LogEntry("Found lock entry belonging to another export",
 				 found_entry);
@@ -2538,7 +2590,6 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 		}
 
 		/* Don't skip blocked locks for fairness */
-
 		found_entry_end = lock_end(&found_entry->sle_lock);
 
 		if ((found_entry_end >= lock->lock_start)
@@ -2591,13 +2642,12 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 					 */
 					grant_blocked_lock_immediate(
 						entry,
-						req_ctx,
 						found_entry);
 				}
 
 				PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
-				cache_inode_dec_pin_ref(entry, FALSE);
+				cache_inode_dec_pin_ref(entry, false);
 
 				LogEntry("Found existing", found_entry);
 
@@ -2629,11 +2679,11 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 		lock_op = FSAL_OP_LOCK;
 	} else {
 		/* Can't do async blocking lock in FSAL and have a conflict.
-		 * Return it.
+		 * Return it. This is true for conflicting delegations as well.
 		 */
 		PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
-		cache_inode_dec_pin_ref(entry, FALSE);
+		cache_inode_dec_pin_ref(entry, false);
 
 		status = STATE_LOCK_CONFLICT;
 		return status;
@@ -2686,13 +2736,17 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 	/* Create the new lock entry.
 	 * Provisionally mark this lock as granted.
 	 */
-	found_entry =
-	    create_state_lock_entry(entry, export, STATE_NON_BLOCKING, owner,
-				    state, lock, sle_type);
+	found_entry = create_state_lock_entry(entry,
+					      op_ctx->export,
+					      STATE_NON_BLOCKING,
+					      owner,
+					      state,
+					      lock,
+					      sle_type);
 	if (!found_entry) {
 		PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
-		cache_inode_dec_pin_ref(entry, FALSE);
+		cache_inode_dec_pin_ref(entry, false);
 
 		status = STATE_MALLOC_ERROR;
 		return status;
@@ -2705,21 +2759,32 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 	    || fsal_export->ops->fs_supports(fsal_export,
 					     fso_lock_support_async_block)) {
 		/* Prepare to make call to FSAL for this lock */
-		status =
-		    do_lock_op(entry, export, req_ctx, lock_op, owner, lock,
-			       allow ? holder : NULL, allow ? conflict : NULL,
-			       overlap, sle_type);
+		status = do_lock_op(entry,
+				    lock_op,
+				    owner,
+				    lock,
+				    allow ? holder : NULL,
+				    allow ? conflict : NULL,
+				    overlap,
+				    sle_type);
 	} else
 		status = STATE_LOCK_BLOCKED;
 
-	if (status == STATE_SUCCESS) {
+	if (status == STATE_SUCCESS && sle_type == LEASE_LOCK) {
+		/* Insert entry into delegation list */
+		LogEntry("New delegation", found_entry);
+		update_delegation_stats(entry, state);
+		glist_add_tail(&entry->object.file.deleg_list,
+			       &found_entry->sle_list);
+	} else if (status == STATE_SUCCESS && sle_type == POSIX_LOCK) {
 		/* Merge any touching or overlapping locks into this one */
-		LogEntry("FSAL lock acquired, merging locks for", found_entry);
+		LogEntry("FSAL lock acquired, merging locks for",
+			 found_entry);
 
 		merge_lock_entry(entry, found_entry);
 
 		/* Insert entry into lock list */
-		LogEntry("New", found_entry);
+		LogEntry("New lock", found_entry);
 
 		/* if the list is empty to start with; increment the pin ref
 		 * count before adding it to the list
@@ -2731,7 +2796,7 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 			       &found_entry->sle_list);
 
 		/* A lock downgrade could unblock blocked locks */
-		grant_blocked_locks(entry, req_ctx);
+		grant_blocked_locks(entry);
 		/* Don't need to unpin, we know there is state on file. */
 	} else if (status == STATE_LOCK_CONFLICT) {
 		LogEntry("Conflict in FSAL for", found_entry);
@@ -2758,7 +2823,7 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 
 		PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
-		cache_inode_dec_pin_ref(entry, FALSE);
+		cache_inode_dec_pin_ref(entry, false);
 
 		pthread_mutex_lock(&blocked_locks_mutex);
 
@@ -2777,7 +2842,7 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 
 	PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
-	cache_inode_dec_pin_ref(entry, FALSE);
+	cache_inode_dec_pin_ref(entry, false);
 
 	return status;
 }
@@ -2786,15 +2851,12 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
  * @brief Release a lock
  *
  * @param[in] entry    File to unlock
- * @param[in] export   Export through which file is accessed
- * @param[in] req_ctx  Request context
  * @param[in] owner    Owner of lock
  * @param[in] state    Associated state
  * @param[in] lock     Lock description
  * @param[in] sle_type Lock type
  */
-state_status_t state_unlock(cache_entry_t *entry, exportlist_t *export,
-			    struct req_op_context *req_ctx,
+state_status_t state_unlock(cache_entry_t *entry,
 			    state_owner_t *owner, state_t *state,
 			    fsal_lock_param_t *lock, lock_type_t sle_type)
 {
@@ -2824,16 +2886,33 @@ state_status_t state_unlock(cache_entry_t *entry, exportlist_t *export,
 	 */
 	PTHREAD_RWLOCK_wrlock(&entry->state_lock);
 
+	if (state && state->state_type == STATE_TYPE_DELEG) {
+		if (glist_empty(&entry->object.file.deleg_list)) {
+			PTHREAD_RWLOCK_unlock(&entry->state_lock);
+			cache_inode_dec_pin_ref(entry, FALSE);
+			LogDebug(COMPONENT_STATE,
+				 "Unlock success on file with no delegations");
+			status = STATE_SUCCESS;
+			return status;
+		} else {
+			LogFullDebug(COMPONENT_STATE,
+				     "Removing delegation from list");
+			status = subtract_deleg_from_list(entry, owner, state,
+					&removed,
+					&entry->object.file.deleg_list);
+		}
+	} else {
 	/* If lock list is empty, there really isn't any work for us to do. */
-	if (glist_empty(&entry->object.file.lock_list)) {
-		PTHREAD_RWLOCK_unlock(&entry->state_lock);
+		if (glist_empty(&entry->object.file.lock_list)) {
+			PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
-		cache_inode_dec_pin_ref(entry, FALSE);
-		LogDebug(COMPONENT_STATE,
-			 "Unlock success on file with no locks");
+			cache_inode_dec_pin_ref(entry, false);
+			LogDebug(COMPONENT_STATE,
+				 "Unlock success on file with no locks");
 
-		status = STATE_SUCCESS;
-		return status;
+			status = STATE_SUCCESS;
+			return status;
+		}
 	}
 
 	LogFullDebug(COMPONENT_STATE,
@@ -2846,7 +2925,7 @@ state_status_t state_unlock(cache_entry_t *entry, exportlist_t *export,
 	/* First cancel any blocking locks that might
 	 * overlap the unlocked range.
 	 */
-	cancel_blocked_locks_range(entry, req_ctx, owner, state, lock);
+	cancel_blocked_locks_range(entry, owner, state, lock);
 
 	/* Release the lock from cache inode lock list for entry */
 	status =
@@ -2858,7 +2937,7 @@ state_status_t state_unlock(cache_entry_t *entry, exportlist_t *export,
 	 * list empty even if it failed.
 	 */
 	if (glist_empty(&entry->object.file.lock_list))
-		cache_inode_dec_pin_ref(entry, FALSE);
+		cache_inode_dec_pin_ref(entry, false);
 
 	if (status != STATE_SUCCESS) {
 		/* The unlock has not taken affect (other than canceling any
@@ -2870,7 +2949,7 @@ state_status_t state_unlock(cache_entry_t *entry, exportlist_t *export,
 
 		PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
-		cache_inode_dec_pin_ref(entry, FALSE);
+		cache_inode_dec_pin_ref(entry, false);
 
 		return status;
 	}
@@ -2880,8 +2959,6 @@ state_status_t state_unlock(cache_entry_t *entry, exportlist_t *export,
 	 * in the process of being granted.
 	 */
 	status = do_lock_op(entry,
-			    export,
-			    req_ctx,
 			    FSAL_OP_UNLOCK,
 			    owner,
 			    lock,
@@ -2905,11 +2982,11 @@ state_status_t state_unlock(cache_entry_t *entry, exportlist_t *export,
 		empty =
 		    LogList("Lock List", entry, &entry->object.file.lock_list);
 
-	grant_blocked_locks(entry, req_ctx);
+	grant_blocked_locks(entry);
 
 	PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
-	cache_inode_dec_pin_ref(entry, FALSE);
+	cache_inode_dec_pin_ref(entry, false);
 
 	if (isFullDebug(COMPONENT_STATE) && isFullDebug(COMPONENT_MEMLEAKS)
 	    && lock->lock_start == 0 && lock->lock_length == 0 && empty)
@@ -2922,38 +2999,30 @@ state_status_t state_unlock(cache_entry_t *entry, exportlist_t *export,
  * @brief Cancel a blocking lock
  *
  * @param[in] entry  File on which to cancel the lock
- * @param[in] export Export through which we access the file
- * @param[in] req_ctx  Request context
  * @param[in] owner  Lock owner
  * @param[in] lock   Lock description
  *
  * @return State status.
  */
-state_status_t state_cancel(cache_entry_t *entry, exportlist_t *export,
-			    struct req_op_context *req_ctx,
+state_status_t state_cancel(cache_entry_t *entry,
 			    state_owner_t *owner, fsal_lock_param_t *lock)
 {
 	struct glist_head *glist;
 	state_lock_entry_t *found_entry;
 	cache_inode_status_t cache_status;
-	state_status_t status = 0;
 
 	if (entry->type != REGULAR_FILE) {
 		LogLock(COMPONENT_STATE, NIV_DEBUG,
 			"Bad Cancel",
 			entry, owner, lock);
-		status = STATE_BAD_TYPE;
-		return status;
+		return STATE_BAD_TYPE;
 	}
-
-	status = STATE_NOT_FOUND;
 
 	cache_status = cache_inode_inc_pin_ref(entry);
 
 	if (cache_status != CACHE_INODE_SUCCESS) {
-		status = cache_inode_status_to_state_status(cache_status);
 		LogDebug(COMPONENT_STATE, "Could not pin file");
-		return status;
+		return cache_inode_status_to_state_status(cache_status);
 	}
 
 	PTHREAD_RWLOCK_wrlock(&entry->state_lock);
@@ -2962,12 +3031,11 @@ state_status_t state_cancel(cache_entry_t *entry, exportlist_t *export,
 	if (glist_empty(&entry->object.file.lock_list)) {
 		PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
-		cache_inode_dec_pin_ref(entry, FALSE);
+		cache_inode_dec_pin_ref(entry, false);
 		LogDebug(COMPONENT_STATE,
 			 "Cancel success on file with no locks");
 
-		status = STATE_SUCCESS;
-		return status;
+		return STATE_SUCCESS;
 	}
 
 	glist_for_each(glist, &entry->object.file.lock_list) {
@@ -2984,10 +3052,10 @@ state_status_t state_cancel(cache_entry_t *entry, exportlist_t *export,
 			continue;
 
 		/* Cancel the blocked lock */
-		status = cancel_blocked_lock(entry, req_ctx, found_entry);
+		cancel_blocked_lock(entry, found_entry);
 
 		/* Check to see if we can grant any blocked locks. */
-		grant_blocked_locks(entry, req_ctx);
+		grant_blocked_locks(entry);
 
 		break;
 	}
@@ -2996,13 +3064,13 @@ state_status_t state_cancel(cache_entry_t *entry, exportlist_t *export,
 	 * the pin ref count pt placed
 	 */
 	if (glist_empty(&entry->object.file.lock_list))
-		cache_inode_dec_pin_ref(entry, FALSE);
+		cache_inode_dec_pin_ref(entry, false);
 
 	PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
-	cache_inode_dec_pin_ref(entry, FALSE);
+	cache_inode_dec_pin_ref(entry, false);
 
-	return status;
+	return STATE_SUCCESS;
 }
 
 /**
@@ -3011,24 +3079,28 @@ state_status_t state_cancel(cache_entry_t *entry, exportlist_t *export,
  * Also used to handle NLM_FREE_ALL
  *
  * @param[in] nsmclient NSM client data
- * @param[in] req_ctx   Request context
+ * @param[in] from_client true if from protocol, false from async events
  * @param[in] state     Associated state
  *
  * @return State status.
  */
 state_status_t state_nlm_notify(state_nsm_client_t *nsmclient,
-				struct req_op_context *req_ctx,
+				bool from_client,
 				state_t *state)
 {
 	state_owner_t *owner;
 	state_lock_entry_t *found_entry;
-	exportlist_t *export;
 	fsal_lock_param_t lock;
 	cache_entry_t *entry;
 	int errcnt = 0;
 	struct glist_head newlocks;
 	state_nlm_share_t *found_share;
 	state_status_t status = 0;
+	struct root_op_context root_op_context;
+
+	/* Initialize a context */
+	init_root_op_context(&root_op_context, NULL, NULL,
+			     0, 0, UNKNOWN_REQUEST);
 
 	if (isFullDebug(COMPONENT_STATE)) {
 		char client[HASHTABLE_DISPLAY_STRLEN];
@@ -3068,7 +3140,7 @@ state_status_t state_nlm_notify(state_nsm_client_t *nsmclient,
 		/* Remove from the client lock list */
 		glist_del(&found_entry->sle_client_locks);
 
-		if (found_entry->sle_state == state && req_ctx != NULL) {
+		if (found_entry->sle_state == state && from_client) {
 			/* This is a new lock acquired since the client
 			 * rebooted, retain it.
 			 */
@@ -3094,7 +3166,10 @@ state_status_t state_nlm_notify(state_nsm_client_t *nsmclient,
 		 */
 		entry = found_entry->sle_entry;
 		owner = found_entry->sle_owner;
-		export = found_entry->sle_export;
+		root_op_context.req_ctx.export = found_entry->sle_export;
+		root_op_context.req_ctx.fsal_export =
+			root_op_context.req_ctx.export->fsal_export;
+		get_gsh_export_ref(root_op_context.req_ctx.export);
 
 		PTHREAD_RWLOCK_wrlock(&entry->state_lock);
 
@@ -3111,10 +3186,13 @@ state_status_t state_nlm_notify(state_nsm_client_t *nsmclient,
 		lock.lock_length = 0;
 
 		/* Remove all locks held by this NLM Client on the file */
-		status =
-		    state_unlock(entry, export, req_ctx, owner, state, &lock,
-				 found_entry->sle_type);
-		if (status != STATE_SUCCESS) {
+		status = state_unlock(entry,
+				      owner, state,
+				      &lock, POSIX_LOCK);
+
+		put_gsh_export(root_op_context.req_ctx.export);
+
+		if (!state_unlock_err_ok(status)) {
 			/* Increment the error count and try the next lock,
 			 * with any luck the memory pressure which is causing
 			 * the problem will resolve itself.
@@ -3153,7 +3231,11 @@ state_status_t state_nlm_notify(state_nsm_client_t *nsmclient,
 		/* Extract the cache inode entry from the share */
 		entry = found_share->sns_entry;
 		owner = found_share->sns_owner;
-		export = found_share->sns_export;
+
+		root_op_context.req_ctx.export = found_share->sns_export;
+		root_op_context.req_ctx.fsal_export =
+			root_op_context.req_ctx.export->fsal_export;
+		get_gsh_export_ref(root_op_context.req_ctx.export);
 
 		/* get a reference to the owner */
 		inc_state_owner_ref(owner);
@@ -3161,13 +3243,16 @@ state_status_t state_nlm_notify(state_nsm_client_t *nsmclient,
 		pthread_mutex_unlock(&nsmclient->ssc_mutex);
 
 		/* Remove all shares held by this NSM Client and
-		 * Owner on the file
+		 * Owner on the file (on all exports)
 		 */
-		status =
-		    state_nlm_unshare(entry, OPEN4_SHARE_ACCESS_NONE,
-				      OPEN4_SHARE_DENY_NONE, owner);
+		status = state_nlm_unshare(entry,
+					   OPEN4_SHARE_ACCESS_NONE,
+					   OPEN4_SHARE_DENY_NONE,
+					   owner);
 
-		if (status != STATE_SUCCESS) {
+		put_gsh_export(root_op_context.req_ctx.export);
+
+		if (!state_unlock_err_ok(status)) {
 			/* Increment the error count and try the next share,
 			 * with any luck the memory pressure which is causing
 			 * the problem will resolve itself.
@@ -3187,6 +3272,7 @@ state_status_t state_nlm_notify(state_nsm_client_t *nsmclient,
 	pthread_mutex_unlock(&nsmclient->ssc_mutex);
 	LogFullDebug(COMPONENT_STATE, "DONE");
 
+	release_root_op_context();
 	return status;
 }
 
@@ -3194,21 +3280,19 @@ state_status_t state_nlm_notify(state_nsm_client_t *nsmclient,
  * @brief Release all locks held by a lock owner
  *
  * @param[in] owner Lock owner
- * @param[in] req_ctx  Request context
  * @param[in] state Associated state
  *
  * @return State status.
  */
 state_status_t state_owner_unlock_all(state_owner_t *owner,
-				      struct req_op_context *req_ctx,
 				      state_t *state)
 {
 	state_lock_entry_t *found_entry;
-	exportlist_t *export;
 	fsal_lock_param_t lock;
 	cache_entry_t *entry;
 	int errcnt = 0;
 	state_status_t status = 0;
+	struct gsh_export *saved_export = op_ctx->export;
 
 	/* Only accept so many errors before giving up. */
 	while (errcnt < STATE_ERR_MAX) {
@@ -3243,7 +3327,8 @@ state_status_t state_owner_unlock_all(state_owner_t *owner,
 		 * release the lock entry
 		 */
 		entry = found_entry->sle_entry;
-		export = found_entry->sle_export;
+		op_ctx->export = found_entry->sle_export;
+		op_ctx->fsal_export = op_ctx->export->fsal_export;
 
 		PTHREAD_RWLOCK_wrlock(&entry->state_lock);
 
@@ -3259,17 +3344,12 @@ state_status_t state_owner_unlock_all(state_owner_t *owner,
 		lock.lock_start = 0;
 		lock.lock_length = 0;
 
-		/* Make sure we hold an lru ref to the cache inode while
-		 * calling unlock
-		 */
-		cache_inode_lru_ref(entry, LRU_FLAG_NONE);
-
 		/* Remove all locks held by this owner on the file */
 		status =
-		    state_unlock(entry, export, req_ctx, owner, state, &lock,
-				 found_entry->sle_type);
+		    state_unlock(entry, owner, state, &lock,
+				 POSIX_LOCK);
 
-		if (status != STATE_SUCCESS) {
+		if (!state_unlock_err_ok(status)) {
 			/* Increment the error count and try the next lock,
 			 * with any luck the memory pressure which is causing
 			 * the problem will resolve itself.
@@ -3284,7 +3364,98 @@ state_status_t state_owner_unlock_all(state_owner_t *owner,
 		 */
 		cache_inode_lru_unref(entry, LRU_FLAG_NONE);
 	}
+
+	op_ctx->export = saved_export;
+	if (saved_export != NULL)
+		op_ctx->fsal_export = op_ctx->export->fsal_export;
 	return status;
+}
+
+/**
+ * @brief Release all locks held on an export
+ *
+ */
+
+void state_export_unlock_all(void)
+{
+	state_lock_entry_t *found_entry;
+	fsal_lock_param_t lock;
+	cache_entry_t *entry;
+	int errcnt = 0;
+	state_status_t status = 0;
+	state_owner_t *owner;
+	state_t *state;
+	lock_type_t lock_type;
+
+	/* Only accept so many errors before giving up. */
+	while (errcnt < STATE_ERR_MAX) {
+		PTHREAD_RWLOCK_wrlock(&op_ctx->export->lock);
+
+		/* We just need to find any file this owner has locks on.
+		 * We pick the first lock the owner holds, and use it's file.
+		 */
+		found_entry = glist_first_entry(&op_ctx->export->exp_lock_list,
+						state_lock_entry_t,
+						sle_export_locks);
+
+		/* If we don't find any entries, then we are done. */
+		if (found_entry == NULL) {
+			PTHREAD_RWLOCK_unlock(&op_ctx->export->lock);
+			break;
+		}
+
+		lock_entry_inc_ref(found_entry);
+
+		/* Move this entry to the end of the list
+		 * (this will help if errors occur)
+		 */
+		glist_del(&found_entry->sle_export_locks);
+		glist_add_tail(&op_ctx->export->exp_lock_list,
+			       &found_entry->sle_export_locks);
+
+		PTHREAD_RWLOCK_unlock(&op_ctx->export->lock);
+
+		/* Extract the cache inode entry from the lock entry and
+		 * release the lock entry
+		 */
+		entry = found_entry->sle_entry;
+		owner = found_entry->sle_owner;
+		state = found_entry->sle_state;
+		lock_type = found_entry->sle_type;
+
+		PTHREAD_RWLOCK_wrlock(&entry->state_lock);
+
+		lock_entry_dec_ref(found_entry);
+		cache_inode_lru_ref(entry, LRU_FLAG_NONE);
+
+		PTHREAD_RWLOCK_unlock(&entry->state_lock);
+
+		/* Make lock that covers the whole file.
+		 * type doesn't matter for unlock
+		 */
+		lock.lock_type = FSAL_LOCK_R;
+		lock.lock_start = 0;
+		lock.lock_length = 0;
+
+		/* Remove all locks held by this owner on the file */
+		status = state_unlock(entry, owner, state,
+				      &lock, lock_type);
+
+		if (!state_unlock_err_ok(status)) {
+			/* Increment the error count and try the next lock,
+			 * with any luck the memory pressure which is causing
+			 * the problem will resolve itself.
+			 */
+			LogDebug(COMPONENT_STATE, "state_unlock failed %s",
+				 state_err_str(status));
+			errcnt++;
+		}
+
+		/* Release the lru ref to the cache inode we held while
+		 * calling unlock
+		 */
+		cache_inode_put(entry);
+	}
 }
 
 /**
@@ -3356,7 +3527,7 @@ void find_blocked_lock_upcall(cache_entry_t *entry, void *owner,
 	}
 
 	/* We must be out of sync with FSAL, this is fatal */
-	LogLockDesc(COMPONENT_STATE, NIV_MAJOR, "Blocked Lock Not Found for",
+	LogLockDesc(COMPONENT_STATE, NIV_MAJ, "Blocked Lock Not Found for",
 		    entry, owner, lock);
 	LogFatal(COMPONENT_STATE, "Locks out of sync with FSAL");
 }
@@ -3406,38 +3577,34 @@ void state_lock_wipe(cache_entry_t *entry)
 
 	free_list(&entry->object.file.lock_list);
 
-	cache_inode_dec_pin_ref(entry, FALSE);
+	cache_inode_dec_pin_ref(entry, false);
 }
 
 void cancel_all_nlm_blocked()
 {
-	struct glist_head *glist, *glistn;
 	state_lock_entry_t *found_entry;
 	cache_entry_t *pentry;
 	state_block_data_t *pblock;
-/*   state_status_t state_status = STATE_SUCCESS; */
+	struct root_op_context root_op_context;
+
+	/* Initialize context */
+	init_root_op_context(&root_op_context, NULL, NULL, 0, 0, NFS_REQUEST);
 
 	LogDebug(COMPONENT_STATE, "Cancel all blocked locks");
 
 	pthread_mutex_lock(&blocked_locks_mutex);
 
-	if (glist_empty(&state_blocked_locks)) {
+	pblock = glist_first_entry(&state_blocked_locks,
+				   state_block_data_t,
+				   sbd_list);
+
+	if (pblock == NULL) {
 		LogFullDebug(COMPONENT_STATE, "No blocked locks");
-		pthread_mutex_unlock(&blocked_locks_mutex);
-		return;
+		goto out;
 	}
 
-	glist_for_each_safe(glist, glistn, &state_blocked_locks) {
-		pblock = glist_entry(glist, state_block_data_t, sbd_list);
-
+	while (pblock != NULL) {
 		found_entry = pblock->sbd_lock_entry;
-
-		/* Check if got an entry */
-		if (found_entry == NULL) {
-			LogWarn(COMPONENT_STATE,
-				"Blocked lock without an state_lock_entry_t");
-			continue;
-		}
 
 		/* Remove lock from blocked list */
 		glist_del(&pblock->sbd_list);
@@ -3446,12 +3613,17 @@ void cancel_all_nlm_blocked()
 
 		pthread_mutex_unlock(&blocked_locks_mutex);
 
+		root_op_context.req_ctx.export = found_entry->sle_export;
+		root_op_context.req_ctx.fsal_export =
+			root_op_context.req_ctx.export->fsal_export;
+		get_gsh_export_ref(root_op_context.req_ctx.export);
+
 		LogEntry("Blocked Lock found", found_entry);
 
 		pentry = found_entry->sle_entry;
 
-		/* state_status = */ (void)
-		    cancel_blocked_lock(pentry, NULL, found_entry);
+		cancel_blocked_lock(pentry,
+				    found_entry);
 
 		if (pblock->sbd_blocked_cookie != NULL)
 			gsh_free(pblock->sbd_blocked_cookie);
@@ -3461,12 +3633,22 @@ void cancel_all_nlm_blocked()
 
 		LogEntry("Canceled Lock", found_entry);
 
+		put_gsh_export(root_op_context.req_ctx.export);
+
 		lock_entry_dec_ref(found_entry);
 
 		pthread_mutex_lock(&blocked_locks_mutex);
-	}			/* glist_for_each_safe */
+
+		/* Get next item off list */
+		pblock = glist_first_entry(&state_blocked_locks,
+					   state_block_data_t,
+					   sbd_list);
+	}
+
+out:
 
 	pthread_mutex_unlock(&blocked_locks_mutex);
+	release_root_op_context();
 	return;
 }
 

@@ -30,34 +30,12 @@
  *
  * A set of functions used to managed NFS.
  */
-#include "config.h"
-#include <string.h>
-#include <pthread.h>
-#include <fcntl.h>
-#include <pwd.h>
-#include <grp.h>
-#include <stdint.h>
-#include <assert.h>
 #include "log.h"
-#include "ganesha_rpc.h"
-#include "nfs23.h"
-#include "nfs4.h"
-#include "mount.h"
-#include "nfs_core.h"
 #include "cache_inode.h"
-#include "nfs_exports.h"
-#include "nfs_creds.h"
 #include "fsal_convert.h"
-#include "nfs_proto_functions.h"
-#include "nfs_tools.h"
-#include "nfs_file_handle.h"
+#include "nfs_convert.h"
 #include "nfs_proto_tools.h"
-#include "nfs4_acls.h"
-#include "sal_data.h"
-#include "sal_functions.h"
-#include "fsal.h"
 #include "idmapper.h"
-#include "client_mgr.h"
 #include "export_mgr.h"
 
 /* Define mapping of NFS4 who name and type. */
@@ -83,56 +61,6 @@ static struct {
 	},
 };
 
-/*
- * String representations of NFS protocol operations.
- */
-
-char *nfsv3_function_names[] = {
-	"NFSv3_null", "NFSv3_getattr", "NFSv3_setattr", "NFSv3_lookup",
-	"NFSv3_access", "NFSv3_readlink", "NFSv3_read", "NFSv3_write",
-	"NFSv3_create", "NFSv3_mkdir", "NFSv3_symlink", "NFSv3_mknod",
-	"NFSv3_remove", "NFSv3_rmdir", "NFSv3_rename", "NFSv3_link",
-	"NFSv3_readdir", "NFSv3_readdirplus", "NFSv3_fsstat",
-	"NFSv3_fsinfo", "NFSv3_pathconf", "NFSv3_commit"
-};
-
-char *nfsv4_function_names[] = {
-	"NFSv4_null", "NFSv4_compound"
-};
-
-char *mnt_function_names[] = {
-	"MNT_null", "MNT_mount", "MNT_dump", "MNT_umount", "MNT_umountall",
-	"MNT_export"
-};
-
-char *rquota_functions_names[] = {
-	"rquota_Null", "rquota_getquota", "rquota_getquotaspecific",
-	"rquota_setquota", "rquota_setquotaspecific"
-};
-
-/**
- * @brief Convert a file handle to a string representation
- *
- * @param rq_vers  [IN]    version of the NFS protocol to be used
- * @param fh3      [IN]    NFSv3 file handle or NULL
- * @param fh4      [IN]    NFSv4 file handle or NULL
- * @param str      [OUT]   string version of handle
- *
- */
-void nfs_FhandleToStr(u_long rq_vers, nfs_fh3 *fh3, nfs_fh4 *fh4, char *str)
-{
-
-	switch (rq_vers) {
-	case NFS_V4:
-		sprint_fhandle4(str, fh4);
-		break;
-
-	case NFS_V3:
-		sprint_fhandle3(str, fh3);
-		break;
-	}
-}				/* nfs_FhandleToStr */
-
 /**
  * Converts FSAL Attributes to NFSv3 PostOp Attributes structure.
  *
@@ -140,15 +68,13 @@ void nfs_FhandleToStr(u_long rq_vers, nfs_fh3 *fh3, nfs_fh4 *fh4, char *str)
  * structure.
  *
  * @param[in]  entry Cache entry
- * @param[in]  ctx   Operation context
  * @param[out] attr  NFSv3 PostOp structure attributes.
  *
  */
-void nfs_SetPostOpAttr(cache_entry_t *entry, struct req_op_context *ctx,
-		       post_op_attr *attr)
+void nfs_SetPostOpAttr(cache_entry_t *entry, post_op_attr *attr)
 {
 	attr->attributes_follow =
-	    cache_entry_to_nfs3_Fattr(entry, ctx,
+	    cache_entry_to_nfs3_Fattr(entry,
 				      &(attr->post_op_attr_u.attributes));
 }				/* nfs_SetPostOpAttr */
 
@@ -159,14 +85,12 @@ void nfs_SetPostOpAttr(cache_entry_t *entry, struct req_op_context *ctx,
  * structure.
  *
  * @param[in]  entry Cache entry
- * @param[in]  ctx   Operation context
  * @param[out] attr  NFSv3 PreOp structure attributes.
  */
 
-void nfs_SetPreOpAttr(cache_entry_t *entry, struct req_op_context *ctx,
-		      pre_op_attr *attr)
+void nfs_SetPreOpAttr(cache_entry_t *entry, pre_op_attr *attr)
 {
-	if ((entry == NULL) || (cache_inode_lock_trust_attrs(entry, ctx, false)
+	if ((entry == NULL) || (cache_inode_lock_trust_attrs(entry, false)
 				!= CACHE_INODE_SUCCESS)) {
 		attr->attributes_follow = false;
 	} else {
@@ -192,19 +116,18 @@ void nfs_SetPreOpAttr(cache_entry_t *entry, struct req_op_context *ctx,
  *
  * @param[in]  before_attr Pre-op attrs for before state
  * @param[in]  entry       The cache entry after operation
- * @param[in]  ctx         Request context
  * @param[out] wcc_data    the Weak Cache Coherency structure
  *
  */
 void nfs_SetWccData(const struct pre_op_attr *before_attr,
-		    cache_entry_t *entry, struct req_op_context *ctx,
+		    cache_entry_t *entry,
 		    wcc_data *wcc_data)
 {
 	if (before_attr == NULL)
 		wcc_data->before.attributes_follow = false;
 
 	/* Build directory post operation attributes */
-	nfs_SetPostOpAttr(entry, ctx, &(wcc_data->after));
+	nfs_SetPostOpAttr(entry, &(wcc_data->after));
 }				/* nfs_SetWccData */
 
 /**
@@ -287,6 +210,7 @@ bool nfs_RetryableError(cache_inode_status_t cache_status)
 	case CACHE_INODE_FSAL_ERR_SEC:
 	case CACHE_INODE_QUOTA_EXCEEDED:
 	case CACHE_INODE_NOT_SUPPORTED:
+	case CACHE_INODE_UNION_NOTSUPP:
 	case CACHE_INODE_NAME_TOO_LONG:
 	case CACHE_INODE_STATE_CONFLICT:
 	case CACHE_INODE_DEAD_ENTRY:
@@ -301,6 +225,9 @@ bool nfs_RetryableError(cache_inode_status_t cache_status)
 	case CACHE_INODE_FSAL_SHARE_DENIED:
 	case CACHE_INODE_SERVERFAULT:
 	case CACHE_INODE_BADNAME:
+	case CACHE_INODE_CROSS_JUNCTION:
+	case CACHE_INODE_IN_GRACE:
+	case CACHE_INODE_BADHANDLE:
 		/* Non retryable error, return error to client */
 		return false;
 		break;
@@ -503,14 +430,12 @@ static fattr_xdr_result encode_linksupport(XDR *xdr,
 					   struct xdr_attrs_args *args)
 {
 	struct fsal_export *export;
-	int linksupport;
+	int linksupport = FALSE;
 
-	if (args->data != NULL && args->data->export != NULL) {
-		export = args->data->export->export_hdl;
+	if (args->data != NULL) {
+		export = op_ctx->fsal_export;
 		linksupport =
 		    export->ops->fs_supports(export, fso_link_support);
-	} else {
-		linksupport = TRUE;
 	}
 	if (!xdr_bool(xdr, &linksupport))
 		return FATTR_XDR_FAILED;
@@ -531,14 +456,12 @@ static fattr_xdr_result encode_symlinksupport(XDR *xdr,
 					      struct xdr_attrs_args *args)
 {
 	struct fsal_export *export;
-	int symlinksupport;
+	int symlinksupport = FALSE;
 
-	if (args->data != NULL && args->data->export != NULL) {
-		export = args->data->export->export_hdl;
+	if (args->data != NULL) {
+		export = op_ctx->fsal_export;
 		symlinksupport =
 		    export->ops->fs_supports(export, fso_symlink_support);
-	} else {
-		symlinksupport = TRUE;
 	}
 	if (!xdr_bool(xdr, &symlinksupport))
 		return FATTR_XDR_FAILED;
@@ -561,14 +484,12 @@ static fattr_xdr_result encode_namedattrsupport(XDR *xdr,
 						struct xdr_attrs_args *args)
 {
 	struct fsal_export *export;
-	int namedattrsupport;
+	int namedattrsupport = FALSE;
 
-	if (args->data != NULL && args->data->export != NULL) {
-		export = args->data->export->export_hdl;
+	if (args->data != NULL) {
+		export = op_ctx->fsal_export;
 		namedattrsupport =
 		    export->ops->fs_supports(export, fso_named_attr);
-	} else {
-		namedattrsupport = FALSE;
 	}
 	if (!xdr_bool(xdr, &namedattrsupport))
 		return FATTR_XDR_FAILED;
@@ -587,15 +508,18 @@ static fattr_xdr_result decode_namedattrsupport(XDR *xdr,
 
 static fattr_xdr_result encode_fsid(XDR *xdr, struct xdr_attrs_args *args)
 {
-	fsid4 fsid;
+	fsid4 fsid = {0, 0};
 
-	if (args->data != NULL && args->data->export != NULL) {
-		fsid.major = args->data->export->filesystem_id.major;
-		fsid.minor = args->data->export->filesystem_id.minor;
+	if (args->data != NULL &&
+	    (op_ctx->export->options_set &
+	     EXPORT_OPTION_FSID_SET) != 0) {
+		fsid.major = op_ctx->export->filesystem_id.major;
+		fsid.minor = op_ctx->export->filesystem_id.minor;
 	} else {
-		fsid.major = 152LL;	/* 153,153 for junctions in pseudos */
-		fsid.minor = 152LL;
+		fsid.major = args->attrs->fsid.major;
+		fsid.minor = args->attrs->fsid.minor;
 	}
+
 	if (!xdr_u_int64_t(xdr, &fsid.major))
 		return FATTR_XDR_FAILED;
 	if (!xdr_u_int64_t(xdr, &fsid.minor))
@@ -620,14 +544,12 @@ static fattr_xdr_result encode_uniquehandles(XDR *xdr,
 					     struct xdr_attrs_args *args)
 {
 	struct fsal_export *export;
-	int uniquehandles;
+	int uniquehandles = FALSE;
 
-	if (args->data != NULL && args->data->export != NULL) {
-		export = args->data->export->export_hdl;
+	if (args->data != NULL) {
+		export = op_ctx->fsal_export;
 		uniquehandles =
 		    export->ops->fs_supports(export, fso_unique_handles);
-	} else {
-		uniquehandles = TRUE;
 	}
 	if (!inline_xdr_bool(xdr, &uniquehandles))
 		return FATTR_XDR_FAILED;
@@ -689,7 +611,7 @@ static fattr_xdr_result encode_acl(XDR *xdr, struct xdr_attrs_args *args)
 	if (args->attrs->acl) {
 		fsal_ace_t *ace;
 		int i;
-		char *name;
+		char *name = NULL;
 
 		LogFullDebug(COMPONENT_NFS_V4, "Number of ACEs = %u",
 			     args->attrs->acl->naces);
@@ -708,11 +630,7 @@ static fattr_xdr_result encode_acl(XDR *xdr, struct xdr_attrs_args *args)
 				return FATTR_XDR_FAILED;
 			if (!inline_xdr_u_int32_t(xdr, &ace->perm))
 				return FATTR_XDR_FAILED;
-			if (IS_FSAL_ACE_GROUP_ID(*ace)) {
-				/* Encode group name. */
-				if (!xdr_encode_nfs4_group(xdr, ace->who.gid))
-					return FATTR_XDR_FAILED;
-			} else if (IS_FSAL_ACE_SPECIAL_ID(*ace)) {
+			if (IS_FSAL_ACE_SPECIAL_ID(*ace)) {
 				for (i = 0;
 				     i < FSAL_ACE_SPECIAL_EVERYONE;
 				     i++) {
@@ -723,7 +641,12 @@ static fattr_xdr_result encode_acl(XDR *xdr, struct xdr_attrs_args *args)
 						break;
 					}
 				}
-				if (!xdr_string(xdr, &name, MAXNAMLEN))
+				if (name == NULL ||
+				    !xdr_string(xdr, &name, MAXNAMLEN))
+					return FATTR_XDR_FAILED;
+			} else if (IS_FSAL_ACE_GROUP_ID(*ace)) {
+				/* Encode group name. */
+				if (!xdr_encode_nfs4_group(xdr, ace->who.gid))
 					return FATTR_XDR_FAILED;
 			} else {
 				if (!xdr_encode_nfs4_owner
@@ -748,7 +671,7 @@ static fattr_xdr_result decode_acl(XDR *xdr, struct xdr_attrs_args *args)
 	char buffer[MAXNAMLEN + 1];
 	char *buffp = buffer;
 	utf8string utf8buffer;
-	int who = 0;		/* not ASE_SPECIAL anything */
+	int who = 0;		/* not ACE_SPECIAL anything */
 
 	acldata.naces = 0;
 
@@ -765,6 +688,7 @@ static fattr_xdr_result decode_acl(XDR *xdr, struct xdr_attrs_args *args)
 	memset(acldata.aces, 0, acldata.naces * sizeof(fsal_ace_t));
 	for (ace = acldata.aces; ace < acldata.aces + acldata.naces; ace++) {
 		int i;
+		who = 0;
 
 		if (!inline_xdr_u_int32_t(xdr, &ace->type))
 			goto baderr;
@@ -793,7 +717,7 @@ static fattr_xdr_result decode_acl(XDR *xdr, struct xdr_attrs_args *args)
 		} else {
 			utf8buffer.utf8string_val = buffer;
 			utf8buffer.utf8string_len = strlen(buffer);
-			if (ace->flag == FSAL_ACE_FLAG_GROUP_ID) {
+			if (IS_FSAL_ACE_GROUP_ID(*ace)) {
 				/* Decode group. */
 				struct gsh_buffdesc gname = {
 					.addr = utf8buffer.utf8string_val,
@@ -802,9 +726,10 @@ static fattr_xdr_result decode_acl(XDR *xdr, struct xdr_attrs_args *args)
 				if (!name2gid(
 					&gname,
 					&ace->who.gid,
-					args->data ?
-					    args->data->export->export_perms
-					    .anonymous_gid : -1))
+					args->data
+					? op_ctx->export
+					  ->export_perms .anonymous_gid
+					: -1))
 					goto baderr;
 
 				LogFullDebug(COMPONENT_NFS_V4,
@@ -818,9 +743,10 @@ static fattr_xdr_result decode_acl(XDR *xdr, struct xdr_attrs_args *args)
 				if (!name2uid(
 					&uname,
 					&ace->who.uid,
-					args->data ?
-					    args->data->export->export_perms
-						.anonymous_uid : -1))
+					args->data
+					? op_ctx->export
+					  ->export_perms .anonymous_uid
+					: -1))
 					goto baderr;
 
 				LogFullDebug(COMPONENT_NFS_V4,
@@ -832,9 +758,8 @@ static fattr_xdr_result decode_acl(XDR *xdr, struct xdr_attrs_args *args)
 		/* Check if we can map a name string to uid or gid. If we
 		 * can't, do cleanup and bubble up NFS4ERR_BADOWNER.
 		 */
-		if ((ace->flag ==
-		     FSAL_ACE_FLAG_GROUP_ID ? ace->who.gid : ace->who.uid) ==
-		    -1) {
+		if ((IS_FSAL_ACE_GROUP_ID(*ace) ?
+		     ace->who.gid : ace->who.uid) == -1) {
 			LogFullDebug(COMPONENT_NFS_V4, "ACE bad owner");
 			args->nfs_status = NFS4ERR_BADOWNER;
 			goto baderr;
@@ -869,13 +794,11 @@ static fattr_xdr_result encode_aclsupport(XDR *xdr,
 					  struct xdr_attrs_args *args)
 {
 	struct fsal_export *export;
-	uint32_t aclsupport;
+	uint32_t aclsupport = 0;
 
-	if (args->data != NULL && args->data->export != NULL) {
-		export = args->data->export->export_hdl;
+	if (args->data != NULL) {
+		export = op_ctx->fsal_export;
 		aclsupport = export->ops->fs_acl_support(export);
-	} else {
-		aclsupport = FALSE;
 	}
 	if (!inline_xdr_u_int32_t(xdr, &aclsupport))
 		return FATTR_XDR_FAILED;
@@ -917,13 +840,11 @@ static fattr_xdr_result encode_cansettime(XDR *xdr,
 					  struct xdr_attrs_args *args)
 {
 	struct fsal_export *export;
-	uint32_t cansettime;
+	uint32_t cansettime = FALSE;
 
-	if (args->data != NULL && args->data->export != NULL) {
-		export = args->data->export->export_hdl;
+	if (args->data != NULL) {
+		export = op_ctx->fsal_export;
 		cansettime = export->ops->fs_supports(export, fso_cansettime);
-	} else {
-		cansettime = TRUE;
 	}
 	if (!inline_xdr_bool(xdr, &cansettime))
 		return FATTR_XDR_FAILED;
@@ -945,14 +866,12 @@ static fattr_xdr_result encode_case_insensitive(XDR *xdr,
 						struct xdr_attrs_args *args)
 {
 	struct fsal_export *export;
-	uint32_t caseinsensitive;
+	uint32_t caseinsensitive = FALSE;
 
-	if (args->data != NULL && args->data->export != NULL) {
-		export = args->data->export->export_hdl;
+	if (args->data != NULL) {
+		export = op_ctx->fsal_export;
 		caseinsensitive =
 		    export->ops->fs_supports(export, fso_case_insensitive);
-	} else {
-		caseinsensitive = FALSE;
 	}
 	if (!inline_xdr_bool(xdr, &caseinsensitive))
 		return FATTR_XDR_FAILED;
@@ -974,14 +893,12 @@ static fattr_xdr_result encode_case_preserving(XDR *xdr,
 					       struct xdr_attrs_args *args)
 {
 	struct fsal_export *export;
-	uint32_t casepreserving;
+	uint32_t casepreserving = FALSE;
 
-	if (args->data != NULL && args->data->export != NULL) {
-		export = args->data->export->export_hdl;
+	if (args->data != NULL) {
+		export = op_ctx->fsal_export;
 		casepreserving =
 		    export->ops->fs_supports(export, fso_case_preserving);
-	} else {
-		casepreserving = TRUE;
 	}
 	if (!inline_xdr_bool(xdr, &casepreserving))
 		return FATTR_XDR_FAILED;
@@ -1003,14 +920,12 @@ static fattr_xdr_result encode_chown_restricted(XDR *xdr,
 						struct xdr_attrs_args *args)
 {
 	struct fsal_export *export;
-	uint32_t chownrestricted;
+	uint32_t chownrestricted = FALSE;
 
-	if (args->data != NULL && args->data->export != NULL) {
-		export = args->data->export->export_hdl;
+	if (args->data != NULL) {
+		export = op_ctx->fsal_export;
 		chownrestricted =
 		    export->ops->fs_supports(export, fso_chown_restricted);
-	} else {
-		chownrestricted = TRUE;
 	}
 	if (!inline_xdr_bool(xdr, &chownrestricted))
 		return FATTR_XDR_FAILED;
@@ -1091,7 +1006,7 @@ static fattr_xdr_result encode_fetch_fsinfo(struct xdr_attrs_args *args)
 	if (args->data != NULL && args->data->current_entry != NULL) {
 		cache_status =
 		    cache_inode_statfs(args->data->current_entry,
-				       args->dynamicinfo, args->data->req_ctx);
+				       args->dynamicinfo);
 	} else {
 		args->dynamicinfo->avail_files = 512;
 		args->dynamicinfo->free_files = 512;
@@ -1243,13 +1158,11 @@ static fattr_xdr_result encode_homogeneous(XDR *xdr,
 					   struct xdr_attrs_args *args)
 {
 	struct fsal_export *export;
-	uint32_t homogeneous;
+	uint32_t homogeneous = FALSE;
 
-	if (args->data != NULL && args->data->export != NULL) {
-		export = args->data->export->export_hdl;
+	if (args->data != NULL) {
+		export = op_ctx->fsal_export;
 		homogeneous = export->ops->fs_supports(export, fso_homogenous);
-	} else {
-		homogeneous = TRUE;
 	}
 	if (!inline_xdr_bool(xdr, &homogeneous))
 		return FATTR_XDR_FAILED;
@@ -1270,13 +1183,11 @@ static fattr_xdr_result encode_maxfilesize(XDR *xdr,
 					   struct xdr_attrs_args *args)
 {
 	struct fsal_export *export;
-	uint64_t maxfilesize;
+	uint64_t maxfilesize = 0;
 
-	if (args->data != NULL && args->data->export != NULL) {
-		export = args->data->export->export_hdl;
+	if (args->data != NULL) {
+		export = op_ctx->fsal_export;
 		maxfilesize = export->ops->fs_maxfilesize(export);
-	} else {
-		maxfilesize = FSINFO_MAX_FILESIZE;
 	}
 	if (!inline_xdr_u_int64_t(xdr, &maxfilesize))
 		return FATTR_XDR_FAILED;
@@ -1296,13 +1207,11 @@ static fattr_xdr_result decode_maxfilesize(XDR *xdr,
 static fattr_xdr_result encode_maxlink(XDR *xdr, struct xdr_attrs_args *args)
 {
 	struct fsal_export *export;
-	uint32_t maxlink;
+	uint32_t maxlink = 0;
 
-	if (args->data != NULL && args->data->export != NULL) {
-		export = args->data->export->export_hdl;
+	if (args->data != NULL) {
+		export = op_ctx->fsal_export;
 		maxlink = export->ops->fs_maxlink(export);
-	} else {
-		maxlink = MAX_HARD_LINK_VALUE;
 	}
 	if (!inline_xdr_u_int32_t(xdr, &maxlink))
 		return FATTR_XDR_FAILED;
@@ -1321,13 +1230,11 @@ static fattr_xdr_result decode_maxlink(XDR *xdr, struct xdr_attrs_args *args)
 static fattr_xdr_result encode_maxname(XDR *xdr, struct xdr_attrs_args *args)
 {
 	struct fsal_export *export;
-	uint32_t maxname;
+	uint32_t maxname = 0;
 
-	if (args->data != NULL && args->data->export != NULL) {
-		export = args->data->export->export_hdl;
+	if (args->data != NULL) {
+		export = op_ctx->fsal_export;
 		maxname = export->ops->fs_maxnamelen(export);
-	} else {
-		maxname = MAXNAMLEN;
 	}
 	if (!inline_xdr_u_int32_t(xdr, &maxname))
 		return FATTR_XDR_FAILED;
@@ -1358,14 +1265,7 @@ static fattr_xdr_result decode_maxname(XDR *xdr, struct xdr_attrs_args *args)
 
 static fattr_xdr_result encode_maxread(XDR *xdr, struct xdr_attrs_args *args)
 {
-	uint64_t maxread;
-
-	if (args->data != NULL && args->data->export != NULL)
-		maxread = args->data->export->MaxRead;
-	else
-		maxread = NFS4_PSEUDOFS_MAX_READ_SIZE;
-
-	if (!inline_xdr_u_int64_t(xdr, &maxread))
+	if (!inline_xdr_u_int64_t(xdr, &op_ctx->export->MaxRead))
 		return FATTR_XDR_FAILED;
 	return FATTR_XDR_SUCCESS;
 }
@@ -1381,14 +1281,7 @@ static fattr_xdr_result decode_maxread(XDR *xdr, struct xdr_attrs_args *args)
 
 static fattr_xdr_result encode_maxwrite(XDR *xdr, struct xdr_attrs_args *args)
 {
-	uint64_t maxwrite;
-
-	if (args->data != NULL && args->data->export != NULL)
-		maxwrite = args->data->export->MaxWrite;
-	else
-		maxwrite = NFS4_PSEUDOFS_MAX_WRITE_SIZE;
-
-	if (!inline_xdr_u_int64_t(xdr, &maxwrite))
+	if (!inline_xdr_u_int64_t(xdr, &op_ctx->export->MaxWrite))
 		return FATTR_XDR_FAILED;
 	return FATTR_XDR_SUCCESS;
 }
@@ -1446,13 +1339,11 @@ static fattr_xdr_result decode_mode(XDR *xdr, struct xdr_attrs_args *args)
 static fattr_xdr_result encode_no_trunc(XDR *xdr, struct xdr_attrs_args *args)
 {
 	struct fsal_export *export;
-	uint32_t no_trunc = 0;
+	uint32_t no_trunc = FALSE;
 
-	if (args->data != NULL && args->data->export != NULL) {
-		export = args->data->export->export_hdl;
+	if (args->data != NULL) {
+		export = op_ctx->fsal_export;
 		no_trunc = export->ops->fs_supports(export, fso_no_trunc);
-	} else {
-		no_trunc = TRUE;
 	}
 	if (!inline_xdr_bool(xdr, &no_trunc))
 		return FATTR_XDR_FAILED;
@@ -1516,10 +1407,11 @@ static fattr_xdr_result decode_owner(XDR *xdr, struct xdr_attrs_args *args)
 		return FATTR_XDR_FAILED;
 	}
 
-	if (!name2uid
-	    (&ownerdesc, &uid,
-	     (args->data ? args->data->export->export_perms.
-	      anonymous_uid : -1))) {
+	if (!name2uid(&ownerdesc,
+		      &uid,
+		      args->data ?
+			op_ctx->export->export_perms.anonymous_uid
+			: -1)) {
 		return FATTR_BADOWNER;
 	}
 
@@ -1562,10 +1454,11 @@ static fattr_xdr_result decode_group(XDR *xdr, struct xdr_attrs_args *args)
 		return FATTR_XDR_FAILED;
 	}
 
-	if (!name2gid
-	    (&groupdesc, &gid,
-	     (args->data ? args->data->export->export_perms.
-	      anonymous_gid : -1)))
+	if (!name2gid(&groupdesc,
+		      &gid,
+		      args->data ?
+			op_ctx->export->export_perms.anonymous_gid
+			: -1))
 		return FATTR_BADOWNER;
 
 	xdr_setpos(xdr, newpos);
@@ -2118,12 +2011,12 @@ static fattr_xdr_result encode_fs_layout_types(XDR *xdr,
 	struct fsal_export *export;
 	const layouttype4 *layouttypes = NULL;
 	layouttype4 layout_type;
-	size_t typecount = 0;
-	size_t index = 0;
+	int32_t typecount = 0;
+	int32_t index = 0;
 
-	if (args->data == NULL || args->data->export == NULL)
+	if (args->data == NULL)
 		return FATTR_XDR_NOOP;
-	export = args->data->export->export_hdl;
+	export = op_ctx->fsal_export;
 	export->ops->fs_layouttypes(export, &typecount, &layouttypes);
 
 	if (!inline_xdr_u_int32_t(xdr, (uint32_t *) &typecount))
@@ -2184,10 +2077,10 @@ static fattr_xdr_result encode_layout_blocksize(XDR *xdr,
 						struct xdr_attrs_args *args)
 {
 
-	if (args->data == NULL || args->data->export == NULL) {
+	if (args->data == NULL) {
 		return FATTR_XDR_NOOP;
 	} else {
-		struct fsal_export *export = args->data->export->export_hdl;
+		struct fsal_export *export = op_ctx->fsal_export;
 		uint32_t blocksize = export->ops->fs_layout_blocksize(export);
 
 		if (!inline_xdr_u_int32_t(xdr, &blocksize))
@@ -3068,6 +2961,15 @@ const struct fattr4_dent fattr4tab[FATTR4_MAX + 1] = {
 		.decode = decode_fs_charset_cap,
 		.access = FATTR4_ATTR_READ}
 	,
+	[FATTR4_SPACE_RESERVED] = {
+		.name = "FATTR4_SPACE_RESERVED",
+		.supported = 1,
+		.size_fattr4 = sizeof(fattr4_size),
+		.attrmask = ATTR4_SPACE_RESERVED,
+		.encode = encode_filesize,
+		.decode = decode_filesize,
+		.access = FATTR4_ATTR_READ_WRITE}
+	,
 	[FATTR4_PROTECTION_TYPES] = {
 		.name = "FATTR4_PROTECTION_TYPES",
 		.supported = 1,
@@ -3080,9 +2982,6 @@ const struct fattr4_dent fattr4tab[FATTR4_MAX + 1] = {
 
 /* goes in a more global header?
  */
-
-#define likely(x)      __builtin_expect(!!(x), 1)
-#define unlikely(x)    __builtin_expect(!!(x), 0)
 
 /** path_filter
  * scan the path we are given for bad filenames.
@@ -3207,6 +3106,7 @@ struct Fattr_filler_opaque {
  */
 
 static cache_inode_status_t Fattr_filler(void *opaque,
+					 cache_entry_t *entry,
 					 const struct attrlist *attr,
 					 uint64_t mounted_on_fileid)
 {
@@ -3266,7 +3166,7 @@ nfsstat4 cache_entry_To_Fattr(cache_entry_t *entry, fattr4 *Fattr,
 		status =
 		    cache_inode_access(entry,
 				       FSAL_ACE4_MASK_SET
-				       (FSAL_ACE_PERM_READ_ACL), data->req_ctx);
+				       (FSAL_ACE_PERM_READ_ACL));
 
 		if (status != CACHE_INODE_SUCCESS) {
 			LogDebug(COMPONENT_NFS_V4_ACL,
@@ -3280,8 +3180,7 @@ nfsstat4 cache_entry_To_Fattr(cache_entry_t *entry, fattr4 *Fattr,
 	}
 
 	return
-	    nfs4_Errno(cache_inode_getattr
-		       (entry, data->req_ctx, &f, Fattr_filler));
+	    nfs4_Errno(cache_inode_getattr(entry, &f, Fattr_filler));
 }
 
 int nfs4_Fattr_Fill_Error(fattr4 *Fattr, nfsstat4 rdattr_error)
@@ -3629,6 +3528,26 @@ static void nfs3_FSALattr_To_PartialFattr(const struct attrlist *FSAL_attr,
 		*mask |= ATTR_RAWDEV;
 	}
 
+	if (FSAL_attr->mask & ATTR_FSID) {
+		/* xor filesystem_id major and rotated minor to create unique
+		 * on-wire fsid.
+		 */
+		Fattr->fsid = (nfs3_uint64) squash_fsid(&FSAL_attr->fsid);
+
+		LogFullDebug(COMPONENT_NFSPROTO,
+			     "Compressing fsid for NFS v3 from "
+			     "fsid major %#" PRIX64 " (%" PRIu64 "), minor %#"
+			     PRIX64 " (%" PRIu64 ") to nfs3_fsid = %#" PRIX64
+			     " (%" PRIu64 ")",
+			     FSAL_attr->fsid.major,
+			     FSAL_attr->fsid.major,
+			     FSAL_attr->fsid.minor,
+			     FSAL_attr->fsid.minor,
+			     (uint64_t) Fattr->fsid, (uint64_t) Fattr->fsid);
+
+		*mask |= ATTR_FILEID;
+	}
+
 	if (FSAL_attr->mask & ATTR_FILEID) {
 		Fattr->fileid = FSAL_attr->fileid;
 		*mask |= ATTR_FILEID;
@@ -3660,21 +3579,18 @@ static void nfs3_FSALattr_To_PartialFattr(const struct attrlist *FSAL_attr,
  * fill the Fattr.
  *
  * @param[in]  entry The cache entry
- * @param[in]  ctx   The request context
  * @param[out] Fattr NFSv3 Fattr
  *
  * @retval true on success.
  * @retval false on failure.
  */
 
-bool cache_entry_to_nfs3_Fattr(cache_entry_t *entry,
-			       struct req_op_context *ctx, fattr3 *Fattr)
+bool cache_entry_to_nfs3_Fattr(cache_entry_t *entry, fattr3 *Fattr)
 {
 	bool rc = false;
-	if (entry && (cache_inode_lock_trust_attrs(entry, ctx, false)
+	if (entry && (cache_inode_lock_trust_attrs(entry, false)
 		      == CACHE_INODE_SUCCESS)) {
-		rc = nfs3_FSALattr_To_Fattr(entry->obj_handle->export->
-					    exp_entry,
+		rc = nfs3_FSALattr_To_Fattr(op_ctx->export,
 					    &entry->obj_handle->attributes,
 					    Fattr);
 		PTHREAD_RWLOCK_unlock(&entry->attr_lock);
@@ -3698,7 +3614,7 @@ bool cache_entry_to_nfs3_Fattr(cache_entry_t *entry,
  * @retval false  otherwise.
  *
  */
-bool nfs3_FSALattr_To_Fattr(exportlist_t *export,
+bool nfs3_FSALattr_To_Fattr(struct gsh_export *export,
 			    const struct attrlist *FSAL_attr, fattr3 *Fattr)
 {
 	/* We want to override the FSAL fsid with the export's configured fsid
@@ -3713,19 +3629,25 @@ bool nfs3_FSALattr_To_Fattr(exportlist_t *export,
 			"attribute: missing %lx", want & ~got);
 	}
 
-	/* xor filesystem_id major and rotated minor to create unique
-	 * on-wire fsid.
-	 */
-	Fattr->fsid = (nfs3_uint64) (export->filesystem_id.major ^
-				    (export->filesystem_id.minor << 32 |
-				    export->filesystem_id.minor >> 32));
+	if ((export->options_set & EXPORT_OPTION_FSID_SET) != 0) {
+		/* xor filesystem_id major and rotated minor to create unique
+		 * on-wire fsid.
+		 */
+		Fattr->fsid = (nfs3_uint64) squash_fsid(
+					&export->filesystem_id);
 
-	LogFullDebug(COMPONENT_NFSPROTO,
-		     "fsid major %#" PRIX64 " (%" PRIu64 "), minor %#" PRIX64
-		     " (%" PRIu64 "), nfs3_fsid = %#" PRIX64 " (%" PRIu64 ")",
-		     export->filesystem_id.major, export->filesystem_id.major,
-		     export->filesystem_id.minor, export->filesystem_id.minor,
-		     (uint64_t) Fattr->fsid, (uint64_t) Fattr->fsid);
+		LogFullDebug(COMPONENT_NFSPROTO,
+			     "Compressing export filesystem_id for NFS v3 from "
+			     "fsid major %#" PRIX64 " (%" PRIu64 "), minor %#"
+			     PRIX64 " (%" PRIu64 ") to nfs3_fsid = %#" PRIX64
+			     " (%" PRIu64 ")",
+			     export->filesystem_id.major,
+			     export->filesystem_id.major,
+			     export->filesystem_id.minor,
+			     export->filesystem_id.minor,
+			     (uint64_t) Fattr->fsid, (uint64_t) Fattr->fsid);
+	}
+
 	return true;
 }
 
@@ -3944,6 +3866,7 @@ int nfs4_Fattr_cmp(fattr4 *Fattr1, fattr4 *Fattr2)
 		case FATTR4_FH_EXPIRE_TYPE:
 		case FATTR4_CHANGE:
 		case FATTR4_SIZE:
+		case FATTR4_SPACE_RESERVED:
 		case FATTR4_LINK_SUPPORT:
 		case FATTR4_SYMLINK_SUPPORT:
 		case FATTR4_NAMED_ATTR:
@@ -4119,6 +4042,7 @@ static int Fattr4_To_FSAL_attr(struct attrlist *attrs, fattr4 *Fattr,
 int nfs4_Fattr_To_FSAL_attr(struct attrlist *FSAL_attr, fattr4 *Fattr,
 			    compound_data_t *data)
 {
+	memset(FSAL_attr, 0, sizeof(struct attrlist));
 	return Fattr4_To_FSAL_attr(FSAL_attr, Fattr, NULL, NULL, data);
 }
 
@@ -4143,519 +4067,6 @@ int nfs4_Fattr_To_fsinfo(fsal_dynamicfsinfo_t *dinfo, fattr4 *Fattr)
 {
 	return Fattr4_To_FSAL_attr(NULL, Fattr, NULL, dinfo, NULL);
 }
-
-/* Error conversion routines */
-
-/**
- * @brief Convert a cache_inode status to a nfsv4 status.
- *
- * @param[in] error The cache inode error
- * @param[in] where String identifying the caller
- *
- * @return the converted NFSv4 status.
- *
- */
-nfsstat4 nfs4_Errno_verbose(cache_inode_status_t error, const char *where)
-{
-	nfsstat4 nfserror = NFS4ERR_INVAL;
-
-	switch (error) {
-	case CACHE_INODE_SUCCESS:
-		nfserror = NFS4_OK;
-		break;
-
-	case CACHE_INODE_MALLOC_ERROR:
-	case CACHE_INODE_POOL_MUTEX_INIT_ERROR:
-	case CACHE_INODE_GET_NEW_LRU_ENTRY:
-	case CACHE_INODE_INIT_ENTRY_FAILED:
-		nfserror = NFS4ERR_SERVERFAULT;
-		break;
-
-	case CACHE_INODE_BAD_TYPE:
-	case CACHE_INODE_INVALID_ARGUMENT:
-		nfserror = NFS4ERR_INVAL;
-		break;
-
-	case CACHE_INODE_NOT_A_DIRECTORY:
-		nfserror = NFS4ERR_NOTDIR;
-		break;
-
-	case CACHE_INODE_ENTRY_EXISTS:
-		nfserror = NFS4ERR_EXIST;
-		break;
-
-	case CACHE_INODE_DIR_NOT_EMPTY:
-		nfserror = NFS4ERR_NOTEMPTY;
-		break;
-
-	case CACHE_INODE_NOT_FOUND:
-		nfserror = NFS4ERR_NOENT;
-		break;
-
-	case CACHE_INODE_FSAL_ERROR:
-	case CACHE_INODE_INSERT_ERROR:
-	case CACHE_INODE_LRU_ERROR:
-	case CACHE_INODE_HASH_SET_ERROR:
-		nfserror = NFS4ERR_IO;
-		break;
-
-	case CACHE_INODE_FSAL_EACCESS:
-		nfserror = NFS4ERR_ACCESS;
-		break;
-
-	case CACHE_INODE_FSAL_EPERM:
-	case CACHE_INODE_FSAL_ERR_SEC:
-		nfserror = NFS4ERR_PERM;
-		break;
-
-	case CACHE_INODE_NO_SPACE_LEFT:
-		nfserror = NFS4ERR_NOSPC;
-		break;
-
-	case CACHE_INODE_IS_A_DIRECTORY:
-		nfserror = NFS4ERR_ISDIR;
-		break;
-
-	case CACHE_INODE_READ_ONLY_FS:
-		nfserror = NFS4ERR_ROFS;
-		break;
-
-	case CACHE_INODE_IO_ERROR:
-		nfserror = NFS4ERR_IO;
-		break;
-
-	case CACHE_INODE_NAME_TOO_LONG:
-		nfserror = NFS4ERR_NAMETOOLONG;
-		break;
-
-	case CACHE_INODE_KILLED:
-	case CACHE_INODE_DEAD_ENTRY:
-	case CACHE_INODE_FSAL_ESTALE:
-		nfserror = NFS4ERR_STALE;
-		break;
-
-	case CACHE_INODE_STATE_CONFLICT:
-		nfserror = NFS4ERR_PERM;
-		break;
-
-	case CACHE_INODE_QUOTA_EXCEEDED:
-		nfserror = NFS4ERR_DQUOT;
-		break;
-
-	case CACHE_INODE_NOT_SUPPORTED:
-		nfserror = NFS4ERR_NOTSUPP;
-		break;
-
-	case CACHE_INODE_DELAY:
-		nfserror = NFS4ERR_DELAY;
-		break;
-
-	case CACHE_INODE_FILE_BIG:
-		nfserror = NFS4ERR_FBIG;
-		break;
-
-	case CACHE_INODE_FILE_OPEN:
-		nfserror = NFS4ERR_FILE_OPEN;
-		break;
-
-	case CACHE_INODE_STATE_ERROR:
-		nfserror = NFS4ERR_BAD_STATEID;
-		break;
-
-	case CACHE_INODE_BAD_COOKIE:
-		nfserror = NFS4ERR_BAD_COOKIE;
-		break;
-
-	case CACHE_INODE_TOOSMALL:
-		nfserror = NFS4ERR_TOOSMALL;
-		break;
-
-	case CACHE_INODE_SERVERFAULT:
-		nfserror = NFS4ERR_SERVERFAULT;
-		break;
-
-	case CACHE_INODE_FSAL_XDEV:
-		nfserror = NFS4ERR_XDEV;
-		break;
-
-	case CACHE_INODE_BADNAME:
-		nfserror = NFS4ERR_BADNAME;
-		break;
-
-	case CACHE_INODE_FSAL_MLINK:
-		nfserror = NFS4ERR_MLINK;
-		break;
-
-	case CACHE_INODE_FSAL_SHARE_DENIED:
-		nfserror = NFS4ERR_SHARE_DENIED;
-		break;
-
-	case CACHE_INODE_INCONSISTENT_ENTRY:
-	case CACHE_INODE_HASH_TABLE_ERROR:
-	case CACHE_INODE_ASYNC_POST_ERROR:
-		/* Should not occur */
-		LogDebug(COMPONENT_NFS_V4,
-			 "Line %u should never be reached in nfs4_Errno"
-			 " from %s for cache_status=%u", __LINE__, where,
-			 error);
-		nfserror = NFS4ERR_INVAL;
-		break;
-	}
-
-	return nfserror;
-}
-
-/**
- *
- * @brief Convert a cache_inode status to a nfsv3 status.
- *
- * @param[in] error Input cache inode error
- * @param[in] where String identifying caller
- *
- * @return the converted NFSv3 status.
- *
- */
-nfsstat3 nfs3_Errno_verbose(cache_inode_status_t error, const char *where)
-{
-	nfsstat3 nfserror = NFS3ERR_INVAL;
-
-	switch (error) {
-	case CACHE_INODE_SUCCESS:
-		nfserror = NFS3_OK;
-		break;
-
-	case CACHE_INODE_MALLOC_ERROR:
-	case CACHE_INODE_POOL_MUTEX_INIT_ERROR:
-	case CACHE_INODE_GET_NEW_LRU_ENTRY:
-	case CACHE_INODE_INIT_ENTRY_FAILED:
-	case CACHE_INODE_INSERT_ERROR:
-	case CACHE_INODE_LRU_ERROR:
-	case CACHE_INODE_HASH_SET_ERROR:
-	case CACHE_INODE_FILE_OPEN:
-		LogCrit(COMPONENT_NFSPROTO,
-			"Error %u in %s converted to NFS3ERR_IO but was set non-retryable",
-			error, where);
-		nfserror = NFS3ERR_IO;
-		break;
-
-	case CACHE_INODE_INVALID_ARGUMENT:
-		nfserror = NFS3ERR_INVAL;
-		break;
-
-	case CACHE_INODE_FSAL_ERROR:
-		/** @todo: Check if this works by making stress tests */
-		LogCrit(COMPONENT_NFSPROTO,
-			"Error CACHE_INODE_FSAL_ERROR in %s converted to NFS3ERR_IO but was set non-retryable",
-			where);
-		nfserror = NFS3ERR_IO;
-		break;
-
-	case CACHE_INODE_NOT_A_DIRECTORY:
-		nfserror = NFS3ERR_NOTDIR;
-		break;
-
-	case CACHE_INODE_ENTRY_EXISTS:
-		nfserror = NFS3ERR_EXIST;
-		break;
-
-	case CACHE_INODE_DIR_NOT_EMPTY:
-		nfserror = NFS3ERR_NOTEMPTY;
-		break;
-
-	case CACHE_INODE_NOT_FOUND:
-		nfserror = NFS3ERR_NOENT;
-		break;
-
-	case CACHE_INODE_FSAL_EACCESS:
-		nfserror = NFS3ERR_ACCES;
-		break;
-
-	case CACHE_INODE_FSAL_EPERM:
-	case CACHE_INODE_FSAL_ERR_SEC:
-		nfserror = NFS3ERR_PERM;
-		break;
-
-	case CACHE_INODE_NO_SPACE_LEFT:
-		nfserror = NFS3ERR_NOSPC;
-		break;
-
-	case CACHE_INODE_IS_A_DIRECTORY:
-		nfserror = NFS3ERR_ISDIR;
-		break;
-
-	case CACHE_INODE_READ_ONLY_FS:
-		nfserror = NFS3ERR_ROFS;
-		break;
-
-	case CACHE_INODE_KILLED:
-	case CACHE_INODE_DEAD_ENTRY:
-	case CACHE_INODE_FSAL_ESTALE:
-		nfserror = NFS3ERR_STALE;
-		break;
-
-	case CACHE_INODE_QUOTA_EXCEEDED:
-		nfserror = NFS3ERR_DQUOT;
-		break;
-
-	case CACHE_INODE_BAD_TYPE:
-		nfserror = NFS3ERR_BADTYPE;
-		break;
-
-	case CACHE_INODE_NOT_SUPPORTED:
-		nfserror = NFS3ERR_NOTSUPP;
-		break;
-
-	case CACHE_INODE_DELAY:
-	case CACHE_INODE_FSAL_SHARE_DENIED:
-		nfserror = NFS3ERR_JUKEBOX;
-		break;
-
-	case CACHE_INODE_IO_ERROR:
-		LogCrit(COMPONENT_NFSPROTO,
-			"Error CACHE_INODE_IO_ERROR in %s converted to NFS3ERR_IO"
-			" but was set non-retryable", where);
-		nfserror = NFS3ERR_IO;
-		break;
-
-	case CACHE_INODE_NAME_TOO_LONG:
-		nfserror = NFS3ERR_NAMETOOLONG;
-		break;
-
-	case CACHE_INODE_FILE_BIG:
-		nfserror = NFS3ERR_FBIG;
-		break;
-
-	case CACHE_INODE_BAD_COOKIE:
-		nfserror = NFS3ERR_BAD_COOKIE;
-		break;
-
-	case CACHE_INODE_TOOSMALL:
-		nfserror = NFS3ERR_TOOSMALL;
-		break;
-
-	case CACHE_INODE_SERVERFAULT:
-		nfserror = NFS3ERR_SERVERFAULT;
-		break;
-
-	case CACHE_INODE_FSAL_XDEV:
-		nfserror = NFS3ERR_XDEV;
-		break;
-
-	case CACHE_INODE_BADNAME:
-		nfserror = NFS3ERR_INVAL;
-		break;
-
-	case CACHE_INODE_FSAL_MLINK:
-		nfserror = NFS3ERR_MLINK;
-		break;
-
-	case CACHE_INODE_INCONSISTENT_ENTRY:
-	case CACHE_INODE_HASH_TABLE_ERROR:
-	case CACHE_INODE_STATE_CONFLICT:
-	case CACHE_INODE_ASYNC_POST_ERROR:
-	case CACHE_INODE_STATE_ERROR:
-		/* Should not occur */
-		LogDebug(COMPONENT_NFSPROTO,
-			 "Line %u should never be reached in nfs3_Errno"
-			 " from %s for cache_status=%u", __LINE__, where,
-			 error);
-		nfserror = NFS3ERR_INVAL;
-		break;
-	}
-
-	return nfserror;
-}				/* nfs3_Errno */
-
-/**
- *
- * @brief Allocates a buffer to be used for storing a NFSv4 filehandle.
- *
- * Allocates a buffer to be used for storing a NFSv3 filehandle.
- *
- * @param fh [INOUT] the filehandle to manage.
- *
- * @return NFS3_OK if successful, NFS3ERR_SERVERFAULT, otherwise.
- *
- */
-int nfs3_AllocateFH(nfs_fh3 *fh)
-{
-	/* Allocating the filehandle in memory */
-	fh->data.data_len = sizeof(struct alloc_file_handle_v3);
-
-	fh->data.data_val = gsh_malloc(fh->data.data_len);
-
-	if (fh->data.data_val == NULL) {
-		LogError(COMPONENT_NFSPROTO, ERR_SYS, ERR_MALLOC, errno);
-		return NFS3ERR_SERVERFAULT;
-	}
-
-	memset((char *)fh->data.data_val, 0, fh->data.data_len);
-
-	return NFS3_OK;
-}				/* nfs4_AllocateFH */
-
-/**
- *
- * @brief Allocates a buffer to be used for storing a NFSv4 filehandle.
- *
- * Allocates a buffer to be used for storing a NFSv4 filehandle.
- *
- * @param fh [INOUT] the filehandle to manage.
- *
- * @return NFS4_OK if successful, NFS3ERR_SERVERFAULT, NFS4ERR_RESOURCE or
- *                 NFS4ERR_STALE  otherwise.
- *
- */
-int nfs4_AllocateFH(nfs_fh4 *fh)
-{
-	/* Allocating the filehandle in memory */
-	fh->nfs_fh4_len = sizeof(struct alloc_file_handle_v4);
-
-	fh->nfs_fh4_val = gsh_malloc(fh->nfs_fh4_len);
-
-	if (fh->nfs_fh4_val == NULL) {
-		LogError(COMPONENT_NFS_V4, ERR_SYS, ERR_MALLOC, errno);
-		return NFS4ERR_RESOURCE;
-	}
-
-	memset(fh->nfs_fh4_val, 0, fh->nfs_fh4_len);
-
-	LogFullDebugOpaque(COMPONENT_FILEHANDLE, "NFS4 Handle %s", LEN_FH_STR,
-			   fh->nfs_fh4_val, fh->nfs_fh4_len);
-
-	return NFS4_OK;
-}
-
-/**
- * @brief Validate export permissions and update compound
- *
- * @param[in] data Compound data to be used
- *
- * @return NFS4_OK if successful, NFS4ERR_ACCESS or NFS4ERR_WRONGSEC otherwise.
- *
- */
-int nfs4_MakeCred(compound_data_t *data)
-{
-	xprt_type_t xprt_type = svc_get_xprt_type(data->req->rq_xprt);
-	int port = get_port(data->req_ctx->caller_addr);
-
-	if (!get_req_uid_gid(data->req, data->req_ctx->creds))
-		return NFS4ERR_ACCESS;
-
-	LogFullDebug(COMPONENT_DISPATCH,
-		     "nfs4_MakeCred about to call nfs_export_check_access");
-	nfs_export_check_access(data->req_ctx->caller_addr, data->export,
-				&data->export_perms);
-
-	/* Check protocol version */
-	if ((data->export_perms.options & EXPORT_OPTION_NFSV4) == 0) {
-		LogInfo(COMPONENT_NFS_V4,
-			"NFS4 not allowed on Export_Id %d %s for client %s",
-			data->export->id, data->export->fullpath,
-			data->req_ctx->client->hostaddr_str);
-		return NFS4ERR_ACCESS;
-	}
-	/* Check transport type */
-	if (((xprt_type == XPRT_UDP)
-	     && ((data->export_perms.options & EXPORT_OPTION_UDP) == 0))
-	    || ((xprt_type == XPRT_TCP)
-		&& ((data->export_perms.options & EXPORT_OPTION_TCP) == 0))) {
-		LogInfo(COMPONENT_NFS_V4,
-			"NFS4 over %s not allowed on Export_Id %d %s for client %s",
-			xprt_type_to_str(xprt_type), data->export->id,
-			data->export->fullpath,
-			data->req_ctx->client->hostaddr_str);
-		return NFS4ERR_ACCESS;
-	}
-	/* Check if client is using a privileged port. */
-	if (((data->export_perms.options & EXPORT_OPTION_PRIVILEGED_PORT) != 0)
-	    && (port >= IPPORT_RESERVED)) {
-		LogInfo(COMPONENT_NFS_V4,
-			"Non-reserved Port %d is not allowed on Export_Id %d %s for client %s",
-			port, data->export->id, data->export->fullpath,
-			data->req_ctx->client->hostaddr_str);
-		return NFS4ERR_ACCESS;
-	}
-	/* Test if export allows the authentication provided */
-	if (nfs_export_check_security
-	    (data->req, &data->export_perms, data->export) == FALSE) {
-		LogInfo(COMPONENT_NFS_V4,
-			"NFS4 auth not allowed on Export_Id %d %s for client %s",
-			data->export->id, data->export->fullpath,
-			data->req_ctx->client->hostaddr_str);
-		return NFS4ERR_WRONGSEC;
-	}
-	nfs_check_anon(&data->export_perms, data->export,
-		       data->req_ctx->creds);
-	return NFS4_OK;
-}
-
-/**
- * @brief Do basic checks on the CurrentFH
- *
- * This function performs basic checks to make sure the supplied
- * filehandle is sane for a given operation.
- *
- * @param data          [IN] Compound_data_t for the operation to check
- * @param required_type [IN] The file type this operation requires.
- *                           Set to 0 to allow any type.
- * @param ds_allowed    [IN] true if DS handles are allowed.
- *
- * @return NFSv4.1 status codes
- */
-
-nfsstat4 nfs4_sanity_check_FH(compound_data_t *data,
-			      object_file_type_t required_type,
-			      bool ds_allowed)
-{
-	int fh_status;
-
-	/* If there is no FH */
-	fh_status = nfs4_Is_Fh_Empty(&(data->currentFH));
-
-	if (fh_status != NFS4_OK)
-		return fh_status;
-
-	/* If the filehandle is invalid */
-	fh_status = nfs4_Is_Fh_Invalid(&data->currentFH);
-
-	if (fh_status != NFS4_OK)
-		return fh_status;
-
-
-	/* Check for the correct file type */
-	if (required_type != NO_FILE_TYPE) {
-		if (data->current_filetype != required_type) {
-			LogDebug(COMPONENT_NFS_V4,
-				 "Wrong file type expected %s actual %s",
-				 object_file_type_to_str(required_type),
-				 object_file_type_to_str(data->
-							 current_filetype));
-
-			if (required_type == DIRECTORY) {
-				if (data->current_filetype == SYMBOLIC_LINK)
-					return NFS4ERR_SYMLINK;
-				else
-					return NFS4ERR_NOTDIR;
-			} else if (required_type == SYMBOLIC_LINK)
-				return NFS4ERR_INVAL;
-
-			switch (data->current_filetype) {
-			case DIRECTORY:
-				return NFS4ERR_ISDIR;
-			default:
-				return NFS4ERR_INVAL;
-			}
-		}
-	}
-
-	if (nfs4_Is_Fh_DSHandle(&data->currentFH) && !ds_allowed) {
-		LogDebug(COMPONENT_NFS_V4, "DS Handle");
-		return NFS4ERR_INVAL;
-	}
-
-	return NFS4_OK;
-}				/* nfs4_sanity_check_FH */
 
 /* nfs4_utf8string2dynamic
  * unpack the input string from the XDR into a null term'd string
@@ -4689,288 +4100,5 @@ nfsstat4 nfs4_utf8string2dynamic(const utf8string *input,
 		*obj_name = name;
 	else
 		gsh_free(name);
-	return status;
-}
-
-/**
- * @brief Do basic checks on the SavedFH
- *
- * This function performs basic checks to make sure the supplied
- * filehandle is sane for a given operation.
- *
- * @param data          [IN] Compound_data_t for the operation to check
- * @param required_type [IN] The file type this operation requires.
- *                           Set to 0 to allow any type. A negative value
- *                           indicates any type BUT that type is allowed.
- * @param ds_allowed    [IN] true if DS handles are allowed.
- *
- * @return NFSv4.1 status codes
- */
-
-nfsstat4 nfs4_sanity_check_saved_FH(compound_data_t *data, int required_type,
-				    bool ds_allowed)
-{
-	int fh_status;
-
-	/* If there is no FH */
-	fh_status = nfs4_Is_Fh_Empty(&(data->savedFH));
-
-	if (fh_status != NFS4_OK)
-		return fh_status;
-
-	/* If the filehandle is invalid */
-	fh_status = nfs4_Is_Fh_Invalid(&data->savedFH);
-	if (fh_status != NFS4_OK)
-		return fh_status;
-
-	/* Check for the correct file type */
-	if (required_type < 0) {
-		if (-required_type == data->saved_filetype) {
-			LogDebug(COMPONENT_NFS_V4,
-				 "Wrong file type expected not to be %s was %s",
-				 object_file_type_to_str((object_file_type_t) -
-							 required_type),
-				 object_file_type_to_str(data->
-							 current_filetype));
-			if (-required_type == DIRECTORY) {
-				return NFS4ERR_ISDIR;
-				return NFS4ERR_INVAL;
-			}
-		}
-	} else if (required_type != NO_FILE_TYPE) {
-		if (data->saved_filetype != required_type) {
-			LogDebug(COMPONENT_NFS_V4,
-				 "Wrong file type expected %s was %s",
-				 object_file_type_to_str((object_file_type_t)
-							 required_type),
-				 object_file_type_to_str(data->
-							 current_filetype));
-
-			if (required_type == DIRECTORY) {
-				if (data->current_filetype == SYMBOLIC_LINK)
-					return NFS4ERR_SYMLINK;
-				else
-					return NFS4ERR_NOTDIR;
-			} else if (required_type == SYMBOLIC_LINK)
-				return NFS4ERR_INVAL;
-
-			switch (data->saved_filetype) {
-			case DIRECTORY:
-				return NFS4ERR_ISDIR;
-			default:
-				return NFS4ERR_INVAL;
-			}
-		}
-	}
-
-	if (nfs4_Is_Fh_DSHandle(&data->savedFH) && !ds_allowed) {
-		LogDebug(COMPONENT_NFS_V4, "DS Handle");
-		return NFS4ERR_INVAL;
-	}
-
-	return NFS4_OK;
-}				/* nfs4_sanity_check_saved_FH */
-
-/**
- * @brief Perform version independent ACCESS operation.
- *
- * This function wraps a call to cache_inode_access, determining the appropriate
- * access_mask to use to check all the requested access bits. It requests the
- * allowed and denied access so that it can respond for each requested access
- * with a single access call.
- *
- * @param[in]  entry The cache inode entry to check access for
- * @param[in]  requested_access The ACCESS3 or ACCESS4 bits requested
- * @param[out] granted_access   The bits granted
- * @param[out] supported_access The bits supported for this inode
- * @param[in]  req_ctx          The request context for the operation
- *
- * @return cache inode status
- * @retval CACHE_INODE_SUCCESS all access was granted
- * @retval CACHE_INODE_FSAL_EACCESS one or more access bits were denied
- * @retval other values indicate a cache inode failure
- *
- */
-
-cache_inode_status_t nfs_access_op(cache_entry_t *entry,
-				   uint32_t requested_access,
-				   uint32_t *granted_access,
-				   uint32_t *supported_access,
-				   struct req_op_context *req_ctx)
-{
-	cache_inode_status_t status;
-	fsal_accessflags_t access_mask;
-	fsal_accessflags_t access_allowed;
-	fsal_accessflags_t access_denied;
-	uint32_t granted_mask = requested_access;
-
-	access_mask = 0;
-	*granted_access = 0;
-
-	LogDebugAlt(COMPONENT_NFSPROTO, COMPONENT_NFS_V4_ACL,
-		    "Requested ACCESS=%s,%s,%s,%s,%s,%s",
-		    FSAL_TEST_MASK(requested_access,
-				   ACCESS3_READ) ? "READ" : "-",
-		    FSAL_TEST_MASK(requested_access,
-				   ACCESS3_LOOKUP) ? "LOOKUP" : "-",
-		    FSAL_TEST_MASK(requested_access,
-				   ACCESS3_MODIFY) ? "MODIFY" : "-",
-		    FSAL_TEST_MASK(requested_access,
-				   ACCESS3_EXTEND) ? "EXTEND" : "-",
-		    FSAL_TEST_MASK(requested_access,
-				   ACCESS3_DELETE) ? "DELETE" : "-",
-		    FSAL_TEST_MASK(requested_access,
-				   ACCESS3_EXECUTE) ? "EXECUTE" : "-");
-
-	/* Set mode for read.
-	 * NOTE: FSAL_ACE_PERM_LIST_DIR and FSAL_ACE_PERM_READ_DATA have
-	 *       the same bit value so we don't bother looking at file type.
-	 */
-	if (requested_access & ACCESS3_READ)
-		access_mask |= FSAL_R_OK | FSAL_ACE_PERM_READ_DATA;
-
-	if (requested_access & ACCESS3_LOOKUP) {
-		if (entry->type == DIRECTORY)
-			access_mask |= FSAL_X_OK | FSAL_ACE_PERM_EXECUTE;
-		else
-			granted_mask &= ~ACCESS3_LOOKUP;
-	}
-
-	if (requested_access & ACCESS3_MODIFY) {
-		if (entry->type == DIRECTORY)
-			access_mask |= FSAL_W_OK | FSAL_ACE_PERM_DELETE_CHILD;
-		else
-			access_mask |= FSAL_W_OK | FSAL_ACE_PERM_WRITE_DATA;
-	}
-
-	if (requested_access & ACCESS3_EXTEND) {
-		if (entry->type == DIRECTORY)
-			access_mask |=
-			    FSAL_W_OK | FSAL_ACE_PERM_ADD_FILE |
-			    FSAL_ACE_PERM_ADD_SUBDIRECTORY;
-		else
-			access_mask |= FSAL_W_OK | FSAL_ACE_PERM_APPEND_DATA;
-	}
-
-	if (requested_access & ACCESS3_DELETE) {
-		if (entry->type == DIRECTORY)
-			access_mask |= FSAL_W_OK | FSAL_ACE_PERM_DELETE_CHILD;
-		else
-			granted_mask &= ~ACCESS3_DELETE;
-	}
-
-	if (requested_access & ACCESS3_EXECUTE) {
-		if (entry->type != DIRECTORY)
-			access_mask |= FSAL_X_OK | FSAL_ACE_PERM_EXECUTE;
-		else
-			granted_mask &= ~ACCESS3_EXECUTE;
-	}
-
-	if (access_mask != 0)
-		access_mask |=
-		    FSAL_MODE_MASK_FLAG | FSAL_ACE4_MASK_FLAG |
-		    FSAL_ACE4_PERM_CONTINUE;
-
-	LogDebugAlt(COMPONENT_NFSPROTO, COMPONENT_NFS_V4_ACL,
-		    "access_mask = mode(%c%c%c) ACL(%s,%s,%s,%s,%s)",
-		    FSAL_TEST_MASK(access_mask, FSAL_R_OK) ? 'r' : '-',
-		    FSAL_TEST_MASK(access_mask, FSAL_W_OK) ? 'w' : '-',
-		    FSAL_TEST_MASK(access_mask, FSAL_X_OK) ? 'x' : '-',
-		    FSAL_TEST_MASK(access_mask, FSAL_ACE_PERM_READ_DATA) ?
-			entry->type == DIRECTORY ?
-			"list_dir" : "read_data" : "-",
-		    FSAL_TEST_MASK(access_mask,
-				   FSAL_ACE_PERM_WRITE_DATA) ?
-			entry->type == DIRECTORY ?
-			"add_file" : "write_data" : "-",
-		    FSAL_TEST_MASK(access_mask, FSAL_ACE_PERM_EXECUTE) ?
-			"execute" : "-",
-		    FSAL_TEST_MASK(access_mask,
-				   FSAL_ACE_PERM_ADD_SUBDIRECTORY) ?
-			"add_subdirectory" : "-",
-		    FSAL_TEST_MASK(access_mask, FSAL_ACE_PERM_DELETE_CHILD) ?
-			"delete_child" : "-");
-
-	status =
-	    cache_inode_access_sw(entry, access_mask, &access_allowed,
-				  &access_denied, req_ctx, true);
-
-	if (status == CACHE_INODE_SUCCESS ||
-	    status == CACHE_INODE_FSAL_EACCESS) {
-		/* Define granted access based on granted mode bits. */
-		if (access_allowed & FSAL_R_OK)
-			*granted_access |= ACCESS3_READ;
-
-		if (access_allowed & FSAL_W_OK)
-			*granted_access |=
-			    ACCESS3_MODIFY | ACCESS3_EXTEND | ACCESS3_DELETE;
-
-		if (access_allowed & FSAL_X_OK)
-			*granted_access |= ACCESS3_LOOKUP | ACCESS3_EXECUTE;
-
-		/* Define granted access based on granted ACL bits. */
-		if (access_allowed & FSAL_ACE_PERM_READ_DATA)
-			*granted_access |= ACCESS3_READ;
-
-		if (entry->type == DIRECTORY) {
-			if (access_allowed & FSAL_ACE_PERM_DELETE_CHILD)
-				*granted_access |=
-				    ACCESS3_MODIFY | ACCESS3_DELETE;
-
-			if (access_allowed & FSAL_ACE_PERM_ADD_FILE)
-				*granted_access |= ACCESS3_EXTEND;
-
-			if (access_allowed & FSAL_ACE_PERM_ADD_SUBDIRECTORY)
-				*granted_access |= ACCESS3_EXTEND;
-		} else {
-			if (access_allowed & FSAL_ACE_PERM_WRITE_DATA)
-				*granted_access |= ACCESS3_MODIFY;
-
-			if (access_allowed & FSAL_ACE_PERM_APPEND_DATA)
-				*granted_access |= ACCESS3_EXTEND;
-		}
-
-		if (access_allowed & FSAL_ACE_PERM_EXECUTE)
-			*granted_access |= ACCESS3_LOOKUP | ACCESS3_EXECUTE;
-
-		/* Don't allow any bits that weren't set on request or
-		 * allowed by the file type.
-		 */
-		*granted_access &= granted_mask;
-
-		if (supported_access != NULL)
-			*supported_access = granted_mask;
-
-		LogDebugAlt(COMPONENT_NFSPROTO, COMPONENT_NFS_V4_ACL,
-			    "Supported ACCESS=%s,%s,%s,%s,%s,%s",
-			    FSAL_TEST_MASK(granted_mask,
-					   ACCESS3_READ) ? "READ" : "-",
-			    FSAL_TEST_MASK(granted_mask,
-					   ACCESS3_LOOKUP) ? "LOOKUP" : "-",
-			    FSAL_TEST_MASK(granted_mask,
-					   ACCESS3_MODIFY) ? "MODIFY" : "-",
-			    FSAL_TEST_MASK(granted_mask,
-					   ACCESS3_EXTEND) ? "EXTEND" : "-",
-			    FSAL_TEST_MASK(granted_mask,
-					   ACCESS3_DELETE) ? "DELETE" : "-",
-			    FSAL_TEST_MASK(granted_mask,
-					   ACCESS3_EXECUTE) ? "EXECUTE" : "-");
-
-		LogDebugAlt(COMPONENT_NFSPROTO, COMPONENT_NFS_V4_ACL,
-			    "Granted ACCESS=%s,%s,%s,%s,%s,%s",
-			    FSAL_TEST_MASK(*granted_access,
-					   ACCESS3_READ) ? "READ" : "-",
-			    FSAL_TEST_MASK(*granted_access,
-					   ACCESS3_LOOKUP) ? "LOOKUP" : "-",
-			    FSAL_TEST_MASK(*granted_access,
-					   ACCESS3_MODIFY) ? "MODIFY" : "-",
-			    FSAL_TEST_MASK(*granted_access,
-					   ACCESS3_EXTEND) ? "EXTEND" : "-",
-			    FSAL_TEST_MASK(*granted_access,
-					   ACCESS3_DELETE) ? "DELETE" : "-",
-			    FSAL_TEST_MASK(*granted_access,
-					   ACCESS3_EXECUTE) ? "EXECUTE" : "-");
-	}
-
 	return status;
 }

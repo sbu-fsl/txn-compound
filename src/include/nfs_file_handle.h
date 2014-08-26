@@ -26,7 +26,7 @@
 
 /**
  * @file nfs_file_handle.h
- * @brief Prototypes for the file handle in v2, v3, v4
+ * @brief Prototypes for the file handle in v3 and v4
  */
 
 #ifndef NFS_FILE_HANDLE_H
@@ -38,6 +38,8 @@
 #include "log.h"
 #include "nfs23.h"
 #include "nlm4.h"
+#include "nfs_exports.h"
+#include "cache_inode.h"
 
 /*
  * Structure of the filehandle
@@ -46,27 +48,6 @@
  */
 
 #define GANESHA_FH_VERSION 0x41
-
-/**
- * @brief An NFSv2 filehandle (only used for (un)mount?)
- * This must be exactly 32 bytes long, and aligned on 32 bits
- */
-typedef struct file_handle_v2 {
-	uint8_t fhversion;	/*< set to 0x41 to separate from Linux knfsd */
-	uint8_t xattr_pos;	/*< Used for xattr management */
-	uint16_t exportid;	/*< Must be correlated to exportlist_t::id */
-	uint8_t fsopaque[28];	/*< Persistent part of FSAL handle */
-} file_handle_v2_t;
-
-/**
- * @brief Used for allocations of v2 handles
- *
- * There is no padding because v2 handles must be fixed size.
- */
-
-struct alloc_file_handle_v2 {
-	struct file_handle_v2 handle;	/* the real handle */
-};
 
 /**
  * @brief An NFSv3 handle
@@ -145,6 +126,9 @@ struct __attribute__ ((__packed__)) alloc_file_handle_v4 {
 	uint8_t pad[122];	/*< Pad to mandatory max 128 bytes */
 };
 
+int nfs3_AllocateFH(nfs_fh3 *);
+int nfs4_AllocateFH(nfs_fh4 *);
+
 /**
  * @brief Get the actual size of a v4 handle based on the sized fsopaque
  *
@@ -159,12 +143,16 @@ static inline size_t nfs4_sizeof_handle(struct file_handle_v4 *hdl)
 #define LEN_FH_STR 1024
 
 /* File handle translation utility */
-cache_entry_t *nfs3_FhandleToCache(nfs_fh3 *, const struct req_op_context *,
-				   exportlist_t *, nfsstat3 *, int *);
+cache_entry_t *nfs3_FhandleToCache(nfs_fh3 *,
+				   nfsstat3 *, int *);
 
-bool nfs4_FSALToFhandle(nfs_fh4 *, const struct fsal_obj_handle *);
-bool nfs3_FSALToFhandle(nfs_fh3 *, const struct fsal_obj_handle *);
-bool nfs2_FSALToFhandle(fhandle2 *, const struct fsal_obj_handle *);
+bool nfs4_FSALToFhandle(nfs_fh4 *fh4,
+			const struct fsal_obj_handle *fsalhandle,
+			struct gsh_export *exp);
+
+bool nfs3_FSALToFhandle(nfs_fh3 *fh3,
+			const struct fsal_obj_handle *fsalhandle,
+			struct gsh_export *exp);
 
 /* nfs3 validation */
 int nfs3_Is_Fh_Invalid(nfs_fh3 *);
@@ -229,25 +217,30 @@ static inline int nfs4_Is_Fh_Empty(nfs_fh4 *pfh)
 }				/* nfs4_Is_Fh_Empty */
 
 /* NFSv4 specific FH related functions */
-int nfs4_Is_Fh_Pseudo(nfs_fh4 *);
 int nfs4_Is_Fh_Invalid(nfs_fh4 *);
 int nfs4_Is_Fh_DSHandle(nfs_fh4 *);
-int CreateROOTFH4(nfs_fh4 *fh, compound_data_t *data);
+
+nfsstat4 nfs4_sanity_check_FH(compound_data_t *data,
+			      object_file_type_t required_type,
+			      bool ds_allowed);
+
+nfsstat4 nfs4_sanity_check_saved_FH(compound_data_t *data, int required_type,
+				    bool ds_allowed);
 
 /* File handle print function (mostly used for debugging) */
-void print_fhandle2(log_components_t, fhandle2 *);
 void print_fhandle3(log_components_t, nfs_fh3 *);
 void print_fhandle4(log_components_t, nfs_fh4 *);
 void print_fhandle_nlm(log_components_t, netobj *);
 void print_buff(log_components_t, char *, int);
 void LogCompoundFH(compound_data_t *);
 
-void sprint_fhandle2(char *str, fhandle2 *fh);
 void sprint_fhandle3(char *str, nfs_fh3 *fh);
 void sprint_fhandle4(char *str, nfs_fh4 *fh);
 void sprint_fhandle_nlm(char *str, netobj *fh);
 void sprint_buff(char *str, char *buff, int len);
 void sprint_mem(char *str, char *buff, int len);
+
+void nfs_FhandleToStr(u_long rq_vers, nfs_fh3 *pfh3, nfs_fh4 *pfh4, char *str);
 
 #define LogHandleNFS4(label, fh4) \
 	do { \

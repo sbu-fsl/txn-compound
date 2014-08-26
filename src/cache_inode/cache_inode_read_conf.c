@@ -31,7 +31,7 @@
 
 /**
  * @file cache_inode_read_conf.c
- * @brief Read the configuration file for the Cache inode initialization.
+ * @brief Cache inode configuration parameter tables.
  */
 #include "config.h"
 #include "log.h"
@@ -47,138 +47,58 @@
 #include <pthread.h>
 #include <string.h>
 
-int
-parse_cache_expire(cache_inode_expire_type_t *type, time_t *value,
-		   char *key_value)
+/** File cache configuration, settable in the CacheInode
+    stanza. */
+
+struct cache_inode_parameter cache_param;
+
+static struct config_item cache_inode_params[] = {
+	CONF_ITEM_UI32("NParts", 1, 20, 7,
+		       cache_inode_parameter, nparts),
+	CONF_ITEM_I32("Attr_Expiration_Time", -1, INT32_MAX, 60,
+		       cache_inode_parameter, expire_time_attr),
+	CONF_ITEM_BOOL("Use_Getattr_Directory_Invalidation", false,
+		       cache_inode_parameter, getattr_dir_invalidation),
+	CONF_ITEM_UI32("Entries_HWMark", 1, UINT32_MAX, 100000,
+		       cache_inode_parameter, entries_hwmark),
+	CONF_ITEM_UI32("LRU_Run_Interval", 1, 24 * 3600, 90,
+		       cache_inode_parameter, lru_run_interval),
+	CONF_ITEM_BOOL("Cache_FDs", true,
+		       cache_inode_parameter, use_fd_cache),
+	CONF_ITEM_UI32("FD_Limit_Percent", 0, 100, 99,
+		       cache_inode_parameter, fd_limit_percent),
+	CONF_ITEM_UI32("FD_HWMark_Percent", 0, 100, 90,
+		       cache_inode_parameter, fd_hwmark_percent),
+	CONF_ITEM_UI32("FD_LWMark_Percent", 0, 100, 50,
+		       cache_inode_parameter, fd_lwmark_percent),
+	CONF_ITEM_UI32("Reaper_Work", 1, 2000, 1000,
+		       cache_inode_parameter, reaper_work),
+	CONF_ITEM_UI32("Biggest_Window", 1, 100, 40,
+		       cache_inode_parameter, biggest_window),
+	CONF_ITEM_UI32("Required_Progress", 1, 50, 5,
+		       cache_inode_parameter, required_progress),
+	CONF_ITEM_UI32("Futility_Count", 1, 50, 8,
+		       cache_inode_parameter, futility_count),
+	CONF_ITEM_BOOL("Retry_Readdir", false,
+		       cache_inode_parameter, retry_readdir),
+	CONFIG_EOL
+};
+
+static void *cache_inode_param_init(void *link_mem, void *self_struct)
 {
-	if (key_value[0] >= '0' && key_value[0] <= '9') {
-		*value = atoi(key_value);
-		/* special case backwards compatible meaning of 0 */
-		if (*value == 0)
-			*type = CACHE_INODE_EXPIRE_NEVER;
-		else
-			*type = CACHE_INODE_EXPIRE;
-		return CACHE_INODE_SUCCESS;
-	}
-
-	/*
-	 * Note the CACHE_INODE_EXPIRE_IMMEDIATE is now a special value that
-	 * works fine with the value being set to 0, there will not need to be
-	 * special tests for CACHE_INODE_EXPIRE_IMMEDIATE.
-	 */
-	*value = 0;
-
-	if (strcasecmp(key_value, "Never") == 0)
-		*type = CACHE_INODE_EXPIRE_NEVER;
-	else if (strcasecmp(key_value, "Immediate") == 0)
-		*type = CACHE_INODE_EXPIRE_IMMEDIATE;
+	if (self_struct == NULL)
+		return &cache_param;
 	else
-		return CACHE_INODE_INVALID_ARGUMENT;
-
-	return CACHE_INODE_SUCCESS;
+		return NULL;
 }
 
-/**
- * @brief Read the configuration for the Cache inode layer
- *
- * @param[in]  config Configuration file handle
- * @param[out] param  Read parameters
- *
- * @retval CACHE_INODE_SUCCESS on success.
- * @retval CACHE_INODE_NOT_FOUND if stanza not present
- * @retval CACHE_INODE_INVALID_ARGUMENT otherwise
- */
-cache_inode_status_t
-cache_inode_read_conf_parameter(config_file_t config,
-				cache_inode_parameter_t *param)
-{
-	int var_max;
-	int var_index;
-	int err;
-	char *key_name;
-	char *key_value;
-	config_item_t block;
-
-	/* Get the config BLOCK */
-	block = config_FindItemByName(config, CONF_LABEL_CACHE_INODE);
-	if (block == NULL) {
-		LogDebug(COMPONENT_CONFIG,
-			 "Cannot read item \"%s\" from configuration file",
-			 CONF_LABEL_CACHE_INODE);
-		return CACHE_INODE_NOT_FOUND;
-	} else if (config_ItemType(block) != CONFIG_ITEM_BLOCK) {
-		/* Expected to be a block */
-		LogCrit(COMPONENT_CONFIG,
-			"Item \"%s\" is expected to be a block",
-			CONF_LABEL_CACHE_INODE);
-		return CACHE_INODE_INVALID_ARGUMENT;
-	}
-
-	var_max = config_GetNbItems(block);
-
-	for (var_index = 0; var_index < var_max; var_index++) {
-		config_item_t item;
-
-		item = config_GetItemByIndex(block, var_index);
-
-		/* Get key's name */
-		err = config_GetKeyValue(item, &key_name, &key_value);
-		if (err != 0) {
-			LogCrit(COMPONENT_CONFIG,
-				"Error reading key[%d] from section \"%s\" of "
-				"configuration file.",
-				var_index, CONF_LABEL_CACHE_INODE);
-			return CACHE_INODE_INVALID_ARGUMENT;
-		}
-
-		else if (!strcasecmp(key_name, "NParts")) {
-			param->nparts = atoi(key_value);
-		} else if (!strcasecmp(key_name, "Attr_Expiration_Time")) {
-			err =
-			    parse_cache_expire(&param->expire_type_attr,
-					       &param->grace_period_attr,
-					       key_value);
-			if (err != CACHE_INODE_SUCCESS)
-				return err;
-		} else
-		    if (!strcasecmp
-			(key_name, "Use_Getattr_Directory_Invalidation")) {
-			param->getattr_dir_invalidation =
-			    str_to_bool(key_value);
-		} else if (!strcasecmp(key_name, "Entries_HWMark")) {
-			param->entries_hwmark = atoi(key_value);
-		} else if (!strcasecmp(key_name, "LRU_Run_Interval")) {
-			param->lru_run_interval = atoi(key_value);
-		} else if (!strcasecmp(key_name, "Cache_FDs")) {
-			param->use_fd_cache = str_to_bool(key_value);
-		} else if (!strcasecmp(key_name, "FD_Limit_Percent")) {
-			param->fd_limit_percent = atoi(key_value);
-		} else if (!strcasecmp(key_name, "FD_HWMark_Percent")) {
-			param->fd_hwmark_percent = atoi(key_value);
-		} else if (!strcasecmp(key_name, "FD_LWMark_Percent")) {
-			param->fd_lwmark_percent = atoi(key_value);
-		} else if (!strcasecmp(key_name, "Reaper_Work")) {
-			param->reaper_work = atoi(key_value);
-		} else if (!strcasecmp(key_name, "Biggest_Window")) {
-			param->biggest_window = atoi(key_value);
-		} else if (!strcasecmp(key_name, "Required_Progress")) {
-			param->required_progress = atoi(key_value);
-		} else if (!strcasecmp(key_name, "Futility_Count")) {
-			param->futility_count = atoi(key_value);
-		} else if (!strcasecmp(key_name, "DebugLevel")
-			   || !strcasecmp(key_name, "LogFile")) {
-			LogWarn(COMPONENT_CONFIG,
-				"Deprecated %s option %s=\'%s\'",
-				CONF_LABEL_CACHE_INODE, key_name, key_value);
-		} else {
-			LogCrit(COMPONENT_CONFIG,
-				"Unknown or unsettable key: %s (item %s)",
-				key_name, CONF_LABEL_CACHE_INODE);
-			return CACHE_INODE_INVALID_ARGUMENT;
-		}
-	}
-
-	return CACHE_INODE_SUCCESS;
-}
+struct config_block cache_inode_param_blk = {
+	.dbus_interface_name = "org.ganesha.nfsd.config.cache_inode",
+	.blk_desc.name = "CacheInode",
+	.blk_desc.type = CONFIG_BLOCK,
+	.blk_desc.u.blk.init = cache_inode_param_init,
+	.blk_desc.u.blk.params = cache_inode_params,
+	.blk_desc.u.blk.commit = noop_conf_commit
+};
 
 /** @} */

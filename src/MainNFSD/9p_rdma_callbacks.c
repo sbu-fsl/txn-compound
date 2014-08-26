@@ -47,10 +47,10 @@
 #include "nfs_core.h"
 #include "cache_inode.h"
 #include "nfs_exports.h"
-#include "nfs_creds.h"
 #include "nfs_proto_functions.h"
 #include "nfs_dupreq.h"
 #include "nfs_file_handle.h"
+#include "server_stats.h"
 #include "9p.h"
 
 #include <mooshika.h>
@@ -64,6 +64,11 @@ void _9p_rdma_callback_send(msk_trans_t *trans, msk_data_t *data, void *arg)
 	priv->outqueue->data = data;
 	pthread_cond_signal(&priv->outqueue->cond);
 	pthread_mutex_unlock(&priv->outqueue->lock);
+
+	server_stats_transport_done(priv->pconn->client,
+				    0, 0, 0,
+				    data->size, 1, 0);
+
 }
 
 void _9p_rdma_callback_send_err(msk_trans_t *trans, msk_data_t *data,
@@ -75,22 +80,32 @@ void _9p_rdma_callback_send_err(msk_trans_t *trans, msk_data_t *data,
 	 * before unlocking
 	 */
 
-	LogMajor(COMPONENT_9P, "send error on trans %p!!!\n", trans);
-
-	pthread_mutex_lock(&priv->outqueue->lock);
-	data->next = priv->outqueue->data;
-	priv->outqueue->data = data;
-	pthread_cond_signal(&priv->outqueue->cond);
-	pthread_mutex_unlock(&priv->outqueue->lock);
+	if (priv && priv->outqueue) {
+		pthread_mutex_lock(&priv->outqueue->lock);
+		data->next = priv->outqueue->data;
+		priv->outqueue->data = data;
+		pthread_cond_signal(&priv->outqueue->cond);
+		pthread_mutex_unlock(&priv->outqueue->lock);
+	}
+	if (priv && priv->pconn && priv->pconn->client)
+		server_stats_transport_done(priv->pconn->client,
+			    0, 0, 0,
+			    0, 0, 1);
 }
 
 void _9p_rdma_callback_recv_err(msk_trans_t *trans, msk_data_t *data,
 				void *arg)
 {
+	struct _9p_rdma_priv *priv = _9p_rdma_priv_of(trans);
 
-	if (trans->state == MSK_CONNECTED)
+	if (trans->state == MSK_CONNECTED) {
 		msk_post_recv(trans, data, _9p_rdma_callback_recv,
 			      _9p_rdma_callback_recv_err, arg);
+		if (priv && priv->pconn && priv->pconn->client)
+			server_stats_transport_done(priv->pconn->client,
+						    0, 0, 1,
+						    0, 0, 0);
+	}
 }
 
 void _9p_rdma_callback_disconnect(msk_trans_t *trans)
@@ -114,7 +129,7 @@ void _9p_rdma_process_request(struct _9p_request_data *req9p,
 	pthread_mutex_lock(&priv->outqueue->lock);
 	while (priv->outqueue->data == NULL) {
 		LogDebug(COMPONENT_9P,
-			 "Waiting for outqueue buffer on trans %#lp\n", trans);
+			 "Waiting for outqueue buffer on trans %p\n", trans);
 		pthread_cond_wait(&priv->outqueue->cond, &priv->outqueue->lock);
 	}
 
@@ -124,7 +139,7 @@ void _9p_rdma_process_request(struct _9p_request_data *req9p,
 	pthread_mutex_unlock(&priv->outqueue->lock);
 
 	dataout->size = 0;
-	dataout->mr = priv->outmr;
+	dataout->mr = priv->pernic->outmr;
 
 	/* Use buffer received via RDMA as a 9P message */
 	req9p->_9pmsg = req9p->data->data;
@@ -134,7 +149,7 @@ void _9p_rdma_process_request(struct _9p_request_data *req9p,
 	    || msglen != req9p->data->size) {
 		LogMajor(COMPONENT_9P,
 			 "Malformed 9P/RDMA packet, bad header size");
-		/* semd a rerror ? */
+		/* send a rerror ? */
 		msk_post_recv(trans, req9p->data, _9p_rdma_callback_recv,
 			      _9p_rdma_callback_recv_err, NULL);
 	} else {
@@ -146,7 +161,7 @@ void _9p_rdma_process_request(struct _9p_request_data *req9p,
 					&dataout->size);
 		if (rc != 1) {
 			LogMajor(COMPONENT_9P,
-				 "Could not process 9P buffer on trans #%lp",
+				 "Could not process 9P buffer on trans %p",
 				 req9p->pconn->trans_data.rdma_trans);
 		}
 
@@ -165,7 +180,7 @@ void _9p_rdma_process_request(struct _9p_request_data *req9p,
 
 		if (rc != 1) {
 			LogMajor(COMPONENT_9P,
-				 "Could not send buffer on trans #%lp",
+				 "Could not send buffer on trans %p",
 				 req9p->pconn->trans_data.rdma_trans);
 			/* Give the buffer back right away
 			 * since no buffer is being sent */
@@ -175,9 +190,8 @@ void _9p_rdma_process_request(struct _9p_request_data *req9p,
 			pthread_cond_signal(&priv->outqueue->cond);
 			pthread_mutex_unlock(&priv->outqueue->lock);
 		}
-
-		_9p_DiscardFlushHook(req9p);
 	}
+	_9p_DiscardFlushHook(req9p);
 }
 
 void _9p_rdma_callback_recv(msk_trans_t *trans, msk_data_t *data, void *arg)
@@ -199,4 +213,8 @@ void _9p_rdma_callback_recv(msk_trans_t *trans, msk_data_t *data, void *arg)
 	_9p_AddFlushHook(&req->r_u._9p, tag, req->r_u._9p.pconn->sequence++);
 
 	DispatchWork9P(req);
+	server_stats_transport_done(_9p_rdma_priv_of(trans)->pconn->client,
+				    data->size, 1, 0,
+				    0, 0, 0);
+
 }				/* _9p_rdma_callback_recv */

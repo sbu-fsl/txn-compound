@@ -1,5 +1,9 @@
 #!/bin/sh
 
+# Find directory where runcp.sh lives for checkpatch will be there too
+# We keep that in CURDIR
+CURDIR=$(dirname $(readlink -m $0))
+
 check_one_file()
 {
 	FDIR=`echo $1 | sed -e "s@$DIR\(.*\)/.*@$ODIR\1@"`
@@ -64,7 +68,8 @@ check_one_file()
 		fi
 	fi
 
-	checkpatch.pl $TYPEDEF $EXTRA_OPT  --file $1 > $OUTFILE 2> $ERROR_FILE
+	$CURDIR/checkpatch.pl $TYPEDEF $EXTRA_OPT \
+		 --file $1 > $OUTFILE 2> $ERROR_FILE
 
 	RESULT=`grep '^total:'  $OUTFILE`
 
@@ -150,7 +155,7 @@ Options:
          --ignore COMPLEX_MACRO on certain files
          --ignore BRACKET_SPACE in certain files
          --ignore DEEP_INDENTATION in certain files
--i       Include files agreed on to ignore (ConfigParsing|Protocols/XDR
+-i       Include files agreed on to ignore (config_parsing|Protocols/XDR
 -e       Include files from external prohects (murmur3|cidr|atomic_x86|city)
 -g       Use git-diff --name-only instead of find (-d will be ignored)
 -k       Specify commit for git-diff, default is HEAD
@@ -166,11 +171,11 @@ DIR="."
 ALWAYS="libtirpc|libntirpc|CMakeFiles|tools/test_findlog.c|include/config.h"
 
 EXTERNAL="murmur3.h|cidr.h|cidr/|atomic_x86_64.h|include/city|avltree.h"
-EXTERNAL="$EXTERNAL|test/test_atomic_x86_86.c|avl/"
+EXTERNAL="$EXTERNAL|test/test_atomic_x86_86.c|avl/|FSAL/FSAL_GPFS/include"
 
 NO_EXTERNAL=0
 
-IGNORE="ConfigParsing|Protocols/XDR|NodeList|include/nodelist.h"
+IGNORE="config_parsing|Protocols/XDR|NodeList|include/nodelist.h"
 IGNORE="$IGNORE|include/gsh_intrinsic.h"
 
 NO_IGNORE=0
@@ -188,6 +193,8 @@ NO_SPACING_FILES="nfs23.h|nfsv41.h|nlm4.h|nsm.h|rquota.h"
 
 NO_COMPLEX_MACRO_FILES="include/ganesha_dbus.h|include/server_stats_private.h"
 NO_COMPLEX_MACRO_FILES="$NO_COMPLEX_MACRO_FILES|include/gsh_intrinsic.h"
+NO_COMPLEX_MACRO_FILES="$NO_COMPLEX_MACRO_FILES|support/exports.c"
+NO_COMPLEX_MACRO_FILES="$NO_COMPLEX_MACRO_FILES|support/export_mgr.c"
 
 NO_DEEP_INDENTATION_FILES="cache_inode/cache_inode_lru.c|include/rbt_tree.h"
 
@@ -339,5 +346,3 @@ if [ $REPORT -eq 1 ]
 then
 	cat $REPORT_FILE
 fi
-
-

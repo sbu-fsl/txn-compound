@@ -46,24 +46,23 @@
 #include "uid2grp.h"
 #include "export_mgr.h"
 
-int _9p_init(_9p_parameter_t *pparam)
+int _9p_init(void)
 {
-	uid2grp_cache_init();
 	return 0;
 }				/* _9p_init */
 
 int _9p_tools_get_req_context_by_uid(u32 uid, struct _9p_fid *pfid)
 {
-	struct group_data group_data;
-	struct group_data *pgrpdata = &group_data;
+	struct group_data *grpdata;
 
-	if (!uid2grp(uid, &pgrpdata))
+	if (!uid2grp(uid, &grpdata))
 		return -ENOENT;
 
-	pfid->ucred.caller_uid = pgrpdata->uid;
-	pfid->ucred.caller_gid = pgrpdata->gid;
-	pfid->ucred.caller_glen = pgrpdata->nbgroups;
-	pfid->ucred.caller_garray = pgrpdata->pgroups;
+	pfid->gdata = grpdata;
+	pfid->ucred.caller_uid = grpdata->uid;
+	pfid->ucred.caller_gid = grpdata->gid;
+	pfid->ucred.caller_glen = grpdata->nbgroups;
+	pfid->ucred.caller_garray = grpdata->groups;
 
 	pfid->op_context.creds = &pfid->ucred;
 	pfid->op_context.caller_addr = NULL;	/* Useless for 9P, we'll see
@@ -80,16 +79,16 @@ int _9p_tools_get_req_context_by_name(int uname_len, char *uname_str,
 		.addr = uname_str,
 		.len = uname_len
 	};
-	struct group_data group_data;
-	struct group_data *pgrpdata = &group_data;
+	struct group_data *grpdata;
 
-	if (!name2grp(&name, &pgrpdata))
+	if (!name2grp(&name, &grpdata))
 		return -ENOENT;
 
-	pfid->ucred.caller_uid = pgrpdata->uid;
-	pfid->ucred.caller_gid = pgrpdata->gid;
-	pfid->ucred.caller_glen = pgrpdata->nbgroups;
-	pfid->ucred.caller_garray = pgrpdata->pgroups;
+	pfid->gdata = grpdata;
+	pfid->ucred.caller_uid = grpdata->uid;
+	pfid->ucred.caller_gid = grpdata->gid;
+	pfid->ucred.caller_glen = grpdata->nbgroups;
+	pfid->ucred.caller_garray = grpdata->groups;
 
 	pfid->op_context.creds = &pfid->ucred;
 	pfid->op_context.caller_addr = NULL;	/* Useless for 9P, we'll see
@@ -196,70 +195,6 @@ int _9p_tools_errno(cache_inode_status_t cache_status)
 	return rc;
 }				/* _9p_tools_errno */
 
-void _9p_tools_fsal_attr2stat(struct attrlist *pfsalattr, struct stat *pstat)
-{
-	/* zero output structure */
-	memset((char *)pstat, 0, sizeof(struct stat));
-
-	pstat->st_dev = 0;	/* Omitted in 9P */
-	pstat->st_ino = pfsalattr->fileid;
-
-	pstat->st_mode = pfsalattr->mode;
-	if (pfsalattr->type == DIRECTORY)
-		pstat->st_mode |= __S_IFDIR;
-	if (pfsalattr->type == REGULAR_FILE)
-		pstat->st_mode |= __S_IFREG;
-	if (pfsalattr->type == SYMBOLIC_LINK)
-		pstat->st_mode |= __S_IFLNK;
-	if (pfsalattr->type == SOCKET_FILE)
-		pstat->st_mode |= __S_IFSOCK;
-	if (pfsalattr->type == BLOCK_FILE)
-		pstat->st_mode |= __S_IFBLK;
-	if (pfsalattr->type == CHARACTER_FILE)
-		pstat->st_mode |= __S_IFCHR;
-	if (pfsalattr->type == FIFO_FILE)
-		pstat->st_mode |= __S_IFIFO;
-
-	pstat->st_nlink = (u32) pfsalattr->numlinks;
-	pstat->st_uid = pfsalattr->owner;
-	pstat->st_gid = pfsalattr->group;
-	pstat->st_rdev = pfsalattr->rawdev.major;
-	pstat->st_size = pfsalattr->filesize;
-	pstat->st_blksize = 4096;
-	pstat->st_blocks = (pfsalattr->filesize / 4096) + 1;
-	pstat->st_atime = pfsalattr->atime.tv_sec;
-	pstat->st_mtime = pfsalattr->mtime.tv_sec;
-	pstat->st_ctime = pfsalattr->ctime.tv_sec;
-
-}				/* _9p_tools_fsal_attr2stat */
-
-void _9p_tools_acess2fsal(u32 *paccessin, fsal_accessflags_t *pfsalaccess)
-{
-	memset((char *)pfsalaccess, 0, sizeof(fsal_accessflags_t));
-
-	if (*paccessin & O_WRONLY)
-		*pfsalaccess |= FSAL_W_OK;
-	if (*paccessin & O_RDONLY)
-		*pfsalaccess |= FSAL_R_OK;
-	if (*paccessin & O_RDWR)
-		*pfsalaccess |= FSAL_R_OK | FSAL_W_OK;
-}				/* _9p_tools_acess2fsal */
-
-void _9p_chomp_attr_value(char *str, size_t size)
-{
-	int len;
-
-	if (str == NULL)
-		return;
-
-	/* security: set last char to '\0' */
-	str[size - 1] = '\0';
-
-	len = strnlen(str, size);
-	if ((len > 0) && (str[len - 1] == '\n'))
-		str[len - 1] = '\0';
-}
-
 void _9p_openflags2FSAL(u32 *inflags, fsal_openflags_t *outflags)
 {
 	if (inflags == NULL || outflags == NULL)
@@ -286,13 +221,11 @@ void _9p_openflags2FSAL(u32 *inflags, fsal_openflags_t *outflags)
  */
 static void free_fid(struct _9p_fid *pfid)
 {
-	struct gsh_export *exp;
-
 	cache_inode_put(pfid->pentry);
-	if (pfid->from_attach) {
-		exp = container_of(pfid->export, struct gsh_export, export);
-		put_gsh_export(exp);
-	}
+	if (pfid->from_attach)
+		put_gsh_export(pfid->op_context.export);
+
+	gsh_free(pfid->specdata.xattr.xattr_content);
 	gsh_free(pfid);
 }
 
@@ -300,6 +233,12 @@ int _9p_tools_clunk(struct _9p_fid *pfid)
 {
 	fsal_status_t fsal_status;
 	cache_inode_status_t cache_status;
+
+	/* Set op_ctx */
+	op_ctx = &pfid->op_context;
+
+	/* unref the related group list */
+	uid2grp_unref(pfid->gdata);
 
 	/* If the fid is related to a xattr, free the related memory */
 	if (pfid->specdata.xattr.xattr_content != NULL &&
@@ -317,7 +256,6 @@ int _9p_tools_clunk(struct _9p_fid *pfid)
 			fsal_status =
 			    pfid->pentry->obj_handle->ops->setextattr_value(
 				    pfid->pentry->obj_handle,
-				    &pfid->op_context,
 				    "system.posix_acl_access",
 				    pfid->specdata.xattr.xattr_content,
 				    pfid->specdata.xattr.xattr_size,
@@ -327,7 +265,6 @@ int _9p_tools_clunk(struct _9p_fid *pfid)
 			fsal_status =
 			    pfid->pentry->obj_handle->ops->
 				setextattr_value_by_id(pfid->pentry->obj_handle,
-						       &pfid->op_context,
 						       pfid->specdata.xattr.
 						       xattr_id,
 						       pfid->specdata.xattr.
@@ -336,19 +273,17 @@ int _9p_tools_clunk(struct _9p_fid *pfid)
 						       xattr_size);
 			if (FSAL_IS_ERROR(fsal_status)) {
 				free_fid(pfid);
-				gsh_free(pfid->specdata.xattr.xattr_content);
 				return _9p_tools_errno(
 					   cache_inode_error_convert(
 					       fsal_status));
 			}
 		}
 	}
-	gsh_free(pfid->specdata.xattr.xattr_content);
 
 	/* If object is an opened file, close it */
 	if ((pfid->pentry->type == REGULAR_FILE) && is_open(pfid->pentry)) {
 		if (pfid->opens) {
-			cache_inode_dec_pin_ref(pfid->pentry, FALSE);
+			cache_inode_dec_pin_ref(pfid->pentry, false);
 			pfid->opens = 0;	/* dead */
 
 			/* Under this flag, pin ref is still checked */
@@ -360,8 +295,7 @@ int _9p_tools_clunk(struct _9p_fid *pfid)
 				return _9p_tools_errno(cache_status);
 			}
 			cache_status =
-			    cache_inode_refresh_attrs_locked(pfid->pentry,
-							     &pfid->op_context);
+			    cache_inode_refresh_attrs_locked(pfid->pentry);
 			if (cache_status != CACHE_INODE_SUCCESS
 			    && cache_status != CACHE_INODE_FSAL_ESTALE) {
 				free_fid(pfid);

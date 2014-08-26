@@ -44,7 +44,6 @@
 #include "nfs4_acls.h"
 #include "sal_functions.h"
 #include "nfs_core.h"
-#include "nfs_tools.h"
 
 #include <unistd.h>
 #include <sys/types.h>
@@ -64,14 +63,12 @@
  *
  * @param[in] entry   Entry for the parent directory to be managed
  * @param[in] name    Name to be removed
- * @param[in] req_ctx Request context
  *
  * @retval CACHE_INODE_SUCCESS if operation is a success
  */
 
 cache_inode_status_t
-cache_inode_remove(cache_entry_t *entry, const char *name,
-		   struct req_op_context *req_ctx)
+cache_inode_remove(cache_entry_t *entry, const char *name)
 {
 	cache_entry_t *to_remove_entry = NULL;
 	fsal_status_t fsal_status = { 0, 0 };
@@ -89,12 +86,36 @@ cache_inode_remove(cache_entry_t *entry, const char *name,
 
 	/* Looks up for the entry to remove */
 	status =
-	    cache_inode_lookup_impl(entry, name, req_ctx, &to_remove_entry);
+	    cache_inode_lookup_impl(entry, name, &to_remove_entry);
 
 	if (to_remove_entry == NULL) {
 		LogFullDebug(COMPONENT_CACHE_INODE, "lookup %s failure %s",
 			     name, cache_inode_err_str(status));
 		goto out;
+	}
+
+	/* Do not remove a junction node or an export root. */
+	if (to_remove_entry->type == DIRECTORY) {
+		/* Get attr_lock for looking at junction_export */
+		PTHREAD_RWLOCK_rdlock(&to_remove_entry->attr_lock);
+
+		if (to_remove_entry->object.dir.junction_export != NULL ||
+		    atomic_fetch_int32_t(&to_remove_entry->exp_root_refcount)
+		    != 0) {
+			/* Trying to remove an export mount point */
+			LogCrit(COMPONENT_CACHE_INODE,
+				 "Attempt to remove export %s",
+				 name);
+
+			/* Release attr_lock */
+			PTHREAD_RWLOCK_unlock(&to_remove_entry->attr_lock);
+
+			status = CACHE_INODE_DIR_NOT_EMPTY;
+			goto out;
+		}
+
+		/* Release attr_lock */
+		PTHREAD_RWLOCK_unlock(&to_remove_entry->attr_lock);
 	}
 
 	LogDebug(COMPONENT_CACHE_INODE, "%s", name);
@@ -116,11 +137,17 @@ cache_inode_remove(cache_entry_t *entry, const char *name,
 	}
 
 	fsal_status =
-	    entry->obj_handle->ops->unlink(entry->obj_handle, req_ctx, name);
+	    entry->obj_handle->ops->unlink(entry->obj_handle, name);
+
 	if (FSAL_IS_ERROR(fsal_status)) {
+		if (fsal_status.major == ERR_FSAL_STALE)
+			cache_inode_kill_entry(entry);
+
 		status = cache_inode_error_convert(fsal_status);
+
 		LogFullDebug(COMPONENT_CACHE_INODE, "unlink %s failure %s",
 			     name, cache_inode_err_str(status));
+
 		if (to_remove_entry->type == DIRECTORY
 		    && status == CACHE_INODE_DIR_NOT_EMPTY) {
 			/* its dirent tree is probably stale, flush it
@@ -136,14 +163,13 @@ cache_inode_remove(cache_entry_t *entry, const char *name,
 
 	/* Remove the entry from parent dir_entries avl */
 	PTHREAD_RWLOCK_wrlock(&entry->content_lock);
-	status_ref_entry =
-	    cache_inode_remove_cached_dirent(entry, name, req_ctx);
+	status_ref_entry = cache_inode_remove_cached_dirent(entry, name);
 	LogDebug(COMPONENT_CACHE_INODE,
 		 "cache_inode_remove_cached_dirent %s status %s", name,
 		 cache_inode_err_str(status_ref_entry));
 	PTHREAD_RWLOCK_unlock(&entry->content_lock);
 
-	status_ref_entry = cache_inode_refresh_attrs_locked(entry, req_ctx);
+	status_ref_entry = cache_inode_refresh_attrs_locked(entry);
 
 	if (FSAL_IS_ERROR(fsal_status)) {
 		status = cache_inode_error_convert(fsal_status);
@@ -154,7 +180,7 @@ cache_inode_remove(cache_entry_t *entry, const char *name,
 	}
 
 	/* Update the attributes for the removed entry */
-	(void)cache_inode_refresh_attrs_locked(to_remove_entry, req_ctx);
+	(void)cache_inode_refresh_attrs_locked(to_remove_entry);
 
 	status = status_ref_entry;
 	if (status != CACHE_INODE_SUCCESS) {

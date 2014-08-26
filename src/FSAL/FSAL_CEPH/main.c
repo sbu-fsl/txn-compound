@@ -40,6 +40,8 @@
 #include "fsal_api.h"
 #include "internal.h"
 #include "abstract_mem.h"
+#include "nfs_exports.h"
+#include "export_mgr.h"
 
 /**
  * A local copy of the handle for this module, so it can be disposed
@@ -73,12 +75,9 @@ static const char *module_name = "Ceph";
  * @return FSAL status.
  */
 
-static fsal_status_t create_export(struct fsal_module *module, const char *path,
-				   const char *options,
-				   struct exportlist *list_entry,
-				   struct fsal_module *next_fsal,
-				   const struct fsal_up_vector *up_ops,
-				   struct fsal_export **pub_export)
+static fsal_status_t create_export(struct fsal_module *module,
+				   void *parse_node,
+				   const struct fsal_up_vector *up_ops)
 {
 	/* The status code to return */
 	fsal_status_t status = { ERR_FSAL_NO_ERROR, 0 };
@@ -87,7 +86,7 @@ static fsal_status_t create_export(struct fsal_module *module, const char *path,
 	/* The internal export object */
 	struct export *export = NULL;
 	/* A fake argument list for Ceph */
-	const char *argv[] = { "FSAL_CEPH", path };
+	const char *argv[] = { "FSAL_CEPH", op_ctx->export->fullpath };
 	/* Return code from Ceph calls */
 	int ceph_status = 0;
 	/* Root inode */
@@ -101,30 +100,20 @@ static fsal_status_t create_export(struct fsal_module *module, const char *path,
 	/* The 'private' root handle */
 	struct handle *handle = NULL;
 
-	if ((path == NULL) || (strlen(path) == 0)) {
-		status.major = ERR_FSAL_INVAL;
-		LogCrit(COMPONENT_FSAL, "No path to export.");
-		goto error;
-	}
-
-	if (next_fsal != NULL) {
-		status.major = ERR_FSAL_INVAL;
-		LogCrit(COMPONENT_FSAL, "Stacked FSALs unsupported.");
-		goto error;
-	}
-
 	export = gsh_calloc(1, sizeof(struct export));
 	if (export == NULL) {
 		status.major = ERR_FSAL_NOMEM;
 		LogCrit(COMPONENT_FSAL,
-			"Unable to allocate export object for %s.", path);
+			"Unable to allocate export object for %s.",
+			op_ctx->export->fullpath);
 		goto error;
 	}
 
-	if (fsal_export_init(&export->export, list_entry) != 0) {
+	if (fsal_export_init(&export->export) != 0) {
 		status.major = ERR_FSAL_NOMEM;
 		LogCrit(COMPONENT_FSAL,
-			"Unable to allocate export ops vectors for %s.", path);
+			"Unable to allocate export ops vectors for %s.",
+			op_ctx->export->fullpath);
 		goto error;
 	}
 	export_ops_init(export->export.ops);
@@ -191,30 +180,21 @@ static fsal_status_t create_export(struct fsal_module *module, const char *path,
 	}
 
 	export->root = handle;
-	*pub_export = &export->export;
+	op_ctx->fsal_export = &export->export;
 	return status;
 
  error:
-
-	if (i) {
+	if (i)
 		ceph_ll_put(export->cmount, i);
-		i = NULL;
-	}
 
-	if (export->cmount != NULL) {
-		ceph_shutdown(export->cmount);
-		export->cmount = NULL;
-	}
-
-	if (initialized) {
-		pthread_mutex_destroy(&export->export.lock);
-		initialized = false;
-	}
-
-	if (export != NULL) {
+	if (export) {
+		if (export->cmount)
+			ceph_shutdown(export->cmount);
 		gsh_free(export);
-		export = NULL;
 	}
+
+	if (initialized)
+		initialized = false;
 
 	return status;
 }
@@ -239,9 +219,8 @@ MODULE_INIT void init(void)
 		return;
 	}
 
-	if (register_fsal
-	    (module, module_name, FSAL_MAJOR_VERSION,
-	     FSAL_MINOR_VERSION) != 0) {
+	if (register_fsal(module, module_name, FSAL_MAJOR_VERSION,
+			  FSAL_MINOR_VERSION, FSAL_ID_CEPH) != 0) {
 		/* The register_fsal function prints its own log
 		   message if it fails */
 		gsh_free(module);

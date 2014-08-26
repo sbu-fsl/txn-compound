@@ -45,46 +45,34 @@
 #include "pnfs_utils.h"
 #include "nfs_rpc_callback.h"
 #include "nfs_proto_tools.h"
+#include "nfs_convert.h"
 #include "delayed_exec.h"
-
-/**
- * @brief Fake root credentials
- */
-static struct user_cred synthetic_creds = {
-	.caller_uid = 0,
-	.caller_gid = 0,
-	.caller_glen = 0,
-	.caller_garray = NULL
-};
-
-/**
- * @brief Synthetic request context for calling into Cache_Inode.
- */
-static struct req_op_context synthetic_context = {
-	.creds = &synthetic_creds,
-	.caller_addr = NULL,
-	.clientid = NULL
-};
+#include "export_mgr.h"
 
 /**
  * @brief Invalidate a cached entry
  *
- * @param[in] export FSAL export
  * @param[in] key    Key to specify object
  * @param[in] flags  Flags to pass to cache_inode_invalidate
  *
  * @return CACHE_INODE_SUCCESS or errors.
  */
 
-static cache_inode_status_t invalidate(struct fsal_export *export,
-				       const struct gsh_buffdesc *key,
-				       uint32_t flags)
+static cache_inode_status_t invalidate_close(struct fsal_module *fsal,
+					    const struct fsal_up_vector *up_ops,
+					    struct gsh_buffdesc *handle,
+					    uint32_t flags)
 {
 	cache_entry_t *entry = NULL;
 	cache_inode_status_t rc = 0;
 
-	rc = up_get(key, &entry);
+	rc = up_get(fsal, handle, &entry);
 	if (rc == 0) {
+		if (is_open(entry))
+			rc = up_async_invalidate(general_fridge, up_ops, fsal,
+						 handle,
+						 CACHE_INODE_INVALIDATE_CLOSE,
+						 NULL, NULL);
 		rc = cache_inode_invalidate(entry, flags);
 		cache_inode_put(entry);
 	}
@@ -92,13 +80,14 @@ static cache_inode_status_t invalidate(struct fsal_export *export,
 	return rc;
 }
 
-cache_inode_status_t fsal_invalidate(const struct gsh_buffdesc *key,
+cache_inode_status_t fsal_invalidate(struct fsal_module *fsal,
+				     struct gsh_buffdesc *handle,
 				     uint32_t flags)
 {
 	cache_entry_t *entry = NULL;
 	cache_inode_status_t rc = 0;
 
-	rc = up_get(key, &entry);
+	rc = up_get(fsal, handle, &entry);
 	if (rc == 0) {
 		rc = cache_inode_invalidate(entry, flags);
 		cache_inode_put(entry);
@@ -110,7 +99,6 @@ cache_inode_status_t fsal_invalidate(const struct gsh_buffdesc *key,
 /**
  * @brief Update cached attributes
  *
- * @param[in] export FSAL export
  * @param[in] obj    Key to specify object
  * @param[in] attr   New attributes
  * @param[in] flags  Flags to govern update
@@ -118,8 +106,8 @@ cache_inode_status_t fsal_invalidate(const struct gsh_buffdesc *key,
  * @return CACHE_INODE_SUCCESS or errors.
  */
 
-static cache_inode_status_t update(struct fsal_export *export,
-				   const struct gsh_buffdesc *obj,
+static cache_inode_status_t update(struct fsal_module *fsal,
+				   struct gsh_buffdesc *obj,
 				   struct attrlist *attr, uint32_t flags)
 {
 	cache_entry_t *entry = NULL;
@@ -142,11 +130,11 @@ static cache_inode_status_t update(struct fsal_export *export,
 	    ~(fsal_up_update_filesize_inc | fsal_up_update_atime_inc |
 	      fsal_up_update_creation_inc | fsal_up_update_ctime_inc |
 	      fsal_up_update_mtime_inc | fsal_up_update_chgtime_inc |
-	      fsal_up_update_spaceused_inc)) {
+	      fsal_up_update_spaceused_inc | fsal_up_nlink)) {
 		return CACHE_INODE_INVALID_ARGUMENT;
 	}
 
-	rc = up_get(obj, &entry);
+	rc = up_get(fsal, obj, &entry);
 	if (rc != 0)
 		return rc;
 
@@ -163,6 +151,9 @@ static cache_inode_status_t update(struct fsal_export *export,
 
 	PTHREAD_RWLOCK_wrlock(&entry->attr_lock);
 
+	if (attr->expire_time_attr != 0)
+		entry->obj_handle->attributes.expire_time_attr =
+							attr->expire_time_attr;
 	if (FSAL_TEST_MASK(attr->mask, ATTR_SIZE)) {
 		if (flags & fsal_up_update_filesize_inc) {
 			if (attr->filesize >
@@ -306,7 +297,6 @@ static cache_inode_status_t update(struct fsal_export *export,
 /**
  * @brief Initiate a lock grant
  *
- * @param[in] export     The export in question
  * @param[in] file       The file in question
  * @param[in] owner      The lock owner
  * @param[in] lock_param description of the lock
@@ -314,31 +304,26 @@ static cache_inode_status_t update(struct fsal_export *export,
  * @return STATE_SUCCESS or errors.
  */
 
-static state_status_t lock_grant(struct fsal_export *export,
-				 const struct gsh_buffdesc *file, void *owner,
+static state_status_t lock_grant(struct fsal_module *fsal,
+				 struct gsh_buffdesc *file,
+				 void *owner,
 				 fsal_lock_param_t *lock_param)
 {
-	cache_entry_t *entry = NULL;
-	int rc = 0;
+	cache_entry_t *entry;
+	cache_inode_status_t cache_status;
 
-	rc = up_get(file, &entry);
-	if (rc == 0) {
-		grant_blocked_lock_upcall(entry, owner, lock_param);
+	cache_status = up_get(fsal, file, &entry);
+	if (cache_status != CACHE_INODE_SUCCESS)
+		return STATE_NOT_FOUND;
 
-		if (entry)
-			cache_inode_put(entry);
-
-	} else {
-		rc = STATE_NOT_FOUND;
-	}
-
-	return rc;
+	grant_blocked_lock_upcall(entry, owner, lock_param);
+	cache_inode_put(entry);
+	return STATE_SUCCESS;
 }
 
 /**
  * @brief Signal lock availability
  *
- * @param[in] export     The export in question
  * @param[in] file       The file in question
  * @param[in] owner      The lock owner
  * @param[in] lock_param description of the lock
@@ -346,314 +331,21 @@ static state_status_t lock_grant(struct fsal_export *export,
  * @return STATE_SUCCESS or errors.
  */
 
-static state_status_t lock_avail(struct fsal_export *export,
-				 const struct gsh_buffdesc *file, void *owner,
+static state_status_t lock_avail(struct fsal_module *fsal,
+				 struct gsh_buffdesc *file,
+				 void *owner,
 				 fsal_lock_param_t *lock_param)
 {
-	cache_entry_t *entry = NULL;
-	int rc = 0;
+	cache_entry_t *entry;
+	cache_inode_status_t cache_status;
 
-	rc = up_get(file, &entry);
-	if (rc == 0) {
-		available_blocked_lock_upcall(entry, owner, lock_param);
+	cache_status = up_get(fsal, file, &entry);
+	if (cache_status != CACHE_INODE_SUCCESS)
+		return STATE_NOT_FOUND;
 
-		if (entry)
-			cache_inode_put(entry);
-
-	} else {
-		rc = STATE_NOT_FOUND;
-	}
-
-	return rc;
-}
-
-/**
- * @brief Add a link to a directory
- *
- * Add a link to a directory and, if the entry's attributes are valid,
- * increment the link count by one.
- *
- * @param[in] export FSAL export
- * @param[in] dirkey The directory holding the new link
- * @param[in] name   The name of the newly created link
- * @param[in] tarkey The target of the link, may be NULL if unknown
- *
- * @returns CACHE_INODE_SUCCESS or errors.
- */
-
-cache_inode_status_t up_link(struct fsal_export *export,
-			     const struct gsh_buffdesc *dirkey,
-			     const char *name,
-			     const struct gsh_buffdesc *tarkey)
-{
-	/* The cache entry for the parent directory */
-	cache_entry_t *parent = NULL;
-	/* The entry to look up */
-	cache_entry_t *entry = NULL;
-	/* Return code */
-	cache_inode_status_t rc = CACHE_INODE_SUCCESS;
-
-	rc = up_get(dirkey, &parent);
-	if (rc != 0)
-		goto out;
-
-	if (!tarkey) {
-		/* Don't let it serve a negative lookup from cache */
-		atomic_clear_uint32_t_bits(&parent->flags,
-					   CACHE_INODE_DIR_POPULATED);
-		rc = cache_inode_lookup(parent, name, &synthetic_context,
-					&entry);
-		if (entry == NULL) {
-			cache_inode_invalidate(parent,
-					       CACHE_INODE_INVALIDATE_CONTENT);
-		}
-		goto out;
-	}
-
-	rc = up_get(tarkey, &entry);
-	if (rc != CACHE_INODE_SUCCESS) {
-		cache_inode_invalidate(parent, CACHE_INODE_INVALIDATE_CONTENT);
-		goto out;
-	}
-
-	rc = cache_inode_add_cached_dirent(parent, name, entry, NULL);
-
-	if (rc != CACHE_INODE_SUCCESS) {
-		cache_inode_invalidate(parent, CACHE_INODE_INVALIDATE_CONTENT);
-		goto out;
-	}
-
-	PTHREAD_RWLOCK_wrlock(&entry->attr_lock);
-	if (entry->flags & CACHE_INODE_TRUST_ATTRS)
-		++entry->obj_handle->attributes.numlinks;
-
-	PTHREAD_RWLOCK_unlock(&entry->attr_lock);
-
- out:
-
-	if (entry)
-		cache_inode_put(entry);
-
-	if (parent)
-		cache_inode_put(parent);
-
-	return rc;
-}
-
-/**
- * @brief Remove a link from a directory
- *
- * Remove the name from the directory, and if the entry is cached,
- * decrement its link count.
- *
- * @param[in] export FSAL export
- * @param[in] dirkey Directory holding the link
- * @param[in] name   The name to be removed
- *
- * @return CACHE_INODE_SUCCESS or errors.
- */
-
-cache_inode_status_t up_unlink(struct fsal_export *export,
-			       const struct gsh_buffdesc *dirkey,
-			       const char *name)
-{
-	/* The cache entry for the parent directory */
-	cache_entry_t *parent = NULL;
-	/* Return code */
-	cache_inode_status_t rc = CACHE_INODE_SUCCESS;
-	/* The looked up directory entry */
-	cache_inode_dir_entry_t *dirent = NULL;
-
-	rc = up_get(dirkey, &parent);
-	if (rc != CACHE_INODE_SUCCESS)
-		goto out;
-
-	PTHREAD_RWLOCK_wrlock(&parent->content_lock);
-	dirent = cache_inode_avl_qp_lookup_s(parent, name, 1);
-	if (dirent && ~(dirent->flags & DIR_ENTRY_FLAG_DELETED)) {
-		cih_latch_t latch;
-		cache_entry_t *entry = cih_get_by_key_latched(
-			&dirent->ckey,
-			&latch,
-			CIH_GET_UNLOCK_ON_MISS,
-			__func__,
-			__LINE__);
-		if (entry) {
-			cache_inode_lru_ref(entry, 0);
-			PTHREAD_RWLOCK_wrlock(&entry->attr_lock);
-			if (entry->flags & CACHE_INODE_TRUST_ATTRS) {
-				/* No underflow, just in case */
-				if (entry->obj_handle->attributes.numlinks) {
-					--entry->obj_handle->attributes.
-					    numlinks;
-				}
-				if (entry->obj_handle->attributes.numlinks
-				    == 0)
-					cih_remove_latched(entry, &latch,
-							   CIH_REMOVE_UNLOCK);
-			}
-			PTHREAD_RWLOCK_unlock(&entry->attr_lock);
-			cache_inode_put(entry);
-		}
-		rc = cache_inode_remove_cached_dirent(parent, name,
-						      &synthetic_context);
-	}
-	PTHREAD_RWLOCK_unlock(&parent->content_lock);
-
- out:
-
-	if (parent)
-		cache_inode_put(parent);
-
-	return rc;
-}
-
-/**
- * @brief Move-from action
- *
- * This function removes the name from the directory, but does not
- * modify the link count.
- *
- * @param[in] export FSAL export
- * @param[in] dirkey Directory holding the name
- * @param[in] name The name to be moved
- *
- * @return CACHE_INODE_STATUS or errors.
- */
-
-cache_inode_status_t move_from(struct fsal_export *export,
-			       const struct gsh_buffdesc *dirkey,
-			       const char *name)
-{
-	/* The cache entry for the parent directory */
-	cache_entry_t *parent = NULL;
-	/* Return code */
-	cache_inode_status_t rc = CACHE_INODE_SUCCESS;
-
-	rc = up_get(dirkey, &parent);
-	if (rc != 0)
-		goto out;
-
-	PTHREAD_RWLOCK_wrlock(&parent->content_lock);
-	cache_inode_remove_cached_dirent(parent, name, &synthetic_context);
-	PTHREAD_RWLOCK_unlock(&parent->content_lock);
-	cache_inode_put(parent);
-
- out:
-	if (parent)
-		cache_inode_put(parent);
-
-	return rc;
-}
-
-/**
- * @brief Move-to handler
- *
- * This function adds a name to a directory, but does not touch the
- * number of links on the entry.
- *
- * @param[in] export FSAL export
- * @param[in] dirkey Directory receiving the link
- * @param[in] name   The name of the link
- * @param[in] tarkey The target of the link, may be NULL if unknown
- *
- * @return CACHE_INODE_SUCCESS or errors.
- */
-
-cache_inode_status_t move_to(struct fsal_export *export,
-			     const struct gsh_buffdesc *dirkey,
-			     const char *name,
-			     const struct gsh_buffdesc *tarkey)
-{
-	/* The cache entry for the parent directory */
-	cache_entry_t *parent = NULL;
-	/* Return code */
-	cache_inode_status_t rc = CACHE_INODE_SUCCESS;
-	/* The entry to look up */
-	cache_entry_t *entry = NULL;
-
-	rc = up_get(dirkey, &parent);
-
-	if (rc != CACHE_INODE_SUCCESS)
-		goto out;
-
-	if (!tarkey) {
-		/* If the FSAL didn't specify a target, just do a
-		   lookup and let it cache. */
-
-		/* Don't let it serve a negative lookup from cache */
-		atomic_clear_uint32_t_bits(&parent->flags,
-					   CACHE_INODE_DIR_POPULATED);
-		rc = cache_inode_lookup(parent, name, &synthetic_context,
-					&entry);
-		if (entry == NULL) {
-			cache_inode_invalidate(parent,
-					       CACHE_INODE_INVALIDATE_CONTENT);
-		}
-		goto out;
-	}
-	rc = up_get(tarkey, &entry);
-	if (rc != CACHE_INODE_SUCCESS) {
-		cache_inode_invalidate(parent, CACHE_INODE_INVALIDATE_CONTENT);
-		goto out;
-	}
-
-	rc = cache_inode_add_cached_dirent(parent, name, entry, NULL);
-	if (rc != CACHE_INODE_SUCCESS) {
-		cache_inode_invalidate(parent, CACHE_INODE_INVALIDATE_CONTENT);
-		goto out;
-	}
- out:
-	if (entry)
-		cache_inode_put(entry);
-
-	if (parent)
-		cache_inode_put(parent);
-
-	return rc;
-}
-
-/**
- * @brief Rename operation
- *
- * If a parent directory is in the cache, rename the given entry.  On
- * error, invalidate the whole thing.
- *
- *
- * @param[in] export FSAL export
- * @param[in] dirkey Directory holding the names
- * @param[in] old    The original name
- * @param[in] new    The new name
- *
- * @return CACHE_INODE_SUCCESS or errors.
- */
-
-cache_inode_status_t up_rename(struct fsal_export *export,
-			       const struct gsh_buffdesc *dirkey,
-			       const char *old, const char *new)
-{
-	/* The cache entry for the parent directory */
-	cache_entry_t *parent = NULL;
-	/* Return code */
-	cache_inode_status_t rc = CACHE_INODE_SUCCESS;
-
-	rc = up_get(dirkey, &parent);
-	if (rc != 0)
-		goto out;
-
-	PTHREAD_RWLOCK_wrlock(&parent->content_lock);
-	rc = cache_inode_rename_cached_dirent(parent, old, new,
-					      &synthetic_context);
-	if (rc != CACHE_INODE_SUCCESS)
-		cache_inode_invalidate(parent, CACHE_INODE_INVALIDATE_CONTENT);
-
-	PTHREAD_RWLOCK_unlock(&parent->content_lock);
-
- out:
-	if (parent)
-		cache_inode_put(parent);
-
-	return rc;
+	available_blocked_lock_upcall(entry, owner, lock_param);
+	cache_inode_put(entry);
+	return STATE_SUCCESS;
 }
 
 /**
@@ -837,7 +529,6 @@ struct layoutrecall_cb_data {
  * This function validates the recall, creates the recall object, and
  * sends out CB_LAYOUTRECALL messages.
  *
- * @param[in] export      FSAL export
  * @param[in] handle      Handle on which the layout is held
  * @param[in] layout_type The type of layout to recall
  * @param[in] changed     Whether the layout has changed and the
@@ -855,8 +546,8 @@ struct layoutrecall_cb_data {
  * @retval STATE_MALLOC_ERROR if there was insufficient memory to construct the
  *         recall state.
  */
-state_status_t layoutrecall(struct fsal_export *export,
-			    const struct gsh_buffdesc *handle,
+state_status_t layoutrecall(struct fsal_module *fsal,
+			    struct gsh_buffdesc *handle,
 			    layouttype4 layout_type, bool changed,
 			    const struct pnfs_segment *segment, void *cookie,
 			    struct layoutrecall_spec *spec)
@@ -870,7 +561,7 @@ state_status_t layoutrecall(struct fsal_export *export,
 	/* Iterator over the work list */
 	struct glist_head *wi = NULL;
 
-	rc = cache_inode_status_to_state_status(up_get(handle, &entry));
+	rc = cache_inode_status_to_state_status(up_get(fsal, handle, &entry));
 	if (rc != STATE_SUCCESS)
 		return rc;
 
@@ -895,11 +586,16 @@ state_status_t layoutrecall(struct fsal_export *export,
 							  link);
 		struct state_t *s = g->state;
 		struct layoutrecall_cb_data *cb_data;
+		struct gsh_export *exp = s->state_export;
 		cache_entry_t *entry = s->state_entry;
 		nfs_cb_argop4 *arg;
 		CB_LAYOUTRECALL4args *cb_layoutrec;
 
 		cb_data = gsh_malloc(sizeof(struct layoutrecall_cb_data));
+		if (cb_data == NULL) {
+			rc = STATE_MALLOC_ERROR;
+			goto out;
+		}
 		arg = &cb_data->arg;
 		arg->argop = NFS4_OP_CB_LAYOUTRECALL;
 		cb_layoutrec = &arg->nfs_cb_argop4_u.opcblayoutrecall;
@@ -917,8 +613,25 @@ state_status_t layoutrecall(struct fsal_export *export,
 		cb_layoutrec->clora_recall.layoutrecall4_u.lor_layout.lor_fh.
 		    nfs_fh4_val =
 		    gsh_malloc(sizeof(struct alloc_file_handle_v4));
-		nfs4_FSALToFhandle(&cb_layoutrec->clora_recall.layoutrecall4_u.
-				   lor_layout.lor_fh, entry->obj_handle);
+		if (cb_layoutrec->clora_recall.layoutrecall4_u.lor_layout.
+				lor_fh.nfs_fh4_val == NULL) {
+			PTHREAD_RWLOCK_unlock(&entry->state_lock);
+			gsh_free(cb_data);
+			rc = STATE_MALLOC_ERROR;
+			goto out;
+		}
+		if (!nfs4_FSALToFhandle(
+				&cb_layoutrec->clora_recall.layoutrecall4_u
+				.lor_layout.lor_fh,
+				entry->obj_handle,
+				exp)) {
+			PTHREAD_RWLOCK_unlock(&entry->state_lock);
+			gsh_free(cb_data);
+			gsh_free(cb_layoutrec->clora_recall.layoutrecall4_u.
+						lor_layout.lor_fh.nfs_fh4_val);
+			rc = STATE_MALLOC_ERROR;
+			goto out;
+		}
 		update_stateid(s,
 			       &cb_layoutrec->clora_recall.layoutrecall4_u.
 			       lor_layout.lor_stateid, NULL, "LAYOUTRECALL");
@@ -976,9 +689,14 @@ static int32_t layoutrec_completion(rpc_call_t *call, rpc_call_hook hook,
 	struct layoutrecall_cb_data *cb_data = arg;
 	bool deleted = false;
 	state_t *state = NULL;
+	struct root_op_context root_op_context;
 
-	LogFullDebug(COMPONENT_NFS_CB, "status %d arg %p",
-		     call->cbt.v_u.v4.res.status, arg);
+	/* Initialize req_ctx */
+	init_root_op_context(&root_op_context, NULL, NULL,
+			     0, 0, UNKNOWN_REQUEST);
+
+	LogFullDebug(COMPONENT_NFS_CB, "status %d cb_data %p",
+		     call->cbt.v_u.v4.res.status, cb_data);
 
 	/* Get this out of the way up front */
 	if (hook != RPC_CALL_COMPLETE)
@@ -998,10 +716,10 @@ static int32_t layoutrec_completion(rpc_call_t *call, rpc_call_hook hook,
 		 * above this point in the function, or we could stash
 		 * the clientid in cb_data.
 		 */
-		gsh_free(cb_data);
 		free_layoutrec(&call->cbt.v_u.v4.args.argarray.argarray_val[1]);
-		nfs41_complete_single(call, hook, arg, flags);
-		return 0;
+		nfs41_complete_single(call, hook, cb_data, flags);
+		gsh_free(cb_data);
+		goto out;
 	} else if (call->cbt.v_u.v4.res.status == NFS4ERR_DELAY) {
 		struct timespec current;
 		nsecs_elapsed_t delay;
@@ -1022,11 +740,11 @@ static int32_t layoutrec_completion(rpc_call_t *call, rpc_call_hook hook,
 		else
 			delay = 1 * NS_PER_SEC;
 
-		free_layoutrec(&call->cbt.v_u.v4.args
-			       .argarray.argarray_val[1]);
-		nfs41_complete_single(call, hook, arg, flags);
+		/* We don't free the argument here, because we'll be
+		   re-using that to make the queued call. */
+		nfs41_complete_single(call, hook, cb_data, flags);
 		delayed_submit(layoutrecall_one_call, cb_data, delay);
-		return 0;
+		goto out;
 	}
 
 	/**
@@ -1037,10 +755,15 @@ static int32_t layoutrec_completion(rpc_call_t *call, rpc_call_hook hook,
  revoke:
 	/* If we don't find the state, there's nothing to return. */
 	if (nfs4_State_Get_Pointer(cb_data->stateid_other, &state)) {
-		struct req_op_context return_context = {
-			.creds = &synthetic_creds,
-			.caller_addr = NULL
-		};
+		enum fsal_layoutreturn_circumstance circumstance;
+
+		if (hook == RPC_CALL_COMPLETE &&
+		    call->cbt.v_u.v4.res.status ==
+		    NFS4ERR_NOMATCHING_LAYOUT)
+			circumstance = circumstance_client;
+		else
+			circumstance = circumstance_revoke;
+
 		/**
 		 * @todo This is where you would record that a
 		 * recall was completed, one way or the other.
@@ -1056,20 +779,25 @@ static int32_t layoutrec_completion(rpc_call_t *call, rpc_call_hook hook,
 		 */
 
 		PTHREAD_RWLOCK_wrlock(&state->state_entry->state_lock);
-		return_context.clientid =
-		    (&state->state_owner->so_owner.so_nfs4_owner.so_clientid);
-		nfs4_return_one_state(state->state_entry, &return_context,
-				      LAYOUTRETURN4_FILE,
-				      (call->cbt.v_u.v4.res.status ==
-				       NFS4ERR_NOMATCHING_LAYOUT) ?
-				      circumstance_client : circumstance_revoke,
+
+		root_op_context.req_ctx.clientid = &state->state_owner
+			->so_owner.so_nfs4_owner.so_clientid;
+		root_op_context.req_ctx.export = state->state_export;
+		root_op_context.req_ctx.fsal_export =
+			root_op_context.req_ctx.export->fsal_export;
+
+		nfs4_return_one_state(state->state_entry,
+				      LAYOUTRETURN4_FILE, circumstance,
 				      state, cb_data->segment, 0, NULL,
-				      &deleted, false);
+				      &deleted, true);
 		PTHREAD_RWLOCK_unlock(&state->state_entry->state_lock);
 	}
-	gsh_free(cb_data);
 	free_layoutrec(&call->cbt.v_u.v4.args.argarray.argarray_val[1]);
-	nfs41_complete_single(call, hook, arg, flags);
+	nfs41_complete_single(call, hook, cb_data, flags);
+	gsh_free(cb_data);
+
+out:
+	release_root_op_context();
 	return 0;
 }
 
@@ -1090,21 +818,28 @@ static void return_one_async(void *arg)
 	struct layoutrecall_cb_data *cb_data = arg;
 	state_t *s;
 	bool deleted = false;
-	struct req_op_context return_context = {
-		.creds = &synthetic_creds,
-		.caller_addr = NULL
-	};
+	struct root_op_context root_op_context;
+
+	/* Initialize req_ctx */
+	init_root_op_context(&root_op_context, NULL, NULL,
+			     0, 0, UNKNOWN_REQUEST);
 
 	if (nfs4_State_Get_Pointer(cb_data->stateid_other, &s)) {
 		PTHREAD_RWLOCK_wrlock(&s->state_entry->state_lock);
-		return_context.clientid =
-		    &s->state_owner->so_owner.so_nfs4_owner.so_clientid;
 
-		nfs4_return_one_state(s->state_entry, &return_context,
+		root_op_context.req_ctx.clientid = &s->state_owner
+			->so_owner.so_nfs4_owner.so_clientid;
+		root_op_context.req_ctx.export = s->state_export;
+		root_op_context.req_ctx.fsal_export =
+			root_op_context.req_ctx.export->fsal_export;
+
+		nfs4_return_one_state(s->state_entry,
 				      LAYOUTRETURN4_FILE, circumstance_revoke,
 				      s, cb_data->segment, 0, NULL, &deleted,
-				      false);
+				      true);
+		PTHREAD_RWLOCK_unlock(&s->state_entry->state_lock);
 	}
+	release_root_op_context();
 	gsh_free(cb_data);
 }
 
@@ -1120,6 +855,11 @@ static void layoutrecall_one_call(void *arg)
 	struct layoutrecall_cb_data *cb_data = arg;
 	state_t *s;
 	int code;
+	struct root_op_context root_op_context;
+
+	/* Initialize req_ctx */
+	init_root_op_context(&root_op_context, NULL, NULL,
+			     0, 0, UNKNOWN_REQUEST);
 
 	if (cb_data->attempts == 0)
 		now(&cb_data->first_recall);
@@ -1164,19 +904,19 @@ static void layoutrecall_one_call(void *arg)
 			} else {
 				bool deleted = false;
 
-				struct req_op_context return_context = {
-					.creds = &synthetic_creds,
-					.caller_addr = NULL,
-					.clientid =
-					    (&s->state_owner->
-					     so_owner.so_nfs4_owner.so_clientid)
-				};
+				root_op_context.req_ctx.clientid =
+					&s->state_owner->so_owner.so_nfs4_owner
+					.so_clientid;
+				root_op_context.req_ctx.export =
+					s->state_export;
+				root_op_context.req_ctx.fsal_export =
+				    root_op_context.req_ctx.export->fsal_export;
+
 				nfs4_return_one_state(s->state_entry,
-						      &return_context,
 						      LAYOUTRETURN4_FILE,
 						      circumstance_revoke, s,
 						      cb_data->segment, 0, NULL,
-						      &deleted, false);
+						      &deleted, true);
 				gsh_free(cb_data);
 			}
 		} else {
@@ -1186,6 +926,7 @@ static void layoutrecall_one_call(void *arg)
 	} else {
 		gsh_free(cb_data);
 	}
+	release_root_op_context();
 }
 
 /**
@@ -1224,10 +965,9 @@ static int32_t notifydev_completion(rpc_call_t *call, rpc_call_hook hook,
  */
 
 struct devnotify_cb_data {
-	uint64_t exportid;
 	notify_deviceid_type4 notify_type;
 	layouttype4 layout_type;
-	uint64_t devid;
+	struct pnfs_deviceid devid;
 };
 
 /**
@@ -1246,7 +986,6 @@ static bool devnotify_client_callback(nfs_client_id_t *clientid,
 	CB_NOTIFY_DEVICEID4args *cb_notify_dev;
 	struct cb_notify *arg;
 	struct devnotify_cb_data *devicenotify = devnotify;
-	uint64_t *quad;
 
 	if (clientid) {
 		LogFullDebug(COMPONENT_NFS_CB,
@@ -1275,10 +1014,9 @@ static bool devnotify_client_callback(nfs_client_id_t *clientid,
 
 	arg->notify.notify_vals.notifylist4_val = (char *)&arg->notify_del;
 	arg->notify_del.ndd_layouttype = devicenotify->layout_type;
-	quad = (uint64_t *) &arg->notify_del.ndd_deviceid;
-	*quad = nfs_htonl64(devicenotify->exportid);
-	++quad;
-	*quad = nfs_htonl64(devicenotify->devid);
+	memcpy(arg->notify_del.ndd_deviceid,
+	       &devicenotify->devid,
+	       sizeof(arg->notify_del.ndd_deviceid));
 	code =
 	    nfs_rpc_v41_single(clientid, &arg->arg, NULL, notifydev_completion,
 			       &arg->arg, NULL);
@@ -1291,7 +1029,7 @@ static bool devnotify_client_callback(nfs_client_id_t *clientid,
 /**
  * @brief Remove or change a deviceid
  *
- * @param[in] export      Export responsible for the device ID
+ * @param[in] dev_exportid Export responsible for the device ID
  * @param[in] notify_type Change or remove
  * @param[in] layout_type The layout type affected
  * @param[in] devid       The lower quad of the device id, unique
@@ -1302,13 +1040,12 @@ static bool devnotify_client_callback(nfs_client_id_t *clientid,
  * @return STATE_SUCCESS or errors.
  */
 
-state_status_t notify_device(struct fsal_export *export,
-			     notify_deviceid_type4 notify_type,
-			     layouttype4 layout_type, uint64_t devid,
+state_status_t notify_device(notify_deviceid_type4 notify_type,
+			     layouttype4 layout_type,
+			     struct pnfs_deviceid devid,
 			     bool immediate)
 {
 	struct devnotify_cb_data cb_data = {
-		.exportid = export->exp_entry->id,
 		.notify_type = notify_type,
 		.layout_type = layout_type,
 		.devid = devid
@@ -1335,16 +1072,27 @@ static int32_t delegrecall_completion_func(rpc_call_t *call,
 					   uint32_t flags)
 {
 	char *fh;
+	nfs_client_id_t *clid;
 
 	LogDebug(COMPONENT_NFS_CB, "%p %s", call,
 		 (hook ==
 		  RPC_CALL_ABORT) ? "RPC_CALL_ABORT" : "RPC_CALL_COMPLETE");
+	clid = (nfs_client_id_t *)arg;
 	switch (hook) {
 	case RPC_CALL_COMPLETE:
 		/* potentially, do something more interesting here */
 		LogDebug(COMPONENT_NFS_CB, "call result: %d", call->stat);
 		fh = call->cbt.v_u.v4.args.argarray.argarray_val->
 		    nfs_cb_argop4_u.opcbrecall.fh.nfs_fh4_val;
+		/* Mark the channel down if the rpc call failed */
+		/** @todo: what to do about server issues which made the RPC
+		 *         call fail?
+		 */
+		if (call->stat != RPC_SUCCESS) {
+			pthread_mutex_lock(&clid->cid_mutex);
+			clid->cb_chan_down = true;
+			pthread_mutex_unlock(&clid->cid_mutex);
+		}
 		gsh_free(fh);
 		cb_compound_free(&call->cbt);
 		break;
@@ -1362,8 +1110,8 @@ static int32_t delegrecall_completion_func(rpc_call_t *call,
  * @param[in] entry       File on which the delegation is held
  */
 
-static void delegrecall_one(state_lock_entry_t *found_entry,
-			    cache_entry_t *entry)
+static uint32_t delegrecall_one(state_lock_entry_t *found_entry,
+				cache_entry_t *entry)
 {
 	char *maxfh;
 	int32_t code = 0;
@@ -1371,13 +1119,14 @@ static void delegrecall_one(state_lock_entry_t *found_entry,
 	rpc_call_t *call;
 	nfs_client_id_t *clid = NULL;
 	nfs_cb_argop4 argop[1];
+	struct gsh_export *exp = found_entry->sle_state->state_export;
 
 	maxfh = gsh_malloc(NFS4_FHSIZE); /* free in cb_completion_func() */
 	if (maxfh == NULL) {
 		LogDebug(COMPONENT_FSAL_UP, "FSAL_UP_DELEG: no mem, failed.");
 		/* Not an error. Expecting some nodes will not have it
 		 * in cache in a cluster. */
-		return;
+		return NFS_CB_CALL_ABORTED;
 	}
 	code =
 	    nfs_client_id_get_confirmed(found_entry->sle_owner->so_owner.
@@ -1385,18 +1134,37 @@ static void delegrecall_one(state_lock_entry_t *found_entry,
 	if (code != CLIENT_ID_SUCCESS) {
 		LogCrit(COMPONENT_NFS_CB, "No clid record  code %d", code);
 		gsh_free(maxfh);
-		return;
+		return NFS_CB_CALL_ABORTED;
 	}
+
+	/* Attempt a recall only if channel state is UP */
+	pthread_mutex_lock(&clid->cid_mutex);
+	if (clid->cb_chan_down) {
+		pthread_mutex_unlock(&clid->cid_mutex);
+		LogCrit(COMPONENT_NFS_CB,
+			"Call back channel down, not issuing a recall");
+		gsh_free(maxfh);
+		return NFS_CB_CALL_ABORTED;
+	}
+	pthread_mutex_unlock(&clid->cid_mutex);
+
 	chan = nfs_rpc_get_chan(clid, NFS_RPC_FLAG_NONE);
 	if (!chan) {
 		LogCrit(COMPONENT_NFS_CB, "nfs_rpc_get_chan failed");
+		/* TODO: move this to nfs_rpc_get_chan ? */
+		pthread_mutex_lock(&clid->cid_mutex);
+		clid->cb_chan_down = true;
+		pthread_mutex_unlock(&clid->cid_mutex);
 		gsh_free(maxfh);
-		return;
+		return NFS_CB_CALL_ABORTED;
 	}
 	if (!chan->clnt) {
 		LogCrit(COMPONENT_NFS_CB, "nfs_rpc_get_chan failed (no clnt)");
+		pthread_mutex_lock(&clid->cid_mutex);
+		clid->cb_chan_down = true;
+		pthread_mutex_unlock(&clid->cid_mutex);
 		gsh_free(maxfh);
-		return;
+		return NFS_CB_CALL_ABORTED;
 	}
 	/* allocate a new call--freed in completion hook */
 	call = alloc_rpc_call();
@@ -1420,10 +1188,11 @@ static void delegrecall_one(state_lock_entry_t *found_entry,
 	argop->nfs_cb_argop4_u.opcbrecall.fh.nfs_fh4_val = maxfh;
 
 	/* Building a new fh */
-	if (!nfs4_FSALToFhandle
-	    (&argop->nfs_cb_argop4_u.opcbrecall.fh, entry->obj_handle)) {
+	if (!nfs4_FSALToFhandle(&argop->nfs_cb_argop4_u.opcbrecall.fh,
+				entry->obj_handle,
+				exp)) {
 		gsh_free(call);
-		return;
+		return NFS_CB_CALL_ABORTED;
 	}
 
 	/* add ops, till finished (dont exceed count) */
@@ -1432,30 +1201,93 @@ static void delegrecall_one(state_lock_entry_t *found_entry,
 	/* set completion hook */
 	call->call_hook = delegrecall_completion_func;
 
-	/* call it (here, in current thread context) */
-	code = nfs_rpc_submit_call(call, NULL, NFS_RPC_FLAG_NONE);
-
-	return;
+	/* call it (here, in current thread context)
+	 * nfs_rpc_submit_call() always returns zero. ignore it. */
+	nfs_rpc_submit_call(call, clid, NFS_RPC_FLAG_NONE);
+	return call->states;
 };
+
+state_status_t delegrecall(cache_entry_t *entry, bool rwlocked)
+{
+	struct glist_head *glist, *glist_n;
+	state_lock_entry_t *found_entry = NULL;
+	state_status_t rc = 0;
+	struct clientfile_deleg_heuristics *clfl_stats;
+	struct client_deleg_heuristics *cl_stats;
+
+	LogDebug(COMPONENT_FSAL_UP,
+		 "FSAL_UP_DELEG: Invalidate cache found entry %p type %u",
+		 entry, entry->type);
+
+	if (!rwlocked)
+		PTHREAD_RWLOCK_wrlock(&entry->state_lock);
+
+	glist_for_each_safe(glist, glist_n, &entry->object.file.deleg_list) {
+		found_entry = glist_entry(glist, state_lock_entry_t, sle_list);
+		if (found_entry->sle_type != LEASE_LOCK ||
+		    found_entry->sle_state == NULL)
+			continue;
+
+		LogDebug(COMPONENT_NFS_CB, "found_entry %p", found_entry);
+
+		clfl_stats =
+			&found_entry->sle_state->state_data.deleg.clfile_stats;
+		cl_stats = &clfl_stats->clientid->deleg_heuristics;
+		clfl_stats->num_recalls++;
+		cl_stats->tot_recalls++;
+
+		switch (delegrecall_one(found_entry, entry)) {
+		case NFS_CB_CALL_FINISHED:
+			break;
+		case NFS_CB_CALL_NONE:
+			break;
+		case NFS_CB_CALL_QUEUED:
+			break;
+		case NFS_CB_CALL_DISPATCH:
+			break;
+		case NFS_CB_CALL_ABORTED:
+			LogCrit(COMPONENT_NFS_CB, "Failed to recall, aborted!");
+			clfl_stats->num_recall_aborts++;
+			cl_stats->failed_recalls++;
+			break;
+		case NFS_CB_CALL_TIMEDOUT: /* network or client trouble */
+			LogCrit(COMPONENT_NFS_CB,
+				"Failed to recall due to timeout!");
+			clfl_stats->num_recall_timeouts++;
+			cl_stats->failed_recalls++;
+			break;
+		default:
+			LogCrit(COMPONENT_NFS_CB, "delegrecall_one() failed.");
+			break;
+		}
+	}
+
+	if (!rwlocked)
+		PTHREAD_RWLOCK_unlock(&entry->state_lock);
+
+	return rc;
+}
 
 /**
  * @brief Recall a delegation
  *
- * @param[in] export FSAL export
  * @param[in] handle Handle on which the delegation is held
  *
  * @return STATE_SUCCESS or errors.
  */
-
-state_status_t delegrecall(struct fsal_export *export,
-			   const struct gsh_buffdesc *handle)
+state_status_t delegrecall_upcall(struct fsal_module *fsal,
+				  struct gsh_buffdesc *handle)
 {
 	cache_entry_t *entry = NULL;
-	struct glist_head *glist;
-	state_lock_entry_t *found_entry = NULL;
 	state_status_t rc = 0;
 
-	rc = cache_inode_status_to_state_status(up_get(handle, &entry));
+	if (!nfs_param.nfsv4_param.allow_delegations) {
+		LogCrit(COMPONENT_FSAL_UP,
+			"BUG: Got BREAK_DELEGATION: upcall when delegations are disabled, ignoring");
+		return STATE_SUCCESS;
+	}
+
+	rc = cache_inode_status_to_state_status(up_get(fsal, handle, &entry));
 	if (rc != STATE_SUCCESS) {
 		LogDebug(COMPONENT_FSAL_UP,
 			 "FSAL_UP_DELEG: cache inode get failed, rc %d", rc);
@@ -1463,28 +1295,10 @@ state_status_t delegrecall(struct fsal_export *export,
 		 * in cache in a cluster. */
 		return rc;
 	}
-
-	LogDebug(COMPONENT_FSAL_UP,
-		 "FSAL_UP_DELEG: Invalidate cache found entry %p type %u",
-		 entry, entry->type);
-
-	PTHREAD_RWLOCK_wrlock(&entry->state_lock);
-
-	glist_for_each(glist, &entry->object.file.lock_list) {
-		found_entry = glist_entry(glist, state_lock_entry_t, sle_list);
-
-		if (found_entry != NULL && found_entry->sle_state != NULL) {
-			LogDebug(COMPONENT_NFS_CB, "found_entry %p",
-				 found_entry);
-			delegrecall_one(found_entry, entry);
-		}
-	}
-	PTHREAD_RWLOCK_unlock(&entry->state_lock);
-
-	cache_inode_put(entry);
-
-	return rc;
+	return delegrecall(entry, false);
 }
+
+
 
 /**
  * @brief The top level vector of operations
@@ -1493,16 +1307,12 @@ state_status_t delegrecall(struct fsal_export *export,
 struct fsal_up_vector fsal_up_top = {
 	.lock_grant = lock_grant,
 	.lock_avail = lock_avail,
-	.invalidate = invalidate,
+	.invalidate = fsal_invalidate,
 	.update = update,
-	.link = up_link,
-	.unlink = up_unlink,
-	.move_from = move_from,
-	.move_to = move_to,
-	.rename = up_rename,
 	.layoutrecall = layoutrecall,
 	.notify_device = notify_device,
-	.delegrecall = delegrecall
+	.delegrecall = delegrecall_upcall,
+	.invalidate_close = invalidate_close
 };
 
 /** @} */

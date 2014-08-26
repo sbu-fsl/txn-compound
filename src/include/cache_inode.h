@@ -54,15 +54,87 @@
 #include "nfs23.h"
 #include "nfs4.h"
 #include "nlm4.h"
-#include "nlm_list.h"
+#include "ganesha_list.h"
 #include "nfs4_acls.h"
 #include "nfs_integrity.h"
 
+
+/**
+ * @defgroup config_cache_inode Structure and defaults for Cache_Inode
+ *
+ * @{
+ */
+
+/**
+ * @brief Structure to hold cache_inode paramaters
+ */
+
+struct cache_inode_parameter {
+	/** Partitions in the Cache_Inode tree.  Defaults to 7,
+	 * settable with NParts. */
+	uint32_t nparts;
+	/** Expiration time interval in seconds for attributes.  Settable with
+	    Attr_Expiration_Time. */
+	int32_t  expire_time_attr;
+	/** Use getattr for directory invalidation.  Defaults to
+	    false.  Settable with Use_Getattr_Directory_Invalidation. */
+	bool getattr_dir_invalidation;
+	/** High water mark for cache entries.  Defaults to 100000,
+	    settable by Entries_HWMark. */
+	uint32_t entries_hwmark;
+	/** Base interval in seconds between runs of the LRU cleaner
+	    thread. Defaults to 60, settable with LRU_Run_Interval. */
+	time_t lru_run_interval;
+	/** Whether to cache open files.  Defaults to true, settable
+	    with Cache_FDs. */
+	bool use_fd_cache;
+	/** The percentage of the system-imposed maximum of file
+	    descriptors at which Ganesha will deny requests.
+	    Defaults to 99, settable with FD_Limit_Percent. */
+	uint32_t fd_limit_percent;
+	/** The percentage of the system-imposed maximum of file
+	    descriptors above which Ganesha will make greater efforts
+	    at reaping. Defaults to 90, settable with
+	    FD_HWMark_Percent. */
+	uint32_t fd_hwmark_percent;
+	/** The percentage of the system-imposed maximum of file
+	    descriptors below which Ganesha will not reap file
+	    descriptonot reap file descriptors.  Defaults to 50,
+	    settable with FD_LWMark_Percent. */
+	uint32_t fd_lwmark_percent;
+	/** Roughly, the amount of work to do on each pass through the
+	    thread under normal conditions.  (Ideally, a multiple of
+	    the number of lanes.)  Defaults to 1000, settable with
+	    Reaper_Work. */
+	uint32_t reaper_work;
+	/** The largest window (as a percentage of the system-imposed
+	    limit on FDs) of work that we will do in extremis.
+	    Defaults to 40, settable with Biggest_Window */
+	uint32_t biggest_window;
+	/** Percentage of progress toward the high water mark required
+	    in in a pass through the thread when in extremis.
+	    Defaults to 5, settable with Required_Progress. */
+	uint32_t required_progress;
+	/** Number of failures to approach the high watermark before
+	    we disable caching, when in extremis.  Defaults to 8,
+	    settable with Futility_Count */
+	uint32_t futility_count;
+	/** Behavior for when readdir fails for some reason:
+	    true will ask the client to retry later, false will give the
+	    client a partial reply based on what we have.
+	    Defaults to false, settable with Retry_Readdir */
+	bool retry_readdir;
+};
+
+/** @} */
+
+extern struct config_block cache_inode_param_blk;
+extern struct cache_inode_parameter cache_param;
+
 /* Forward references */
 typedef struct cache_entry_t cache_entry_t;
+struct gsh_export;
 
-/** Maximum size of NFSv2 handle */
-static const size_t FILEHANDLE_MAX_LEN_V2 = 32;
 /** Maximum size of NFSv3 handle */
 static const size_t FILEHANDLE_MAX_LEN_V3 = 64;
 /** Maximum size of NFSv4 handle */
@@ -105,15 +177,29 @@ typedef struct cache_inode_lru__ {
 } cache_inode_lru_t;
 
 /**
+ * cache inode statistics.
+ */
+struct cache_stats {
+	uint64_t inode_req;
+	uint64_t inode_hit;
+	uint64_t inode_miss;
+	uint64_t inode_conf;
+	uint64_t inode_added;
+	uint64_t inode_mapping;
+};
+
+extern struct cache_stats *cache_stp;
+
+/**
  * Indicate whether this is a read or write operation, for
  * cache_inode_rdwr.
  */
 
 typedef enum io_direction__ {
-	CACHE_INODE_READ = 1,	/*< Reading */
-	CACHE_INODE_WRITE = 2,	/*< Writing */
-	CACHE_INODE_READ_PLUS = 3,
-	CACHE_INODE_WRITE_PLUS = 4,
+	CACHE_INODE_READ = 1,		/*< Reading */
+	CACHE_INODE_WRITE = 2,		/*< Writing */
+	CACHE_INODE_READ_PLUS = 3,	/*< Reading plus */
+	CACHE_INODE_WRITE_PLUS = 4	/*< Writing plus */
 } cache_inode_io_direction_t;
 
 /**
@@ -168,8 +254,8 @@ typedef struct cache_inode_share__ {
  */
 typedef struct cache_inode_key {
 	uint64_t hk;		/* hash key */
-	struct gsh_buffdesc kv;
-	uint32_t exportid;	/* NOT HASHED OR COMPARED! */
+	struct fsal_module *fsal;	/*< fsal module */
+	struct gsh_buffdesc kv;		/*< fsal handle */
 } cache_inode_key_t;
 
 /**
@@ -196,7 +282,7 @@ cache_inode_key_dup(cache_inode_key_t *tgt,
 
 	memcpy(tgt->kv.addr, src->kv.addr, src->kv.len);
 	tgt->hk = src->hk;
-	tgt->exportid = src->exportid;
+	tgt->fsal = src->fsal;
 
 	return 0;
 }
@@ -255,6 +341,40 @@ cache_inode_free_dirent(cache_inode_dir_entry_t *dirent)
 		gsh_free(dirent->ckey.kv.addr);
 	gsh_free(dirent);
 }
+
+/**
+ * @brief Represents one of the many-many links between inodes and exports.
+ *
+ */
+
+struct entry_export_map {
+	/** The relevant cache inode entry */
+	cache_entry_t *entry;
+	/** The export the entry belongs to */
+	struct gsh_export *export;
+	/** List of entries per export */
+	struct glist_head entry_per_export;
+	/** List of exports per entry */
+	struct glist_head export_per_entry;
+};
+
+/**
+ * @brief Stats for file-specific and client-file delegation heuristics
+ */
+
+struct file_deleg_heuristics {
+	uint32_t curr_delegations;        /* number of delegations on file */
+	open_delegation_type4 deleg_type; /* if delegated is it read or write */
+	bool disabled;                    /* deleg disabled for this file */
+	uint32_t delegation_count;        /* times file has been delegated */
+	uint32_t recall_count;            /* times file has been recalled */
+	time_t avg_hold;                  /* avg amount of time deleg held */
+	time_t last_delegation;
+	time_t last_recall;
+	uint32_t num_opens;               /* total num of opens so far. */
+	time_t first_open;                /* time that we started recording
+					     num_opens */
+};
 
 /**
  * @brief Represents a cached inode
@@ -338,6 +458,10 @@ struct cache_entry_t {
 	time_t attr_time;
 	/** New style LRU link */
 	cache_inode_lru_t lru;
+	/** There is one export root reference counted for each export
+	    for which this entry is a root for. This field is used
+	    with the atomic inc/dec/fetch routines. */
+	int32_t exp_root_refcount;
 	/** This is separated out from the content lock, since there
 	    are state oerations that don't affect anything guarded by
 	    content (for example, a layout return or request has no
@@ -347,6 +471,10 @@ struct cache_entry_t {
 	pthread_rwlock_t state_lock;
 	/** States on this cache entry */
 	struct glist_head state_list;
+	/** Exports per entry (protected by attr_lock) */
+	struct glist_head export_list;
+	/** Atomic pointer to the first mapped export for fast path */
+	void *first_export;
 	/** Layout recalls on this entry */
 	struct glist_head layoutrecall_list;
 	/** Lock on type-specific cached content.  See locking
@@ -359,10 +487,14 @@ struct cache_entry_t {
 		struct cache_inode_file {
 			/** Pointers for lock list */
 			struct glist_head lock_list;
+			/** Pointers for delegation list */
+			struct glist_head deleg_list;
 			/** Pointers for NLM share list */
 			struct glist_head nlm_share_list;
 			/** Share reservation state for this file. */
 			cache_inode_share_t share_state;
+			/** Delegation statistics */
+			struct file_deleg_heuristics deleg_heuristics;
 		} file;		/*< REGULAR_FILE data */
 
 		struct {
@@ -378,6 +510,12 @@ struct cache_entry_t {
 				/** Heuristic. Expect 0. */
 				uint32_t collisions;
 			} avl;
+			/** If this is a junction, the export this node points
+			    to. Protected by the attr_lock. */
+			struct gsh_export *junction_export;
+			/** List of exports that have this cache inode
+			    as their root. Protected by the attr_lock. */
+			struct glist_head export_roots;
 		} dir;		/*< DIRECTORY data */
 	} object;
 };
@@ -432,6 +570,8 @@ static const uint32_t CACHE_INODE_FLAG_CONTENT_HAVE = 0x20;
 static const uint32_t CACHE_INODE_FLAG_REALLYCLOSE = 0x80;
 /** File can't be pinned, so close need not check. */
 static const uint32_t CACHE_INODE_FLAG_NOT_PINNED = 0x100;
+/** Open for reclaim. */
+static const uint32_t CACHE_INODE_FLAG_RECLAIM = 0x200;
 
 /**
  * Flags to cache_inode_invalidate
@@ -488,6 +628,10 @@ typedef enum cache_inode_status_t {
 	CACHE_INODE_TOOSMALL = 40,
 	CACHE_INODE_FSAL_SHARE_DENIED = 41,
 	CACHE_INODE_BADNAME = 42,
+	CACHE_INODE_UNION_NOTSUPP = 43,
+	CACHE_INODE_CROSS_JUNCTION = 44,
+	CACHE_INODE_IN_GRACE = 45,
+	CACHE_INODE_BADHANDLE = 46,
 } cache_inode_status_t;
 
 /**
@@ -505,7 +649,6 @@ typedef enum cache_inode_status_t {
 struct cache_inode_readdir_cb_parms {
 	void *opaque;		/*< Protocol specific parms */
 	const char *name;	/*< Dir entry name */
-	cache_entry_t *entry;	/*< Cache entry */
 	bool attr_allowed;	/*< True if caller has perm to getattr */
 	uint64_t cookie;	/*< Directory cookie for this entry */
 	bool in_result;		/*< true if the entry has been added to the
@@ -525,7 +668,10 @@ struct cache_inode_readdir_cb_parms {
  */
 
 typedef cache_inode_status_t (*cache_inode_getattr_cb_t)
-(void *opaque, const struct attrlist *attr, uint64_t mounted_on_fileid);
+	(void *opaque,
+	 cache_entry_t *entry,
+	 const struct attrlist *attr,
+	 uint64_t mounted_on_fileid);
 
 const char *cache_inode_err_str(cache_inode_status_t err);
 
@@ -537,20 +683,27 @@ cache_inode_status_t cache_inode_init(void);
 #define CIG_KEYED_FLAG_NONE         0x0000
 #define CIG_KEYED_FLAG_CACHED_ONLY  0x0001
 
+bool check_mapping(cache_entry_t *entry,
+		   struct gsh_export *export);
+void clean_mapping(cache_entry_t *entry);
 cache_inode_status_t cache_inode_get(cache_inode_fsal_data_t *fsdata,
-				     const struct req_op_context *opctx,
 				     cache_entry_t **entry);
 cache_entry_t *cache_inode_get_keyed(cache_inode_key_t *key,
-				     const struct req_op_context *req_ctx,
 				     uint32_t flags,
 				     cache_inode_status_t *status);
+cache_inode_status_t
+cache_inode_get_protected(cache_entry_t **entry,
+			  pthread_rwlock_t *lock,
+			  cache_inode_status_t get_entry(cache_entry_t **,
+							 void *),
+			  void *source);
 void cache_inode_put(cache_entry_t *entry);
+void cache_inode_unexport(struct gsh_export *export);
 
 cache_inode_status_t cache_inode_access_sw(cache_entry_t *entry,
 					   fsal_accessflags_t access_type,
 					   fsal_accessflags_t *allowed,
 					   fsal_accessflags_t *denied,
-					   struct req_op_context *req_ctx,
 					   bool use_mutex);
 /**
  *
@@ -562,18 +715,15 @@ cache_inode_status_t cache_inode_access_sw(cache_entry_t *entry,
  *
  * @param[in] entry       entry pointer for the fs object to be checked.
  * @param[in] access_type The kind of access to be checked
- * @param[in] req_ctx     Request context
  *
  * @return CACHE_INODE_SUCCESS if operation is a success
  *
  */
 static inline cache_inode_status_t
 cache_inode_access_no_mutex(cache_entry_t *entry,
-			    fsal_accessflags_t access_type,
-			    struct req_op_context *req_ctx)
+			    fsal_accessflags_t access_type)
 {
-	return cache_inode_access_sw(entry, access_type, NULL, NULL, req_ctx,
-				     false);
+	return cache_inode_access_sw(entry, access_type, NULL, NULL, false);
 }
 
 /**
@@ -586,24 +736,20 @@ cache_inode_access_no_mutex(cache_entry_t *entry,
  *
  * @param[in] entry       The object to be checked
  * @param[in] access_type The kind of access to be checked
- * @param[in] req_ctx     Request context
  *
  * @return CACHE_INODE_SUCCESS if operation is a success
  */
 static inline cache_inode_status_t
 cache_inode_access(cache_entry_t *entry,
-		   fsal_accessflags_t access_type,
-		   struct req_op_context *req_ctx)
+		   fsal_accessflags_t access_type)
 {
-	return cache_inode_access_sw(entry, access_type, NULL, NULL, req_ctx,
-				     true);
+	return cache_inode_access_sw(entry, access_type, NULL, NULL, true);
 }
 
 cache_inode_status_t
 cache_inode_check_setattr_perms(cache_entry_t *entry,
 				struct attrlist *attr,
-				bool is_open_write,
-				struct req_op_context *req_ctx);
+				bool is_open_write);
 
 bool is_open(cache_entry_t *entry);
 bool is_open_for_read(cache_entry_t *entry);
@@ -611,95 +757,77 @@ bool is_open_for_write(cache_entry_t *entry);
 
 cache_inode_status_t cache_inode_open(cache_entry_t *entry,
 				      fsal_openflags_t openflags,
-				      struct req_op_context *req_ctx,
 				      uint32_t flags);
 cache_inode_status_t cache_inode_close(cache_entry_t *entry, uint32_t flags);
+void cache_inode_adjust_openflags(cache_entry_t *entry);
 
 cache_inode_status_t cache_inode_create(cache_entry_t *entry_parent,
 					const char *name,
 					object_file_type_t type, uint32_t mode,
 					cache_inode_create_arg_t *create_arg,
-					struct req_op_context *req_ctx,
 					cache_entry_t **created);
 
 cache_inode_status_t cache_inode_getattr(cache_entry_t *entry,
-					 const struct req_op_context *req_ctx,
 					 void *opaque,
 					 cache_inode_getattr_cb_t cb);
 
 cache_inode_status_t cache_inode_fileid(cache_entry_t *entry,
-					const struct req_op_context *req_ctx,
 					uint64_t *fileid);
 
 cache_inode_status_t cache_inode_fsid(cache_entry_t *entry,
-				      const struct req_op_context *req_ctx,
 				      fsal_fsid_t *fsid);
 
 cache_inode_status_t cache_inode_size(cache_entry_t *entry,
-				      const struct req_op_context *req_ctx,
 				      uint64_t *size);
 
 void cache_inode_create_set_verifier(struct attrlist *sattr, uint32_t verf_hi,
 				     uint32_t verf_lo);
 
 bool cache_inode_create_verify(cache_entry_t *entry,
-			       const struct req_op_context *req_ctx,
 			       uint32_t verf_hi, uint32_t verf_lo);
 
 cache_inode_status_t cache_inode_lookup_impl(cache_entry_t *entry_parent,
 					     const char *name,
-					     struct req_op_context *req_ctx,
 					     cache_entry_t **entry);
 
 cache_inode_status_t cache_inode_lookup(cache_entry_t *entry_parent,
 					const char *name,
-					struct req_op_context *req_ctx,
 					cache_entry_t **entry);
 
 cache_inode_status_t cache_inode_lookupp_impl(cache_entry_t *entry,
-					      struct req_op_context *req_ctx,
 					      cache_entry_t **parent);
 
 cache_inode_status_t cache_inode_lookupp(cache_entry_t *entry,
-					 struct req_op_context *req_ctx,
 					 cache_entry_t **parent);
 
 cache_inode_status_t cache_inode_readlink(cache_entry_t *entry,
-					  struct gsh_buffdesc *link_content,
-					  struct req_op_context *req_ctx);
+					  struct gsh_buffdesc *link_content);
 
 cache_inode_status_t cache_inode_link(cache_entry_t *entry_src,
 				      cache_entry_t *entry_dir_dest,
-				      const char *link_name,
-				      struct req_op_context *req_ctx);
+				      const char *link_name);
 
 cache_inode_status_t cache_inode_remove(cache_entry_t *entry,
-					const char *node_name,
-					struct req_op_context *req_ctx);
+					const char *node_name);
 
 cache_inode_status_t cache_inode_operate_cached_dirent(
 	cache_entry_t *entry_parent, const char *name, const char *newname,
-	const struct req_op_context *req_ctx,
 	cache_inode_dirent_op_t dirent_op);
 
 cache_inode_status_t cache_inode_remove_cached_dirent(
-	cache_entry_t *entry_parent, const char *name,
-	const struct req_op_context *req_ctx);
+	cache_entry_t *entry_parent, const char *name);
 
 cache_inode_status_t cache_inode_rename_cached_dirent(
-	cache_entry_t *entry_parent, const char *oldname, const char *newname,
-	const struct req_op_context *req_ctx);
+	cache_entry_t *entry_parent, const char *oldname, const char *newname);
 
 cache_inode_status_t cache_inode_rename(cache_entry_t *entry,
 					const char *oldname,
 					cache_entry_t *entry_dirdest,
-					const char *newname,
-					struct req_op_context *req_ctx);
+					const char *newname);
 
 cache_inode_status_t cache_inode_setattr(cache_entry_t *entry,
 					 struct attrlist *attr,
-					 bool is_open_write,
-					 struct req_op_context *req_ctx);
+					 bool is_open_write);
 
 cache_inode_status_t cache_inode_error_convert(fsal_status_t fsal_status);
 
@@ -712,25 +840,21 @@ cache_inode_status_t cache_inode_rdwr(cache_entry_t *entry,
 				      uint64_t offset, size_t io_size,
 				      size_t *bytes_moved, void *buffer,
 				      bool *eof,
-				      struct req_op_context *req_ctx,
 				      bool *sync);
 
-cache_inode_status_t
-cache_inode_rdwr_plus(cache_entry_t *entry,
-		      cache_inode_io_direction_t io_direction,
-		      uint64_t offset, size_t io_size,
-		      size_t *bytes_moved, void *buffer,
-		      struct data_plus *data_plus, bool *eof,
-		      struct req_op_context *req_ctx, bool *sync);
+cache_inode_status_t cache_inode_rdwr_plus(cache_entry_t *entry,
+				      cache_inode_io_direction_t io_direction,
+				      uint64_t offset, size_t io_size,
+				      size_t *bytes_moved, void *buffer,
+				      bool *eof,
+				      bool *sync, struct io_info *info);
 
 cache_inode_status_t cache_inode_commit(cache_entry_t *entry, uint64_t offset,
-					size_t count,
-					struct req_op_context *req_ctx);
+					size_t count);
 
 cache_inode_status_t cache_inode_readdir(cache_entry_t *directory,
 					 uint64_t cookie, unsigned int *nbfound,
 					 bool *eod_met,
-					 struct req_op_context *req_ctx,
 					 attrmask_t attrmask,
 					 cache_inode_getattr_cb_t cb,
 					 void *opaque);
@@ -740,14 +864,12 @@ cache_inode_status_t cache_inode_add_cached_dirent(
 	cache_inode_dir_entry_t **dir_entry);
 
 cache_inode_status_t cache_inode_lock_trust_attrs(cache_entry_t *entry,
-						  const struct req_op_context
-						  *opctx, bool need_wr_lock);
+						  bool need_wr_lock);
 
 void cache_inode_print_dir(cache_entry_t *cache_entry_root);
 
 cache_inode_status_t cache_inode_statfs(cache_entry_t *entry,
-					fsal_dynamicfsinfo_t *dynamicinfo,
-					const struct req_op_context *req_ctx);
+					fsal_dynamicfsinfo_t *dynamicinfo);
 
 cache_inode_status_t cache_inode_invalidate_all_cached_dirent(
 	cache_entry_t *entry);
@@ -759,12 +881,6 @@ void cache_inode_kill_entry(cache_entry_t *entry);
 
 cache_inode_status_t cache_inode_invalidate(cache_entry_t *entry,
 					    uint32_t flags);
-
-cache_inode_status_t cache_inode_read_conf_parameter(
-	config_file_t in_config, cache_inode_parameter_t *param);
-
-cache_inode_status_t cache_inode_dec_pin_ref(cache_entry_t *entry,
-					     bool closefile);
 
 inline int cache_inode_set_time_current(struct timespec *time);
 
@@ -784,14 +900,11 @@ static inline void
 cache_inode_fixup_md(cache_entry_t *entry)
 {
 	/* Set the refresh time for the cache entry */
-	if (nfs_param.cache_param.expire_type_attr == CACHE_INODE_EXPIRE) {
+	if (entry->obj_handle->attributes.expire_time_attr > 0)
 		entry->attr_time = time(NULL);
-		if (entry->obj_handle->attributes.grace_period_attr == 0)
-			entry->obj_handle->attributes.grace_period_attr =
-			    nfs_param.cache_param.grace_period_attr;
-	} else {
+	else
 		entry->attr_time = 0;
-	}
+
 	/* I don't like using nsecs as a counter, it will be annoying in
 	 * 500 years.  I'll fix to match MS nano-intervals later.
 	 *
@@ -824,18 +937,16 @@ cache_inode_is_attrs_valid(const cache_entry_t *entry)
 		return false;
 
 	if (entry->type == DIRECTORY
-	    && nfs_param.cache_param.getattr_dir_invalidation)
+	    && cache_param.getattr_dir_invalidation)
 		return false;
 
-	if (nfs_param.cache_param.expire_type_attr ==
-	    CACHE_INODE_EXPIRE_IMMEDIATE)
+	if (entry->obj_handle->attributes.expire_time_attr == 0)
 		return false;
 
-	if (nfs_param.cache_param.expire_type_attr !=
-	    CACHE_INODE_EXPIRE_NEVER) {
+	if (entry->obj_handle->attributes.expire_time_attr > 0) {
 		time_t current_time = time(NULL);
 		if (current_time - entry->attr_time >
-		    entry->obj_handle->attributes.grace_period_attr)
+		    entry->obj_handle->attributes.expire_time_attr)
 			return false;
 	}
 
@@ -852,11 +963,10 @@ cache_inode_is_attrs_valid(const cache_entry_t *entry)
  * @todo Possibly not really necessary?
  *
  * @param[in,out] entry   The entry to be refreshed
- * @param[in]     opctx   Request context (user creds, client address etc)
  */
+
 static inline cache_inode_status_t
-cache_inode_refresh_attrs(cache_entry_t *entry,
-			  const struct req_op_context *opctx)
+cache_inode_refresh_attrs(cache_entry_t *entry)
 {
 	fsal_status_t fsal_status = { ERR_FSAL_NO_ERROR, 0 };
 	cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
@@ -875,7 +985,7 @@ cache_inode_refresh_attrs(cache_entry_t *entry,
 	}
 
 	fsal_status =
-	    entry->obj_handle->ops->getattrs(entry->obj_handle, opctx);
+	    entry->obj_handle->ops->getattrs(entry->obj_handle);
 	if (FSAL_IS_ERROR(fsal_status)) {
 		cache_inode_kill_entry(entry);
 		cache_status = cache_inode_error_convert(fsal_status);
@@ -897,17 +1007,15 @@ cache_inode_refresh_attrs(cache_entry_t *entry,
  * this entry, mark them as trustable and update the entry metadata.
  *
  * @param[in,out] entry   The entry to be refreshed
- * @param[in]     opctx   Request context (user creds, client address etc)
  */
 static inline cache_inode_status_t
-cache_inode_refresh_attrs_locked(cache_entry_t *entry,
-				 const struct req_op_context *opctx)
+cache_inode_refresh_attrs_locked(cache_entry_t *entry)
 {
 	cache_inode_status_t status;
 
 	PTHREAD_RWLOCK_wrlock(&entry->attr_lock);
 
-	status = cache_inode_refresh_attrs(entry, opctx);
+	status = cache_inode_refresh_attrs(entry);
 
 	PTHREAD_RWLOCK_unlock(&entry->attr_lock);
 
@@ -921,18 +1029,16 @@ cache_inode_refresh_attrs_locked(cache_entry_t *entry,
  * should ONLY be used for populating change_info4 structures.
  *
  * @param[in] entry   The entry to query.
- * @param[in] context The FSAL operation context
  *
  * @return A changeid4 indicating the last modification of the entry.
  */
 
 static inline changeid4
-cache_inode_get_changeid4(cache_entry_t *entry,
-			  const struct req_op_context *opctx)
+cache_inode_get_changeid4(cache_entry_t *entry)
 {
 	cache_inode_status_t status;
 	changeid4 changeid;
-	status = cache_inode_lock_trust_attrs(entry, opctx, false);
+	status = cache_inode_lock_trust_attrs(entry, false);
 
 	changeid = (changeid4) entry->change_time;
 

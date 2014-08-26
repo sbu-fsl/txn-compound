@@ -18,7 +18,6 @@
 #include <sys/ioctl.h>
 #include <stdint.h>
 #include <stdio.h>
-#include "include/gpfs.h"
 #include "include/gpfs_nfs.h"
 
 struct kxArgs {
@@ -43,6 +42,7 @@ int gpfs_ganesha(int op, void *oarg)
 				"Ganesha call to GPFS failed with ENOSYS\n");
 			return ENOSYS;
 		}
+		(void)fcntl(localFD, F_SETFD, FD_CLOEXEC);
 		fd = localFD;
 	}
 

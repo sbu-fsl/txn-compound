@@ -41,16 +41,16 @@
 
 struct gsh_client {
 	struct avltree_node node_k;
-	pthread_mutex_t lock;
+	pthread_rwlock_t lock;
 	struct gsh_buffdesc addr;
 	int64_t refcnt;
 	nsecs_elapsed_t last_update;
-	char hostaddr_str[SOCK_NAME_MAX];
+	char *hostaddr_str;
 	unsigned char addrbuf[];
 };
 
 void client_pkginit(void);
-#ifdef USE_DBUS_STATS
+#ifdef USE_DBUS
 void dbus_client_init(void);
 #endif
 struct gsh_client *get_gsh_client(sockaddr_t *client_ipaddr, bool lookup_only);

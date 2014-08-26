@@ -20,13 +20,14 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA
  *
  * -------------
  */
 
 /**
- * @defgroup FSAL File-System Abstraction Layer
+ * @addtogroup FSAL
  * @{
  */
 
@@ -43,6 +44,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
+#include <ctype.h>
 #include <pthread.h>
 #include <dlfcn.h>
 #include "log.h"
@@ -52,150 +54,160 @@
 #include "pnfs_utils.h"
 #include "fsal_private.h"
 
-/* List of loaded fsal modules
- * static to be private to the functions in this module
+/**
+ * @brief List of loaded fsal modules
+ *
+ * Static to be private to the functions in this module
  * fsal_lock is taken whenever the list is walked.
  */
 
 pthread_mutex_t fsal_lock = PTHREAD_MUTEX_INITIALIZER;
 GLIST_HEAD(fsal_list);
 
-/*
- * vars for passing status/errors between shared object
- * and this module.  Only accessed under lock
+/**
+ * @{
+ *
+ * Variables for passing status/errors between shared object
+ * and this module. They must be accessed under lock.
  */
 
 static char *dl_error;
 static int so_error;
 static struct fsal_module *new_fsal;
 
+/**
+ * @}
+ */
+
+/**
+ * @brief FSAL load state
+ */
+
 static enum load_state {
-	init,		/* in server start state. .init sections can run */
-	idle,		/* switch from init->idle early in main() */
-	loading,	/* in dlopen(). set by load_fsal() just prior */
-	registered,	/* signal by registration that all is well */
-	error		/* signal by registration that all is not well */
+	init,		/*< In server start state. .init sections can run */
+	idle,		/*< Switch from init->idle early in main() */
+	loading,	/*< In dlopen(). set by load_fsal() just prior */
+	registered,	/*< signal by registration that all is well */
+	error		/*< signal by registration that all is not well */
 } load_state = init;
 
-/* start_fsals
- * Called at server initialization
- * probe config file and install fsal modules
- * return 1 on error, 0 on success.  Maybe TRUE/FALSE???
+
+/**
+ * @brief Start the PSEUDOFS FSAL
+ *
+ * The pseudofs fsal is static (always present) so it needs its own
+ * startup.  This is a stripped down version of load_fsal() that is
+ * done very early in server startup.
  */
 
-int start_fsals(config_file_t config)
+static void load_fsal_pseudo(void)
 {
-	config_item_t fsal_block, block;
-	config_item_t item;
-	char *key, *value;
-	int fb, fsal_cnt, item_cnt;
+	char *dl_path;
+	struct fsal_module *fsal;
 
-	fsal_block = config_FindItemByName(config, CONF_LABEL_FSAL);
-	if (fsal_block == NULL) {
-		LogFatal(COMPONENT_INIT,
-			 "Cannot find item \"%s\" in configuration",
-			 CONF_LABEL_FSAL);
-		return 1;
+	dl_path = gsh_strdup("Builtin-PseudoFS");
+	if (dl_path == NULL)
+		LogFatal(COMPONENT_INIT, "Couldn't Register FSAL_PSEUDO");
+
+	pthread_mutex_lock(&fsal_lock);
+
+	if (load_state != idle)
+		LogFatal(COMPONENT_INIT, "Couldn't Register FSAL_PSEUDO");
+
+	if (dl_error) {
+		gsh_free(dl_error);
+		dl_error = NULL;
 	}
-	if (config_ItemType(fsal_block) != CONFIG_ITEM_BLOCK) {
-		LogFatal(COMPONENT_INIT, "\"%s\" is not a block",
-			 CONF_LABEL_FSAL);
-		return 1;
-	}
-	load_state = idle;	/* .init was a long time ago... */
 
-	fsal_cnt = config_GetNbItems(fsal_block);
-	for (fb = 0; fb < fsal_cnt; fb++) {
-		block = config_GetItemByIndex(fsal_block, fb);
-		if (config_ItemType(block) == CONFIG_ITEM_BLOCK) {
-			char *fsal_name;
-			int i;
+	load_state = loading;
 
-			fsal_name = config_GetBlockName(block);
-			item_cnt = config_GetNbItems(block);
-			for (i = 0; i < item_cnt; i++) {
-				item = config_GetItemByIndex(block, i);
-				if (config_GetKeyValue(item,
-						       &key, &value) != 0) {
-					LogFatal(COMPONENT_INIT,
-						 "Error fetching [%d]"
-						 " from config section \"%s\"",
-						 i, CONF_LABEL_NFS_CORE);
-					return 1;
-				}
-				if (strcasecmp(key,
-					       "FSAL_Shared_Library") == 0) {
-					struct fsal_module *fsal_hdl;
-					int rc;
+	pthread_mutex_unlock(&fsal_lock);
 
-					LogDebug(COMPONENT_INIT,
-						 "Loading module w/ name=%s"
-						 " and library=%s", fsal_name,
-						 value);
-					rc = load_fsal(value, fsal_name,
-						       &fsal_hdl);
-					if (rc < 0) {
-						LogCrit(COMPONENT_INIT,
-							"Failed to load (%s)"
-							" because: %s", value,
-							strerror(rc));
-					}
-				}
-			}
-		} else {	/* a FSAL global parameter */
-			item = block;
-			if (config_GetKeyValue(item, &key, &value) != 0) {
-				LogFatal(COMPONENT_INIT,
-					 "Error fetching [%d]"
-					 " from config section \"%s\"", fb,
-					 CONF_LABEL_NFS_CORE);
-				return 1;
-			}
-			if (strcasecmp(key, "LogLevel") == 0) {
-				LogDebug(COMPONENT_INIT, "LogLevel = %s",
-					 value);
-			} else {
-				LogDebug(COMPONENT_INIT,
-					 "Some odd key/value: %s = %s", key,
-					 value);
-			}
-		}
-	}
-	if (glist_empty(&fsal_list))
-		LogFatal(COMPONENT_INIT, "No fsal modules loaded");
-	return 1;
+	/* now it is the module's turn to register itself */
+	pseudo_fsal_init();
+
+	pthread_mutex_lock(&fsal_lock);
+
+	if (load_state != registered)
+		LogFatal(COMPONENT_INIT, "Couldn't Register FSAL_PSEUDO");
+
+	/* we now finish things up, doing things the module can't see */
+
+	fsal = new_fsal;   /* recover handle from .ctor and poison again */
+	new_fsal = NULL;
+	fsal->path = dl_path;
+	fsal->dl_handle = NULL;
+	so_error = 0;
+	load_state = idle;
+	pthread_mutex_unlock(&fsal_lock);
 }
 
-/* load_fsal
- * Load the fsal's shared object and name it if the fsal
- * has not already done so.
- * The dlopen() will trigger a .init constructor which will
- * do the actual registration.
- * after a successful load, the returned handle needs to be "put"
- * back after any other initialization is done.
+/**
+ * @brief Start_fsals
  *
- * Return 0 on success and *fsal_hdl_p points to it.
- *	When finished, put_fsal_handle() on the handle to free it.
- *
- * Errors:
- *	EBUSY == the loader is busy (should not happen)
- *	EEXIST == the module is already loaded
- *	ENOLCK == register_fsal without load_fsal holding the lock.
- *	EINVAL == wrong loading state for registration
- *	ENOMEM == out of memory
- *	ENOENT == could not find "module_init" function
- *	EFAULT == module_init has a bad address
- *	other general dlopen errors are possible, all of them bad
+ * Called early server initialization.  Set load_state to idle
+ * at this point as a check on dynamic loading not starting too early.
  */
 
-int load_fsal(const char *path, const char *name,
+void start_fsals(void)
+{
+
+	/* .init was a long time ago... */
+	load_state = idle;
+
+	/* Load FSAL_PSEUDO */
+	load_fsal_pseudo();
+}
+
+/**
+ * Enforced filename for FSAL library objects.
+ */
+
+static const char *pathfmt = "%s/libfsal%s.so";
+
+/**
+ * @brief Load the fsal's shared object.
+ *
+ * The dlopen() will trigger a .init constructor which will do the
+ * actual registration.  after a successful load, the returned handle
+ * needs to be "put" back after any other initialization is done.
+ *
+ * @param[in]  name       Name of the FSAL to load
+ * @param[out] fsal_hdl_p Newly allocated FSAL handle
+ *
+ * @retval 0 Success, when finished, put_fsal_handle() to free
+ * @retval EBUSY the loader is busy (should not happen)
+ * @retval EEXIST the module is already loaded
+ * @retval ENOLCK register_fsal without load_fsal holding the lock.
+ * @retval EINVAL wrong loading state for registration
+ * @retval ENOMEM out of memory
+ * @retval ENOENT could not find "module_init" function
+ * @retval EFAULT module_init has a bad address
+ * @retval other general dlopen errors are possible, all of them bad
+ */
+
+int load_fsal(const char *name,
 	      struct fsal_module **fsal_hdl_p)
 {
 	void *dl;
 	int retval = EBUSY;	/* already loaded */
 	char *dl_path;
 	struct fsal_module *fsal;
+	char *bp;
+	char *path = alloca(strlen(nfs_param.core_param.ganesha_modules_loc)
+			    + strlen(name)
+			    + strlen(pathfmt) + 1);
 
+	sprintf(path, pathfmt,
+		nfs_param.core_param.ganesha_modules_loc,
+		name);
+	bp = rindex(path, '/');
+	bp++; /* now it is the basename, lcase it */
+	while (*bp != '\0') {
+		if (isupper(*bp))
+			*bp = tolower(*bp);
+		bp++;
+	}
 	dl_path = gsh_strdup(path);
 	if (dl_path == NULL)
 		return ENOMEM;
@@ -206,17 +218,6 @@ int load_fsal(const char *path, const char *name,
 		gsh_free(dl_error);
 		dl_error = NULL;
 	}
-#ifdef LINUX
-	/* recent linux/glibc can probe to see if it already there */
-	LogDebug(COMPONENT_INIT, "Probing to see if %s is already loaded",
-		 path);
-	dl = dlopen(path, RTLD_NOLOAD);
-	if (dl != NULL) {
-		retval = EEXIST;
-		LogDebug(COMPONENT_INIT, "Already exists ...");
-		goto errout;
-	}
-#endif
 
 	load_state = loading;
 	pthread_mutex_unlock(&fsal_lock);
@@ -256,14 +257,14 @@ int load_fsal(const char *path, const char *name,
 			LogCrit(COMPONENT_INIT,
 				"Could not execute symbol fsal_init"
 				" from module:%s Error:%s", path, dl_error);
-			goto errout;
+			goto dlerr;
 		}
 		if ((void *)module_init == NULL) {
 			so_error = EFAULT;
 			LogCrit(COMPONENT_INIT,
 				"Could not execute symbol fsal_init"
 				" from module:%s Error:%s", path, dl_error);
-			goto errout;
+			goto dlerr;
 		}
 		pthread_mutex_unlock(&fsal_lock);
 
@@ -272,108 +273,58 @@ int load_fsal(const char *path, const char *name,
 		pthread_mutex_lock(&fsal_lock);
 	}
 	if (load_state == error) {	/* we are in registration hell */
-		dlclose(dl);
 		retval = so_error;	/* this is the registration error */
 		LogCrit(COMPONENT_INIT,
 			"Could not execute symbol fsal_init"
 			" from module:%s Error:%s", path, dl_error);
-		goto errout;
+		goto dlerr;
 	}
 	if (load_state != registered) {
 		retval = EPERM;
 		LogCrit(COMPONENT_INIT,
 			"Could not execute symbol fsal_init"
 			" from module:%s Error:%s", path, dl_error);
-		goto errout;
+		goto dlerr;
 	}
 
 /* we now finish things up, doing things the module can't see */
 
-	fsal = new_fsal;	/* recover handle from .ctor and poison again */
+	fsal = new_fsal;   /* recover handle from .ctor and poison again */
 	new_fsal = NULL;
+
+	/* take initial ref so we can pass it back... */
+	atomic_inc_int32_t(&fsal->refcount);
+
 	fsal->path = dl_path;
 	fsal->dl_handle = dl;
 	so_error = 0;
-	if (name != NULL) {	/* does config want to set name? */
-		char *oldname = NULL;
-
-		if (fsal->name != NULL) {
-			if (strlen(fsal->name) >= strlen(name)) {
-				strcpy(fsal->name, name);
-			} else {
-				oldname = fsal->name;
-				fsal->name = gsh_strdup(name);
-			}
-		} else {
-			fsal->name = gsh_strdup(name);
-		}
-		if (fsal->name == NULL) {
-			fsal->name = oldname;
-			oldname = NULL;
-		}
-		if (oldname != NULL)
-			gsh_free(oldname);
-	}
 	*fsal_hdl_p = fsal;
 	load_state = idle;
 	pthread_mutex_unlock(&fsal_lock);
 	return 0;
 
- errout:
+dlerr:
+	dlclose(dl);
+errout:
 	load_state = idle;
 	pthread_mutex_unlock(&fsal_lock);
-	LogMajor(COMPONENT_INIT, "Failed to load module (%s) because: %s", path,
+	LogMajor(COMPONENT_INIT, "Failed to load module (%s) because: %s",
+		 path,
 		 strerror(retval));
 	gsh_free(dl_path);
 	return retval;
 }
 
-/* Initialize all the loaded FSALs now that the config file
- * has been parsed.
- */
-
-int init_fsals(config_file_t config_struct)
-{
-	struct fsal_module *fsal;
-	struct glist_head *entry;
-	fsal_status_t fsal_status;
-	int retval = 0;
-
-	pthread_mutex_lock(&fsal_lock);
-	glist_for_each(entry, &fsal_list) {
-		fsal = glist_entry(entry, struct fsal_module, fsals);
-
-		pthread_mutex_lock(&fsal->lock);
-		fsal->refs++;	/* reference it */
-		pthread_mutex_unlock(&fsal->lock);
-
-		fsal_status = fsal->ops->init_config(fsal, config_struct);
-
-		pthread_mutex_lock(&fsal->lock);
-		fsal->refs--;	/* now 'put_fsal' on it */
-		pthread_mutex_unlock(&fsal->lock);
-
-		if (!FSAL_IS_ERROR(fsal_status)) {
-			LogInfo(COMPONENT_INIT, "Initialized %s", fsal->name);
-		} else {
-			LogCrit(COMPONENT_INIT, "Initialization failed for %s",
-				fsal->name);
-			retval = EINVAL;
-			goto out;
-		}
-	}
- out:
-	pthread_mutex_unlock(&fsal_lock);
-	return retval;
-}
-
-/* lookup_fsal
- * Acquire a handle to the named fsal and take a reference to it.
- * this must be done before using any methods.
- * once done, release it with put_fsal
- * point.
- * Return NULL if not found.
- * don't forget to 'put' it back
+/**
+ * @brief Look up an FSAL
+ *
+ * Acquire a handle to the named FSAL and take a reference to it. This
+ * must be done before using any methods.  Once done, release it with
+ * @c put_fsal.
+ *
+ * @param[in] name Name to look up
+ *
+ * @return Module pointer or NULL if not found.
  */
 
 struct fsal_module *lookup_fsal(const char *name)
@@ -384,14 +335,11 @@ struct fsal_module *lookup_fsal(const char *name)
 	pthread_mutex_lock(&fsal_lock);
 	glist_for_each(entry, &fsal_list) {
 		fsal = glist_entry(entry, struct fsal_module, fsals);
-		pthread_mutex_lock(&fsal->lock);
 		if (strcasecmp(name, fsal->name) == 0) {
-			fsal->refs++;
-			pthread_mutex_unlock(&fsal->lock);
+			atomic_inc_int32_t(&fsal->refcount);
 			pthread_mutex_unlock(&fsal_lock);
 			return fsal;
 		}
-		pthread_mutex_unlock(&fsal->lock);
 	}
 	pthread_mutex_unlock(&fsal_lock);
 	return NULL;
@@ -400,29 +348,37 @@ struct fsal_module *lookup_fsal(const char *name)
 /* functions only called by modules at ctor/dtor time
  */
 
-/* register_fsal
- * Register the fsal in the system.  This can be called from three places:
+/**
+ * @brief Register the fsal in the system
+ *
+ * This can be called from three places:
  *
  *  + the server program's .init section if the fsal was statically linked
  *  + the shared object's .init section when load_fsal() dynamically loads it.
  *  + from the shared object's 'fsal_init' function if dlopen does not support
  *    .init/.fini sections.
  *
- * We use an ADAPTIVE_NP mutex because the initial spinlock is low impact
- * for protecting the list add/del atomicity.  Does FBSD have this?
- *
  * Any other case is an error.
  * Change load_state only for dynamically loaded modules.
+ *
+ * @param[in] fsal_hdl      FSAL module handle
+ * @param[in] name          FSAL name
+ * @param[in] major_version Major version
+ * @param[in] minor_version Minor version
+ *
+ * @return 0 on success, otherwise POSIX errors.
  */
 
 /** @todo implement api versioning and pass the major,minor here
  */
 
 int register_fsal(struct fsal_module *fsal_hdl, const char *name,
-		  uint32_t major_version, uint32_t minor_version)
+		  uint32_t major_version, uint32_t minor_version,
+		  uint8_t fsal_id)
 {
-	pthread_mutexattr_t attrs;
+	pthread_rwlockattr_t attrs;
 
+	pthread_mutex_lock(&fsal_lock);
 	if ((major_version != FSAL_MAJOR_VERSION)
 	    || (minor_version > FSAL_MINOR_VERSION)) {
 		so_error = EINVAL;
@@ -432,9 +388,8 @@ int register_fsal(struct fsal_module *fsal_hdl, const char *name,
 			FSAL_MAJOR_VERSION, FSAL_MINOR_VERSION, major_version,
 			minor_version);
 		load_state = error;
-		return so_error;
+		goto errout;
 	}
-	pthread_mutex_lock(&fsal_lock);
 	so_error = 0;
 	if (!(load_state == loading || load_state == init)) {
 		so_error = EACCES;
@@ -459,16 +414,21 @@ int register_fsal(struct fsal_module *fsal_hdl, const char *name,
 	}
 	memcpy(fsal_hdl->ops, &def_fsal_ops, sizeof(struct fsal_ops));
 
-	pthread_mutexattr_init(&attrs);
-#if defined(__linux__)
-	pthread_mutexattr_settype(&attrs, PTHREAD_MUTEX_ADAPTIVE_NP);
+	pthread_rwlockattr_init(&attrs);
+#ifdef GLIBC
+	pthread_rwlockattr_setkind_np(
+		&attrs,
+		PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
 #endif
-	pthread_mutex_init(&fsal_hdl->lock, &attrs);
-	glist_init(&fsal_hdl->fsals);
+	pthread_rwlock_init(&fsal_hdl->lock, &attrs);
+	glist_init(&fsal_hdl->ds_handles);
+	glist_init(&fsal_hdl->handles);
 	glist_init(&fsal_hdl->exports);
 	glist_add_tail(&fsal_list, &fsal_hdl->fsals);
 	if (load_state == loading)
 		load_state = registered;
+	if (fsal_id != FSAL_ID_NO_PNFS && fsal_id < FSAL_ID_COUNT)
+		pnfs_fsal[fsal_id] = fsal_hdl;
 	pthread_mutex_unlock(&fsal_lock);
 	return 0;
 
@@ -486,18 +446,29 @@ int register_fsal(struct fsal_module *fsal_hdl, const char *name,
 	return so_error;
 }
 
-/* unregister_fsal
- * verify that the fsal is not busy
- * release all its resources owned at this level.  Mutex is already freed.
- * Called from the module's MODULE_FINI
+/**
+ * @brief Unregisterx an FSAL
+ *
+ * Verify that the fsal is not busy and release all its resources
+ * owned at this level.  RW Lock is already freed.  Called from the
+ * module's MODULE_FINI
+ *
+ * @param[in] fsal_hdl FSAL handle
+ *
+ * @retval 0 on success.
+ * @retval EBUSY if FSAL is in use.
  */
 
 int unregister_fsal(struct fsal_module *fsal_hdl)
 {
-	int retval = EBUSY;
+	int32_t refcount = atomic_fetch_int32_t(&fsal_hdl->refcount);
 
-	if (fsal_hdl->refs != 0) {	/* this would be very bad */
-		goto out;
+	if (refcount != 0) {
+		/* this would be very bad */
+		LogCrit(COMPONENT_FSAL,
+			"Unregister FSAL %s with non-zero refcount=%"PRIi32,
+			fsal_hdl->name, refcount);
+		return EBUSY;
 	}
 	if (fsal_hdl->path)
 		gsh_free(fsal_hdl->path);
@@ -505,9 +476,7 @@ int unregister_fsal(struct fsal_module *fsal_hdl)
 		gsh_free(fsal_hdl->name);
 	if (fsal_hdl->ops)
 		gsh_free(fsal_hdl->ops);
-	retval = 0;
- out:
-	return retval;
+	return 0;
 }
 
 /** @} */

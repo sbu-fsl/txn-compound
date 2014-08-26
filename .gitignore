@@ -46,3 +46,5 @@ libfsal*.so*
 Doxyfile
 *~
 *.swp
+.project
+.checkpatch.conf

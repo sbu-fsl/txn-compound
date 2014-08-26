@@ -35,7 +35,8 @@
 #include "sal_functions.h"
 #include "nfs_proto_functions.h"
 #include "nfs_proto_tools.h"
-#include "nlm_list.h"
+#include "ganesha_list.h"
+#include "export_mgr.h"
 
 static const char *lock_tag = "LOCK";
 
@@ -135,6 +136,11 @@ int nfs4_op_lock(struct nfs_argop4 *op, compound_data_t *data,
 	case WRITE_LT:
 		lock_desc.lock_type = FSAL_LOCK_W;
 		break;
+	default:
+		LogDebug(COMPONENT_NFS_V4_LOCK,
+			 "Invalid lock type");
+		res_LOCK4->status = NFS4ERR_INVAL;
+		return res_LOCK4->status;
 	}
 
 	lock_desc.lock_start = arg_LOCK4->offset;
@@ -278,13 +284,15 @@ int nfs4_op_lock(struct nfs_argop4 *op, compound_data_t *data,
 		}
 
 		/* Check if lock state belongs to same export */
-		if (lock_state->state_export != data->export) {
+		if (lock_state->state_export != op_ctx->export) {
 			LogEvent(COMPONENT_STATE,
 				 "Lock Owner Export Conflict, Lock held "
 				 "for export %d (%s), request for "
-				 "export %d (%s)", lock_state->state_export->id,
+				 "export %d (%s)",
+				 lock_state->state_export->export_id,
 				 lock_state->state_export->fullpath,
-				 data->export->id, data->export->fullpath);
+				 op_ctx->export->export_id,
+				 op_ctx->export->fullpath);
 			res_LOCK4->status = STATE_INVALID_ARGUMENT;
 			return res_LOCK4->status;
 		}
@@ -386,7 +394,7 @@ int nfs4_op_lock(struct nfs_argop4 *op, compound_data_t *data,
 	}
 
 	/* Do grace period checking */
-	if (nfs_in_grace() && !arg_LOCK4->reclaim) {
+	if (!fsal_grace() && nfs_in_grace() && !arg_LOCK4->reclaim) {
 		LogLock(COMPONENT_NFS_V4_LOCK, NIV_DEBUG,
 			"LOCK failed, non-reclaim while in grace",
 			data->current_entry, lock_owner, &lock_desc);
@@ -394,7 +402,7 @@ int nfs4_op_lock(struct nfs_argop4 *op, compound_data_t *data,
 		goto out;
 	}
 
-	if (nfs_in_grace()
+	if (!fsal_grace() && nfs_in_grace()
 	    && arg_LOCK4->reclaim
 	    && !clientid->cid_allow_reclaim) {
 		LogLock(COMPONENT_NFS_V4_LOCK, NIV_DEBUG,
@@ -404,7 +412,7 @@ int nfs4_op_lock(struct nfs_argop4 *op, compound_data_t *data,
 		goto out;
 	}
 
-	if (!nfs_in_grace() && arg_LOCK4->reclaim) {
+	if (!fsal_grace() && !nfs_in_grace() && arg_LOCK4->reclaim) {
 		LogLock(COMPONENT_NFS_V4_LOCK, NIV_DEBUG,
 			"LOCK failed, reclaim while not in grace",
 			data->current_entry, lock_owner, &lock_desc);
@@ -495,14 +503,14 @@ int nfs4_op_lock(struct nfs_argop4 *op, compound_data_t *data,
 		glist_init(&lock_state->state_data.lock.state_locklist);
 
 		/* Attach this lock to an export */
-		lock_state->state_export = data->export;
+		lock_state->state_export = op_ctx->export;
 
-		pthread_mutex_lock(&data->export->exp_state_mutex);
+		PTHREAD_RWLOCK_wrlock(&op_ctx->export->lock);
 
-		glist_add_tail(&data->export->exp_state_list,
+		glist_add_tail(&op_ctx->export->exp_state_list,
 			       &lock_state->state_export_list);
 
-		pthread_mutex_unlock(&data->export->exp_state_mutex);
+		PTHREAD_RWLOCK_unlock(&op_ctx->export->lock);
 
 		/* Add lock state to the list of lock states belonging
 		   to the open state */
@@ -511,15 +519,13 @@ int nfs4_op_lock(struct nfs_argop4 *op, compound_data_t *data,
 	}
 
 	if (data->minorversion == 0) {
-		data->req_ctx->clientid =
+		op_ctx->clientid =
 		    &lock_owner->so_owner.so_nfs4_owner.so_clientid;
 	}
 
 	/* Now we have a lock owner and a stateid.  Go ahead and push
 	   lock into SAL (and FSAL). */
 	state_status = state_lock(data->current_entry,
-				  data->export,
-				  data->req_ctx,
 				  lock_owner,
 				  lock_state,
 				  blocking,
@@ -557,17 +563,13 @@ int nfs4_op_lock(struct nfs_argop4 *op, compound_data_t *data,
 
 		if (arg_LOCK4->locker.new_lock_owner) {
 			/* Need to destroy new state */
-			state_status = state_del(lock_state, false);
-			if (state_status != STATE_SUCCESS)
-				LogEvent(COMPONENT_NFS_V4_LOCK,
-					 "state_del failed with status %s",
-					 state_err_str(state_status));
+			state_del(lock_state, false);
 		}
 		goto out2;
 	}
 
 	if (data->minorversion == 0)
-		data->req_ctx->clientid = NULL;
+		op_ctx->clientid = NULL;
 
 	res_LOCK4->status = NFS4_OK;
 

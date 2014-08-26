@@ -104,6 +104,11 @@ int nfs4_op_locku(struct nfs_argop4 *op, compound_data_t *data,
 	case WRITEW_LT:
 		lock_desc.lock_type = FSAL_LOCK_W;
 		break;
+	default:
+		LogDebug(COMPONENT_NFS_V4_LOCK,
+			 "Invalid lock type");
+		res_LOCKU4->status = NFS4ERR_INVAL;
+		return res_LOCKU4->status;
 	}
 
 	lock_desc.lock_start = arg_LOCKU4->offset;
@@ -176,15 +181,13 @@ int nfs4_op_locku(struct nfs_argop4 *op, compound_data_t *data,
 		data->current_entry, lock_owner, &lock_desc);
 
 	if (data->minorversion == 0) {
-		data->req_ctx->clientid =
+		op_ctx->clientid =
 		    &lock_owner->so_owner.so_nfs4_owner.so_clientid;
 	}
 
 	/* Now we have a lock owner and a stateid.  Go ahead and push
 	   unlock into SAL (and FSAL). */
 	state_status = state_unlock(data->current_entry,
-				    data->export,
-				    data->req_ctx,
 				    lock_owner,
 				    state_found,
 				    &lock_desc,
@@ -196,7 +199,7 @@ int nfs4_op_locku(struct nfs_argop4 *op, compound_data_t *data,
 	}
 
 	if (data->minorversion == 0)
-		data->req_ctx->clientid = NULL;
+		op_ctx->clientid = NULL;
 
 	/* Successful exit */
 	res_LOCKU4->status = NFS4_OK;

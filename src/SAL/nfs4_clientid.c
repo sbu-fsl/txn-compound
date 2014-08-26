@@ -80,6 +80,8 @@ uint64_t clientid_verifier;
  */
 pool_t *client_id_pool;
 
+extern struct fridgethr *state_async_fridge;
+
 /**
  * @brief Return the NFSv4 status for the client id error code
  *
@@ -792,12 +794,10 @@ clientid_status_t nfs_client_id_confirm(nfs_client_id_t *clientid,
  * reference to record also.
  *
  * @param[in] clientid The client id to expire
- * @param[in] req_ctx  Request context
  *
  * @return true if the clientid is successfully expired.
  */
-bool nfs_client_id_expire(nfs_client_id_t *clientid,
-			  struct req_op_context *req_ctx)
+bool nfs_client_id_expire(nfs_client_id_t *clientid)
 {
 	struct glist_head *glist, *glistn;
 	struct glist_head *glist2, *glistn2;
@@ -808,6 +808,11 @@ bool nfs_client_id_expire(nfs_client_id_t *clientid,
 	hash_table_t *ht_expire;
 	nfs_client_record_t *record;
 	char str[HASHTABLE_DISPLAY_STRLEN];
+	struct root_op_context root_op_context;
+
+	/* Initialize req_ctx */
+	init_root_op_context(&root_op_context, NULL, NULL,
+			     0, 0, UNKNOWN_REQUEST);
 
 	pthread_mutex_lock(&clientid->cid_mutex);
 	if (clientid->cid_confirmed == EXPIRED_CLIENT_ID) {
@@ -818,6 +823,7 @@ bool nfs_client_id_expire(nfs_client_id_t *clientid,
 		}
 
 		pthread_mutex_unlock(&clientid->cid_mutex);
+		release_root_op_context();
 		return false;
 	}
 
@@ -872,7 +878,7 @@ bool nfs_client_id_expire(nfs_client_id_t *clientid,
 							   state_t,
 							   state_owner_list);
 
-			state_owner_unlock_all(plock_owner, req_ctx,
+			state_owner_unlock_all(plock_owner,
 					       plock_state);
 		}
 	}
@@ -989,7 +995,7 @@ bool nfs_client_id_expire(nfs_client_id_t *clientid,
 	}
 
 	if (clientid->cid_recov_dir != NULL) {
-		nfs4_rm_clid(clientid->cid_recov_dir);
+		nfs4_rm_clid(clientid->cid_recov_dir, v4_recov_dir, 0);
 		gsh_free(clientid->cid_recov_dir);
 		clientid->cid_recov_dir = NULL;
 	}
@@ -1008,6 +1014,7 @@ bool nfs_client_id_expire(nfs_client_id_t *clientid,
 	/* Release the hash table reference to the clientid. */
 	(void)dec_client_id_ref(clientid);
 
+	release_root_op_context();
 	return true;
 }
 
@@ -1103,19 +1110,56 @@ clientid_status_t nfs_client_id_get_confirmed(clientid4 clientid,
 	return nfs_client_id_get(ht_confirmed_client_id, clientid, client_rec);
 }
 
+static hash_parameter_t cid_confirmed_hash_param = {
+	.index_size = PRIME_STATE,
+	.hash_func_key = client_id_value_hash_func,
+	.hash_func_rbt = client_id_rbt_hash_func,
+	.hash_func_both = NULL,
+	.compare_key = compare_client_id,
+	.key_to_str = display_client_id_key,
+	.val_to_str = display_client_id_val,
+	.ht_name = "Confirmed Client ID",
+	.flags = HT_FLAG_CACHE,
+	.ht_log_component = COMPONENT_CLIENTID,
+};
+
+static hash_parameter_t cid_unconfirmed_hash_param = {
+	.index_size = PRIME_STATE,
+	.hash_func_key = client_id_value_hash_func,
+	.hash_func_rbt = client_id_rbt_hash_func,
+	.hash_func_both = NULL,
+	.compare_key = compare_client_id,
+	.key_to_str = display_client_id_key,
+	.val_to_str = display_client_id_val,
+	.ht_name = "Unconfirmed Client ID",
+	.flags = HT_FLAG_CACHE,
+	.ht_log_component = COMPONENT_CLIENTID,
+};
+
+static hash_parameter_t cr_hash_param = {
+	.index_size = PRIME_STATE,
+	.hash_func_key = client_record_value_hash_func,
+	.hash_func_rbt = client_record_rbt_hash_func,
+	.hash_func_both = NULL,
+	.compare_key = compare_client_record,
+	.key_to_str = display_client_record_key,
+	.val_to_str = display_client_record_val,
+	.ht_name = "Client Record",
+	.flags = HT_FLAG_CACHE,
+	.ht_log_component = COMPONENT_CLIENTID,
+};
+
 /**
  * @brief Init the hashtable for Client Id cache.
  *
  * Perform all the required initialization for hashtable Client Id cache
  *
- * @param[in] param Parameter used to init the duplicate request cache
- *
  * @return 0 if successful, -1 otherwise
  */
-int nfs_Init_client_id(nfs_client_id_parameter_t *param)
+int nfs_Init_client_id(void)
 {
 	ht_confirmed_client_id =
-		hashtable_init(&param->cid_confirmed_hash_param);
+		hashtable_init(&cid_confirmed_hash_param);
 
 	if (ht_confirmed_client_id == NULL) {
 		LogCrit(COMPONENT_INIT,
@@ -1124,7 +1168,7 @@ int nfs_Init_client_id(nfs_client_id_parameter_t *param)
 	}
 
 	ht_unconfirmed_client_id =
-		hashtable_init(&param->cid_unconfirmed_hash_param);
+		hashtable_init(&cid_unconfirmed_hash_param);
 
 	if (ht_unconfirmed_client_id == NULL) {
 		LogCrit(COMPONENT_INIT,
@@ -1132,7 +1176,7 @@ int nfs_Init_client_id(nfs_client_id_parameter_t *param)
 		return -1;
 	}
 
-	ht_client_record = hashtable_init(&param->cr_hash_param);
+	ht_client_record = hashtable_init(&cr_hash_param);
 
 	if (ht_client_record == NULL) {
 		LogCrit(COMPONENT_INIT,
@@ -1528,7 +1572,7 @@ nfs_client_record_t *get_client_record(const char *const value,
 
 	/* Use same record for record and key */
 	buffval.addr = record;
-	buffval.len = sizeof(sizeof(nfs_client_record_t) + len);
+	buffval.len = sizeof(nfs_client_record_t) + len;
 
 	rc = hashtable_setlatched(ht_client_record, &buffkey, &buffval, &latch,
 				  HASHTABLE_SET_HOW_SET_NO_OVERWRITE, NULL,
@@ -1542,6 +1586,25 @@ nfs_client_record_t *get_client_record(const char *const value,
 	}
 
 	return record;
+}
+
+struct client_callback_arg {
+	void *state;
+	nfs_client_id_t *pclientid;
+	bool (*cb)(nfs_client_id_t *, void *);
+};
+
+/**
+ * @brief client callback
+ */
+static void client_cb(struct fridgethr_context *ctx)
+{
+	struct client_callback_arg *cb_arg;
+
+	cb_arg = ctx->arg;
+	cb_arg->cb(cb_arg->pclientid, cb_arg->state);
+	dec_client_id_ref(cb_arg->pclientid);
+	gsh_free(cb_arg);
 }
 
 /**
@@ -1561,6 +1624,8 @@ nfs41_foreach_client_callback(bool(*cb) (nfs_client_id_t *cl, void *state),
 	struct hash_data *pdata = NULL;
 	struct rbt_node *pn;
 	nfs_client_id_t *pclientid;
+	struct client_callback_arg *cb_arg;
+	int rc;
 
 	/* For each bucket of the hashtable */
 	for (i = 0; i < ht->parameter.index_size; i++) {
@@ -1575,15 +1640,31 @@ nfs41_foreach_client_callback(bool(*cb) (nfs_client_id_t *cl, void *state),
 			pclientid = pdata->val.addr;
 			RBT_INCREMENT(pn);
 
-			inc_client_id_ref(pclientid);
 			if (pclientid->cid_minorversion > 0) {
-				PTHREAD_RWLOCK_unlock(&
-						      (ht->partitions[i].lock));
-				cb(pclientid, state);
-				PTHREAD_RWLOCK_wrlock(&
-						      (ht->partitions[i].lock));
+				cb_arg = gsh_malloc(
+						sizeof(struct
+							client_callback_arg));
+				if (cb_arg == NULL) {
+					LogCrit(COMPONENT_CLIENTID,
+						"malloc failed for %p",
+						pclientid);
+					continue;
+				}
+				cb_arg->cb = cb;
+				cb_arg->state = state;
+				cb_arg->pclientid = pclientid;
+				inc_client_id_ref(pclientid);
+				rc = fridgethr_submit(state_async_fridge,
+						 client_cb,
+						 cb_arg);
+				if (rc != 0) {
+					LogCrit(COMPONENT_CLIENTID,
+						"unable to start client cb thread %d",
+						rc);
+					gsh_free(cb_arg);
+					dec_client_id_ref(pclientid);
+				}
 			}
-			dec_client_id_ref(pclientid);
 		}
 		PTHREAD_RWLOCK_unlock(&(ht->partitions[i].lock));
 	}

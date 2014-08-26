@@ -29,6 +29,7 @@
 #include "gpfs_methods.h"
 #include "nfs_exports.h"
 #include "FSAL/fsal_commonlib.h"
+#include "export_mgr.h"
 
 /**
  * @brief Get layout types supported by export
@@ -42,17 +43,29 @@
  *                        after export reference is relinquished
  */
 
-static void fs_layouttypes(struct fsal_export *export_hdl, size_t *count,
+static void fs_layouttypes(struct fsal_export *export_hdl, int32_t *count,
 			   const layouttype4 **types)
 {
 	int rc;
 	struct open_arg arg;
 	static const layouttype4 supported_layout_type = LAYOUT4_NFSV4_1_FILES;
+	struct gpfs_filesystem *gpfs_fs;
+	struct gpfs_fsal_export *myself;
+	int errsv = 0;
 
-	arg.mountdirfd = gpfs_get_root_fd(export_hdl);
+	/** @todo FSF: needs real getdeviceinfo that gets to the correct
+	 * filesystem, this will not work for sub-mounted filesystems.
+	 */
+	myself = container_of(export_hdl, struct gpfs_fsal_export, export);
+	gpfs_fs = myself->root_fs->private;
+
+	arg.mountdirfd = gpfs_fs->root_fd;
 	rc = gpfs_ganesha(OPENHANDLE_LAYOUT_TYPE, &arg);
+	errsv = errno;
 	if (rc < 0 || (rc != LAYOUT4_NFSV4_1_FILES)) {
 		LogDebug(COMPONENT_PNFS, "fs_layouttypes rc %d\n", rc);
+		if (errsv == EUNATCH)
+			LogFatal(COMPONENT_PNFS, "GPFS Returned EUNATCH");
 		*count = 0;
 		return;
 
@@ -64,7 +77,7 @@ static void fs_layouttypes(struct fsal_export *export_hdl, size_t *count,
 /**
  * @brief Get layout block size for export
  *
- * This function just return the GPFS default.
+ * This function just returns the GPFS default.
  *
  * @param[in] export_pub Public export handle
  *
@@ -112,7 +125,7 @@ static size_t fs_loc_body_size(struct fsal_export *export_pub)
  *
  * @return Size of the buffer needed for a ds_addr
  */
-static size_t fs_da_addr_size(struct fsal_export *export_pub)
+size_t fs_da_addr_size(struct fsal_module *fsal_hdl)
 {
 	return 0x1400;
 }
@@ -131,9 +144,9 @@ static size_t fs_da_addr_size(struct fsal_export *export_pub)
  * @return Valid error codes in RFC 5661, p. 365.
  */
 
-static nfsstat4 getdeviceinfo(struct fsal_export *export_hdl,
-			      XDR *da_addr_body, const layouttype4 type,
-			      const struct pnfs_deviceid *deviceid)
+nfsstat4 getdeviceinfo(struct fsal_module *fsal_hdl,
+		       XDR *da_addr_body, const layouttype4 type,
+		       const struct pnfs_deviceid *deviceid)
 {
 	/* The position before any bytes are sent to the stream */
 	size_t da_beginning = 0;
@@ -142,27 +155,35 @@ static nfsstat4 getdeviceinfo(struct fsal_export *export_hdl,
 	int rc = 0;
 	size_t ds_buffer = 0;
 	struct deviceinfo_arg darg;
+	int errsv = 0;
 
-	darg.mountdirfd = gpfs_get_root_fd(export_hdl);
+	darg.mountdirfd = deviceid->device_id4;
 	darg.type = LAYOUT4_NFSV4_1_FILES;
-	darg.devid.sbid = deviceid->export_id;
+	darg.devid.devid = deviceid->devid;
+	darg.devid.device_id1 = deviceid->device_id1;
+	darg.devid.device_id2 = deviceid->device_id2;
+	darg.devid.device_id4 = deviceid->device_id4;
 	darg.devid.devid = deviceid->devid;
 
-	ds_buffer = fs_da_addr_size(export_hdl);
+	ds_buffer = fs_da_addr_size(NULL);
 
 	darg.xdr.p = (int *)da_addr_body->x_base;
 	da_beginning = xdr_getpos(da_addr_body);
 	darg.xdr.end = (int *)(darg.xdr.p + (ds_buffer - da_beginning));
 
 	LogDebug(COMPONENT_PNFS,
-		 "getdeviceinfo p %p end %p da_length %ld devid %ld-%016lx\n",
-		 darg.xdr.p, darg.xdr.end, da_beginning, darg.devid.sbid,
-		 darg.devid.devid);
+		"getdeviceinfo p %p end %p da_length %ld seq %d fd %d fsid 0x%lx\n",
+		darg.xdr.p, darg.xdr.end, da_beginning,
+		deviceid->device_id2, deviceid->device_id4,
+		deviceid->devid);
 
 	rc = gpfs_ganesha(OPENHANDLE_GET_DEVICEINFO, &darg);
+	errsv = errno;
 	if (rc < 0) {
 
 		LogDebug(COMPONENT_PNFS, "getdeviceinfo rc %d\n", rc);
+		if (errsv == EUNATCH)
+			LogFatal(COMPONENT_PNFS, "GPFS Returned EUNATCH");
 		return NFS4ERR_RESOURCE;
 	}
 	xdr_setpos(da_addr_body, rc);
@@ -199,13 +220,11 @@ static nfsstat4 getdevicelist(struct fsal_export *export_pub, layouttype4 type,
 
 void export_ops_pnfs(struct export_ops *ops)
 {
-	ops->getdeviceinfo = getdeviceinfo;
 	ops->getdevicelist = getdevicelist;
 	ops->fs_layouttypes = fs_layouttypes;
 	ops->fs_layout_blocksize = fs_layout_blocksize;
 	ops->fs_maximum_segments = fs_maximum_segments;
 	ops->fs_loc_body_size = fs_loc_body_size;
-	ops->fs_da_addr_size = fs_da_addr_size;
 }
 
 /**
@@ -244,13 +263,14 @@ static nfsstat4 layoutget(struct fsal_obj_handle *obj_hdl,
 	/* Utility parameter */
 	nfl_util4 util = 0;
 	/* The last byte that can be accessed through pNFS */
-/*         uint64_t last_possible_byte = 0; strict. set but unused */
+	/* uint64_t last_possible_byte = 0; strict. set but unused */
 	/* The deviceid for this layout */
-	struct pnfs_deviceid deviceid = { 0, 0 };
+	struct pnfs_deviceid deviceid =  DEVICE_ID_INIT_ZERO(FSAL_ID_GPFS);
 	/* NFS Status */
 	nfsstat4 nfs_status = 0;
 	/* Descriptor for DS handle */
 	struct gsh_buffdesc ds_desc;
+	int errsv = 0;
 
 	myself = container_of(obj_hdl, struct gpfs_fsal_obj_handle, obj_handle);
 
@@ -287,8 +307,11 @@ static nfsstat4 layoutget(struct fsal_obj_handle *obj_hdl,
 		 fh[4], fh[5], fh[6], fh[7], fh[8], fh[9]);
 
 	rc = gpfs_ganesha(OPENHANDLE_LAYOUT_GET, &larg);
+	errsv = errno;
 	if (rc != 0) {
 		LogDebug(COMPONENT_PNFS, "GPFSFSAL_layoutget rc %d\n", rc);
+		if (errsv == EUNATCH)
+			LogFatal(COMPONENT_PNFS, "GPFS Returned EUNATCH");
 		return NFS4ERR_UNKNOWN_LAYOUTTYPE;
 	}
 	fh = (int *)&(gpfs_ds_handle.f_handle);
@@ -307,19 +330,22 @@ static nfsstat4 layoutget(struct fsal_obj_handle *obj_hdl,
 	stripe_width = file_layout.lg_stripe_unit;
 	util |= stripe_width | NFL4_UFLG_COMMIT_THRU_MDS;
 
-	deviceid.export_id = arg->export_id;
+	deviceid.fsal_id = file_layout.device_id.fsal_id;
+	deviceid.device_id2 = file_layout.device_id.device_id2;
+	deviceid.device_id4 = file_layout.device_id.device_id4;
 	deviceid.devid = file_layout.device_id.devid;
 	/* last_possible_byte = NFS4_UINT64_MAX; strict. set but unused */
 
-	LogDebug(COMPONENT_PNFS, "devid expid-nodeAddr %ld-%016lx\n",
-		 deviceid.export_id, deviceid.devid);
+	LogDebug(COMPONENT_PNFS, "fsal_id %d seq %d fd %d fsid 0x%lx",
+		deviceid.fsal_id, deviceid.device_id2,
+		deviceid.device_id4, deviceid.devid);
 
 	ds_desc.addr = &gpfs_ds_handle;
 	ds_desc.len = sizeof(struct gpfs_file_handle);
 
 	nfs_status =
 	     FSAL_encode_file_layout(loc_body, &deviceid, util, 0, 0,
-				     obj_hdl->export->exp_entry->id, 1,
+				     req_ctx->export->export_id, 1,
 				     &ds_desc);
 	if (nfs_status) {
 		LogCrit(COMPONENT_PNFS,
@@ -345,7 +371,13 @@ static nfsstat4 layoutget(struct fsal_obj_handle *obj_hdl,
 	lrarg.args.lr_seg.length = NFS4_UINT64_MAX;
 
 	rc = gpfs_ganesha(OPENHANDLE_LAYOUT_RETURN, &lrarg);
+	errsv = errno;
 	LogDebug(COMPONENT_PNFS, "GPFSFSAL_layoutreturn rc %d", rc);
+	if (rc != 0) {
+		LogDebug(COMPONENT_PNFS, "GPFSFSAL_layoutget rc %d\n", rc);
+		if (errsv == EUNATCH)
+			LogFatal(COMPONENT_PNFS, "GPFS Returned EUNATCH");
+	}
 
 	return nfs_status;
 }
@@ -372,6 +404,7 @@ static nfsstat4 layoutreturn(struct fsal_obj_handle *obj_hdl,
 	struct gpfs_fsal_obj_handle *myself;
 	/* The private 'full' object handle */
 	struct gpfs_file_handle *gpfs_handle;
+	int errsv = 0;
 
 	int rc = 0;
 
@@ -398,9 +431,13 @@ static nfsstat4 layoutreturn(struct fsal_obj_handle *obj_hdl,
 		larg.args.lr_seg.length = arg->spec_segment.length;
 
 		rc = gpfs_ganesha(OPENHANDLE_LAYOUT_RETURN, &larg);
+		errsv = errno;
 		if (rc != 0) {
 			LogDebug(COMPONENT_PNFS,
 				 "GPFSFSAL_layoutreturn rc %d\n", rc);
+			if (errsv == EUNATCH)
+				LogFatal(COMPONENT_PNFS,
+					"GPFS Returned EUNATCH");
 			return NFS4ERR_NOMATCHING_LAYOUT;
 		}
 	}
@@ -434,6 +471,7 @@ static nfsstat4 layoutcommit(struct fsal_obj_handle *obj_hdl,
 
 	int rc = 0;
 	struct layoutcommit_arg targ;
+	int errsv = 0;
 
 	/* Sanity check on type */
 	if (arg->type != LAYOUT4_NFSV4_1_FILES) {
@@ -463,8 +501,11 @@ static nfsstat4 layoutcommit(struct fsal_obj_handle *obj_hdl,
 		targ.new_time.t_nsec = arg->new_time.nseconds;
 	}
 	rc = gpfs_ganesha(OPENHANDLE_LAYOUT_COMMIT, &targ);
+	errsv = errno;
 	if (rc != 0) {
 		LogDebug(COMPONENT_PNFS, "GPFSFSAL_layoutcommit rc %d\n", rc);
+		if (errsv == EUNATCH)
+			LogFatal(COMPONENT_PNFS, "GPFS Returned EUNATCH");
 		return posix2nfs4_error(-rc);
 	}
 	res->size_supplied = false;

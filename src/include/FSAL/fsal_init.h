@@ -29,18 +29,3 @@
  */
 
 #define MODULE_FINI __attribute__((destructor))
-
-/* Initialization
- */
-
-void init_fsal_parameters(fsal_init_info_t *);
-
-typedef int (*fsal_extra_arg_parser_f)(const char *,
-				       const char *,
-				       fsal_init_info_t *,
-				       const char *);
-
-fsal_status_t fsal_load_config(const char *, config_file_t,
-			       fsal_init_info_t *,
-			       struct fsal_staticfsinfo_t *,
-			       fsal_extra_arg_parser_f);

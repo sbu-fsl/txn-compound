@@ -7,6 +7,13 @@
 #include "config.h"
 
 #include <stdbool.h>
+
+/* Ganesha project has abstract_atomic.h file and tirpc also has a
+ * similar header with the same name.  We want to include ganesha
+ * project's header here, so include it here before including any
+ * RPC headers.
+ */
+#include "abstract_atomic.h"
 #include <rpc/xdr_inline.h>
 #include <rpc/rpc.h>
 #include <rpc/svc.h>
@@ -22,7 +29,7 @@
 #include <rpc/rpc_msg.h>
 #include <rpc/gss_internal.h>	/* XXX */
 #include "abstract_mem.h"
-#include "nlm_list.h"
+#include "ganesha_list.h"
 #include "log.h"
 #include "fridgethr.h"
 
@@ -43,6 +50,7 @@
 #define NFS_LOOKAHEAD_SETCLIENTID 0x0100
 #define NFS_LOOKAHEAD_SETCLIENTID_CONFIRM  0x0200
 #define NFS_LOOKAHEAD_LOOKUP 0x0400
+#define NFS_LOOKAHEAD_READLINK 0x0800
 /* ... */
 
 struct nfs_request_lookahead {
@@ -81,11 +89,6 @@ void freenetconfigent(struct netconfig *);
  */
 
 /**
- * @brief Stanza label for krb5_param
- */
-#define CONF_LABEL_NFS_KRB5 "NFS_KRB5"
-
-/**
  * @brief Default value for krb5_param.gss.principal
  */
 #define DEFAULT_NFS_PRINCIPAL "nfs"
@@ -107,10 +110,10 @@ void freenetconfigent(struct netconfig *);
 typedef struct nfs_krb5_param {
 	/** Kerberos keytab.  Defaults to DEFAULT_NFS_KEYTAB, settable
 	    with KeytabPath. */
-	char keytab[MAXPATHLEN + 1];
+	char *keytab;
 	/** The ganesha credential cache.  Defautls to
 	    DEFAULT_NFS_CCACHE_DIR, unsettable by user. */
-	char ccache_dir[MAXPATHLEN + 1];
+	char *ccache_dir;
 	/**
 	 * @note representation of GSSAPI service, independent of GSSRPC or
 	 * TI-RPC global variables.  Initially, use it just for
@@ -119,7 +122,7 @@ typedef struct nfs_krb5_param {
 	struct {
 		/** Principal used in callbacks, set to
 		    DEFAULT_NFS_PRINCIPAL and unsettable by user. */
-		char principal[MAXPATHLEN + 1];
+		char *principal;
 		/** Expanded gss name from principal, equal to
 		    principal/host\@domain.  Unsettable by user. */
 		gss_name_t gss_name;
@@ -197,6 +200,8 @@ static inline bool gsh_xprt_ref(SVCXPRT *xprt, uint32_t flags,
 
 	if (flags & XPRT_PRIVATE_FLAG_INCREQ)
 		req_cnt = ++(xu->req_cnt);
+	else
+		req_cnt = xu->req_cnt;
 
 	refd = SVC_REF2(xprt, SVC_REF_FLAG_LOCKED, tag, line);
 

@@ -1,13 +1,14 @@
-// ----------------------------------------------------------------------------
-// Copyright IBM Corp. 2012, 2012
-// All Rights Reserved
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// Filename:    fsal_lookup.c
-// Description: FSAL lookup operations implementation
-// Author:      FSI IPC dev team
-// ----------------------------------------------------------------------------
-
+/*
+ * ----------------------------------------------------------------------------
+ * Copyright IBM Corp. 2012, 2012
+ * All Rights Reserved
+ * ----------------------------------------------------------------------------
+ * ----------------------------------------------------------------------------
+ * Filename:    fsal_lookup.c
+ * Description: FSAL lookup operations implementation
+ * Author:      FSI IPC dev team
+ * ----------------------------------------------------------------------------
+ */
 /*
  * vim:noexpandtab:shiftwidth=8:tabstop=8:
  *
@@ -28,18 +29,9 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
  *
  * -------------
- */
-
-/**
- * \file    fsal_lookup.c
- * \author  $Author: leibovic $
- * \date    $Date: 2006/01/24 13:45:37 $
- * \version $Revision: 1.17 $
- * \brief   Lookup operations.
- *
  */
 
 #ifdef HAVE_CONFIG_H
@@ -84,11 +76,10 @@ fsal_status_t PTFSAL_lookup(const struct req_op_context *p_context,
 			    struct fsal_obj_handle *parent,
 			    const char *p_filename,
 			    struct attrlist *p_object_attr,
-			    ptfsal_handle_t * fh)
+			    ptfsal_handle_t *fh)
 {
 	fsal_status_t status;
 	int parent_fd;
-	int mnt_fd;
 	struct attrlist *parent_dir_attrs;
 	fsi_stat_struct buffstat;
 	int rc;
@@ -102,26 +93,23 @@ fsal_status_t PTFSAL_lookup(const struct req_op_context *p_context,
 	if (parent != NULL)
 		FSI_TRACE(FSI_DEBUG, "FSI - fsal_lookup parent dir\n");
 
-	if (!parent || !p_filename) {
+	if (!parent || !p_filename)
 		return fsalstat(ERR_FSAL_FAULT, 0);
-	}
 
-	mnt_fd = pt_get_root_fd(parent->export);
 	parent_hdl =
 	    container_of(parent, struct pt_fsal_obj_handle, obj_handle);
 
 	parent_dir_attrs = &parent_hdl->obj_handle.attributes;
 
 	/* get directory metadata */
-	parent_dir_attrs->mask =
-	    parent->export->ops->fs_supported_attrs(parent->export);
+	parent_dir_attrs->mask = p_context->fsal_export->ops->
+			fs_supported_attrs(p_context->fsal_export);
 	status =
 	    fsal_internal_handle2fd_at(p_context, parent_hdl, &parent_fd,
 				       O_RDONLY);
 
-	if (FSAL_IS_ERROR(status)) {
+	if (FSAL_IS_ERROR(status))
 		return status;
-	}
 
 	FSI_TRACE(FSI_DEBUG, "FSI - lookup parent directory type = %d\n",
 		  parent_dir_attrs->type);
@@ -129,16 +117,12 @@ fsal_status_t PTFSAL_lookup(const struct req_op_context *p_context,
 	/* Be careful about junction crossing, symlinks, hardlinks,... */
 	switch (parent_dir_attrs->type) {
 	case DIRECTORY:
-		// OK
+		/* OK */
 		break;
-
-	case FS_JUNCTION:
-		// This is a junction
-		return fsalstat(ERR_FSAL_XDEV, 0);
 
 	case REGULAR_FILE:
 	case SYMBOLIC_LINK:
-		// not a directory
+		/* not a directory */
 		pt_close(parent);
 		return fsalstat(ERR_FSAL_NOTDIR, 0);
 
@@ -151,7 +135,8 @@ fsal_status_t PTFSAL_lookup(const struct req_op_context *p_context,
 	rc = ptfsal_stat_by_parent_name(p_context, parent_hdl, p_filename,
 					&buffstat);
 	if (rc < 0) {
-		ptfsal_closedir_fd(p_context, parent->export, parent_fd);
+		ptfsal_closedir_fd(p_context, p_context->fsal_export,
+				   parent_fd);
 		return fsalstat(ERR_FSAL_NOENT, errno);
 	}
 	memset(fh->data.handle.f_handle, 0, sizeof(fh->data.handle.f_handle));
@@ -164,18 +149,17 @@ fsal_status_t PTFSAL_lookup(const struct req_op_context *p_context,
 
 	/* get object attributes */
 	if (p_object_attr) {
-		p_object_attr->mask =
-		    parent->export->ops->fs_supported_attrs(parent->export);
-		status =
-		    PTFSAL_getattrs(parent->export, p_context, fh,
-				    p_object_attr);
+		p_object_attr->mask = p_context->fsal_export->ops->
+				fs_supported_attrs(p_context->fsal_export);
+		status = PTFSAL_getattrs(p_context->fsal_export, p_context,
+					 fh, p_object_attr);
 		if (FSAL_IS_ERROR(status)) {
 			FSAL_CLEAR_MASK(p_object_attr->mask);
 			FSAL_SET_MASK(p_object_attr->mask, ATTR_RDATTR_ERR);
 		}
 	}
 
-	ptfsal_closedir_fd(p_context, parent->export, parent_fd);
+	ptfsal_closedir_fd(p_context, p_context->fsal_export, parent_fd);
 
 	FSI_TRACE(FSI_DEBUG, "End##################################\n");
 	/* lookup complete ! */

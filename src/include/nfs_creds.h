@@ -46,40 +46,24 @@
 #include "nfs23.h"
 #include "nfs4.h"
 #include "mount.h"
-#include "err_hashtable.h"
 
-typedef enum CredType__ { CRED_NONE = 1, CRED_UNIX = 2, CRED_GSS =
-	    3 } CredType_t;
+bool get_req_creds(struct svc_req *req);
 
-typedef struct CredUnix__ {
-	u_int uid;
-	u_int gid;
-	/* May be we could had list of groups management */
-} CredUnix_t;
+void init_credentials(void);
+void clean_credentials(void);
 
-typedef struct CredGss__ {
-#if (defined(HAVE_KRB5) && defined(_HAVE_GSSAPI))
-	gss_qop_t qop;
-	gss_OID mech;
-	rpc_gss_svc_t svc;
-	gss_ctx_id_t context;
-#else
-	int dummy;
-#endif
-} CredGss_t;
+void squash_setattr(struct attrlist *attr);
 
-typedef union CredData__ {
-#ifdef HAVE_KRB5
-	CredUnix_t unix_cred;
-	CredGss_t gss_cred;
-#else
-	int dummy;
-#endif
-} CredData_t;
+int nfs4_MakeCred(compound_data_t *);
 
-typedef struct RPCSEC_GSS_cred__ {
-	CredType_t type;
-	CredData_t data;
-} RPCSEC_GSS_cred_t;
+cache_inode_status_t nfs_access_op(cache_entry_t *entry,
+				   uint32_t requested_access,
+				   uint32_t *granted_access,
+				   uint32_t *supported_access);
+
+bool nfs_compare_clientcred(nfs_client_cred_t *cred1,
+			    nfs_client_cred_t *cred2);
+
+int nfs_rpc_req2client_cred(struct svc_req *req, nfs_client_cred_t *pcred);
 
 #endif				/* _NFS_CREDS_H */

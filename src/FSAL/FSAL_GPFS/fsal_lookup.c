@@ -33,6 +33,7 @@
 
 #include <string.h>
 #include "fsal.h"
+#include "FSAL/fsal_commonlib.h"
 #include "fsal_internal.h"
 #include "fsal_convert.h"
 #include "gpfs_methods.h"
@@ -68,23 +69,30 @@ fsal_status_t GPFSFSAL_lookup(const struct req_op_context *p_context,
 			      struct fsal_obj_handle *parent,
 			      const char *p_filename,
 			      struct attrlist *p_object_attr,
-			      struct gpfs_file_handle *fh)
+			      struct gpfs_file_handle *fh,
+			      struct fsal_filesystem **new_fs)
 {
 	fsal_status_t status;
 	int parent_fd;
-	int mnt_fd;
 	struct gpfs_fsal_obj_handle *parent_hdl;
+	struct gpfs_filesystem *gpfs_fs;
+	enum fsid_type fsid_type;
+	struct fsal_fsid__ fsid;
 
 	if (!parent || !p_filename)
 		return fsalstat(ERR_FSAL_FAULT, 0);
 
-	mnt_fd = gpfs_get_root_fd(parent->export);
+	assert(*new_fs == parent->fs);
+
 	parent_hdl =
 	    container_of(parent, struct gpfs_fsal_obj_handle, obj_handle);
+	gpfs_fs = parent->fs->private;
 
-	status =
-	    fsal_internal_handle2fd_at(mnt_fd, parent_hdl->handle, &parent_fd,
-				       O_RDONLY);
+	status = fsal_internal_handle2fd_at(gpfs_fs->root_fd,
+					    parent_hdl->handle,
+					    &parent_fd,
+					    O_RDONLY,
+					    0);
 	if (FSAL_IS_ERROR(status))
 		return status;
 
@@ -93,11 +101,6 @@ fsal_status_t GPFSFSAL_lookup(const struct req_op_context *p_context,
 	case DIRECTORY:
 		/* OK */
 		break;
-
-	case FS_JUNCTION:
-		/* This is a junction */
-		close(parent_fd);
-		return fsalstat(ERR_FSAL_XDEV, 0);
 
 	case REGULAR_FILE:
 	case SYMBOLIC_LINK:
@@ -115,13 +118,49 @@ fsal_status_t GPFSFSAL_lookup(const struct req_op_context *p_context,
 		close(parent_fd);
 		return status;
 	}
+
+	/* In order to check XDEV, we need to get the fsid from the handle.
+	 * We need to do this before getting attributes in order to have tthe
+	 * correct gpfs_fs to pass to GPFSFSAL_getattrs. We also return
+	 * the correct fs to the caller.
+	 */
+	gpfs_extract_fsid(fh, &fsid_type, &fsid);
+
+	if (fsid.major != parent->attributes.fsid.major) {
+		/* XDEV */
+		*new_fs = lookup_fsid(&fsid, fsid_type);
+		if (*new_fs == NULL) {
+			LogDebug(COMPONENT_FSAL,
+				 "Lookup of %s crosses filesystem boundary to "
+				 "unknown file system "
+				 "fsid=0x%016"PRIx64".0x%016"PRIx64,
+				 p_filename, fsid.major, fsid.minor);
+			return fsalstat(ERR_FSAL_XDEV, EXDEV);
+		}
+
+		if ((*new_fs)->fsal != parent->fsal) {
+			LogDebug(COMPONENT_FSAL,
+				 "Lookup of %s crosses filesystem boundary to file system %s into FSAL %s",
+				 p_filename, (*new_fs)->path,
+				 (*new_fs)->fsal != NULL
+					? (*new_fs)->fsal->name
+					: "(none)");
+			return fsalstat(ERR_FSAL_XDEV, EXDEV);
+		} else {
+			LogDebug(COMPONENT_FSAL,
+				 "Lookup of %s crosses filesystem boundary to file system %s",
+				 p_filename, (*new_fs)->path);
+		}
+		gpfs_fs = (*new_fs)->private;
+	}
+
 	/* get object attributes */
 	if (p_object_attr) {
 		p_object_attr->mask =
-		    parent->export->ops->fs_supported_attrs(parent->export);
-		status =
-		    GPFSFSAL_getattrs(parent->export, p_context, fh,
-				      p_object_attr);
+		    p_context->fsal_export->ops->
+		    fs_supported_attrs(p_context->fsal_export);
+		status = GPFSFSAL_getattrs(p_context->fsal_export, gpfs_fs,
+					   p_context, fh, p_object_attr);
 		if (FSAL_IS_ERROR(status)) {
 			FSAL_CLEAR_MASK(p_object_attr->mask);
 			FSAL_SET_MASK(p_object_attr->mask, ATTR_RDATTR_ERR);

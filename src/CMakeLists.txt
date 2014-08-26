@@ -4,9 +4,13 @@
 
 cmake_minimum_required(VERSION 2.6.3)
 
-if(COMMAND cmake_policy)
-    cmake_policy(SET CMP0017 NEW)
-endif(COMMAND cmake_policy)
+message( STATUS "cmake version ${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}" )
+
+if( "${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}" VERSION_GREATER "2.6" )
+  if(COMMAND cmake_policy)
+      cmake_policy(SET CMP0017 NEW)
+  endif(COMMAND cmake_policy)
+endif( "${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}" VERSION_GREATER "2.6" )
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules/")
 
@@ -14,7 +18,7 @@ project(nfs-ganesha)
 
 # Project versioning
 set(GANESHA_MAJOR_VERSION 2)
-set(GANESHA_MINOR_VERSION 0)
+set(GANESHA_MINOR_VERSION 1)
 
 # Patch level is always ".0" for mainline (master).  It is blank for development.
 # When starting a stable maintenance branch, this becomes ".N"
@@ -27,6 +31,7 @@ set(GANESHA_PATCH_LEVEL .0)
 set(GANESHA_EXTRA_VERSION )
 
 set(GANESHA_VERSION ${GANESHA_MAJOR_VERSION}.${GANESHA_MINOR_VERSION}${GANESHA_PATCH_LEVEL}${GANESHA_EXTRA_VERSION})
+set(GANESHA_BASE_VERSION ${GANESHA_MAJOR_VERSION}.${GANESHA_MINOR_VERSION}${GANESHA_PATCH_LEVEL})
 
 set(VERSION_COMMENT
   "GANESHA file server is 64 bits compliant and supports NFS v3,4.0,4.1 (pNFS) and 9P"
@@ -41,6 +46,7 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
  EXECUTE_PROCESS(
       COMMAND cat /etc/system-release
       OUTPUT_VARIABLE SYS_RELEASE
+      ERROR_QUIET
    )
   if( ${SYS_RELEASE} MATCHES "Red Hat" )
      message( STATUS "Detected a Linux Red Hat machine" )
@@ -78,17 +84,23 @@ include(${CMAKE_SOURCE_DIR}/cmake/maintainer_mode.cmake)
 
 # If we are in a git tree, then this CMakeLists.txt is in "src/" and go .git is in "src/.."
 IF( EXISTS ${CMAKE_SOURCE_DIR}/../.git/HEAD  )
-  message( STATUS "Compilation from within a git repository. Using GetGitRevisionDescription" )
-  include(GetGitRevisionDescription)
-  get_git_head_revision(GIT_REFSPEC _GIT_HEAD_COMMIT)
-  git_describe(_GIT_DESCRIBE)
+  message( STATUS "Compilation from within a git repository. Using git rev-parse HEAD")
+  EXECUTE_PROCESS( COMMAND git rev-parse HEAD
+		   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+		   OUTPUT_STRIP_TRAILING_WHITESPACE
+		   ERROR_QUIET
+                   OUTPUT_VARIABLE _GIT_HEAD_COMMIT)
+  EXECUTE_PROCESS( COMMAND git describe --long
+                   WORKING_DIRECTORY  ${CMAKE_SOURCE_DIR}
+		   OUTPUT_STRIP_TRAILING_WHITESPACE
+		   ERROR_QUIET
+                   OUTPUT_VARIABLE _GIT_DESCRIBE)
 
 ELSE( EXISTS ${CMAKE_SOURCE_DIR}/../.git/HEAD  )
   message( STATUS "Outside a git repository, use saved data" )
   EXEC_PROGRAM(${CMAKE_SOURCE_DIR}/cmake/githead_from_path.sh ARGS ${CMAKE_SOURCE_DIR}
                 OUTPUT_VARIABLE  _GIT_HEAD_COMMIT)
 
-   
   EXEC_PROGRAM(${CMAKE_SOURCE_DIR}/cmake/gitdesc_from_path.sh ARGS ${CMAKE_SOURCE_DIR}
                 OUTPUT_VARIABLE  _GIT_DESCRIBE)
 
@@ -97,7 +109,7 @@ ENDIF( EXISTS ${CMAKE_SOURCE_DIR}/../.git/HEAD  )
 STRING(SUBSTRING ${_GIT_HEAD_COMMIT} 0  7 _GIT_HEAD_COMMIT_ABBREV )
 
 # Using git related information, build PACKNAME
-set( PACKNAME "${GANESHA_VERSION}" ) 
+set( PACKNAME "${GANESHA_VERSION}" )
 
 # Define CPACK component (to deal with sub packages)
 set(CPACK_COMPONENTS_ALL daemon fsal headers )
@@ -120,11 +132,12 @@ if (FREEBSD)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-omit-frame-pointer")
     set(CMAKE_C_LINK_FLAGS "${CMAKE_C_LINK_FLAGS} -rdynamic")
     set(OS_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/include/os/freebsd")
-    find_library(LIBDL c)  # libc suffices on freebsd 
+    find_library(LIBDL c)  # libc suffices on freebsd
 endif(FREEBSD)
 
 if (LINUX)
     set(PLATFORM "LINUX")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_LARGEFILE64_SOURCE")
     set(OS_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/include/os/linux")
     find_library(LIBDL dl)  # module loader
 endif(LINUX)
@@ -168,7 +181,6 @@ option(USE_DBUS "enable DBUS protocol support" OFF)
 
 # Various DBUS enabled features
 option(USE_CB_SIMULATOR "enable callback simulator thread" OFF)
-option(USE_DBUS_STATS "enable DBUS interface for server statistics" OFF)
 
 option(USE_TIRPC_IPV6 "enable IPv6 support (via IPv6)" OFF)
 option(USE_NFSIDMAP "Use of libnfsidmap for name resolution" ON)
@@ -182,11 +194,13 @@ option(_NO_TCP_REGISTER "disable registration of tcp services on portmapper" ON)
 option(_NO_PORTMAPPER "disable registration on portmapper" ON)
 option(_NO_XATTRD "disable ghost xattr directory and files support" ON)
 option(DEBUG_SAL "enable debugging of SAL by keeping list of all locks, stateids, and state owners" OFF)
-option(USE_NODELIST "enable NodeList support" OFF)
-option(_HANDLE_MAPPING "enable NFSv2/3 handle mapping for PROXY FSAL" OFF)
+option(PROXY_HANDLE_MAPPING "enable NFSv3 handle mapping for PROXY FSAL" OFF)
 
-# Debug symbols (-g) build flag 
+# Debug symbols (-g) build flag
 option(DEBUG_SYMS "include debug symbols to binaries (-g option)" OFF)
+
+# Add coverage information to build tree
+option(COVERAGE "add flag to generate coverage data at runtime" OFF)
 
 # enable code profiling [-g -pg]
 option(PROFILING "turn on code profiling (-g and -pg)" OFF)
@@ -211,6 +225,19 @@ option(STRICT_PACKAGE "Enable strict packaging behavior" OFF )
 # This option will trigger "long distro name" aka name that contains git information
 option(DISTNAME_HAS_GIT_DATA "Distribution package's name carries git data" OFF )
 
+# Build and package Python admin scripts for managing via DBus
+option(USE_ADMIN_TOOLS "Package Admin scripts" OFF)
+
+# Final location for server modules such as FSAL shared objects
+# We do this separately because packaging (RPM) installs in a
+# "build root" but installs somewhere else (/usr)
+set(MODULES_PATH ${CMAKE_INSTALL_PREFIX}
+  CACHE PATH
+  "Path prefix for dlopen loaded modules")
+
+# Enable GCC Thread-sanitizer
+option(USE_TSAN "Enable GCC Thread-Sanitizer" OFF)
+
 # Choose a shortcut build config
 
 IF(BUILD_CONFIG)
@@ -222,12 +249,17 @@ IF(DEBUG_SYMS)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g")
 ENDIF(DEBUG_SYMS)
 
+IF(COVERAGE)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --coverage")
+ENDIF(COVERAGE)
+
 # Build source locations and parameters
 IF(USE_FSAL_CEPH)
   IF(CEPH_PREFIX)
     set(CEPH_PREFIX ${CEPH_PREFIX} CACHE PATH "Path to Ceph installation")
     LIST(APPEND CMAKE_PREFIX_PATH "${CEPH_PREFIX}")
     LIST(APPEND CMAKE_LIBRARY_PATH "${CEPH_PREFIX}/lib")
+    LIST(APPEND CMAKE_REQUIRED_INCLUDES "${CEPH_PREFIX}/include")
   ELSE()
     set(CEPH_PREFIX "/usr" CACHE PATH "Path to Ceph installation")
   ENDIF()
@@ -240,8 +272,24 @@ IF(USE_FSAL_GLUSTER)
     LIST(APPEND CMAKE_LIBRARY_PATH "${GLUSTER_PREFIX}/lib")
     LIST(APPEND CMAKE_LIBRARY_PATH "${GLUSTER_PREFIX}/local/lib")
     LIST(APPEND CMAKE_LIBRARY_PATH "${GLUSTER_PREFIX}/local/lib64")
+    LIST(APPEND CMAKE_REQUIRED_INCLUDES "${GLUSTER_PREFIX}/include")
   ELSE()
     set(GLUSTER_PREFIX "/usr" CACHE PATH "Path to Gluster installation")
+  ENDIF()
+ENDIF()
+
+IF(USE_FSAL_LUSTRE)
+  IF(LUSTRE_PREFIX)
+    set(LUSTRE_PREFIX ${LUSTRE_PREFIX} CACHE PATH "Path to Lustre installation")
+    LIST(APPEND CMAKE_PREFIX_PATH "${LUSTRE_PREFIX}")
+    if( CMAKE_SIZEOF_VOID_P EQUAL 8 )
+        LIST(APPEND CMAKE_LIBRARY_PATH "${LUSTRE_PREFIX}/lib64")
+    else( CMAKE_SIZEOF_VOID_P EQUAL 8 )
+        LIST(APPEND CMAKE_LIBRARY_PATH "${LUSTRE_PREFIX}/lib")
+    endif( CMAKE_SIZEOF_VOID_P EQUAL 8 )
+    LIST(APPEND CMAKE_REQUIRED_INCLUDES "${LUSTRE_PREFIX}/include")
+  ELSE()
+    set(LUSTRE_PREFIX "/usr" CACHE PATH "Path to Lustre installation")
   ENDIF()
 ENDIF()
 
@@ -265,6 +313,19 @@ IF(USE_FSAL_HPSS)
   endif(NOT HPSS_LIBRARIES)
 endif(USE_FSAL_HPSS)
 
+IF(USE_FSAL_ZFS)
+  IF(ZFS_PREFIX)
+    set(ZFS_PREFIX ${ZFS_PREFIX} CACHE PATH "Path to ZFS installation")
+    LIST(APPEND CMAKE_PREFIX_PATH "${ZFS_PREFIX}")
+    LIST(APPEND CMAKE_LIBRARY_PATH "${ZFS_PREFIX}/lib")
+    LIST(APPEND CMAKE_LIBRARY_PATH "${ZFS_PREFIX}/local/lib")
+    LIST(APPEND CMAKE_LIBRARY_PATH "${ZFS_PREFIX}/local/lib64")
+    LIST(APPEND CMAKE_REQUIRED_INCLUDES "${ZFS_PREFIX}/include")
+  ELSE()
+    set(ZFS_PREFIX "/usr" CACHE PATH "Path to ZFS installation")
+  ENDIF()
+ENDIF()
+
 IF(KRB5_PREFIX)
   set(KRB5_PREFIX ${KRB5_PREFIX} CACHE PATH "Path to Krb5 installation")
   LIST(APPEND CMAKE_PREFIX_PATH "${KRB5_PREFIX}")
@@ -277,6 +338,23 @@ if(SAMBA4_PREFIX)
   LIST(APPEND CMAKE_LIBRARY_PATH "${SAMBA4_PREFIX}/lib")
 endif()
 
+IF(USE_9P_RDMA)
+  IF(MOOSHIKA_PREFIX)
+    set(MOOSHIKA_PREFIX ${MOOSHIKA_PREFIX} CACHE PATH "Path to Mooshika installation")
+    set(ENV{PKG_CONFIG_PATH} "${PKG_CONFIG_PATH}:${MOOSHIKA_PREFIX}/lib/pkgconfig")
+  ENDIF()
+  IF(LIBIBVERBS_PREFIX)
+    set(LIBIBVERBS_PREFIX ${LIBIBVERBS_PREFIX} CACHE PATH "Path to libibverbs installation")
+    LIST(APPEND CMAKE_REQUIRED_INCLUDES "${LIBIBVERBS_PREFIX}/include")
+    include_directories("${LIBIBVERBS_PREFIX}/usr/include")
+  ENDIF()
+  IF(LIBRDMACM_PREFIX)
+    set(LIBRDMACM_PREFIX ${LIBRDMACM_PREFIX} CACHE PATH "Path to librdmacm installation")
+    LIST(APPEND CMAKE_REQUIRED_INCLUDES "${LIBRDMACM_PREFIX}/include")
+    include_directories("${LIBRDMACM_PREFIX}/include")
+  ENDIF()
+ENDIF()
+
 if(USE_CB_SIMULATOR AND NOT USE_DBUS)
   message(WARNING "The callback simulator needs DBUS.  Enabling DBUS")
   set(USE_DBUS ON)
@@ -286,24 +364,22 @@ if(USE_TIRPC_IPV6)
   set(_USE_TIRPC_IPV6 ON)
 endif(USE_TIRPC_IPV6)
 
-if(USE_DBUS_STATS AND NOT USE_DBUS)
-  message(WARNING "The DBUS server statistics needs DBUS.  Enabling DBUS")
-  set(USE_DBUS ON)
-endif(USE_DBUS_STATS AND NOT USE_DBUS)
-
 if(USE_9P_RDMA AND NOT USE_9P)
   message(WARNING "The support of 9P/RDMA needs 9P protocol support. Enabling 9P")
   set(USE_9P ON)
 endif(USE_9P_RDMA AND NOT USE_9P)
 
-if( "${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}" VERSION_GREATER "2.6" )
-  set(ALLOCATOR "jemalloc" CACHE STRING
-    "specify the memory allocator to use: jemalloc|tcmalloc|libc")
-else("${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}" VERSION_GREATER "2.6" )
-  set(ALLOCATOR "libc" CACHE STRING
-    "specify the memory allocator to use: jemalloc|tcmalloc|libc")
-endif( "${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}" VERSION_GREATER "2.6" )
-
+IF(ALLOCATOR)
+  set(ALLOCATOR ${ALLOCATOR} CACHE STRING "memory allocator: jemalloc|tcmalloc|libc")
+ELSE()
+  if( "${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}" VERSION_GREATER "2.6" )
+    set(ALLOCATOR "jemalloc" CACHE STRING
+      "specify the memory allocator to use: jemalloc|tcmalloc|libc")
+  else("${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}" VERSION_GREATER "2.6" )
+    set(ALLOCATOR "libc" CACHE STRING
+      "specify the memory allocator to use: jemalloc|tcmalloc|libc")
+  endif( "${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}" VERSION_GREATER "2.6" )
+ENDIF()
 
 # Find packages and libs we need for building
 include(CheckIncludeFiles)
@@ -314,6 +390,26 @@ include(TestBigEndian)
 check_include_files(stdbool.h HAVE_STDBOOL_H)
 check_include_files(strings.h HAVE_STRINGS_H)
 check_include_files(string.h HAVE_STRING_H)
+
+if(HAVE_STRING_H AND HAVE_STRINGS_H)
+  # we have all the libraries and include files to use string.h
+  set(HAVE_STRNLEN ON)
+endif(HAVE_STRING_H AND HAVE_STRINGS_H)
+
+# PROXY handle mapping needs sqlite3
+IF(PROXY_HANDLE_MAPPING)
+  check_include_files(sqlite3.h, HAVE_SQLITE3_H)
+  check_library_exists(
+    sqlite3
+    sqlite3_open
+    ""
+    HAVE_SQLITE3
+    )
+  if(NOT HAVE_SQLITE3 OR HAVE_SQLITE3_H)
+    message(WARNING "Cannot find sqlite3.h or the library. Disabling proxy handle mapping")
+    set(PROXY_HANDLE_MAPPING OFF)
+  endif(NOT HAVE_SQLITE3 OR HAVE_SQLITE3_H)
+ENDIF(PROXY_HANDLE_MAPPING)
 
 # X_ATTRD requires the kernel to have xattrs...DBUS_STATS
 if(NOT _NO_XATTRD)
@@ -343,7 +439,7 @@ if(KRB5_FOUND AND HAVE_GSSAPI_H)
   set(KRB5_VERSION 194)  # hand code until we do krb5-config --version magic
   set(_HAVE_GSSAPI ON)
 else(KRB5_FOUND AND HAVE_GSSAPI_H)
-  message(ERROR "Cannot find kerberos or GSS libraries")
+  message(FATAL_ERROR "Cannot find kerberos or GSS libraries")
 endif(KRB5_FOUND AND HAVE_GSSAPI_H)
 
 # Validate fsal dependencies
@@ -366,7 +462,7 @@ if(USE_FSAL_GLUSTER)
     endif(STRICT_PACKAGE)
   endif((NOT HAVE_GFAPI) OR (NOT HAVE_GLUSTER_H))
 endif(USE_FSAL_GLUSTER)
- 
+
 if(USE_FSAL_CEPH)
   find_library(CEPH_FS cephfs)
   check_library_exists(
@@ -386,6 +482,7 @@ if(STRICT_PACKAGE)
 endif(USE_FSAL_CEPH)
 
 if(USE_FSAL_LUSTRE)
+  find_library(HAVE_LUSTREAPI lustreapi)
   check_library_exists(
     lustreapi
     llapi_is_lustre_mnt
@@ -401,7 +498,24 @@ if(USE_FSAL_LUSTRE)
       set(USE_FSAL_LUSTRE OFF)
       set(USE_FSAL_SHOOK OFF)
     endif(STRICT_PACKAGE)
+  else((NOT HAVE_LUSTREAPI) OR (NOT HAVE_LUSTRE_USER_H))
+    include_directories("${LUSTRE_PREFIX}/include")
+    if( CMAKE_SIZEOF_VOID_P EQUAL 8 )
+        link_directories("${LUSTRE_PREFIX}/lib64")
+    else( CMAKE_SIZEOF_VOID_P EQUAL 8 )
+        link_directories("${LUSTRE_PREFIX}/lib")
+    endif( CMAKE_SIZEOF_VOID_P EQUAL 8 )
   endif((NOT HAVE_LUSTREAPI) OR (NOT HAVE_LUSTRE_USER_H))
+
+  check_include_files("lustre/lustreapi.h" HAVE_INCLUDE_LUSTREAPI_H)
+  check_include_files("lustre/liblustreapi.h" HAVE_INCLUDE_LIBLUSTREAPI_H)
+
+  if( ( NOT HAVE_INCLUDE_LUSTREAPI_H ) AND ( NOT HAVE_INCLUDE_LIBLUSTREAPI_H ) )
+    message( ERROR "Cannot find lustre header files, aborting" )
+  endif( ( NOT HAVE_INCLUDE_LUSTREAPI_H ) AND ( NOT HAVE_INCLUDE_LIBLUSTREAPI_H ) )
+else(USE_FSAL_LUSTRE)
+  message(WARNING "Disabling SHOOK because it needs LUSTRE")
+  set(USE_FSAL_SHOOK OFF)
 endif(USE_FSAL_LUSTRE)
 
 if(USE_FSAL_LUSTRE AND USE_FSAL_SHOOK)
@@ -444,7 +558,7 @@ if(USE_FSAL_ZFS)
   check_library_exists(
     zfswrap
     libzfswrap_init
-    ""
+    ${ZFS_PREFIX}/lib
     HAVE_ZFS_LIB
     )
   check_include_files("unistd.h;libzfswrap.h" HAVE_LIBZFSWRAP_H)
@@ -477,7 +591,7 @@ elseif(${ALLOCATOR} STREQUAL "tcmalloc")
   endif(TCMALLOC_FOUND)
 else()
   if(NOT ${ALLOCATOR} STREQUAL "libc")
-    message(SEND_ERROR "${ALLOCATOR}  is not a valid allocator option.")
+    message(SEND_ERROR "${ALLOCATOR} is not a valid option. Valid allocators are: jemalloc|tcmalloc|libc")
   endif()
 endif()
 
@@ -566,7 +680,7 @@ check_library_exists(
 	cap
 	cap_set_proc
 	""
-	HAVE_LIBCAP 
+	HAVE_LIBCAP
 	)
 
 if(HAVE_LIBCAP)
@@ -576,6 +690,54 @@ else(HAVE_LIBCAP)
   set(USE_CAPS OFF)
   message(STATUS "Could not find capabilities library, disabling USE_CAPS")
 endif(HAVE_LIBCAP)
+
+# Check if we have libblkid and libuuid, will just be reported under one
+# flag USE_BLKID
+
+check_include_files("blkid/blkid.h" HAVE_LIBBLKID_H)
+find_library(LIBBLKID blkid)  # Management of Capablilities
+check_library_exists(
+	blkid
+	blkid_devno_to_devname
+	""
+	HAVE_LIBBLKID
+	)
+
+check_include_files("uuid/uuid.h" HAVE_LIBUUID_H)
+find_library(LIBUUID uuid)  # Management of Capablilities
+check_library_exists(
+	uuid
+	uuid_parse
+	""
+	HAVE_LIBUUID
+	)
+
+if(HAVE_LIBBLKID AND HAVE_LIBUUID AND HAVE_LIBBLKID_H AND HAVE_LIBUUID_H)
+  # we have all the libraries and include files to use libblkid and libuuid
+  set(SYSTEM_LIBRARIES ${SYSTEM_LIBRARIES} ${LIBBLKID} ${LIBUUID})
+  set(USE_BLKID ON)
+else(HAVE_LIBBLKID AND HAVE_LIBUUID AND HAVE_LIBBLKID_H AND HAVE_LIBUUID_H)
+  # we are missing something and can't use libblkid and libuuid
+  set(USE_BLKID OFF)
+  if(NOT HAVE_LIBBLKID)
+    message(STATUS "Could not find blkid library, disabling USE_BLKID")
+  elseif(NOT HAVE_LIBUUID)
+    message(STATUS "Could not find uuid library, disabling USE_BLKID")
+  elseif(NOT HAVE_LIBBLKID_H)
+    message(STATUS "Could not find blkid header files, disabling USE_BLKID")
+  else(NOT HAVE_LIBBLKID)
+    message(STATUS "Could not find uuid header files, disabling USE_BLKID")
+  endif(NOT HAVE_LIBBLKID)
+endif(HAVE_LIBBLKID AND HAVE_LIBUUID AND HAVE_LIBBLKID_H AND HAVE_LIBUUID_H)
+
+# check is daemon exists
+# I use check_library_exists there to be portab;e
+check_library_exists(
+	c
+	daemon
+	""
+	HAVE_DAEMON
+	)
 
 # Roll up required libraries
 
@@ -603,27 +765,28 @@ set(GANESHA_CORE
   avltree
   hashtable
   rpcal
-  common_utils
   support
   nfs4callbacks
   cidr
   string_utils
   hash
   log
+  uid2grp
+  fsalpseudo
   )
 
 if(USE_DBUS)
   set(GANESHA_CORE ${GANESHA_CORE} gshdbus)
 endif(USE_DBUS)
 
-if(USE_NODELIST)
-  set(GANESHA_CORE ${GANESHA_CORE} NodeList)
-endif(USE_NODELIST)
+set(GANESHA_CORE ${GANESHA_CORE} NodeList)
 
 if(USE_9P_RDMA)
   find_package(PkgConfig)
-  pkg_check_modules(MOOSHIKA REQUIRED libmooshika>=0.4)
+  pkg_check_modules(MOOSHIKA REQUIRED libmooshika>=0.6)
   set(GANESHA_CORE ${GANESHA_CORE} ${MOOSHIKA_LIBRARIES})
+  include_directories(${MOOSHIKA_INCLUDE_DIRS})
+  link_directories (${MOOSHIKA_LIBRARY_DIRS})
 endif(USE_9P_RDMA)
 
 # All the plumbing in the basement
@@ -637,7 +800,7 @@ set(SYSTEM_LIBRARIES
 )
 
 IF( NOT EXISTS ${PROJECT_SOURCE_DIR}/libntirpc/CMakeLists.txt )
-message( FATAL_ERROR 
+message( FATAL_ERROR
 "No CMakeLists.txt found in libntirpc
 This probably means that the directory was not properly populated.
 Please run the following command to do that and use cmake again:
@@ -647,15 +810,12 @@ Alternatively, if you are not using git, get the current version at
 ENDIF( NOT EXISTS ${PROJECT_SOURCE_DIR}/libntirpc/CMakeLists.txt )
 
 add_subdirectory(log)
-add_subdirectory(common)
-add_subdirectory(ConfigParsing)
+add_subdirectory(config_parsing)
 add_subdirectory(cidr)
 add_subdirectory(test)
 add_subdirectory(avl)
 add_subdirectory(hashtable)
-if(USE_NODELIST)
-  add_subdirectory(NodeList)
-endif(USE_NODELIST)
+add_subdirectory(NodeList)
 add_subdirectory(cache_inode)
 add_subdirectory(SAL)
 add_subdirectory(libntirpc)
@@ -673,6 +833,7 @@ add_subdirectory(tools)
 if(USE_DBUS)
   add_subdirectory(dbus)
 endif(USE_DBUS)
+add_subdirectory(scripts)
 
 # display configuration vars
 
@@ -695,10 +856,10 @@ message(STATUS "USE_FSAL_SHOOK = ${USE_FSAL_SHOOK}")
 message(STATUS "USE_FSAL_GLUSTER = ${USE_FSAL_GLUSTER}")
 message(STATUS "USE_DBUS = ${USE_DBUS}")
 message(STATUS "USE_CB_SIMULATOR = ${USE_CB_SIMULATOR}")
-message(STATUS "USE_DBUS_STATS = ${USE_DBUS_STATS}")
 message(STATUS "USE_NFSIDMAP = ${USE_NFSIDMAP}")
 message(STATUS "ENABLE_ERROR_INJECTION = ${ENABLE_ERROR_INJECTION}")
 message(STATUS "USE_CAPS = ${USE_CAPS}")
+message(STATUS "USE_BLKID = ${USE_BLKID}")
 message(STATUS "STRICT_PACKAGE = ${STRICT_PACKAGE}")
 message(STATUS "DISTNAME_HAS_GIT_DATA = ${DISTNAME_HAS_GIT_DATA}" )
 message(STATUS "_MSPAC_SUPPORT = ${_MSPAC_SUPPORT}")
@@ -707,9 +868,9 @@ message(STATUS "_NO_TCP_REGISTER = ${_NO_TCP_REGISTER}")
 message(STATUS "_NO_PORTMAPPER = ${_NO_PORTMAPPER}")
 message(STATUS "_NO_XATTRD = ${_NO_XATTRD}")
 message(STATUS "DEBUG_SAL = ${DEBUG_SAL}")
-message(STATUS "USE_NODELIST = ${USE_NODELIST}")
-message(STATUS "_HANDLE_MAPPING = ${_HANDLE_MAPPING}")
+message(STATUS "PROXY_HANDLE_MAPPING = ${PROXY_HANDLE_MAPPING}")
 message(STATUS "DEBUG_SYMS = ${DEBUG_SYMS}")
+message(STATUS "COVERAGE = ${COVERAGE}")
 message(STATUS "PROFILING = ${PROFILING}")
 message(STATUS "USE_GSS = ${USE_GSS}")
 message(STATUS "TIRPC_EPOLL = ${TIRPC_EPOLL}")
@@ -720,12 +881,19 @@ message(STATUS "KRB5_PREFIX = ${KRB5_PREFIX}")
 message(STATUS "CEPH_PREFIX = ${CEPH_PREFIX}")
 message(STATUS "HPSS_PREFIX = ${HPSS_PREFIX}")
 message(STATUS "GLUSTER_PREFIX = ${GLUSTER_PREFIX}")
+message(STATUS "ZFS_PREFIX = ${ZFS_PREFIX}")
+message(STATUS "LUSTRE_PREFIX = ${LUSTRE_PREFIX}")
 message(STATUS "CMAKE_PREFIX_PATH = ${CMAKE_PREFIX_PATH}")
 message(STATUS "_GIT_HEAD_COMMIT = ${_GIT_HEAD_COMMIT}")
 message(STATUS "_GIT_HEAD_COMMIT_ABBREV = ${_GIT_HEAD_COMMIT_ABBREV}")
 message(STATUS "_GIT_DESCRIBE = ${_GIT_DESCRIBE}")
 message(STATUS "ALLOCATOR = ${ALLOCATOR}")
 message(STATUS "GOLD_LINKER = ${GOLD_LINKER}")
+message(STATUS "CMAKE_INSTALL_PREFIX = ${CMAKE_INSTALL_PREFIX}")
+message(STATUS "FSAL_DESTINATION = ${FSAL_DESTINATION}")
+message(STATUS "USE_ADMIN_TOOLS = ${USE_ADMIN_TOOLS}")
+message(STATUS "MODULES_PATH = ${MODULES_PATH}")
+message(STATUS "USE_TSAN = ${USE_TSAN}")
 
 #force command line options to be stored in cache
 set(USE_FSAL_VFS ${USE_FSAL_VFS}
@@ -773,6 +941,16 @@ set(USE_FSAL_LUSTRE ${USE_FSAL_LUSTRE}
    "build LUSTRE FSAL"
    FORCE)
 
+set(HAVE_INCLUDE_LUSTREAPI_H ${HAVE_INCLUDE_LUSTREAPI_H}
+  CACHE BOOL
+   "build LUSTRE FSAL with lustreapi.h"
+   FORCE)
+
+set(HAVE_INCLUDE_LIBLUSTREAPI_H ${HAVE_INCLUDE_LIBLUSTREAPI_H}
+  CACHE BOOL
+   "build LUSTRE FSAL with liblustreapi.h"
+   FORCE)
+
 set(USE_FSAL_SHOOK ${USE_FSAL_SHOOK}
   CACHE BOOL
    "build SHOOK FSAL"
@@ -793,11 +971,6 @@ set(USE_CB_SIMULATOR ${USE_CB_SIMULATOR}
    "enable callback simulator thread"
    FORCE)
 
-set(USE_DBUS_STATS ${USE_DBUS_STATS}
-  CACHE BOOL
-   "enable DBUS interface for server statistics"
-   FORCE)
-
 set(USE_NFSIDMAP ${USE_NFSIDMAP}
   CACHE BOOL
    "Use of libnfsidmap for name resolution"
@@ -806,11 +979,6 @@ set(USE_NFSIDMAP ${USE_NFSIDMAP}
 set(DEBUG_SAL ${DEBUG_SAL}
   CACHE BOOL
    "enable debug SAL"
-   FORCE)
-
-set(USE_NODELIST ${USE_NODELIST}
-  CACHE BOOL
-   "enable NodeList"
    FORCE)
 
 set(ENABLE_ERROR_INJECTION ${ENABLE_ERROR_INJECTION}
@@ -828,9 +996,9 @@ set(STRICT_PACKAGE ${STRICT_PACKAGE}
    "enable strict packaging behavior"
    FORCE)
 
-set( DISTNAME_HAS_GIT_DATA ${DISTNAME_HAS_GIT_DATA} 
+set( DISTNAME_HAS_GIT_DATA ${DISTNAME_HAS_GIT_DATA}
   CACHE BOOL
-  "Distribution package's name carries git data" 
+  "Distribution package's name carries git data"
   FORCE)
 
 
@@ -849,6 +1017,16 @@ set(_USE_9P_RDMA ${_USE_9P_RDMA}
    "enable 9P_RDMA support"
    FORCE)
 
+set(USE_ADMIN_TOOLS ${USE_ADMIN_TOOLS}
+  CACHE BOOL
+  "Package Admin Scripts"
+  FORCE)
+
+set(USE_TSAN ${USE_TSAN}
+  CACHE BOOL
+  "Enable GCC Thread-Sanitizer"
+  FORCE)
+
 # Now create a useable config.h
 configure_file(
   "${PROJECT_SOURCE_DIR}/include/config-h.in.cmake"
@@ -856,17 +1034,94 @@ configure_file(
 )
 
 
-########### add a "make dist"  ###############
+########### add a "make dist" and a "make rpm"  ###############
+
+set( PKG_NAME "${CPACK_PACKAGE_FILE_NAME}.tar.gz")
 add_custom_target(dist COMMAND ${CMAKE_MAKE_PROGRAM} package_source)
+
+# set "--with" arguments for rpmbuild
+# This has to be coherent with chosen FSALs
+set( WITH_ARG "")
+
+if(USE_FSAL_LUSTRE)
+    set( WITH_ARG "${WITH_ARG} --with lustre")
+endif(USE_FSAL_LUSTRE)
+
+if(USE_FSAL_SHOOK)
+    set( WITH_ARG "${WITH_ARG} --with shook")
+endif(USE_FSAL_SHOOK)
+
+if(USE_FSAL_ZFS)
+    set( WITH_ARG "${WITH_ARG} --with zfs")
+endif(USE_FSAL_ZFS)
+
+if(USE_FSAL_XFS)
+    set( WITH_ARG "${WITH_ARG} --with xfs")
+endif(USE_FSAL_XFS)
+
+if(USE_FSAL_GPFS)
+    set( WITH_ARG "${WITH_ARG} --with gpfs")
+endif(USE_FSAL_GPFS)
+
+if(USE_FSAL_CEPH)
+    set( WITH_ARG "${WITH_ARG} --with ceph")
+endif(USE_FSAL_CEPH)
+
+if(USE_FSAL_CEPH)
+    set( WITH_ARG "${WITH_ARG} --with ceph")
+endif(USE_FSAL_CEPH)
+
+if(USE_FSAL_GLUSTER)
+    set( WITH_ARG "${WITH_ARG} --with gluster")
+endif(USE_FSAL_GLUSTER)
+
+if(USE_FSAL_HPSS)
+    set( WITH_ARG "${WITH_ARG} --with hpss")
+endif(USE_FSAL_HPSS)
+
+if(USE_FSAL_PT)
+    set( WITH_ARG "${WITH_ARG} --with pt")
+endif(USE_FSAL_PT)
+
+if(USE_9P_RDMA)
+    set( WITH_ARG "${WITH_ARG} --with rdma")
+endif(USE_9P_RDMA)
+
+if(USE_ADMIN_TOOLS)
+    set( WITH_ARG "${WITH_ARG} --with utils")
+endif(USE_ADMIN_TOOLS)
+
+
+add_custom_target( rpm DEPENDS dist)
+add_custom_command(TARGET rpm
+                  COMMAND sh -c "rpmbuild ${WITH_ARG} -ta ${PKG_NAME}"
+		  VERBATIM
+		  DEPENDS dist)
+
+if(COVERAGE)
+	find_program(LCOV_EXEC lcov)
+	find_program(GENHTML_EXEC genhtml)
+	if(LCOV_EXEC AND GENHTML_EXEC)
+		add_custom_target(lcov)
+		add_custom_command(TARGET lcov
+			COMMAND ${LCOV_EXEC} --capture --directory .
+			--output-file coverage.info
+			COMMAND ${GENHTML_EXEC} coverage.info
+			--output-directory ./coverage_html/
+			VERBATIM
+			WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+			)
+	endif(LCOV_EXEC AND GENHTML_EXEC)
+endif(COVERAGE)
 
 ########### add a "make doc" target to call Doxygen
 find_package(Doxygen)
 if(DOXYGEN_FOUND)
-  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile @ONLY)
+  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in
+		 ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile @ONLY)
   add_custom_target(doc
     ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-E
     )
 endif(DOXYGEN_FOUND)
 

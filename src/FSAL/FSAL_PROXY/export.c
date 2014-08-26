@@ -26,29 +26,22 @@
 #include "fsal.h"
 #include <pthread.h>
 #include <sys/types.h>
-#include "nlm_list.h"
+#include "ganesha_list.h"
 #include "FSAL/fsal_commonlib.h"
 #include "FSAL/fsal_config.h"
 #include "pxy_fsal_methods.h"
-#include <nfs_exports.h>
+#include "nfs_exports.h"
+#include "export_mgr.h"
 
-static fsal_status_t pxy_release(struct fsal_export *exp_hdl)
+static void pxy_release(struct fsal_export *exp_hdl)
 {
 	struct pxy_export *pxy_exp =
 	    container_of(exp_hdl, struct pxy_export, exp);
 
-	pthread_mutex_lock(&exp_hdl->lock);
-	if (exp_hdl->refs > 0 || !glist_empty(&exp_hdl->handles)) {
-		pthread_mutex_unlock(&exp_hdl->lock);
-		return fsalstat(ERR_FSAL_INVAL, EBUSY);
-	}
 	fsal_detach_export(exp_hdl->fsal, &exp_hdl->exports);
 	free_export_ops(exp_hdl);
-	pthread_mutex_unlock(&exp_hdl->lock);
 
-	pthread_mutex_destroy(&exp_hdl->lock);
 	gsh_free(pxy_exp);
-	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
 static bool pxy_get_supports(struct fsal_export *exp_hdl,
@@ -68,24 +61,16 @@ static uint64_t pxy_get_maxfilesize(struct fsal_export *exp_hdl)
 
 static uint32_t pxy_get_maxread(struct fsal_export *exp_hdl)
 {
-	uint32_t sz;
 	struct pxy_fsal_module *pm =
 	    container_of(exp_hdl->fsal, struct pxy_fsal_module, module);
-	sz = fsal_maxread(&pm->fsinfo);
-	if (sz)
-		return MIN(sz, exp_hdl->exp_entry->MaxRead);
-	return exp_hdl->exp_entry->MaxRead;
+	return fsal_maxread(&pm->fsinfo);
 }
 
 static uint32_t pxy_get_maxwrite(struct fsal_export *exp_hdl)
 {
-	uint32_t sz;
 	struct pxy_fsal_module *pm =
 	    container_of(exp_hdl->fsal, struct pxy_fsal_module, module);
-	sz = fsal_maxwrite(&pm->fsinfo);
-	if (sz)
-		return MIN(sz, exp_hdl->exp_entry->MaxWrite);
-	return exp_hdl->exp_entry->MaxWrite;
+	return fsal_maxwrite(&pm->fsinfo);
 }
 
 static uint32_t pxy_get_maxlink(struct fsal_export *exp_hdl)
@@ -169,11 +154,8 @@ void pxy_export_ops_init(struct export_ops *ops)
  * but we also need access to pxy_exp_ops - I'd rather
  * keep the later static then the former */
 fsal_status_t pxy_create_export(struct fsal_module *fsal_hdl,
-				const char *export_path, const char *fs_options,
-				struct exportlist *exp_entry,
-				struct fsal_module *next_fsal,
-				const struct fsal_up_vector *up_ops,
-				struct fsal_export **export)
+				void *parse_node,
+				const struct fsal_up_vector *up_ops)
 {
 	struct pxy_export *exp = gsh_calloc(1, sizeof(*exp));
 	struct pxy_fsal_module *pxy =
@@ -181,7 +163,7 @@ fsal_status_t pxy_create_export(struct fsal_module *fsal_hdl,
 
 	if (!exp)
 		return fsalstat(ERR_FSAL_NOMEM, ENOMEM);
-	if (fsal_export_init(&exp->exp, exp_entry) != 0) {
+	if (fsal_export_init(&exp->exp) != 0) {
 		gsh_free(exp);
 		return fsalstat(ERR_FSAL_NOMEM, ENOMEM);
 	}
@@ -190,6 +172,6 @@ fsal_status_t pxy_create_export(struct fsal_module *fsal_hdl,
 	exp->exp.up_ops = up_ops;
 	exp->info = &pxy->special;
 	exp->exp.fsal = fsal_hdl;
-	*export = &exp->exp;
+	op_ctx->fsal_export = &exp->exp;
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }

@@ -86,7 +86,12 @@ struct flock
 #define OPENHANDLE_CREATE_BY_NAME_ATTR 137
 #define OPENHANDLE_GRACE_PERIOD   138
 #define OPENHANDLE_CLEAR_BY_FD    139
+#define OPENHANDLE_REOPEN_BY_FD   140
+#define OPENHANDLE_FADVISE_BY_FD  141
+#define OPENHANDLE_SEEK_BY_FD     142
+#define OPENHANDLE_STATFS_BY_FH   143
 #define OPENHANDLE_TRACE_ME       150
+#define OPENHANDLE_QUOTA          151
 
 struct trace_arg
 {
@@ -180,11 +185,14 @@ struct glock
   struct flock flock;
 };
 #define GPFS_F_CANCELLK (1024 + 5)   /* Maps to Linux F_CANCELLK */
+#define FL_RECLAIM 4
+#define EGRACE 140
 
 struct set_get_lock_arg
 {
   int mountdirfd;
   struct glock *lock;
+  int reclaim;
 };
 
 struct open_share_arg
@@ -195,6 +203,7 @@ struct open_share_arg
   struct gpfs_file_handle *handle;
   int share_access;
   int share_deny;
+  int reclaim;
 };
 
 struct share_reserve_arg
@@ -203,6 +212,30 @@ struct share_reserve_arg
   int openfd;
   int share_access;
   int share_deny;
+};
+
+struct fadvise_arg
+{
+  int mountdirfd;
+  int openfd;
+  uint64_t offset;
+  uint64_t length;
+  uint32_t *hints;
+};
+
+struct gpfs_io_info {
+  uint32_t io_what;
+  uint64_t io_offset;
+  uint64_t io_len;
+  uint32_t io_eof;
+  uint32_t io_alloc;
+};
+
+struct fseek_arg
+{
+  int mountdirfd;
+  int openfd;
+  struct gpfs_io_info *info;
 };
 
 struct close_file_arg
@@ -236,8 +269,13 @@ struct readlink_fh_arg
 };
 
 struct nfsd4_pnfs_deviceid {
-	unsigned long	sbid;		/* per-superblock unique ID */
-	unsigned long	devid;		/* filesystem-wide unique device ID */
+	/** FSAL_ID - to dispatch getdeviceinfo based on */
+	uint8_t fsal_id;
+	/** Break up the remainder into useful chunks */
+	uint8_t device_id1;
+	uint16_t device_id2;
+	uint32_t device_id4;
+	uint64_t devid;
 };
 
 struct gpfs_exp_xdr_stream {
@@ -422,8 +460,9 @@ struct dsread_arg
 };
 
 /* define flags for options */
-#define SKIP_HOLE      (1 << 0) //  01
-#define SKIP_DATA      (1 << 1) //  02
+#define IO_SKIP_HOLE      (1 << 0) //  01
+#define IO_SKIP_DATA      (1 << 1) //  02
+#define IO_ALLOCATE       (1 << 2) //  04
 
 struct dswrite_arg
 {
@@ -489,6 +528,13 @@ struct fsync_arg
   uint32_t *verifier4;
 };
 
+struct statfs_arg
+{
+  int mountdirfd;
+  struct gpfs_file_handle *handle;
+  struct statfs *buf;
+};
+
 struct stat_arg
 {
     int mountdirfd;
@@ -535,7 +581,7 @@ struct callback_arg
     struct glock *fl;
     int *flags;
     struct stat *buf;
-    struct nfsd4_pnfs_deviceid *dev_id;
+	struct pnfs_deviceid *dev_id;
     uint32_t *expire_attr;
 };
 #define GPFS_INTERFACE_VERSION 10000
@@ -571,19 +617,26 @@ struct callback_arg
 #define XATTR_ACL       (1 << 1)
 #define XATTR_NO_CACHE  (1 << 2)
 #define XATTR_EXPIRE    (1 << 3)
+#define XATTR_FSID      (1 << 4)
 
 /* define flags for attr_chaged */
-#define XATTR_MODE      (1 << 0) //  01
-#define XATTR_UID       (1 << 1) //  02
-#define XATTR_GID       (1 << 2) //  04
-#define XATTR_SIZE      (1 << 3) //  08
-#define XATTR_ATIME     (1 << 4) //  10
-#define XATTR_MTIME     (1 << 5) //  20
-#define XATTR_CTIME     (1 << 6) //  40
-#define XATTR_ATIME_SET (1 << 7) //  80
-#define XATTR_MTIME_SET (1 << 8) // 100
-#define XATTR_ATIME_NOW (1 << 9) // 200
-#define XATTR_MTIME_NOW (1 << 10)// 400
+#define XATTR_MODE           (1 << 0) //  01
+#define XATTR_UID            (1 << 1) //  02
+#define XATTR_GID            (1 << 2) //  04
+#define XATTR_SIZE           (1 << 3) //  08
+#define XATTR_ATIME          (1 << 4) //  10
+#define XATTR_MTIME          (1 << 5) //  20
+#define XATTR_CTIME          (1 << 6) //  40
+#define XATTR_ATIME_SET      (1 << 7) //  80
+#define XATTR_MTIME_SET      (1 << 8) // 100
+#define XATTR_ATIME_NOW      (1 << 9) // 200
+#define XATTR_MTIME_NOW      (1 << 10)// 400
+#define XATTR_SPACE_RESERVED (1 << 11)// 800
+
+struct fsal_fsid {
+	uint64_t major;
+	uint64_t minor;
+};
 
 struct xstat_arg
 {
@@ -593,6 +646,7 @@ struct xstat_arg
     struct gpfs_acl *acl;
     int attr_changed;
     struct stat *buf;
+    struct fsal_fsid *fsid;
     uint32_t *expire_attr;
 };
 
@@ -605,6 +659,14 @@ struct xstat_access_arg
     unsigned int posix_mode;
     unsigned int access;       /* v4maske */
     unsigned int *supported;	
+};
+
+struct quotactl_arg
+{
+    const char *pathname;
+    int cmd;
+    int qid;
+    void *bufferP;
 };
 
 #ifdef __cplusplus

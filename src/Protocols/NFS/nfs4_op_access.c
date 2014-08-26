@@ -43,7 +43,7 @@
 #include "nfs_exports.h"
 #include "nfs_creds.h"
 #include "nfs_proto_functions.h"
-#include "nfs_tools.h"
+#include "nfs_convert.h"
 #include "nfs_file_handle.h"
 #include "nfs_proto_tools.h"
 
@@ -82,11 +82,6 @@ int nfs4_op_access(struct nfs_argop4 *op, compound_data_t *data,
 	if (res_ACCESS4->status != NFS4_OK)
 		return res_ACCESS4->status;
 
-	/* If Filehandle points to a pseudo fs entry, manage it via
-	   pseudofs specific functions */
-	if (nfs4_Is_Fh_Pseudo(&(data->currentFH)))
-		return nfs4_op_access_pseudo(op, data, resp);
-
 	/* Check for input parameter's sanity */
 	if (arg_ACCESS4->access > max_access) {
 		res_ACCESS4->status = NFS4ERR_INVAL;
@@ -97,8 +92,7 @@ int nfs4_op_access(struct nfs_argop4 *op, compound_data_t *data,
 	cache_status =
 	    nfs_access_op(data->current_entry, arg_ACCESS4->access,
 			  &res_ACCESS4->ACCESS4res_u.resok4.access,
-			  &res_ACCESS4->ACCESS4res_u.resok4.supported,
-			  data->req_ctx);
+			  &res_ACCESS4->ACCESS4res_u.resok4.supported);
 
 	if (cache_status == CACHE_INODE_SUCCESS
 	    || cache_status == CACHE_INODE_FSAL_EACCESS)

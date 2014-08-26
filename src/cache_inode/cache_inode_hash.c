@@ -36,7 +36,6 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include "nlm_list.h"
 #include "fsal.h"
 #include "nfs_core.h"
 #include "log.h"
@@ -83,7 +82,7 @@ cih_pkginit(void)
 		&rwlock_attr,
 		PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
 #endif
-	npart = nfs_param.cache_param.nparts;
+	npart = cache_param.nparts;
 	cih_fhcache.npart = npart;
 	cih_fhcache.partition = gsh_calloc(npart, sizeof(cih_partition_t));
 	for (ix = 0; ix < npart; ++ix) {
@@ -95,6 +94,29 @@ cih_pkginit(void)
 		cp->cache = gsh_calloc(cache_sz, sizeof(struct avltree_node *));
 	}
 	initialized = true;
+}
+
+/**
+ * @brief Destroy the package.
+ */
+void
+cih_pkgdestroy(void)
+{
+	/* Index over partitions */
+	int ix = 0;
+
+	/* Destroy the partitions, warning if not empty */
+	for (ix = 0; ix < cih_fhcache.npart; ++ix) {
+		if (avltree_first(&cih_fhcache.partition[ix].t) != NULL)
+			LogMajor(COMPONENT_CACHE_INODE,
+				 "Cache inode AVL tree not empty");
+		pthread_rwlock_destroy(&cih_fhcache.partition[ix].lock);
+		gsh_free(cih_fhcache.partition[ix].cache);
+	}
+	/* Destroy the partition table */
+	gsh_free(cih_fhcache.partition);
+	cih_fhcache.partition = NULL;
+	initialized = false;
 }
 
 /** @} */

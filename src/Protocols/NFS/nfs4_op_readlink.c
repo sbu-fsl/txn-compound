@@ -37,7 +37,7 @@
 #include "cache_inode.h"
 #include "nfs_proto_functions.h"
 #include "nfs_proto_tools.h"
-#include "nfs_tools.h"
+#include "nfs_convert.h"
 #include "nfs_file_handle.h"
 #include "ganesha_types.h"
 
@@ -79,9 +79,7 @@ int nfs4_op_readlink(struct nfs_argop4 *op, compound_data_t *data,
 		return res_READLINK4->status;
 
 	/* Using cache_inode_readlink */
-	cache_status = cache_inode_readlink(data->current_entry,
-					    &link_buffer,
-					    data->req_ctx);
+	cache_status = cache_inode_readlink(data->current_entry, &link_buffer);
 
 	if (cache_status != CACHE_INODE_SUCCESS) {
 		res_READLINK4->status = nfs4_Errno(cache_status);
@@ -112,7 +110,7 @@ void nfs4_op_readlink_Free(nfs_resop4 *res)
 	READLINK4res *resp = &res->nfs_resop4_u.opreadlink;
 
 	if (resp->status == NFS4_OK
-	    && resp->READLINK4res_u.resok4.link.utf8string_len > 0)
+	    && resp->READLINK4res_u.resok4.link.utf8string_val)
 		gsh_free(resp->READLINK4res_u.resok4.link.utf8string_val);
 	return;
 }				/* nfs4_op_readlink_Free */

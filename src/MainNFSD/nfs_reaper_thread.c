@@ -51,14 +51,6 @@ static int reap_hash_table(hash_table_t *ht_reap)
 	nfs_client_id_t *pclientid;
 	nfs_client_record_t *precord;
 	int count = 0;
-	struct req_op_context req_ctx;
-	struct user_cred creds;
-
-	/* We need a real context.  Make all reaping done
-	 * by root,root
-	 */
-	memset(&creds, 0, sizeof(creds));
-	req_ctx.creds = &creds;
 
 	/* For each bucket of the requested hashtable */
 	for (i = 0; i < ht_reap->parameter.index_size; i++) {
@@ -101,12 +93,8 @@ static int reap_hash_table(hash_table_t *ht_reap)
 
 				/* Take cr_mutex and expire clientid */
 				pthread_mutex_lock(&precord->cr_mutex);
-/**
- * @TODO This is incomplete! the context has to be filled in from
- * somewhere
- */
-				memset(&req_ctx, 0, sizeof(req_ctx));
-				rc = nfs_client_id_expire(pclientid, &req_ctx);
+
+				rc = nfs_client_id_expire(pclientid);
 
 				pthread_mutex_unlock(&precord->cr_mutex);
 
@@ -151,7 +139,7 @@ static void reaper_run(struct fridgethr_context *ctx)
 	if (!rst->old_state_cleaned) {
 		/* if not in grace period, clean up the old state */
 		if (!rst->in_grace) {
-			nfs4_clean_old_recov_dir();
+			nfs4_clean_old_recov_dir(v4_old_dir);
 			rst->old_state_cleaned = true;
 		}
 	}
@@ -189,10 +177,7 @@ int reaper_init(void)
 	frp.thread_delay = reaper_delay;
 	frp.flavor = fridgethr_flavor_looper;
 
-	rc = fridgethr_init(&reaper_fridge,
-			    /* You may be a king or a little street sweeper
-			       but sooner or later you'll dance with */
-			    "The Reaper", &frp);
+	rc = fridgethr_init(&reaper_fridge, "reaper", &frp);
 	if (rc != 0) {
 		LogMajor(COMPONENT_CLIENTID,
 			 "Unable to initialize reaper fridge, error code %d.",

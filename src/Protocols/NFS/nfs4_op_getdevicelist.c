@@ -47,12 +47,12 @@
 #include "nfs_core.h"
 #include "cache_inode.h"
 #include "nfs_exports.h"
-#include "nfs_creds.h"
 #include "nfs_proto_tools.h"
 #include "nfs_proto_functions.h"
 #include "nfs_file_handle.h"
-#include "nfs_tools.h"
+#include "nfs_convert.h"
 #include "fsal_pnfs.h"
+#include "export_mgr.h"
 
 struct cb_data {
 	deviceid4 *buffer;
@@ -128,7 +128,7 @@ int nfs4_op_getdevicelist(struct nfs_argop4 *op, compound_data_t *data,
 
 	cb_opaque.count = 0;
 	cb_opaque.max = 32;
-	cb_opaque.swexport = nfs_htonl64(data->export->id);
+	cb_opaque.swexport = nfs_htonl64(op_ctx->export->export_id);
 
 	res_GETDEVICELIST4->GETDEVICELIST4res_u.gdlr_resok4.
 	     gdlr_deviceid_list.gdlr_deviceid_list_val =
@@ -144,8 +144,8 @@ int nfs4_op_getdevicelist(struct nfs_argop4 *op, compound_data_t *data,
 	    res_GETDEVICELIST4->GETDEVICELIST4res_u.gdlr_resok4.
 	    gdlr_deviceid_list.gdlr_deviceid_list_val;
 
-	nfs_status = data->export->export_hdl->ops->getdevicelist(
-					data->export->export_hdl,
+	nfs_status = op_ctx->fsal_export->ops->getdevicelist(
+					op_ctx->fsal_export,
 					arg_GETDEVICELIST4->gdla_layout_type,
 					&cb_opaque, cb,
 					&res);

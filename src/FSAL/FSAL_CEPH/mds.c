@@ -49,9 +49,6 @@ static bool initiate_recall(vinodeno_t vi, bool write, void *opaque)
 {
 	/* The private 'full' object handle */
 	struct handle *handle = (struct handle *)opaque;
-	/* The private 'full' export */
-	struct export *export =
-	    container_of(handle->handle.export, struct export, export);
 	/* Return code from upcall operation */
 	state_status_t status = STATE_SUCCESS;
 	struct gsh_buffdesc key = {
@@ -64,10 +61,8 @@ static bool initiate_recall(vinodeno_t vi, bool write, void *opaque)
 		.io_mode = (write ? LAYOUTIOMODE4_RW : LAYOUTIOMODE4_READ)
 	};
 
-	status =
-	    export->export.up_ops->layoutrecall(&export->export, &key,
-						LAYOUT4_NFSV4_1_FILES, false,
-						&segment, NULL, NULL);
+	status = handle->up_ops->layoutrecall(&key, LAYOUT4_NFSV4_1_FILES,
+					      false, &segment, NULL, NULL);
 
 	if (status != STATE_SUCCESS)
 		return false;
@@ -228,7 +223,7 @@ static nfsstat4 getdevicelist(struct fsal_export *export_pub, layouttype4 type,
  *                        after export reference is relinquished
  */
 
-static void fs_layouttypes(struct fsal_export *export_pub, size_t *count,
+static void fs_layouttypes(struct fsal_export *export_pub, int32_t *count,
 			   const layouttype4 **types)
 {
 	static const layouttype4 supported_layout_type = LAYOUT4_NFSV4_1_FILES;
@@ -239,7 +234,7 @@ static void fs_layouttypes(struct fsal_export *export_pub, size_t *count,
 /**
  * @brief Get layout block size for export
  *
- * This function just return the Ceph default.
+ * This function just returns the Ceph default.
  *
  * @param[in] export_pub Public export handle
  *
@@ -329,7 +324,7 @@ static nfsstat4 layoutget(struct fsal_obj_handle *obj_pub,
 {
 	/* The private 'full' export */
 	struct export *export =
-	    container_of(obj_pub->export, struct export, export);
+	    container_of(req_ctx->fsal_export, struct export, export);
 	/* The private 'full' object handle */
 	struct handle *handle = container_of(obj_pub, struct handle, handle);
 	/* Structure containing the storage parameters of the file within
@@ -342,7 +337,7 @@ static nfsstat4 layoutget(struct fsal_obj_handle *obj_pub,
 	/* The last byte that can be accessed through pNFS */
 	uint64_t last_possible_byte = 0;
 	/* The deviceid for this layout */
-	struct pnfs_deviceid deviceid = { 0, 0 };
+	struct pnfs_deviceid deviceid = DEVICE_ID_INIT_ZERO(FSAL_ID_CEPH);
 	/* NFS Status */
 	nfsstat4 nfs_status = 0;
 	/* DS wire handle */
@@ -423,7 +418,7 @@ static nfsstat4 layoutget(struct fsal_obj_handle *obj_pub,
 	/* If we have a cached capbility, use that.  Otherwise, call
 	   in to Ceph. */
 
-	pthread_mutex_lock(&handle->handle.lock);
+	PTHREAD_RWLOCK_wrlock(&handle->handle.lock);
 	if (res->segment.io_mode == LAYOUTIOMODE4_READ) {
 		uint32_t r = 0;
 		if (handle->rd_issued == 0) {
@@ -431,7 +426,7 @@ static nfsstat4 layoutget(struct fsal_obj_handle *obj_pub,
 					    false, initiate_recall, handle,
 					    &handle->rd_serial, NULL);
 			if (r < 0) {
-				pthread_mutex_unlock(&handle->handle.lock);
+				PTHREAD_RWLOCK_unlock(&handle->handle.lock);
 				return posix2nfs4_error(-r);
 			}
 		}
@@ -444,14 +439,14 @@ static nfsstat4 layoutget(struct fsal_obj_handle *obj_pub,
 					    &handle->rw_serial,
 					    &handle->rw_max_len);
 			if (r < 0) {
-				pthread_mutex_unlock(&handle->handle.lock);
+				PTHREAD_RWLOCK_unlock(&handle->handle.lock);
 				return posix2nfs4_error(-r);
 			}
 		}
 		forbidden_area.offset = handle->rw_max_len;
 		if (pnfs_segments_overlap
 		    (&smallest_acceptable, &forbidden_area)) {
-			pthread_mutex_unlock(&handle->handle.lock);
+			PTHREAD_RWLOCK_unlock(&handle->handle.lock);
 			return NFS4ERR_BADLAYOUT;
 		}
 #if CLIENTS_WILL_ACCEPT_SEGMENTED_LAYOUTS	/* sigh */
@@ -460,14 +455,13 @@ static nfsstat4 layoutget(struct fsal_obj_handle *obj_pub,
 #endif
 		++handle->rw_issued;
 	}
-	pthread_mutex_unlock(&handle->handle.lock);
+	PTHREAD_RWLOCK_unlock(&handle->handle.lock);
 
 	/* For now, just make the low quad of the deviceid be the
 	   inode number.  With the span of the layouts constrained
 	   above, this lets us generate the device address on the fly
 	   from the deviceid rather than storing it. */
 
-	deviceid.export_id = arg->export_id;
 	deviceid.devid = handle->wire.vi.ino.val;
 
 	/* We return exactly one filehandle, filling in the necessary
@@ -479,7 +473,7 @@ static nfsstat4 layoutget(struct fsal_obj_handle *obj_pub,
 	ds_wire.snapseq = ceph_ll_snap_seq(export->cmount, handle->wire.vi);
 
 	nfs_status = FSAL_encode_file_layout(loc_body, &deviceid, util, 0, 0,
-					     obj_pub->export->exp_entry->id, 1,
+					     req_ctx->export->export_id, 1,
 					     &ds_desc);
 	if (nfs_status != NFS4_OK) {
 		LogCrit(COMPONENT_PNFS,
@@ -500,15 +494,15 @@ static nfsstat4 layoutget(struct fsal_obj_handle *obj_pub,
 	/* If we failed in encoding the lo_content, relinquish what we
 	   reserved for it. */
 
-	pthread_mutex_lock(&handle->handle.lock);
+	PTHREAD_RWLOCK_wrlock(&handle->handle.lock);
 	if (res->segment.io_mode == LAYOUTIOMODE4_READ) {
 		if (--handle->rd_issued != 0) {
-			pthread_mutex_unlock(&handle->handle.lock);
+			PTHREAD_RWLOCK_unlock(&handle->handle.lock);
 			return nfs_status;
 		}
 	} else {
 		if (--handle->rd_issued != 0) {
-			pthread_mutex_unlock(&handle->handle.lock);
+			PTHREAD_RWLOCK_unlock(&handle->handle.lock);
 			return nfs_status;
 		}
 	}
@@ -518,7 +512,7 @@ static nfsstat4 layoutget(struct fsal_obj_handle *obj_pub,
 			  LAYOUTIOMODE4_READ ? handle->rd_serial : handle->
 			  rw_serial);
 
-	pthread_mutex_unlock(&handle->handle.lock);
+	PTHREAD_RWLOCK_unlock(&handle->handle.lock);
 
 	return nfs_status;
 }
@@ -543,7 +537,7 @@ static nfsstat4 layoutreturn(struct fsal_obj_handle *obj_pub,
 {
 	/* The private 'full' export */
 	struct export *export =
-	    container_of(obj_pub->export, struct export, export);
+	    container_of(req_ctx->fsal_export, struct export, export);
 	/* The private 'full' object handle */
 	struct handle *handle = container_of(obj_pub, struct handle, handle);
 
@@ -555,15 +549,15 @@ static nfsstat4 layoutreturn(struct fsal_obj_handle *obj_pub,
 	}
 
 	if (arg->dispose) {
-		pthread_mutex_lock(&handle->handle.lock);
+		PTHREAD_RWLOCK_wrlock(&handle->handle.lock);
 		if (arg->cur_segment.io_mode == LAYOUTIOMODE4_READ) {
 			if (--handle->rd_issued != 0) {
-				pthread_mutex_unlock(&handle->handle.lock);
+				PTHREAD_RWLOCK_unlock(&handle->handle.lock);
 				return NFS4_OK;
 			}
 		} else {
 			if (--handle->rd_issued != 0) {
-				pthread_mutex_unlock(&handle->handle.lock);
+				PTHREAD_RWLOCK_unlock(&handle->handle.lock);
 				return NFS4_OK;
 			}
 		}
@@ -573,7 +567,7 @@ static nfsstat4 layoutreturn(struct fsal_obj_handle *obj_pub,
 				  LAYOUTIOMODE4_READ ? handle->
 				  rd_serial : handle->rw_serial);
 
-		pthread_mutex_unlock(&handle->handle.lock);
+		PTHREAD_RWLOCK_unlock(&handle->handle.lock);
 	}
 
 	return NFS4_OK;
@@ -602,7 +596,7 @@ static nfsstat4 layoutcommit(struct fsal_obj_handle *obj_pub,
 {
 	/* The private 'full' export */
 	struct export *export =
-	    container_of(obj_pub->export, struct export, export);
+	    container_of(req_ctx->fsal_export, struct export, export);
 	/* The private 'full' object handle */
 	struct handle *handle = container_of(obj_pub, struct handle, handle);
 	/* Old stat, so we don't truncate file or reverse time */

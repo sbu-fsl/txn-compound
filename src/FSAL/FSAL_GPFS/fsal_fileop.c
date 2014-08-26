@@ -70,15 +70,16 @@
 fsal_status_t GPFSFSAL_open(struct fsal_obj_handle *obj_hdl,	/* IN */
 			    const struct req_op_context *p_context,	/* IN */
 			    fsal_openflags_t openflags,	/* IN */
-			    int *file_desc,	/* OUT */
-			    struct attrlist *p_file_attributes) /* IN/OUT */
+			    int *file_desc,	/* IN/OUT */
+			    struct attrlist *p_file_attributes, /* IN/OUT */
+			    bool reopen) /* IN */
 {
 
 	int rc;
 	fsal_status_t status;
 	int posix_flags = 0;
 	struct gpfs_fsal_obj_handle *myself;
-	int mntfd;
+	struct gpfs_filesystem *gpfs_fs;
 
 	/* sanity checks.
 	 * note : file_attributes is optional.
@@ -87,7 +88,7 @@ fsal_status_t GPFSFSAL_open(struct fsal_obj_handle *obj_hdl,	/* IN */
 		return fsalstat(ERR_FSAL_FAULT, 0);
 
 	myself = container_of(obj_hdl, struct gpfs_fsal_obj_handle, obj_handle);
-	mntfd = gpfs_get_root_fd(obj_hdl->export);
+	gpfs_fs = obj_hdl->fs->private;
 
 	/* convert fsal open flags to posix open flags */
 	rc = fsal2posix_openflags(openflags, &posix_flags);
@@ -98,9 +99,8 @@ fsal_status_t GPFSFSAL_open(struct fsal_obj_handle *obj_hdl,	/* IN */
 		return fsalstat(rc, 0);
 	}
 
-	status =
-	    fsal_internal_handle2fd(mntfd, myself->handle, file_desc,
-				    posix_flags);
+	status = fsal_internal_handle2fd(gpfs_fs->root_fd, myself->handle,
+					 file_desc, posix_flags, reopen);
 
 	if (FSAL_IS_ERROR(status)) {
 		*file_desc = 0;
@@ -111,9 +111,10 @@ fsal_status_t GPFSFSAL_open(struct fsal_obj_handle *obj_hdl,	/* IN */
 	if (p_file_attributes) {
 
 		p_file_attributes->mask = GPFS_SUPPORTED_ATTRIBUTES;
-		status =
-		    GPFSFSAL_getattrs(obj_hdl->export, p_context,
-				      myself->handle, p_file_attributes);
+		status = GPFSFSAL_getattrs(p_context->fsal_export,
+					   gpfs_fs,
+					   p_context, myself->handle,
+					   p_file_attributes);
 		if (FSAL_IS_ERROR(status)) {
 			*file_desc = 0;
 			close(*file_desc);
@@ -167,14 +168,18 @@ fsal_status_t GPFSFSAL_read(int fd,	/* IN */
 	rarg.bufP = buffer;
 	rarg.offset = offset;
 	rarg.length = buffer_size;
+	rarg.options = 0;
 
 	/* read operation */
 
 	nb_read = gpfs_ganesha(OPENHANDLE_READ_BY_FD, &rarg);
 	errsv = errno;
 
-	if (nb_read == -1)
+	if (nb_read == -1) {
+		if (errsv == EUNATCH)
+			LogFatal(COMPONENT_FSAL, "GPFS Returned EUNATCH");
 		return fsalstat(posix2fsal_error(errsv), errsv);
+	}
 	else if (nb_read == 0 || nb_read < buffer_size)
 		*p_end_of_file = TRUE;
 
@@ -213,6 +218,7 @@ fsal_status_t GPFSFSAL_write(int fd,	/* IN */
 	struct write_arg warg;
 	ssize_t nb_write;
 	int errsv = 0;
+	uint32_t stability_got;
 
 	/* sanity checks. */
 
@@ -225,7 +231,7 @@ fsal_status_t GPFSFSAL_write(int fd,	/* IN */
 	warg.offset = offset;
 	warg.length = buffer_size;
 	warg.stability_wanted = *fsal_stable;
-	warg.stability_got = (uint32_t *) fsal_stable;
+	warg.stability_got = &stability_got;
 	warg.options = 0;
 	/* read operation */
 
@@ -236,10 +242,78 @@ fsal_status_t GPFSFSAL_write(int fd,	/* IN */
 
 	fsal_restore_ganesha_credentials();
 
-	if (nb_write == -1)
+	if (nb_write == -1) {
+		if (errsv == EUNATCH)
+			LogFatal(COMPONENT_FSAL, "GPFS Returned EUNATCH");
 		return fsalstat(posix2fsal_error(errsv), errsv);
+	}
 
 	*p_write_amount = nb_write;
+	*fsal_stable = (stability_got) ? true : false;
+
+	return fsalstat(ERR_FSAL_NO_ERROR, 0);
+
+}
+
+/**
+ * FSAL_clear:
+ * Perform a write operation on an opened file.
+ *
+ * \param file_descriptor (input):
+ *        The file descriptor returned by FSAL_open.
+ * \param buffer_size (input):
+ *        Amount (in bytes) of data to be written.
+ * \param buffer (output):
+ *        Address where the data is in memory.
+ * \param write_amount (output):
+ *        Pointer to the amount of data (in bytes) that have been written
+ *        during this call.
+ *
+ * \return Major error codes:
+ *      - ERR_FSAL_NO_ERROR: no error.
+ *      - Another error code if an error occured during this call.
+ */
+fsal_status_t GPFSFSAL_clear(int fd,	/* IN */
+			     uint64_t offset,	/* IN */
+			     size_t buffer_size,	/* IN */
+			     caddr_t buffer,	/* IN */
+			     size_t *p_write_amount,	/* OUT */
+			     bool *fsal_stable,	/* IN/OUT */
+			     const struct req_op_context *p_context,
+			     bool allocate)
+{
+	struct write_arg warg;
+	ssize_t nb_write;
+	int errsv = 0;
+
+	warg.mountdirfd = fd;
+	warg.fd = fd;
+	warg.bufP = buffer;
+	warg.offset = offset;
+	warg.length = buffer_size;
+	warg.stability_wanted = *fsal_stable;
+	warg.stability_got = (uint32_t *) fsal_stable;
+	if (allocate)
+		warg.options = IO_ALLOCATE;
+	else
+		warg.options = 0;
+
+	/* read operation */
+
+	fsal_set_credentials(p_context->creds);
+
+	nb_write = gpfs_ganesha(OPENHANDLE_CLEAR_BY_FD, &warg);
+	errsv = errno;
+
+	fsal_restore_ganesha_credentials();
+
+	if (nb_write == -1) {
+		if (errsv == EUNATCH)
+			LogFatal(COMPONENT_FSAL, "GPFS Returned EUNATCH");
+		return fsalstat(posix2fsal_error(errsv), errsv);
+	}
+
+	*p_write_amount = buffer_size;
 
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 

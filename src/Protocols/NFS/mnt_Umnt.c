@@ -41,15 +41,14 @@
  *
  * @param[in]  arg
  * @param[in]  export
- * @param[in]  req_ctx
  * @param[in]  worker
  * @param[in]  req
  * @param[out] res
  *
  */
 
-int mnt_Umnt(nfs_arg_t *arg, exportlist_t *export,
-	     struct req_op_context *req_ctx, nfs_worker_data_t *worker,
+int mnt_Umnt(nfs_arg_t *arg,
+	     nfs_worker_data_t *worker,
 	     struct svc_req *req, nfs_res_t *res)
 {
 	LogDebug(COMPONENT_NFSPROTO,

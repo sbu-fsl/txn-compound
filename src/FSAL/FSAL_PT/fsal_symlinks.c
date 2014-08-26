@@ -1,12 +1,14 @@
-// ----------------------------------------------------------------------------
-// Copyright IBM Corp. 2012, 2012
-// All Rights Reserved
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// Filename:    fsal_symlinks.c
-// Description: FSAL symlink operations implementation
-// Author:      FSI IPC dev team
-// ----------------------------------------------------------------------------
+/*
+ * ----------------------------------------------------------------------------
+ * Copyright IBM Corp. 2012, 2012
+ * All Rights Reserved
+ * ----------------------------------------------------------------------------
+ * ----------------------------------------------------------------------------
+ * Filename:    fsal_symlinks.c
+ * Description: FSAL symlink operations implementation
+ * Author:      FSI IPC dev team
+ * ----------------------------------------------------------------------------
+ */
 
 /*
  * vim:noexpandtab:shiftwidth=8:tabstop=8:
@@ -28,18 +30,9 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
  *
  * -------------
- */
-
-/**
- * \file    fsal_symlinks.c
- * \author  $Author: leibovic $
- * \date    $Date: 2005/07/29 09:39:04 $
- * \version $Revision: 1.15 $
- * \brief   symlinks operations.
- *
  */
 
 #ifdef HAVE_CONFIG_H
@@ -82,15 +75,13 @@
 fsal_status_t PTFSAL_readlink(struct fsal_obj_handle *dir_hdl,	/* IN */
 			      const struct req_op_context *p_context,	/* IN */
 			      char *p_link_content,	/* OUT */
-			      size_t * link_len,	/* IN/OUT */
+			      size_t *link_len,	/* IN/OUT */
 			      struct attrlist *p_link_attributes)
 {				/* IN/OUT */
 
-	int errsv;
 	fsal_status_t status;
 	struct pt_fsal_obj_handle *pt_hdl;
 	char link_content_out[PATH_MAX];
-	int mount_fd;
 
 	/* sanity checks.
 	 * note : link_attributes is optional.
@@ -99,15 +90,12 @@ fsal_status_t PTFSAL_readlink(struct fsal_obj_handle *dir_hdl,	/* IN */
 		return fsalstat(ERR_FSAL_FAULT, 0);
 
 	pt_hdl = container_of(dir_hdl, struct pt_fsal_obj_handle, obj_handle);
-	mount_fd = pt_get_root_fd(dir_hdl->export);
 
 	memset(link_content_out, 0, sizeof(link_content_out));
 
 	/* Read the link on the filesystem */
-	fsal_readlink_by_handle(p_context, dir_hdl->export, pt_hdl->handle,
-				p_link_content, *link_len);
-
-	errsv = errno;
+	status = fsal_readlink_by_handle(p_context, p_context->fsal_export,
+				pt_hdl->handle, p_link_content, *link_len);
 
 	if (FSAL_IS_ERROR(status))
 		return status;
@@ -116,9 +104,8 @@ fsal_status_t PTFSAL_readlink(struct fsal_obj_handle *dir_hdl,	/* IN */
 
 	if (p_link_attributes) {
 
-		status =
-		    PTFSAL_getattrs(dir_hdl->export, p_context, pt_hdl->handle,
-				    p_link_attributes);
+		status = PTFSAL_getattrs(p_context->fsal_export, p_context,
+					 pt_hdl->handle, p_link_attributes);
 
 		/* On error, we set a flag in the returned attributes */
 

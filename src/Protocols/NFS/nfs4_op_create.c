@@ -46,8 +46,9 @@
 #include "nfs_creds.h"
 #include "nfs_proto_functions.h"
 #include "nfs_proto_tools.h"
-#include "nfs_tools.h"
+#include "nfs_convert.h"
 #include "nfs_file_handle.h"
+#include "export_mgr.h"
 
 /**
  * @brief NFS4_OP_CREATE, creates a non-regular entry
@@ -93,12 +94,11 @@ int nfs4_op_create(struct nfs_argop4 *op, compound_data_t *data,
 
 	/* if quota support is active, then we should check is the FSAL allows
 	 * inode creation or not */
-	exp_hdl = data->export->export_hdl;
+	exp_hdl = op_ctx->fsal_export;
 
 	fsal_status = exp_hdl->ops->check_quota(exp_hdl,
-						data->export->fullpath,
-						FSAL_QUOTA_INODES,
-						data->req_ctx);
+						op_ctx->export->fullpath,
+						FSAL_QUOTA_INODES);
 
 	if (FSAL_IS_ERROR(fsal_status)) {
 		res_CREATE4->status = NFS4ERR_DQUOT;
@@ -151,7 +151,7 @@ int nfs4_op_create(struct nfs_argop4 *op, compound_data_t *data,
 	}
 
 	res_CREATE4->CREATE4res_u.resok4.cinfo.before =
-	    cache_inode_get_changeid4(entry_parent, data->req_ctx);
+	    cache_inode_get_changeid4(entry_parent);
 
 	/* Convert the incoming fattr4 to a vattr structure,
 	 * if such arguments are supplied
@@ -191,7 +191,7 @@ int nfs4_op_create(struct nfs_argop4 *op, compound_data_t *data,
 						  SYMBOLIC_LINK,
 						  mode,
 						  &create_arg,
-						  data->req_ctx, &entry_new);
+						  &entry_new);
 
 		if (entry_new == NULL) {
 			res_CREATE4->status = nfs4_Errno(cache_status);
@@ -217,7 +217,6 @@ int nfs4_op_create(struct nfs_argop4 *op, compound_data_t *data,
 						  DIRECTORY,
 						  mode,
 						  NULL,
-						  data->req_ctx,
 						  &entry_new);
 
 		if (entry_new == NULL) {
@@ -243,7 +242,6 @@ int nfs4_op_create(struct nfs_argop4 *op, compound_data_t *data,
 						  SOCKET_FILE,
 						  mode,
 						  NULL,
-						  data->req_ctx,
 						  &entry_new);
 
 		if (entry_new == NULL) {
@@ -269,7 +267,6 @@ int nfs4_op_create(struct nfs_argop4 *op, compound_data_t *data,
 						  FIFO_FILE,
 						  mode,
 						  NULL,
-						  data->req_ctx,
 						  &entry_new);
 
 		if (entry_new == NULL) {
@@ -300,7 +297,6 @@ int nfs4_op_create(struct nfs_argop4 *op, compound_data_t *data,
 						  CHARACTER_FILE,
 						  mode,
 						  &create_arg,
-						  data->req_ctx,
 						  &entry_new);
 
 		if (entry_new == NULL) {
@@ -331,7 +327,6 @@ int nfs4_op_create(struct nfs_argop4 *op, compound_data_t *data,
 						  BLOCK_FILE,
 						  mode,
 						  &create_arg,
-						  data->req_ctx,
 						  &entry_new);
 
 		if (entry_new == NULL) {
@@ -365,7 +360,9 @@ int nfs4_op_create(struct nfs_argop4 *op, compound_data_t *data,
 	}
 
 	/* Building the new file handle */
-	if (!nfs4_FSALToFhandle(&newfh4, entry_new->obj_handle)) {
+	if (!nfs4_FSALToFhandle(&newfh4,
+				entry_new->obj_handle,
+				op_ctx->export)) {
 		res_CREATE4->status = NFS4ERR_SERVERFAULT;
 		cache_inode_put(entry_new);
 		goto out;
@@ -394,8 +391,7 @@ int nfs4_op_create(struct nfs_argop4 *op, compound_data_t *data,
 		/* If owner or owner_group are set, and the credential was
 		 * squashed, then we must squash the set owner and owner_group.
 		 */
-		squash_setattr(&data->export_perms, data->req_ctx->creds,
-			       &sattr);
+		squash_setattr(&sattr);
 
 		/* Skip setting attributes if all asked attributes
 		 * are handled by create
@@ -403,13 +399,12 @@ int nfs4_op_create(struct nfs_argop4 *op, compound_data_t *data,
 		if ((sattr.mask &
 		     (ATTR_ACL | ATTR_ATIME | ATTR_MTIME | ATTR_CTIME))
 		    || ((sattr.mask & ATTR_OWNER)
-			&& (data->req_ctx->creds->caller_uid != sattr.owner))
+			&& (op_ctx->creds->caller_uid != sattr.owner))
 		    || ((sattr.mask & ATTR_GROUP)
-			&& (data->req_ctx->creds->caller_gid != sattr.group))) {
+			&& (op_ctx->creds->caller_gid != sattr.group))) {
 			cache_status = cache_inode_setattr(entry_new,
 							   &sattr,
-							   false,
-							   data->req_ctx);
+							   false);
 
 			if (cache_status != CACHE_INODE_SUCCESS) {
 				res_CREATE4->status = nfs4_Errno(cache_status);
@@ -428,7 +423,7 @@ int nfs4_op_create(struct nfs_argop4 *op, compound_data_t *data,
 	       sizeof(changeid4));
 
 	res_CREATE4->CREATE4res_u.resok4.cinfo.after =
-	    cache_inode_get_changeid4(entry_parent, data->req_ctx);
+	    cache_inode_get_changeid4(entry_parent);
 
 	/* Operation is supposed to be atomic .... */
 	res_CREATE4->CREATE4res_u.resok4.cinfo.atomic = FALSE;
@@ -443,16 +438,7 @@ int nfs4_op_create(struct nfs_argop4 *op, compound_data_t *data,
 	/* @todo : BUGAZOMEU: fair ele free dans cette fonction */
 
 	/* Keep the vnode entry for the file in the compound data */
-
-	if (data->current_entry)
-		cache_inode_put(data->current_entry);
-
-	if (data->current_ds)
-		data->current_ds->ops->put(data->current_ds);
-
-	data->current_ds = NULL;
-	data->current_entry = entry_new;
-	data->current_filetype = entry_new->type;
+	set_current_entry(data, entry_new, true);
 
 	/* If you reach this point, then no error occured */
 	res_CREATE4->status = NFS4_OK;

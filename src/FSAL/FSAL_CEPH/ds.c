@@ -64,7 +64,7 @@ static inline void local_invalidate(struct ds *ds, struct fsal_export *export)
 		.addr = &ds->wire.wire.vi,
 		.len = sizeof(ds->wire.wire.vi)
 	};
-	up_async_invalidate(general_fridge, export, &key,
+	up_async_invalidate(general_fridge, export->up_ops, export->fsal, &key,
 			    CACHE_INODE_INVALIDATE_ATTRS, NULL, NULL);
 	return;
 }
@@ -77,15 +77,12 @@ static inline void local_invalidate(struct ds *ds, struct fsal_export *export)
  * @return NFS Status codes.
  */
 
-static nfsstat4 release(struct fsal_ds_handle *const ds_pub)
+static void release(struct fsal_ds_handle *const ds_pub)
 {
 	/* The private 'full' DS handle */
 	struct ds *ds = container_of(ds_pub, struct ds, ds);
-	if (fsal_ds_handle_uninit(&ds->ds))
-		return EINVAL;
-
+	fsal_ds_handle_uninit(&ds->ds);
 	gsh_free(ds);
-	return 0;
 }
 
 /**
@@ -117,7 +114,7 @@ static nfsstat4 ds_read(struct fsal_ds_handle *const ds_pub,
 {
 	/* The private 'full' export */
 	struct export *export =
-	    container_of(ds_pub->export, struct export, export);
+	    container_of(req_ctx->fsal_export, struct export, export);
 	/* The private 'full' DS handle */
 	struct ds *ds = container_of(ds_pub, struct ds, ds);
 	/* The OSD number for this machine */
@@ -203,7 +200,7 @@ static nfsstat4 ds_write(struct fsal_ds_handle *const ds_pub,
 {
 	/* The private 'full' export */
 	struct export *export =
-	    container_of(ds_pub->export, struct export, export);
+	    container_of(req_ctx->fsal_export, struct export, export);
 	/* The private 'full' DS handle */
 	struct ds *ds = container_of(ds_pub, struct ds, ds);
 	/* The OSD number for this host */
@@ -352,7 +349,7 @@ static nfsstat4 ds_commit(struct fsal_ds_handle *const ds_pub,
 #ifdef COMMIT_FIX
 	/* The private 'full' export */
 	struct export *export =
-	    container_of(ds_pub->export, struct export, export);
+	    container_of(req_ctx->fsal_export, struct export, export);
 	/* The private 'full' DS handle */
 	struct ds *ds = container_of(ds_pub, struct ds, ds);
 	/* Error return from Ceph */

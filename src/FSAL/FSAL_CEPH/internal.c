@@ -41,9 +41,6 @@
 #define CEPH_INTERNAL_C
 #include "internal.h"
 
-#define MAX_2(x, y)				\
-	((x) > (y) ? (x) : (y))
-
 /**
  * The attributes tis FSAL can interpret or supply.
  */
@@ -243,7 +240,7 @@ void ceph2fsal_attributes(const struct stat *buffstat,
 	FSAL_SET_MASK(fsalattr->mask, ATTR_MTIME);
 
 	fsalattr->chgtime =
-	    posix2fsal_time(MAX_2(buffstat->st_mtime, buffstat->st_ctime), 0);
+	    posix2fsal_time(MAX(buffstat->st_mtime, buffstat->st_ctime), 0);
 	fsalattr->change = fsalattr->chgtime.tv_sec;
 	FSAL_SET_MASK(fsalattr->mask, ATTR_CHGTIME);
 
@@ -273,8 +270,6 @@ int construct_handle(const struct stat *st, struct Inode *i,
 {
 	/* Poitner to the handle under construction */
 	struct handle *constructing = NULL;
-	/* Return code */
-	int rc = 0;
 
 	assert(i);
 	*obj = NULL;
@@ -286,22 +281,14 @@ int construct_handle(const struct stat *st, struct Inode *i,
 	constructing->vi.ino.val = st->st_ino;
 	constructing->vi.snapid.val = st->st_dev;
 	constructing->i = i;
-
-	if (rc < 0) {
-		gsh_free(constructing);
-		return rc;
-	}
+	constructing->up_ops = export->export.up_ops;
 
 	ceph2fsal_attributes(st, &constructing->handle.attributes);
 
-	rc = -(fsal_obj_handle_init
-	       (&constructing->handle, &export->export,
-		constructing->handle.attributes.type));
+	fsal_obj_handle_init(&constructing->handle, &export->export,
+			     constructing->handle.attributes.type);
 
-	if (rc < 0) {
-		gsh_free(constructing);
-		return rc;
-	}
+	constructing->export = export;
 
 	*obj = constructing;
 
@@ -312,22 +299,11 @@ int construct_handle(const struct stat *st, struct Inode *i,
  * @brief Release all resrouces for a handle
  *
  * @param[in] obj Handle to release
- *
- * @retval 0 on success.
- * @retval Not quite zero on not quite success.
  */
 
-int deconstruct_handle(struct handle *obj)
+void deconstruct_handle(struct handle *obj)
 {
-	struct export *export =
-	    container_of(obj->handle.export, struct export, export);
-	int retval;
-
-	ceph_ll_put(export->cmount, obj->i);
-	retval = fsal_obj_handle_uninit(&obj->handle);
-	if (retval != 0)
-		return -retval;
-
+	ceph_ll_put(obj->export->cmount, obj->i);
+	fsal_obj_handle_uninit(&obj->handle);
 	gsh_free(obj);
-	return 0;
 }

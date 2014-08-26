@@ -39,15 +39,14 @@
  *
  * @param[in]  parg     Ignored
  * @param[in]  pexport  Ignored
- * @param[in]  req_ctx  Ignored
  * @param[in]  pworker  Ignored
  * @param[in]  preq     Ignored
  * @param[out] pres     Ignored
  *
  */
 
-int nlm_Null(nfs_arg_t *arg, exportlist_t *export,
-	     struct req_op_context *req_ctx, nfs_worker_data_t *worker,
+int nlm_Null(nfs_arg_t *arg,
+	     nfs_worker_data_t *worker,
 	     struct svc_req *req, nfs_res_t *res)
 {
 	LogDebug(COMPONENT_NLM, "REQUEST PROCESSING: Calling nlm_Null");

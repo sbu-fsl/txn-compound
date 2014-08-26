@@ -34,10 +34,10 @@
 #include "log.h"
 #include "nfs4.h"
 #include "nfs_core.h"
-#include "nfs_exports.h"
 #include "nfs_rpc_callback.h"
 #include "nfs_proto_functions.h"
 #include "sal_functions.h"
+#include "nfs_creds.h"
 
 /**
  *
@@ -390,7 +390,7 @@ int nfs4_op_create_session(struct nfs_argop4 *op, compound_data_t *data,
 		}
 
 		/* Expire clientid and release our reference. */
-		nfs_client_id_expire(conf, data->req_ctx);
+		nfs_client_id_expire(conf);
 		dec_client_id_ref(conf);
 		conf = NULL;
 	}

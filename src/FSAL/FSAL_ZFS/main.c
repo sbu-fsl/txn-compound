@@ -36,7 +36,7 @@
 #include <pthread.h>
 #include <string.h>
 #include <sys/types.h>
-#include "nlm_list.h"
+#include "ganesha_list.h"
 #include "fsal_internal.h"
 #include "FSAL/fsal_init.h"
 
@@ -46,43 +46,58 @@
 struct zfs_fsal_module {
 	struct fsal_module fsal;
 	struct fsal_staticfsinfo_t fs_info;
-	fsal_init_info_t fsal_info;
-	/* vfsfs_specific_initinfo_t specific_info;  placeholder */
 };
 
 const char myname[] = "ZFS";
+
 /* filesystem info for your filesystem */
 static struct fsal_staticfsinfo_t default_zfs_info = {
-	0xFFFFFFFFFFFFFFFFLL,	/* max file size (64bits) */
-	1024,			/* max links for an object of your filesystem */
-	MAXNAMLEN,		/* max filename */
-	MAXPATHLEN,		/* min filename */
-	true,			/* no_trunc */
-	true,			/* chown restricted */
-	false,			/* case insensitivity */
-	true,			/* case preserving */
-	true,			/* hard link support */
-	true,			/* sym link support */
-	false,			/* lock support */
-	false,			/* lock owners */
-	false,			/* async blocking locks */
-	true,			/* named attributes */
-	true,			/* handles are unique and persistent */
-	{10, 0},		/* Duration of lease at FS in seconds */
-	FSAL_ACLSUPPORT_ALLOW,	/* ACL support */
-	true,			/* can change times */
-	true,			/* homogenous */
-	ZFS_SUPPORTED_ATTRIBUTES,	/* supported attributes */
-	0,			/* maxread size */
-	0,			/* maxwrite size */
-	0,			/* default umask */
-	0,			/* don't allow cross fileset export path */
-	0400,			/* default access rights for xattrs:
-				 * root=RW, owner=R */
-	0,			/* default access check support in FSAL */
-	0,			/* default share reservation support in FSAL */
-	0			/* default share reservation support with
-				 * open owners in FSAL */
+	.maxfilesize = UINT64_MAX,		/* Max fiule size */
+	.maxlink = 1024,	/* max links for an object of your filesystem */
+	.maxnamelen = MAXNAMLEN,		/* max filename */
+	.maxpathlen = MAXPATHLEN,		/* min filename */
+	.no_trunc = true,			/* no_trunc */
+	.chown_restricted = true,		/* chown restricted */
+	.case_insensitive = false,		/* case insensitivity */
+	.case_preserving = true,		/* case preserving */
+	.lock_support = false,	/* lock support */
+	.lock_support_owner = false,		/* lock owners */
+	.lock_support_async_block = false,	/* async blocking locks */
+	.named_attr = true,			/* named attributes */
+	.unique_handles = true,		/* handles are unique and persistent */
+	.lease_time = {10, 0},	/* Duration of lease at FS in seconds */
+	.acl_support = FSAL_ACLSUPPORT_ALLOW,	/* ACL support */
+	.homogenous = true,			/* homogenous */
+	.supported_attrs = ZFS_SUPPORTED_ATTRIBUTES, /* supported attributes */
+};
+
+static struct config_item zfs_params[] = {
+	CONF_ITEM_BOOL("link_support", true,
+		       fsal_staticfsinfo_t, link_support),
+	CONF_ITEM_BOOL("symlink_support", true,
+		       fsal_staticfsinfo_t, symlink_support),
+	CONF_ITEM_BOOL("cansettime", true,
+		       fsal_staticfsinfo_t, cansettime),
+	CONF_ITEM_UI32("maxread", 512, FSAL_MAXIOSIZE, FSAL_MAXIOSIZE,
+		       fsal_staticfsinfo_t, maxread),
+	CONF_ITEM_UI32("maxwrite", 512, FSAL_MAXIOSIZE, FSAL_MAXIOSIZE,
+		       fsal_staticfsinfo_t, maxwrite),
+	CONF_ITEM_MODE("umask", 0, 0777, 0,
+		       fsal_staticfsinfo_t, umask),
+	CONF_ITEM_BOOL("auth_xdev_export", false,
+		       fsal_staticfsinfo_t, auth_exportpath_xdev),
+	CONF_ITEM_MODE("xattr_access_rights", 0, 0777, 0400,
+		       fsal_staticfsinfo_t, xattr_access_rights),
+	CONFIG_EOL
+};
+
+struct config_block zfs_param = {
+	.dbus_interface_name = "org.ganesha.nfsd.config.fsal.zfs",
+	.blk_desc.name = "ZFS",
+	.blk_desc.type = CONFIG_BLOCK,
+	.blk_desc.u.blk.init = noop_conf_init,
+	.blk_desc.u.blk.params = zfs_params,
+	.blk_desc.u.blk.commit = noop_conf_commit
 };
 
 /* private helper for export object
@@ -108,21 +123,16 @@ static fsal_status_t init_config(struct fsal_module *fsal_hdl,
 {
 	struct zfs_fsal_module *zfs_me =
 	    container_of(fsal_hdl, struct zfs_fsal_module, fsal);
-	fsal_status_t fsal_status;
+	struct config_error_type err_type;
 
-	zfs_me->fs_info = default_zfs_info;	/* get a copy of the defaults */
-
-	fsal_status =
-	    fsal_load_config(fsal_hdl->ops->get_name(fsal_hdl), config_struct,
-			     &zfs_me->fsal_info, &zfs_me->fs_info, NULL);
-
-	if (FSAL_IS_ERROR(fsal_status))
-		return fsal_status;
-	/* if we have fsal specific params, do them here
-	 * fsal_hdl->name is used to find the block containing the
-	 * params.
-	 */
-
+	zfs_me->fs_info = default_zfs_info;	/* copy the consts */
+	(void) load_config_from_parse(config_struct,
+				      &zfs_param,
+				      &zfs_me->fs_info,
+				      true,
+				      &err_type);
+	if (!config_error_is_harmless(&err_type))
+		return fsalstat(ERR_FSAL_INVAL, 0);
 	display_fsinfo(&zfs_me->fs_info);
 	LogFullDebug(COMPONENT_FSAL,
 		     "Supported attributes constant = 0x%" PRIx64,
@@ -140,11 +150,8 @@ static fsal_status_t init_config(struct fsal_module *fsal_hdl,
  */
 
 fsal_status_t zfs_create_export(struct fsal_module *fsal_hdl,
-				const char *export_path, const char *fs_options,
-				struct exportlist *exp_entry,
-				struct fsal_module *next_fsal,
-				const struct fsal_up_vector *up_ops,
-				struct fsal_export **export);
+				void *parse_node,
+				const struct fsal_up_vector *up_ops);
 
 /* Module initialization.
  * Called by dlopen() to register the module
@@ -163,7 +170,8 @@ MODULE_INIT void zfs_load(void)
 
 	retval = register_fsal(myself, myname,
 			       FSAL_MAJOR_VERSION,
-			       FSAL_MINOR_VERSION);
+			       FSAL_MINOR_VERSION,
+			       FSAL_ID_NO_PNFS);
 	if (retval != 0) {
 		fprintf(stderr, "ZFS module failed to register");
 		return;
@@ -171,7 +179,6 @@ MODULE_INIT void zfs_load(void)
 
 	myself->ops->create_export = zfs_create_export;
 	myself->ops->init_config = init_config;
-	init_fsal_parameters(&ZFS.fsal_info);
 }
 
 MODULE_FINI void zfs_unload(void)

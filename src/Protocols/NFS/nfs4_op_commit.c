@@ -45,10 +45,9 @@
 #include "nfs_core.h"
 #include "cache_inode.h"
 #include "nfs_exports.h"
-#include "nfs_creds.h"
 #include "nfs_proto_functions.h"
 #include "nfs_proto_tools.h"
-#include "nfs_tools.h"
+#include "nfs_convert.h"
 #include "nfs_file_handle.h"
 #include "fsal_pnfs.h"
 
@@ -84,6 +83,9 @@ int nfs4_op_commit(struct nfs_argop4 *op, compound_data_t *data,
 		     arg_COMMIT4->offset,
 		     arg_COMMIT4->count);
 
+	if ((nfs4_Is_Fh_DSHandle(&data->currentFH)))
+		return op_dscommit(op, data, resp);
+
 	/*
 	 * Do basic checks on a filehandle Commit is done only on a file
 	 */
@@ -92,17 +94,9 @@ int nfs4_op_commit(struct nfs_argop4 *op, compound_data_t *data,
 	if (res_COMMIT4->status != NFS4_OK)
 		return res_COMMIT4->status;
 
-	if ((nfs4_Is_Fh_DSHandle(&data->currentFH)))
-		return op_dscommit(op, data, resp);
-
-	/** @todo:  FIX ME!! At the moment we just assume the user is _not_
-	  * using the ganesha unsafe buffer. In the future, a check based on
-	  * export config params (similar to nfs3_Commit.c) should be made.
-	  */
 	cache_status = cache_inode_commit(data->current_entry,
 					  arg_COMMIT4->offset,
-					  arg_COMMIT4->count,
-					  data->req_ctx);
+					  arg_COMMIT4->count);
 
 	if (cache_status != CACHE_INODE_SUCCESS) {
 		res_COMMIT4->status = nfs4_Errno(cache_status);
@@ -112,7 +106,7 @@ int nfs4_op_commit(struct nfs_argop4 *op, compound_data_t *data,
 	verf_desc.addr = &res_COMMIT4->COMMIT4res_u.resok4.writeverf;
 	verf_desc.len = sizeof(verifier4);
 
-	data->export->export_hdl->ops->get_write_verifier(&verf_desc);
+	op_ctx->fsal_export->ops->get_write_verifier(&verf_desc);
 
 	LogFullDebug(COMPONENT_NFS_V4,
 		     "Commit verifier %d-%d",
@@ -164,7 +158,7 @@ static int op_dscommit(struct nfs_argop4 *op, compound_data_t *data,
 
 	/* Call the commit operation */
 	nfs_status =
-	    data->current_ds->ops->commit(data->current_ds, data->req_ctx,
+	    data->current_ds->ops->commit(data->current_ds, op_ctx,
 					  arg_COMMIT4->offset,
 					  arg_COMMIT4->count,
 					  &res_COMMIT4->COMMIT4res_u.resok4.

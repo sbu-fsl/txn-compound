@@ -30,27 +30,79 @@
  */
 
 #include "config.h"
-#include <stdio.h>
-#include <sys/types.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <string.h>
-#include <pthread.h>
-#include <fcntl.h>
-#include <pwd.h>
-#include <grp.h>
 #include "log.h"
-#include "ganesha_rpc.h"
 #include "nfs_core.h"
 #include "nfs23.h"
 #include "nfs4.h"
 #include "fsal.h"
-#include "nfs_tools.h"
 #include "nfs_exports.h"
 #include "nfs_file_handle.h"
 #include "nfs_proto_tools.h"
+#include "nfs_convert.h"
 #include "export_mgr.h"
+#include "fsal_convert.h"
+
+/**
+ *
+ * @brief Allocates a buffer to be used for storing a NFSv4 filehandle.
+ *
+ * Allocates a buffer to be used for storing a NFSv3 filehandle.
+ *
+ * @param fh [INOUT] the filehandle to manage.
+ *
+ * @return NFS3_OK if successful, NFS3ERR_SERVERFAULT, otherwise.
+ *
+ */
+int nfs3_AllocateFH(nfs_fh3 *fh)
+{
+	/* Allocating the filehandle in memory */
+	fh->data.data_len = sizeof(struct alloc_file_handle_v3);
+
+	fh->data.data_val = gsh_malloc(fh->data.data_len);
+
+	if (fh->data.data_val == NULL) {
+		LogCrit(COMPONENT_NFSPROTO,
+			"Could not allocate space for filehandle");
+		return NFS3ERR_SERVERFAULT;
+	}
+
+	memset((char *)fh->data.data_val, 0, fh->data.data_len);
+
+	return NFS3_OK;
+}				/* nfs4_AllocateFH */
+
+/**
+ *
+ * @brief Allocates a buffer to be used for storing a NFSv4 filehandle.
+ *
+ * Allocates a buffer to be used for storing a NFSv4 filehandle.
+ *
+ * @param fh [INOUT] the filehandle to manage.
+ *
+ * @return NFS4_OK if successful, NFS3ERR_SERVERFAULT, NFS4ERR_RESOURCE or
+ *                 NFS4ERR_STALE  otherwise.
+ *
+ */
+int nfs4_AllocateFH(nfs_fh4 *fh)
+{
+	/* Allocating the filehandle in memory */
+	fh->nfs_fh4_len = sizeof(struct alloc_file_handle_v4);
+
+	fh->nfs_fh4_val = gsh_malloc(fh->nfs_fh4_len);
+
+	if (fh->nfs_fh4_val == NULL) {
+		LogCrit(COMPONENT_NFS_V4,
+			"Could not allocate memory for filehandle");
+		return NFS4ERR_RESOURCE;
+	}
+
+	memset(fh->nfs_fh4_val, 0, fh->nfs_fh4_len);
+
+	LogFullDebugOpaque(COMPONENT_FILEHANDLE, "NFS4 Handle %s", LEN_FH_STR,
+			   fh->nfs_fh4_val, fh->nfs_fh4_len);
+
+	return NFS4_OK;
+}
 
 /**
  *
@@ -59,7 +111,6 @@
  * Validates and Converts a V3 file handle and then gets the cache entry.
  *
  * @param fh3 [IN] pointer to the file handle to be converted
- * @param req_ctx [IN] request context
  * @param exp_list [IN] export fsal to use
  * @param status [OUT] protocol status
  * @param rc [OUT] operation status
@@ -68,13 +119,11 @@
  *
  */
 cache_entry_t *nfs3_FhandleToCache(nfs_fh3 *fh3,
-				   const struct req_op_context *req_ctx,
-				   exportlist_t *exp_list, nfsstat3 *status,
+				   nfsstat3 *status,
 				   int *rc)
 {
 	fsal_status_t fsal_status;
 	file_handle_v3_t *v3_handle;
-	struct gsh_export *exp = NULL;
 	struct fsal_export *export;
 	cache_entry_t *entry = NULL;
 	cache_inode_fsal_data_t fsal_data;
@@ -92,16 +141,9 @@ cache_entry_t *nfs3_FhandleToCache(nfs_fh3 *fh3,
 	/* Cast the fh as a non opaque structure */
 	v3_handle = (file_handle_v3_t *) (fh3->data.data_val);
 
-	if (v3_handle->exportid == req_ctx->export->export.id) {
-		export = req_ctx->export->export.export_hdl;
-	} else {
-		exp = get_gsh_export(v3_handle->exportid, true);
-		if (exp == NULL) {
-			*status = NFS3ERR_STALE;
-			goto badhdl;
-		}
-		export = exp->export.export_hdl;
-	}
+	assert(v3_handle->exportid == op_ctx->export->export_id);
+
+	export = op_ctx->fsal_export;
 
 	/* Give the export a crack at it */
 	fsal_data.export = export;
@@ -112,13 +154,11 @@ cache_entry_t *nfs3_FhandleToCache(nfs_fh3 *fh3,
 	fsal_status =
 	    export->ops->extract_handle(export, FSAL_DIGEST_NFSV3,
 					&fsal_data.fh_desc);
-	if (exp != NULL)
-		put_gsh_export(exp);
 
 	if (FSAL_IS_ERROR(fsal_status))
 		cache_status = cache_inode_error_convert(fsal_status);
 	else
-		cache_status = cache_inode_get(&fsal_data, req_ctx, &entry);
+		cache_status = cache_inode_get(&fsal_data, &entry);
 
 	if (cache_status != CACHE_INODE_SUCCESS) {
 		*status = nfs3_Errno(cache_status);
@@ -139,7 +179,8 @@ cache_entry_t *nfs3_FhandleToCache(nfs_fh3 *fh3,
  * @return true if successful, false otherwise
  */
 bool nfs4_FSALToFhandle(nfs_fh4 *fh4,
-			const struct fsal_obj_handle *fsalhandle)
+			const struct fsal_obj_handle *fsalhandle,
+			struct gsh_export *exp)
 {
 	fsal_status_t fsal_status;
 	file_handle_v4_t *file_handle;
@@ -165,7 +206,7 @@ bool nfs4_FSALToFhandle(nfs_fh4 *fh4,
 	file_handle->fhversion = GANESHA_FH_VERSION;
 	file_handle->fs_len = fh_desc.len;	/* set the actual size */
 	/* keep track of the export id */
-	file_handle->exportid = fsalhandle->export->exp_entry->id;
+	file_handle->exportid = exp->export_id;
 
 	/* Set the len */
 	fh4->nfs_fh4_len = nfs4_sizeof_handle(file_handle);
@@ -181,6 +222,7 @@ bool nfs4_FSALToFhandle(nfs_fh4 *fh4,
  *
  * @param[out] fh3        The extracted file handle
  * @param[in]  fsalhandle The FSAL handle to be converted
+ * @param[in]  exp        The gsh_export that this handle belongs to
  *
  * @return true if successful, false otherwise
  *
@@ -188,7 +230,8 @@ bool nfs4_FSALToFhandle(nfs_fh4 *fh4,
  * compensate??
  */
 bool nfs3_FSALToFhandle(nfs_fh3 *fh3,
-			const struct fsal_obj_handle *fsalhandle)
+			const struct fsal_obj_handle *fsalhandle,
+			struct gsh_export *exp)
 {
 	fsal_status_t fsal_status;
 	file_handle_v3_t *file_handle;
@@ -214,7 +257,7 @@ bool nfs3_FSALToFhandle(nfs_fh3 *fh3,
 	file_handle->fhversion = GANESHA_FH_VERSION;
 	file_handle->fs_len = fh_desc.len;	/* set the actual size */
 	/* keep track of the export id */
-	file_handle->exportid = fsalhandle->export->exp_entry->id;
+	file_handle->exportid = exp->export_id;
 
 	/* Set the len */
 	/* re-adjust to as built */
@@ -225,78 +268,6 @@ bool nfs3_FSALToFhandle(nfs_fh3 *fh3,
 
 	return true;
 }
-
-/**
- * @brief Convert an FSAL object to an NFSv2 file handle
- *
- * @param[out] fh2        The extracted file handle
- * @param[in]  fsalhandle The FSAL handle to be converted
- *
- * @return true if successful, false otherwise
- */
-bool nfs2_FSALToFhandle(fhandle2 *fh2,
-			const struct fsal_obj_handle *fsalhandle)
-{
-	fsal_status_t fsal_status;
-	file_handle_v2_t *file_handle;
-	struct gsh_buffdesc fh_desc;
-
-	/* zero-ification of the buffer to be used as handle */
-	memset(fh2, 0, sizeof(struct alloc_file_handle_v2));
-	file_handle = (file_handle_v2_t *) fh2;
-
-	/* Fill in the fs opaque part */
-	fh_desc.addr = &file_handle->fsopaque;
-	fh_desc.len = sizeof(file_handle->fsopaque);
-	fsal_status =
-	    fsalhandle->ops->handle_digest(fsalhandle, FSAL_DIGEST_NFSV2,
-					   &fh_desc);
-	if (FSAL_IS_ERROR(fsal_status)) {
-		if (fsal_status.major == ERR_FSAL_TOOSMALL)
-			LogCrit(COMPONENT_FILEHANDLE,
-				"NFSv2 File handle is too small to manage this FSAL");
-		else
-			LogCrit(COMPONENT_FILEHANDLE,
-				"FSAL_DigestHandle return (%u,%u) when called from %s",
-				fsal_status.major, fsal_status.minor, __func__);
-		return false;
-	}
-
-	file_handle->fhversion = GANESHA_FH_VERSION;
-	/* keep track of the export id */
-	file_handle->exportid = fsalhandle->export->exp_entry->id;
-
-	/*   /\* Set the data *\/ */
-	/*   memcpy((caddr_t) pfh2, &file_handle, sizeof(file_handle_v2_t)); */
-
-	LogFullDebugOpaque(COMPONENT_FILEHANDLE, "NFS2 Handle %s", LEN_FH_STR,
-			   fh2, sizeof(*fh2));
-
-	return true;
-}
-
-/**
- *
- * nfs4_Is_Fh_Pseudo
- *
- * This routine is used to test if a fh refers to pseudo fs
- *
- * @param fh [IN] file handle to test.
- *
- * @return true if in pseudo fh, false otherwise
- *
- */
-int nfs4_Is_Fh_Pseudo(nfs_fh4 *fh)
-{
-	file_handle_v4_t *fhandle4;
-
-	if (fh == NULL || fh->nfs_fh4_val == NULL)
-		return 0;
-
-	fhandle4 = (file_handle_v4_t *) (fh->nfs_fh4_val);
-
-	return fhandle4->exportid == 0;
-}				/* nfs4_Is_Fh_Pseudo */
 
 /**
  *
@@ -469,29 +440,6 @@ int nfs3_Is_Fh_Invalid(nfs_fh3 *fh3)
 }				/* nfs3_Is_Fh_Invalid */
 
 /**
- * @brief Print an NFSv2 file handle (for debugging purpose)
- *
- * @param[in] component Subsystem component ID
- * @param[in] fh        File handle to print
- */
-void print_fhandle2(log_components_t component, fhandle2 *fh)
-{
-	if (isFullDebug(component)) {
-		char str[LEN_FH_STR];
-
-		sprint_fhandle2(str, fh);
-		LogFullDebug(component, "%s", str);
-	}
-}
-
-void sprint_fhandle2(char *str, fhandle2 *fh)
-{
-	char *tmp = str + sprintf(str, "File Handle V2: ");
-
-	sprint_mem(tmp, (char *)fh, 32);
-}				/* sprint_fhandle2 */
-
-/**
  * @brief Print an NFSv3 file handle
  *
  * @param[in] component Subsystem component ID
@@ -598,6 +546,29 @@ void sprint_mem(char *str, char *buff, int len)
 }
 
 /**
+ * @brief Convert a file handle to a string representation
+ *
+ * @param rq_vers  [IN]    version of the NFS protocol to be used
+ * @param fh3      [IN]    NFSv3 file handle or NULL
+ * @param fh4      [IN]    NFSv4 file handle or NULL
+ * @param str      [OUT]   string version of handle
+ *
+ */
+void nfs_FhandleToStr(u_long rq_vers, nfs_fh3 *fh3, nfs_fh4 *fh4, char *str)
+{
+
+	switch (rq_vers) {
+	case NFS_V4:
+		sprint_fhandle4(str, fh4);
+		break;
+
+	case NFS_V3:
+		sprint_fhandle3(str, fh3);
+		break;
+	}
+}				/* nfs_FhandleToStr */
+
+/**
  *
  * print_compound_fh
  *
@@ -616,8 +587,154 @@ void LogCompoundFH(compound_data_t *data)
 
 		sprint_fhandle4(str, &data->savedFH);
 		LogFullDebug(COMPONENT_FILEHANDLE, "Saved FH    %s", str);
-
-		sprint_fhandle4(str, &data->rootFH);
-		LogFullDebug(COMPONENT_FILEHANDLE, "Root FH     %s", str);
 	}
 }
+
+/**
+ * @brief Do basic checks on the CurrentFH
+ *
+ * This function performs basic checks to make sure the supplied
+ * filehandle is sane for a given operation.
+ *
+ * @param data          [IN] Compound_data_t for the operation to check
+ * @param required_type [IN] The file type this operation requires.
+ *                           Set to 0 to allow any type.
+ * @param ds_allowed    [IN] true if DS handles are allowed.
+ *
+ * @return NFSv4.1 status codes
+ */
+
+nfsstat4 nfs4_sanity_check_FH(compound_data_t *data,
+			      object_file_type_t required_type,
+			      bool ds_allowed)
+{
+	int fh_status;
+
+	/* If there is no FH */
+	fh_status = nfs4_Is_Fh_Empty(&data->currentFH);
+
+	if (fh_status != NFS4_OK)
+		return fh_status;
+
+	assert(data->current_entry != NULL &&
+	       data->current_filetype != NO_FILE_TYPE);
+
+	/* If the filehandle is invalid */
+	fh_status = nfs4_Is_Fh_Invalid(&data->currentFH);
+
+	if (fh_status != NFS4_OK)
+		return fh_status;
+
+
+	/* Check for the correct file type */
+	if (required_type != NO_FILE_TYPE) {
+		if (data->current_filetype != required_type) {
+			LogDebug(COMPONENT_NFS_V4,
+				 "Wrong file type expected %s actual %s",
+				 object_file_type_to_str(required_type),
+				 object_file_type_to_str(data->
+							 current_filetype));
+
+			if (required_type == DIRECTORY) {
+				if (data->current_filetype == SYMBOLIC_LINK)
+					return NFS4ERR_SYMLINK;
+				else
+					return NFS4ERR_NOTDIR;
+			} else if (required_type == SYMBOLIC_LINK)
+				return NFS4ERR_INVAL;
+
+			switch (data->current_filetype) {
+			case DIRECTORY:
+				return NFS4ERR_ISDIR;
+			default:
+				return NFS4ERR_INVAL;
+			}
+		}
+	}
+
+	if (nfs4_Is_Fh_DSHandle(&data->currentFH) && !ds_allowed) {
+		LogDebug(COMPONENT_NFS_V4, "DS Handle");
+		return NFS4ERR_INVAL;
+	}
+
+	return NFS4_OK;
+}				/* nfs4_sanity_check_FH */
+
+/**
+ * @brief Do basic checks on the SavedFH
+ *
+ * This function performs basic checks to make sure the supplied
+ * filehandle is sane for a given operation.
+ *
+ * @param data          [IN] Compound_data_t for the operation to check
+ * @param required_type [IN] The file type this operation requires.
+ *                           Set to 0 to allow any type. A negative value
+ *                           indicates any type BUT that type is allowed.
+ * @param ds_allowed    [IN] true if DS handles are allowed.
+ *
+ * @return NFSv4.1 status codes
+ */
+
+nfsstat4 nfs4_sanity_check_saved_FH(compound_data_t *data, int required_type,
+				    bool ds_allowed)
+{
+	int fh_status;
+
+	/* If there is no FH */
+	fh_status = nfs4_Is_Fh_Empty(&data->savedFH);
+
+	if (fh_status != NFS4_OK)
+		return fh_status;
+
+	/* If the filehandle is invalid */
+	fh_status = nfs4_Is_Fh_Invalid(&data->savedFH);
+	if (fh_status != NFS4_OK)
+		return fh_status;
+
+	if (nfs4_Is_Fh_DSHandle(&data->savedFH) && !ds_allowed) {
+		LogDebug(COMPONENT_NFS_V4, "DS Handle");
+		return NFS4ERR_INVAL;
+	}
+
+	/* Check for the correct file type */
+	if (required_type < 0) {
+		if (-required_type == data->saved_filetype) {
+			LogDebug(COMPONENT_NFS_V4,
+				 "Wrong file type expected not to be %s was %s",
+				 object_file_type_to_str((object_file_type_t) -
+							 required_type),
+				 object_file_type_to_str(data->
+							 current_filetype));
+			if (-required_type == DIRECTORY) {
+				return NFS4ERR_ISDIR;
+				return NFS4ERR_INVAL;
+			}
+		}
+	} else if (required_type != NO_FILE_TYPE) {
+		if (data->saved_filetype != required_type) {
+			LogDebug(COMPONENT_NFS_V4,
+				 "Wrong file type expected %s was %s",
+				 object_file_type_to_str((object_file_type_t)
+							 required_type),
+				 object_file_type_to_str(data->
+							 current_filetype));
+
+			if (required_type == DIRECTORY) {
+				if (data->current_filetype == SYMBOLIC_LINK)
+					return NFS4ERR_SYMLINK;
+				else
+					return NFS4ERR_NOTDIR;
+			} else if (required_type == SYMBOLIC_LINK)
+				return NFS4ERR_INVAL;
+
+			switch (data->saved_filetype) {
+			case DIRECTORY:
+				return NFS4ERR_ISDIR;
+			default:
+				return NFS4ERR_INVAL;
+			}
+		}
+	}
+
+	return NFS4_OK;
+}				/* nfs4_sanity_check_saved_FH */

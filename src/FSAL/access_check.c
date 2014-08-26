@@ -1,5 +1,5 @@
 /**
- * @defgroup FSAL File-System Abstraction Layer
+ * @addtogroup FSAL
  * @{
  */
 
@@ -10,7 +10,7 @@
 
 #include "config.h"
 
-#include  "fsal.h"
+#include "fsal.h"
 #include "nfs_core.h"
 #include <sys/stat.h>
 #include "FSAL/access_check.h"
@@ -106,7 +106,7 @@ static bool fsal_check_ace_applicable(fsal_ace_t *pace,
 		return false;
 	}
 
-	/* Use GPFS internal flag to further check the entry is applicable
+	/* Use internal flag to further check the entry is applicable
 	 * to this object type. */
 	if (is_file) {
 		if (!IS_FSAL_FILE_APPLICABLE(*pace)) {
@@ -135,10 +135,6 @@ static bool fsal_check_ace_applicable(fsal_ace_t *pace,
 
 	return is_applicable;
 }
-
-/* originally def'd in /FSAL/FSAL_GPFS/fsal_internal.c:56: fix later */
-
-#define ACL_DEBUG_BUF_SIZE 256
 
 int display_fsal_inherit_flags(struct display_buffer *dspbuf, fsal_ace_t *pace)
 {
@@ -540,7 +536,6 @@ static fsal_status_t fsal_check_access_acl(struct user_cred *creds,
  * @brief Check access using mode bits only
  *
  * @param[in] creds
- * @param[in] req_ctx
  * @param[in] access_type
  * @param[in] allowed
  * @param[in] denied
@@ -551,7 +546,6 @@ static fsal_status_t fsal_check_access_acl(struct user_cred *creds,
 
 static fsal_status_t
 fsal_check_access_no_acl(struct user_cred *creds,
-			 struct req_op_context *req_ctx,
 			 fsal_accessflags_t access_type,
 			 fsal_accessflags_t *allowed,
 			 fsal_accessflags_t *denied,
@@ -559,7 +553,8 @@ fsal_check_access_no_acl(struct user_cred *creds,
 {
 	uid_t uid;
 	gid_t gid;
-	mode_t mode, mask;
+	mode_t mode;
+	fsal_accessflags_t mask;
 	bool rc;
 
 	if (allowed != NULL)
@@ -605,9 +600,15 @@ fsal_check_access_no_acl(struct user_cred *creds,
 	/* If the uid of the file matches the uid of the user,
 	 * then the uid mode bits take precedence. */
 	if (creds->caller_uid == uid) {
+		LogFullDebug(COMPONENT_NFS_V4_ACL,
+			     "Using owner mode %#o",
+			     mode & S_IRWXU);
 		mode >>= 6;
 	} else {		/* followed by group(s) */
 		if (creds->caller_gid == gid) {
+			LogFullDebug(COMPONENT_NFS_V4_ACL,
+				     "Using group mode %#o",
+				     mode & S_IRWXG);
 			mode >>= 3;
 		} else {
 			/* Test if file belongs to alt user's groups */
@@ -615,6 +616,9 @@ fsal_check_access_no_acl(struct user_cred *creds,
 
 			for (i = 0; i < creds->caller_glen; i++) {
 				if (creds->caller_garray[i] == gid) {
+					LogFullDebug(COMPONENT_NFS_V4_ACL,
+						     "Using group mode %#o for alt group #%d",
+						     mode & S_IRWXG, i);
 					mode >>= 3;
 					break;
 				}
@@ -629,6 +633,13 @@ fsal_check_access_no_acl(struct user_cred *creds,
 	    ((mode & S_IROTH) ? FSAL_R_OK : 0) | ((mode & S_IWOTH) ? FSAL_W_OK :
 						  0) | ((mode & S_IXOTH) ?
 							FSAL_X_OK : 0);
+	LogFullDebug(COMPONENT_NFS_V4_ACL,
+		     "Mask=0X%x, Access Type=0X%x Allowed=0X%x Denied=0X%x %s",
+		     mask, access_type,
+		     mask & access_type,
+		     ~mask & access_type,
+		     (mask & access_type) == access_type ?
+			"ALLOWED" : "DENIED");
 
 	if (allowed != NULL)
 		*allowed = mask & access_type;
@@ -651,7 +662,6 @@ fsal_check_access_no_acl(struct user_cred *creds,
  */
 
 fsal_status_t fsal_test_access(struct fsal_obj_handle *obj_hdl,
-			       struct req_op_context *req_ctx,
 			       fsal_accessflags_t access_type,
 			       fsal_accessflags_t *allowed,
 			       fsal_accessflags_t *denied)
@@ -659,11 +669,11 @@ fsal_status_t fsal_test_access(struct fsal_obj_handle *obj_hdl,
 	struct attrlist *attribs = &obj_hdl->attributes;
 
 	if (attribs->acl && IS_FSAL_ACE4_MASK_VALID(access_type)) {
-		return fsal_check_access_acl(req_ctx->creds,
+		return fsal_check_access_acl(op_ctx->creds,
 					     FSAL_ACE4_MASK(access_type),
 					     allowed, denied, attribs);
 	} else {		/* fall back to use mode to check access. */
-		return fsal_check_access_no_acl(req_ctx->creds, req_ctx,
+		return fsal_check_access_no_acl(op_ctx->creds,
 						FSAL_MODE_MASK(access_type),
 						allowed, denied, attribs);
 	}

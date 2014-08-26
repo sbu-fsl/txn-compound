@@ -52,7 +52,8 @@
  *      - ERR_FSAL_PERM: lock_op was FSAL_OP_LOCKT and the result was that the
  *                       operation would not be possible.
  */
-fsal_status_t GPFSFSAL_lock_op(struct fsal_obj_handle *obj_hdl,	/* IN */
+fsal_status_t GPFSFSAL_lock_op(struct fsal_export *export,
+			       struct fsal_obj_handle *obj_hdl,	/* IN */
 			       void *p_owner,	/* IN */
 			       fsal_lock_op_t lock_op,	/* IN */
 			       fsal_lock_param_t request_lock,	/* IN */
@@ -62,6 +63,7 @@ fsal_status_t GPFSFSAL_lock_op(struct fsal_obj_handle *obj_hdl,	/* IN */
 	struct glock glock_args;
 	struct set_get_lock_arg gpfs_sg_arg;
 	struct gpfs_fsal_obj_handle *myself;
+	struct gpfs_filesystem *gpfs_fs;
 
 	if (obj_hdl == NULL) {
 		LogDebug(COMPONENT_FSAL, "obj_hdl arg is NULL.");
@@ -79,6 +81,7 @@ fsal_status_t GPFSFSAL_lock_op(struct fsal_obj_handle *obj_hdl,	/* IN */
 	}
 
 	myself = container_of(obj_hdl, struct gpfs_fsal_obj_handle, obj_handle);
+	gpfs_fs = obj_hdl->fs->private;
 	glock_args.lfd = myself->u.file.fd;
 
 	LogFullDebug(COMPONENT_FSAL,
@@ -121,8 +124,9 @@ fsal_status_t GPFSFSAL_lock_op(struct fsal_obj_handle *obj_hdl,	/* IN */
 
 	glock_args.lfd = myself->u.file.fd;
 	glock_args.lock_owner = p_owner;
-	gpfs_sg_arg.mountdirfd = gpfs_get_root_fd(obj_hdl->export);
+	gpfs_sg_arg.mountdirfd = gpfs_fs->root_fd;
 	gpfs_sg_arg.lock = &glock_args;
+	gpfs_sg_arg.reclaim = request_lock.lock_reclaim;
 
 	errno = 0;
 
@@ -143,9 +147,13 @@ fsal_status_t GPFSFSAL_lock_op(struct fsal_obj_handle *obj_hdl,	/* IN */
 			glock_args.cmd = F_GETLK;
 			retval2 =
 			    gpfs_ganesha(OPENHANDLE_GET_LOCK, &gpfs_sg_arg);
+			int errsv2 = errno;
 			if (retval2) {
 				LogCrit(COMPONENT_FSAL,
 					"After failing a set lock request, An attempt to get the current owner details also failed.");
+				if (errsv2 == EUNATCH)
+					LogFatal(COMPONENT_FSAL,
+						"GPFS Returned EUNATCH");
 			} else {
 				conflicting_lock->lock_length =
 				    glock_args.flock.l_len;
@@ -163,6 +171,11 @@ fsal_status_t GPFSFSAL_lock_op(struct fsal_obj_handle *obj_hdl,	/* IN */
 			LogFullDebug(COMPONENT_FSAL,
 				     "GPFS lock operation failed error %d %d (%s)",
 				     retval, errsv, strerror(errsv));
+			if (errsv == EUNATCH)
+				LogFatal(COMPONENT_FSAL,
+					"GPFS Returned EUNATCH");
+			if (errsv == EGRACE)
+				return fsalstat(ERR_FSAL_IN_GRACE, 0);
 			return fsalstat(posix2fsal_error(errsv), errsv);
 		}
 	}

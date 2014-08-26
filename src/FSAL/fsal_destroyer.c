@@ -26,12 +26,13 @@
  * @{
  */
 
-#include "nlm_list.h"
+#include "ganesha_list.h"
 #include "fsal.h"
 #include "fsal_api.h"
 #include "nfs_exports.h"
 #include "nfs_core.h"
 #include "fsal_private.h"
+#include "FSAL/fsal_commonlib.h"
 
 /**
  * @file fsal_destroyer.c
@@ -42,71 +43,57 @@
 /**
  * @brief Dispose of lingering file handles
  *
- * @param[in] export Export to clean up
+ * @param[in] fsal fsal module to clean up
  */
 
-static void shutdown_handles(struct fsal_export *export)
+static void shutdown_handles(struct fsal_module *fsal)
 {
 	/* Handle iterator */
 	struct glist_head *hi = NULL;
 	/* Next pointer in handle iteration */
 	struct glist_head *hn = NULL;
-	/* FSAL return code */
-	fsal_status_t fsal_status;
 
-	if (glist_empty(&export->handles))
+	if (glist_empty(&fsal->handles))
 		return;
 
 	LogDebug(COMPONENT_FSAL, "Extra file handles hanging around.");
-	glist_for_each_safe(hi, hn, &export->handles) {
+	glist_for_each_safe(hi, hn, &fsal->handles) {
 		struct fsal_obj_handle *h = glist_entry(hi,
 							struct fsal_obj_handle,
 							handles);
-		if (h->refs != 0) {
-			LogDebug(COMPONENT_FSAL,
-				 "Extra references hanging around.");
-			h->refs = 0;
-		}
-		fsal_status = h->ops->release(h);
-		if (FSAL_IS_ERROR(fsal_status)) {
-			LogMajor(COMPONENT_FSAL, "Error releasing handle: %d",
-				 fsal_status.major);
-		}
+		LogDebug(COMPONENT_FSAL,
+			 "Releasing handle");
+		h->ops->release(h);
 	}
 }
 
 /**
  * @brief Dispose of lingering DS handles
  *
- * @paramp[in] export Export to clean up
- */
-static void shutdown_ds_handles(struct fsal_export *export)
+ * @param[in] export fsal module to clean up */
+static void shutdown_ds_handles(struct fsal_module *fsal)
 {
 	/* Handle iterator */
 	struct glist_head *hi = NULL;
 	/* Next pointer in handle iteration */
 	struct glist_head *hn = NULL;
-	/* FSAL return code */
-	nfsstat4 status = 0;
-	if (glist_empty(&export->ds_handles))
+
+	if (glist_empty(&fsal->ds_handles))
 		return;
 
 	LogDebug(COMPONENT_FSAL, "Extra DS file handles hanging around.");
-	glist_for_each_safe(hi, hn, &export->ds_handles) {
+	glist_for_each_safe(hi, hn, &fsal->ds_handles) {
 		struct fsal_ds_handle *h = glist_entry(hi,
 						       struct fsal_ds_handle,
 						       ds_handles);
-		h->ops->release(h);
-		if (h->refs != 0) {
+		int32_t refcount = atomic_fetch_int32_t(&h->refcount);
+		if (refcount != 0) {
 			LogDebug(COMPONENT_FSAL,
-				 "Extra references hanging around.");
-			h->refs = 0;
+				 "Extra references (%"PRIi32") hanging around.",
+				 refcount);
+			atomic_store_int32_t(&h->refcount, 0);
 		}
-		status = h->ops->release(h);
-		if (status != 0) {
-			LogMajor(COMPONENT_FSAL, "Error releasing handle: %d",
-				 status);
-		}
+		h->ops->release(h);
 	}
 }
 
@@ -118,20 +105,12 @@ static void shutdown_ds_handles(struct fsal_export *export)
 
 static void shutdown_export(struct fsal_export *export)
 {
-	fsal_status_t fsal_status;
+	struct fsal_module *fsal = export->fsal;
+	LogDebug(COMPONENT_FSAL,
+		 "Releasing export");
 
-	shutdown_handles(export);
-	shutdown_ds_handles(export);
-
-	if (export->refs != 0) {
-		LogDebug(COMPONENT_FSAL,
-			 "Extra references hanging around to export.");
-		export->refs = 0;
-	}
-
-	fsal_status = export->ops->release(export);
-	if (FSAL_IS_ERROR(fsal_status))
-		LogMajor(COMPONENT_FSAL, "Cannot release FSAL export object!");
+	export->ops->release(export);
+	fsal_put(fsal);
 }
 
 /**
@@ -154,9 +133,19 @@ void destroy_fsals(void)
 		struct glist_head *ei = NULL;
 		/* Next export */
 		struct glist_head *en = NULL;
+		int32_t refcount = atomic_fetch_int32_t(&m->refcount);
+
+		LogEvent(COMPONENT_FSAL, "Shutting down handles for FSAL %s",
+			 m->name);
+		shutdown_handles(m);
+
+		LogEvent(COMPONENT_FSAL, "Shutting down DS handles for FSAL %s",
+			 m->name);
+		shutdown_ds_handles(m);
 
 		LogEvent(COMPONENT_FSAL, "Shutting down exports for FSAL %s",
 			 m->name);
+
 		glist_for_each_safe(ei, en, &m->exports) {
 			/* The module to destroy */
 			struct fsal_export *e = glist_entry(ei,
@@ -164,12 +153,15 @@ void destroy_fsals(void)
 							    exports);
 			shutdown_export(e);
 		}
+
 		LogEvent(COMPONENT_FSAL, "Exports for FSAL %s shut down",
 			 m->name);
-		if (m->refs != 0) {
-			LogDebug(COMPONENT_FSAL,
-				 "Extra references hanging around to "
-				 "FSAL %s", m->name);
+
+		if (refcount != 0) {
+			LogCrit(COMPONENT_FSAL,
+				"Extra references (%"PRIi32
+				") hanging around to FSAL %s",
+				refcount, m->name);
 			/**
 			 * @todo Forcibly blowing away all references
 			 * should work fine on files and objects if
@@ -179,7 +171,7 @@ void destroy_fsals(void)
 			 * working properly we shouldn't even reach
 			 * this point.
 			 */
-			m->refs = 0;
+			atomic_store_int32_t(&m->refcount, 0);
 		}
 		if (m->dl_handle) {
 			int rc = 0;
@@ -196,6 +188,28 @@ void destroy_fsals(void)
 			LogEvent(COMPONENT_FSAL, "FSAL %s unloaded", fsal_name);
 			gsh_free(fsal_name);
 		}
+	}
+
+	release_posix_file_systems();
+}
+
+/**
+ * @brief Emergency Halt FSALs
+ */
+
+void emergency_cleanup_fsals(void)
+{
+	/* Module iterator */
+	struct glist_head *mi = NULL;
+	/* Next module */
+	struct glist_head *mn = NULL;
+
+	glist_for_each_safe(mi, mn, &fsal_list) {
+		/* The module to destroy */
+		struct fsal_module *m = glist_entry(mi,
+						    struct fsal_module,
+						    fsals);
+		m->ops->emergency_cleanup();
 	}
 }
 

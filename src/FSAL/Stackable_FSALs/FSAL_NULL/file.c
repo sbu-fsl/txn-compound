@@ -25,7 +25,7 @@
  */
 
 /* file.c
- * File I/O methods for VFS module
+ * File I/O methods for NULL module
  */
 
 #include "config.h"
@@ -38,7 +38,6 @@
 #include <fcntl.h>
 #include "FSAL/fsal_commonlib.h"
 #include "nullfs_methods.h"
-#include "fsal_handle_syscalls.h"
 
 
 /** nullfs_open
@@ -46,10 +45,9 @@
  */
 
 fsal_status_t nullfs_open(struct fsal_obj_handle *obj_hdl,
-			  const struct req_op_context *opctx,
 			  fsal_openflags_t openflags)
 {
-	return next_ops.obj_ops->open(obj_hdl, opctx, openflags);
+	return next_ops.obj_ops->open(obj_hdl, openflags);
 }
 
 /* nullfs_status
@@ -66,13 +64,12 @@ fsal_openflags_t nullfs_status(struct fsal_obj_handle *obj_hdl)
  */
 
 fsal_status_t nullfs_read(struct fsal_obj_handle *obj_hdl,
-			  const struct req_op_context *opctx,
 			  uint64_t offset,
 			  size_t buffer_size, void *buffer,
 			  size_t *read_amount,
 			  bool *end_of_file)
 {
-	return next_ops.obj_ops->read(obj_hdl, opctx, offset, buffer_size,
+	return next_ops.obj_ops->read(obj_hdl, offset, buffer_size,
 				      buffer, read_amount, end_of_file);
 }
 
@@ -81,11 +78,11 @@ fsal_status_t nullfs_read(struct fsal_obj_handle *obj_hdl,
  */
 
 fsal_status_t nullfs_write(struct fsal_obj_handle *obj_hdl,
-			   const struct req_op_context *opctx, uint64_t offset,
+			   uint64_t offset,
 			   size_t buffer_size, void *buffer,
 			   size_t *write_amount, bool *fsal_stable)
 {
-	return next_ops.obj_ops->write(obj_hdl, opctx, offset, buffer_size,
+	return next_ops.obj_ops->write(obj_hdl, offset, buffer_size,
 				       buffer, write_amount, fsal_stable);
 }
 
@@ -107,12 +104,12 @@ fsal_status_t nullfs_commit(struct fsal_obj_handle *obj_hdl,	/* sync */
  */
 
 fsal_status_t nullfs_lock_op(struct fsal_obj_handle *obj_hdl,
-			     const struct req_op_context *opctx, void *p_owner,
+			     void *p_owner,
 			     fsal_lock_op_t lock_op,
 			     fsal_lock_param_t *request_lock,
 			     fsal_lock_param_t *conflicting_lock)
 {
-	return next_ops.obj_ops->lock_op(obj_hdl, opctx, p_owner, lock_op,
+	return next_ops.obj_ops->lock_op(obj_hdl, p_owner, lock_op,
 					 request_lock, conflicting_lock);
 }
 

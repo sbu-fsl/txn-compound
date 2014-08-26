@@ -90,6 +90,9 @@ int _9p_xattrcreate(struct _9p_request_data *req9p, void *worker_data,
 
 	snprintf(name, MAXNAMLEN, "%.*s", *name_len, name_str);
 
+	/* set op_ctx, it will be useful if FSAL is later called */
+	op_ctx = &pfid->op_context;
+
 	if (*size == 0LL) {
 		/* Size == 0 : this is in fact a call to removexattr */
 		LogDebug(COMPONENT_9P,
@@ -99,7 +102,7 @@ int _9p_xattrcreate(struct _9p_request_data *req9p, void *worker_data,
 		fsal_status =
 		    pfid->pentry->obj_handle->ops->remove_extattr_by_name(
 			pfid->pentry->obj_handle,
-			&pfid->op_context, name);
+			name);
 
 		if (FSAL_IS_ERROR(fsal_status))
 			return _9p_rerror(req9p, worker_data, msgtag,
@@ -142,7 +145,7 @@ int _9p_xattrcreate(struct _9p_request_data *req9p, void *worker_data,
 		fsal_status =
 		    pfid->pentry->obj_handle->ops->setextattr_value(
 			pfid->pentry->obj_handle,
-			&pfid->op_context, name,
+			name,
 			pfid->specdata.xattr.xattr_content,
 			*size, create);
 
@@ -153,7 +156,7 @@ int _9p_xattrcreate(struct _9p_request_data *req9p, void *worker_data,
 			fsal_status =
 			    pfid->pentry->obj_handle->ops->
 			    setextattr_value(pfid->pentry->obj_handle,
-					     &pfid->op_context, name,
+					     name,
 					     pfid->specdata.xattr.xattr_content,
 					     *size, FALSE);
 		}
@@ -167,7 +170,7 @@ int _9p_xattrcreate(struct _9p_request_data *req9p, void *worker_data,
 		fsal_status =
 		    pfid->pentry->obj_handle->ops->getextattr_id_by_name(
 			pfid->pentry->obj_handle,
-			&pfid->op_context, name,
+			name,
 			&pfid->specdata.xattr.xattr_id);
 
 		if (FSAL_IS_ERROR(fsal_status))

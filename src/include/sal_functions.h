@@ -42,6 +42,11 @@
 #include "nfs_exports.h"
 #include "nfs_core.h"
 
+/**
+ * @brief Divisions in state and clientid tables.
+ */
+#define PRIME_STATE 17
+
 /*****************************************************************************
  *
  * Misc functions
@@ -73,6 +78,10 @@ void state_wipe_file(cache_entry_t *entry);
 #ifdef DEBUG_SAL
 void dump_all_owners(void);
 #endif
+
+void state_release_export(struct gsh_export *exp);
+
+bool state_unlock_err_ok(state_status_t status);
 
 /*****************************************************************************
  *
@@ -187,7 +196,7 @@ const char *clientid_error_to_str(clientid_status_t err);
 state_status_t get_clientid_owner(clientid4 clientid,
 				  state_owner_t **clientid_owner);
 
-int nfs_Init_client_id(nfs_client_id_parameter_t *param);
+int nfs_Init_client_id(void);
 
 clientid_status_t nfs_client_id_get_unconfirmed(clientid4 clientid,
 						nfs_client_id_t **pclient_rec);
@@ -209,8 +218,7 @@ int remove_unconfirmed_client_id(nfs_client_id_t *clientid);
 clientid_status_t nfs_client_id_confirm(nfs_client_id_t *clientid,
 					log_components_t component);
 
-bool nfs_client_id_expire(nfs_client_id_t *clientid,
-			  struct req_op_context *req_ctx);
+bool nfs_client_id_expire(nfs_client_id_t *clientid);
 
 clientid4 new_clientid(void);
 void new_clientid_verifier(char *verf);
@@ -285,7 +293,7 @@ uint32_t session_id_value_hash_func(hash_parameter_t *hparam,
 uint64_t session_id_rbt_hash_func(hash_parameter_t *hparam,
 				  struct gsh_buffdesc *key);
 
-int nfs41_Init_session_id(hash_parameter_t *param);
+int nfs41_Init_session_id(void);
 
 int nfs41_Session_Set(nfs41_session_t *session_data);
 
@@ -337,10 +345,10 @@ void update_stateid(state_t *state, stateid4 *stateid, compound_data_t *data,
 nfsstat4 nfs4_check_special_stateid(cache_entry_t *entry, const char *tag,
 				    int access);
 
-int nfs4_Init_state_id(hash_parameter_t *param);
+int nfs4_Init_state_id(void);
 int nfs4_State_Set(char other[OTHERSIZE], state_t *state_data);
 int nfs4_State_Get_Pointer(char other[OTHERSIZE], state_t **state_data);
-int nfs4_State_Del(char other[OTHERSIZE]);
+void nfs4_State_Del(char other[OTHERSIZE]);
 void nfs_State_PrintAll(void);
 
 int display_state_id_val(struct gsh_buffdesc *buff, char *str);
@@ -419,7 +427,7 @@ state_owner_t *create_nfs4_owner(state_nfs4_owner_name_t *name,
 				 unsigned int init_seqid, bool_t *pisnew,
 				 care_t care);
 
-int Init_nfs4_owner(hash_parameter_t *param);
+int Init_nfs4_owner(void);
 
 void Process_nfs4_conflict(/* NFS v4 Lock4denied structure to fill in */
 			   LOCK4denied * denied,
@@ -455,7 +463,7 @@ uint32_t lock_cookie_value_hash_func(hash_parameter_t *hparam,
 
 uint64_t lock_cookie_rbt_hash_func(hash_parameter_t *hparam,
 				   struct gsh_buffdesc *key);
-state_status_t state_lock_init(hash_parameter_t cookie_param);
+state_status_t state_lock_init(void);
 
 void LogLock(log_components_t component, log_levels_t debug, const char *reason,
 	     cache_entry_t *entry, state_owner_t *owner,
@@ -464,7 +472,6 @@ void LogLock(log_components_t component, log_levels_t debug, const char *reason,
 void dump_all_locks(const char *label);
 
 state_status_t state_add_grant_cookie(cache_entry_t *entry,
-				      struct req_op_context *req_ctx,
 				      void *cookie, int cookie_size,
 				      state_lock_entry_t *lock_entry,
 				      state_cookie_entry_t **cookie_entry);
@@ -472,24 +479,21 @@ state_status_t state_add_grant_cookie(cache_entry_t *entry,
 state_status_t state_find_grant(void *cookie, int cookie_size,
 				state_cookie_entry_t **cookie_entry);
 
-void state_complete_grant(state_cookie_entry_t *cookie_entry,
-			  struct req_op_context *req_ctx);
+void state_complete_grant(state_cookie_entry_t *cookie_entry);
 
-state_status_t state_cancel_grant(state_cookie_entry_t *cookie_entry,
-				  struct req_op_context *req_ctx);
+state_status_t state_cancel_grant(state_cookie_entry_t *cookie_entry);
 
-state_status_t state_release_grant(state_cookie_entry_t *cookie_entry,
-				   struct req_op_context *req_ctx);
-state_status_t state_test(cache_entry_t *entry, exportlist_t *export,
-			  struct req_op_context *req_ctx, state_owner_t *owner,
+state_status_t state_release_grant(state_cookie_entry_t *cookie_entry);
+state_status_t state_test(cache_entry_t *entry,
+			  state_owner_t *owner,
 			  fsal_lock_param_t *lock,
 			  /* owner that holds conflicting lock */
 			  state_owner_t **holder,
 			  /* description of conflicting lock */
 			  fsal_lock_param_t *conflict);
 
-state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
-			  struct req_op_context *req_ctx, state_owner_t *owner,
+state_status_t state_lock(cache_entry_t *entry,
+			  state_owner_t *owner,
 			  state_t *state, state_blocking_t blocking,
 			  state_block_data_t *block_data,
 			  fsal_lock_param_t *lock,
@@ -499,22 +503,21 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 			  fsal_lock_param_t *conflict,
 			  lock_type_t sle_type);
 
-state_status_t state_unlock(cache_entry_t *entry, exportlist_t *export,
-			    struct req_op_context *req_ctx,
+state_status_t state_unlock(cache_entry_t *entry,
 			    state_owner_t *owner, state_t *state,
 			    fsal_lock_param_t *lock, lock_type_t sle_type);
 
-state_status_t state_cancel(cache_entry_t *entry, exportlist_t *export,
-			    struct req_op_context *req_ctx,
+state_status_t state_cancel(cache_entry_t *entry,
 			    state_owner_t *owner, fsal_lock_param_t *lock);
 
 state_status_t state_nlm_notify(state_nsm_client_t *nsmclient,
-				struct req_op_context *req_ctx,
+				bool from_client,
 				state_t *state);
 
 state_status_t state_owner_unlock_all(state_owner_t *owner,
-				      struct req_op_context *req_ctx,
 				      state_t *state);
+
+void state_export_unlock_all(void);
 
 void state_lock_wipe(cache_entry_t *entry);
 
@@ -540,9 +543,9 @@ state_status_t state_add(cache_entry_t *entry, state_type_t state_type,
 
 state_status_t state_set(state_t *state);
 
-state_status_t state_del_locked(state_t *state, cache_entry_t *entry);
+void state_del_locked(state_t *state, cache_entry_t *entry);
 
-state_status_t state_del(state_t *state, bool hold_lock);
+void state_del(state_t *state, bool hold_lock);
 
 int display_lock_cookie_key(struct gsh_buffdesc *buff, char *str);
 int display_lock_cookie_val(struct gsh_buffdesc *buff, char *str);
@@ -564,6 +567,20 @@ void state_nfs4_state_wipe(cache_entry_t *entry);
 
 void release_lockstate(state_owner_t *lock_owner);
 void release_openstate(state_owner_t *open_owner);
+void state_export_release_nfs4_state(void);
+
+/* Specifically for delegations */
+bool init_deleg_heuristics(cache_entry_t *entry);
+bool should_we_grant_deleg(cache_entry_t *entry, nfs_client_id_t *client,
+			   state_t *open_state);
+void init_new_deleg_state(state_data_t *deleg_state, state_t *open_state,
+			  open_delegation_type4 sd_type,
+			  nfs_client_id_t *clientid);
+bool deleg_heuristics_recall(cache_entry_t *entry, nfs_client_id_t *client);
+void get_deleg_perm(cache_entry_t *entry, nfsace4 *permissions,
+		    open_delegation_type4 type);
+bool update_delegation_stats(cache_entry_t *entry, state_t *state);
+state_status_t delegrecall(cache_entry_t *entry, bool rwlocked);
 
 #ifdef DEBUG_SAL
 void dump_all_states(void);
@@ -577,11 +594,13 @@ void dump_all_states(void);
 
 #define OPEN4_SHARE_ACCESS_NONE 0
 
-state_status_t state_share_add(cache_entry_t *entry, state_owner_t *owner,
+state_status_t state_share_add(cache_entry_t *entry,
+			       state_owner_t *owner,
 			       /* state that holds share bits to be added */
-			       state_t *state);
+			       state_t *state, bool reclaim);
 
-state_status_t state_share_remove(cache_entry_t *entry, state_owner_t *owner,
+state_status_t state_share_remove(cache_entry_t *entry,
+				  state_owner_t *owner,
 				  /* state that holds share bits to be removed
 				   */
 				  state_t *state);
@@ -591,7 +610,7 @@ state_status_t state_share_upgrade(cache_entry_t *entry,
 				   state_data_t *state_data,
 				   state_owner_t *owner,
 				   /* state that holds current share bits */
-				   state_t *state);
+				   state_t *state, bool reclaim);
 
 state_status_t state_share_downgrade(cache_entry_t *entry,
 				     /* new share bits */
@@ -613,13 +632,16 @@ state_status_t state_share_anonymous_io_start(cache_entry_t *entry,
 
 void state_share_anonymous_io_done(cache_entry_t *entry, int share_access);
 
-state_status_t state_nlm_share(cache_entry_t *, struct req_op_context *,
-			       exportlist_t *, int, int, state_owner_t *);
+state_status_t state_nlm_share(cache_entry_t *,
+			       int, int, state_owner_t *, bool);
 
-state_status_t state_nlm_unshare(cache_entry_t *entry, int share_access,
-				 int share_deny, state_owner_t *owner);
+state_status_t state_nlm_unshare(cache_entry_t *entry,
+				 int share_access,
+				 int share_deny,
+				 state_owner_t *owner);
 
 void state_share_wipe(cache_entry_t *entry);
+void state_export_unshare_all(void);
 
 /******************************************************************************
  *
@@ -638,8 +660,6 @@ void signal_async_work(void);
 
 state_status_t state_async_init(void);
 state_status_t state_async_shutdown(void);
-state_status_t state_async_pause(void);
-state_status_t state_async_resume(void);
 
 void grant_blocked_lock_upcall(cache_entry_t *entry, void *owner,
 			       fsal_lock_param_t *lock);
@@ -647,8 +667,7 @@ void grant_blocked_lock_upcall(cache_entry_t *entry, void *owner,
 void available_blocked_lock_upcall(cache_entry_t *entry, void *owner,
 				   fsal_lock_param_t *lock);
 
-void process_blocked_lock_upcall(state_block_data_t *block_data,
-				 struct req_op_context *req_ctx);
+void process_blocked_lock_upcall(state_block_data_t *block_data);
 
 /******************************************************************************
  *
@@ -659,13 +678,14 @@ void process_blocked_lock_upcall(state_block_data_t *block_data,
 void nfs4_init_grace(void);
 void nfs4_start_grace(nfs_grace_start_t *gsp);
 int nfs_in_grace(void);
+int fsal_grace(void);
 void nfs4_create_clid_name(nfs_client_record_t *, nfs_client_id_t *,
 			   struct svc_req *);
 void nfs4_add_clid(nfs_client_id_t *);
-void nfs4_rm_clid(char *);
+void nfs4_rm_clid(const char *, char *, int);
 void nfs4_chk_clid(nfs_client_id_t *);
 void nfs4_load_recov_clids(nfs_grace_start_t *gsp);
-void nfs4_clean_old_recov_dir(void);
+void nfs4_clean_old_recov_dir(char *);
 void nfs4_create_recov_dir(void);
 
 #endif				/* SAL_FUNCTIONS_H */

@@ -20,19 +20,18 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ * Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
- * ------------- 
  */
 
 /* xattrs.c
- * VFS object (file|dir) handle object extended attributes
+ * LUSTRE object (file|dir) handle object extended attributes
  */
 
 #include "config.h"
 
 #include "fsal.h"
-#include <fsal_handle_syscalls.h>
 #include <libgen.h>		/* used for 'dirname' */
 #include <pthread.h>
 #include <string.h>
@@ -41,7 +40,8 @@
 #include <sys/syscall.h>
 #include <ctype.h>
 #include <mntent.h>
-#include "nlm_list.h"
+#include "ganesha_list.h"
+#include "fsal_handle.h"
 #include "fsal_internal.h"
 #include "fsal_convert.h"
 #include "FSAL/fsal_config.h"
@@ -50,36 +50,43 @@
 #include "lustre_methods.h"
 #include <stdbool.h>
 
+#ifdef HAVE_INCLUDE_LUSTREAPI_H
+#include <lustre/lustreapi.h>
+#include <lustre/lustre_user.h>
+#else
+#ifdef HAVE_INCLUDE_LIBLUSTREAPI_H
 #include <lustre/liblustreapi.h>
 #include <lustre/lustre_user.h>
 #include <linux/quota.h>
+#endif
+#endif
 
-typedef int (*xattr_getfunc_t) (struct fsal_obj_handle *,	/* object handle */
+typedef int (*xattr_getfunc_t) (struct fsal_obj_handle *, /* object handle */
 				caddr_t,	/* output buff */
 				size_t,	/* output buff size */
 				size_t *,	/* output size */
 				void *arg);	/* optionnal argument */
 
-typedef int (*xattr_setfunc_t) (struct fsal_obj_handle *,	/* object handle */
+typedef int (*xattr_setfunc_t) (struct fsal_obj_handle *, /* object handle */
 				caddr_t,	/* input buff */
 				size_t,	/* input size */
 				int,	/* creation flag */
 				void *arg);	/* optionnal argument */
 
-typedef struct fsal_xattr_def__ {
-	char xattr_name[MAXNAMLEN];
+struct fsal_xattr_def {
+	char xattr_name[MAXNAMLEN+1];
 	xattr_getfunc_t get_func;
 	xattr_setfunc_t set_func;
 	int flags;
 	void *arg;
-} fsal_xattr_def_t;
+};
 
 /*
  * DEFINE GET/SET FUNCTIONS
  */
 
 int print_vfshandle(struct fsal_obj_handle *obj_hdl, caddr_t buffer_addr,
-		    size_t buffer_size, size_t * p_output_size, void *arg)
+		    size_t buffer_size, size_t *p_output_size, void *arg)
 {
 	*p_output_size =
 	    snprintf(buffer_addr, buffer_size, "(not yet implemented)");
@@ -89,14 +96,14 @@ int print_vfshandle(struct fsal_obj_handle *obj_hdl, caddr_t buffer_addr,
 
 /* DEFINE HERE YOUR ATTRIBUTES LIST */
 
-static fsal_xattr_def_t xattr_list[] = {
+static struct fsal_xattr_def xattr_list[] = {
 	{"vfshandle", print_vfshandle, NULL, XATTR_FOR_ALL | XATTR_RO, NULL},
 };
 
 #define XATTR_COUNT 1
 
 /* we assume that this number is < 254 */
-#if ( XATTR_COUNT > 254 )
+#if (XATTR_COUNT > 254)
 #error "ERROR: xattr count > 254"
 #endif
 /* test if an object has a given attribute */
@@ -154,7 +161,7 @@ static int file_attributes_to_xattr_attrs(struct attrlist *file_attrs,
 
 		LogCrit(COMPONENT_FSAL,
 			"Error: xattr_attrs->mask was 0 in %s() line %d, file %s",
-			__FUNCTION__, __LINE__, __FILE__);
+			__func__, __LINE__, __FILE__);
 	}
 
 	unsupp = xattr_attrs->mask & (~supported);
@@ -162,7 +169,7 @@ static int file_attributes_to_xattr_attrs(struct attrlist *file_attrs,
 	if (unsupp) {
 		LogDebug(COMPONENT_FSAL,
 			 "Asking for unsupported attributes in %s(): %#llX removing it from asked attributes",
-			 __FUNCTION__, (long long unsigned int)unsupp);
+			 __func__, (long long unsigned int)unsupp);
 
 		xattr_attrs->mask &= (~unsupp);
 	}
@@ -179,9 +186,9 @@ static int file_attributes_to_xattr_attrs(struct attrlist *file_attrs,
 		unsigned long hash = attr_index + 1;
 		char *str = (char *)&file_attrs->fileid;
 
-		for (i = 0; i < sizeof(xattr_attrs->fileid); i++, str++) {
+		for (i = 0; i < sizeof(xattr_attrs->fileid); i++, str++)
 			hash = (hash << 5) - hash + (unsigned long)(*str);
-		}
+
 		xattr_attrs->fileid = hash;
 	}
 
@@ -225,9 +232,8 @@ static int file_attributes_to_xattr_attrs(struct attrlist *file_attrs,
 		xattr_attrs->rawdev.minor = 0;
 	}
 
-	if (xattr_attrs->mask & ATTR_FSID) {
+	if (xattr_attrs->mask & ATTR_FSID)
 		xattr_attrs->fsid = file_attrs->fsid;
-	}
 
 	/* if mode==0, then owner is set to root and mode is set to 0600 */
 	if ((xattr_attrs->mask & ATTR_OWNER)
@@ -248,7 +254,7 @@ static int xattr_id_to_name(char *lustre_path, unsigned int xattr_id,
 	unsigned int index;
 	unsigned int curr_idx;
 	char names[MAXPATHLEN], *ptr;
-	size_t namesize;
+	ssize_t namesize;
 	size_t len = 0;
 
 	if (xattr_id < XATTR_COUNT)
@@ -288,7 +294,7 @@ static int xattr_name_to_id(char *lustre_path, const char *name)
 {
 	unsigned int i;
 	char names[MAXPATHLEN], *ptr;
-	size_t namesize;
+	ssize_t namesize;
 
 	/* get xattrs */
 
@@ -305,10 +311,9 @@ static int xattr_name_to_id(char *lustre_path, const char *name)
 	return -ERR_FSAL_NOENT;
 }
 
-fsal_status_t lustre_list_ext_attrs(struct fsal_obj_handle * obj_hdl,
-				    const struct req_op_context * opctx,
+fsal_status_t lustre_list_ext_attrs(struct fsal_obj_handle *obj_hdl,
 				    unsigned int argcookie,
-				    fsal_xattrent_t * xattrs_tab,
+				    fsal_xattrent_t *xattrs_tab,
 				    unsigned int xattrs_tabsize,
 				    unsigned int *p_nb_returned,
 				    int *end_of_list)
@@ -320,7 +325,7 @@ fsal_status_t lustre_list_ext_attrs(struct fsal_obj_handle * obj_hdl,
 	char mypath[MAXPATHLEN];
 
 	char names[MAXPATHLEN], *ptr;
-	size_t namesize;
+	ssize_t namesize;
 	int xattr_idx;
 
 	/* sanity checks */
@@ -369,7 +374,7 @@ fsal_status_t lustre_list_ext_attrs(struct fsal_obj_handle * obj_hdl,
 	}
 
 	/* get the path of the file in Lustre */
-	lustre_handle_to_path(lustre_get_root_path(obj_hdl->export),
+	lustre_handle_to_path(obj_hdl->fs->path,
 			      obj_handle->handle, mypath);
 
 	/* get xattrs */
@@ -392,7 +397,13 @@ fsal_status_t lustre_list_ext_attrs(struct fsal_obj_handle * obj_hdl,
 
 			/* fills an xattr entry */
 			xattrs_tab[out_index].xattr_id = index;
-			strncpy(xattrs_tab[out_index].xattr_name, ptr, len + 1);
+			/*
+			 * We probably ought to check if len is greater
+			 * than MAXNAMLEN ? Should be safe depending on
+			 * underlying FS...
+			 */
+			strncpy(xattrs_tab[out_index].xattr_name, ptr,
+				MAXNAMLEN);
 			xattrs_tab[out_index].xattr_cookie = index + 1;
 
 			/* set asked attributes (all supported) */
@@ -423,8 +434,7 @@ fsal_status_t lustre_list_ext_attrs(struct fsal_obj_handle * obj_hdl,
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
-fsal_status_t lustre_getextattr_id_by_name(struct fsal_obj_handle * obj_hdl,
-					   const struct req_op_context * opctx,
+fsal_status_t lustre_getextattr_id_by_name(struct fsal_obj_handle *obj_hdl,
 					   const char *xattr_name,
 					   unsigned int *pxattr_id)
 {
@@ -450,35 +460,29 @@ fsal_status_t lustre_getextattr_id_by_name(struct fsal_obj_handle * obj_hdl,
 
 	/* search in xattrs */
 	if (!found) {
-		lustre_handle_to_path(lustre_get_root_path(obj_hdl->export),
+		lustre_handle_to_path(obj_hdl->fs->path,
 				      obj_handle->handle, mypath);
 
 		errno = 0;
 		rc = xattr_name_to_id(mypath, xattr_name);
-		if (rc < 0) {
+		if (rc < 0)
 			return fsalstat(-rc, errno);
-		} else {
-			index = rc;
-			found = TRUE;
-		}
+
+		index = rc;
 	}
 
-	if (found) {
-		*pxattr_id = index;
-		return fsalstat(ERR_FSAL_NO_ERROR, 0);
-	} else
-		return fsalstat(ERR_FSAL_NOENT, ENOENT);
+	*pxattr_id = index;
+	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
-fsal_status_t lustre_getextattr_value_by_id(struct fsal_obj_handle * obj_hdl,
-					    const struct req_op_context * opctx,
+fsal_status_t lustre_getextattr_value_by_id(struct fsal_obj_handle *obj_hdl,
 					    unsigned int xattr_id,
 					    caddr_t buffer_addr,
 					    size_t buffer_size,
-					    size_t * p_output_size)
+					    size_t *p_output_size)
 {
 	struct lustre_fsal_obj_handle *obj_handle = NULL;
-	int rc = 0;
+	ssize_t rc = 0;
 	char mypath[MAXPATHLEN];
 
 	obj_handle =
@@ -497,45 +501,41 @@ fsal_status_t lustre_getextattr_value_by_id(struct fsal_obj_handle * obj_hdl,
 		char attr_name[MAXPATHLEN];
 
 		/* get the name for this attr */
-		lustre_handle_to_path(lustre_get_root_path(obj_hdl->export),
+		lustre_handle_to_path(obj_hdl->fs->path,
 				      obj_handle->handle, mypath);
 		rc = xattr_id_to_name(mypath, xattr_id, attr_name);
-		if (rc) {
+		if (rc)
 			return fsalstat(rc, errno);
-		}
 
 		rc = lgetxattr(mypath, attr_name, buffer_addr, buffer_size);
-		if (rc < 0) {
+		if (rc < 0)
 			return fsalstat(posix2fsal_error(errno), errno);
-		}
 
 		/* the xattr value can be a binary, or a string.
 		 * trying to determine its type...
 		 */
 		*p_output_size = rc;
 
-		return fsalstat(ERR_FSAL_NO_ERROR, 0);
+		rc = ERR_FSAL_NO_ERROR;
 	} else {		/* built-in attr */
 
 		/* get the value */
 		rc = xattr_list[xattr_id].get_func(obj_hdl, buffer_addr,
 						   buffer_size, p_output_size,
 						   xattr_list[xattr_id].arg);
-		return fsalstat(rc, 0);
 	}
 
-	return fsalstat(ERR_FSAL_NO_ERROR, 0);
+	return fsalstat(rc, 0);
 }
 
-fsal_status_t lustre_getextattr_value_by_name(struct fsal_obj_handle * obj_hdl,
-					      const struct req_op_context *
-					      opctx, const char *xattr_name,
-					      caddr_t buffer_addr,
-					      size_t buffer_size,
-					      size_t * p_output_size)
+fsal_status_t lustre_getextattr_value_by_name(struct fsal_obj_handle *obj_hdl,
+				      const char *xattr_name,
+				      caddr_t buffer_addr,
+				      size_t buffer_size,
+				      size_t *p_output_size)
 {
 	struct lustre_fsal_obj_handle *obj_handle = NULL;
-	int rc = 0;
+	ssize_t rc = 0;
 	char mypath[MAXPATHLEN];
 	unsigned int index;
 
@@ -551,7 +551,7 @@ fsal_status_t lustre_getextattr_value_by_name(struct fsal_obj_handle * obj_hdl,
 		if (do_match_type
 		    (xattr_list[index].flags, obj_hdl->attributes.type)
 		    && !strcmp(xattr_list[index].xattr_name, xattr_name)) {
-			return lustre_getextattr_value_by_id(obj_hdl, opctx,
+			return lustre_getextattr_value_by_id(obj_hdl,
 							     index, buffer_addr,
 							     buffer_size,
 							     p_output_size);
@@ -559,12 +559,12 @@ fsal_status_t lustre_getextattr_value_by_name(struct fsal_obj_handle * obj_hdl,
 	}
 
 	/* is it an xattr? */
-	lustre_handle_to_path(lustre_get_root_path(obj_hdl->export),
+	lustre_handle_to_path(obj_hdl->fs->path,
 			      obj_handle->handle, mypath);
 	rc = lgetxattr(mypath, xattr_name, buffer_addr, buffer_size);
-	if (rc < 0) {
+	if (rc < 0)
 		return fsalstat(posix2fsal_error(errno), errno);
-	}
+
 	/* the xattr value can be a binary, or a string.
 	 * trying to determine its type...
 	 */
@@ -573,8 +573,7 @@ fsal_status_t lustre_getextattr_value_by_name(struct fsal_obj_handle * obj_hdl,
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
-fsal_status_t lustre_setextattr_value(struct fsal_obj_handle * obj_hdl,
-				      const struct req_op_context * opctx,
+fsal_status_t lustre_setextattr_value(struct fsal_obj_handle *obj_hdl,
 				      const char *xattr_name,
 				      caddr_t buffer_addr, size_t buffer_size,
 				      int create)
@@ -582,23 +581,25 @@ fsal_status_t lustre_setextattr_value(struct fsal_obj_handle * obj_hdl,
 	struct lustre_fsal_obj_handle *obj_handle = NULL;
 	char mypath[MAXPATHLEN];
 	int rc = 0;
-        int flags = 0 ;
+	int flags = 0;
 
 	obj_handle =
 	    container_of(obj_hdl, struct lustre_fsal_obj_handle, obj_handle);
 
-        /* /!\ ACL HOOK. If name is "system.posix_acl_access", flags must remain unset */
-        if( strncmp( xattr_name, "system.posix_acl_access", MAXNAMLEN) )
-                flags = create ? XATTR_CREATE : XATTR_REPLACE ;
-        else
-                flags = 0 ;
+	/* /!\ ACL HOOK. If name is "system.posix_acl_access",
+	 * flags must remain unset */
+	if (strncmp(xattr_name, "system.posix_acl_access", MAXNAMLEN))
+		flags = create ? XATTR_CREATE : XATTR_REPLACE;
+	else
+		flags = 0;
 
-	lustre_handle_to_path(lustre_get_root_path(obj_hdl->export),
+	lustre_handle_to_path(obj_hdl->fs->path,
 			      obj_handle->handle, mypath);
 	if (buffer_size == 0)
-		rc = lsetxattr(mypath, xattr_name, "", 1, flags ) ;
+		rc = lsetxattr(mypath, xattr_name, "", 1, flags);
 	else
-		rc = lsetxattr(mypath, xattr_name, (char *)buffer_addr, buffer_size, flags ) ;
+		rc = lsetxattr(mypath, xattr_name,
+			       (char *)buffer_addr, buffer_size, flags);
 
 	if (rc != 0)
 		return fsalstat(posix2fsal_error(errno), errno);
@@ -607,8 +608,7 @@ fsal_status_t lustre_setextattr_value(struct fsal_obj_handle * obj_hdl,
 
 }
 
-fsal_status_t lustre_setextattr_value_by_id(struct fsal_obj_handle * obj_hdl,
-					    const struct req_op_context * opctx,
+fsal_status_t lustre_setextattr_value_by_id(struct fsal_obj_handle *obj_hdl,
 					    unsigned int xattr_id,
 					    caddr_t buffer_addr,
 					    size_t buffer_size)
@@ -627,21 +627,20 @@ fsal_status_t lustre_setextattr_value_by_id(struct fsal_obj_handle * obj_hdl,
 		return fsalstat(ERR_FSAL_PERM, 0);
 
 	/* build fid path in lustre */
-	lustre_handle_to_path(lustre_get_root_path(obj_hdl->export),
+	lustre_handle_to_path(obj_hdl->fs->path,
 			      obj_handle->handle, mypath);
 
 	rc = xattr_id_to_name(mypath, xattr_id, name);
 	if (rc)
 		return fsalstat(rc, errno);
 
-	return lustre_setextattr_value(obj_hdl, opctx, name, buffer_addr,
+	return lustre_setextattr_value(obj_hdl, name, buffer_addr,
 				       buffer_size, FALSE);
 }
 
-fsal_status_t lustre_getextattr_attrs(struct fsal_obj_handle * obj_hdl,
-				      const struct req_op_context * opctx,
+fsal_status_t lustre_getextattr_attrs(struct fsal_obj_handle *obj_hdl,
 				      unsigned int xattr_id,
-				      struct attrlist * p_attrs)
+				      struct attrlist *p_attrs)
 {
 	int rc;
 
@@ -660,17 +659,16 @@ fsal_status_t lustre_getextattr_attrs(struct fsal_obj_handle * obj_hdl,
 			     xattr_id - XATTR_COUNT);
 	}
 
-	if ((rc =
-	     file_attributes_to_xattr_attrs(&obj_hdl->attributes, p_attrs,
-					    xattr_id))) {
+	rc = file_attributes_to_xattr_attrs(&obj_hdl->attributes,
+					    p_attrs,
+					    xattr_id);
+	if (rc)
 		return fsalstat(ERR_FSAL_INVAL, rc);
-	}
 
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
-fsal_status_t lustre_remove_extattr_by_id(struct fsal_obj_handle * obj_hdl,
-					  const struct req_op_context * opctx,
+fsal_status_t lustre_remove_extattr_by_id(struct fsal_obj_handle *obj_hdl,
 					  unsigned int xattr_id)
 {
 	int rc;
@@ -681,22 +679,20 @@ fsal_status_t lustre_remove_extattr_by_id(struct fsal_obj_handle * obj_hdl,
 	obj_handle =
 	    container_of(obj_hdl, struct lustre_fsal_obj_handle, obj_handle);
 
-	lustre_handle_to_path(lustre_get_root_path(obj_hdl->export),
+	lustre_handle_to_path(obj_hdl->fs->path,
 			      obj_handle->handle, mypath);
 	rc = xattr_id_to_name(mypath, xattr_id, name);
-	if (rc) {
+	if (rc)
 		return fsalstat(rc, errno);
-	}
-	rc = lremovexattr(mypath, name);
 
+	rc = lremovexattr(mypath, name);
 	if (rc != 0)
 		return fsalstat(posix2fsal_error(errno), errno);
 
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
-fsal_status_t lustre_remove_extattr_by_name(struct fsal_obj_handle * obj_hdl,
-					    const struct req_op_context * opctx,
+fsal_status_t lustre_remove_extattr_by_name(struct fsal_obj_handle *obj_hdl,
 					    const char *xattr_name)
 {
 	struct lustre_fsal_obj_handle *obj_handle = NULL;
@@ -706,7 +702,7 @@ fsal_status_t lustre_remove_extattr_by_name(struct fsal_obj_handle * obj_hdl,
 	obj_handle =
 	    container_of(obj_hdl, struct lustre_fsal_obj_handle, obj_handle);
 
-	lustre_handle_to_path(lustre_get_root_path(obj_hdl->export),
+	lustre_handle_to_path(obj_hdl->fs->path,
 			      obj_handle->handle, mypath);
 
 	rc = lremovexattr(mypath, xattr_name);

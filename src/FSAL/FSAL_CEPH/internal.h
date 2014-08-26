@@ -62,6 +62,8 @@ struct handle {
 	Fh *fd;
 	struct Inode *i;	/*< The Ceph inode */
 	fsal_openflags_t openflags;
+	const struct fsal_up_vector *up_ops;	/*< Upcall operations */
+	struct export *export;	/*< The first export this handle belongs to */
 #ifdef CEPH_PNFS
 	uint64_t rd_issued;
 	uint64_t rd_serial;
@@ -115,7 +117,7 @@ static const size_t BIGGEST_PATTERN = 1024;
 
 int construct_handle(const struct stat *st, struct Inode *i,
 		     struct export *export, struct handle **obj);
-int deconstruct_handle(struct handle *obj);
+void deconstruct_handle(struct handle *obj);
 fsal_status_t ceph2fsal_error(const int ceph_errorcode);
 void ceph2fsal_attributes(const struct stat *buffstat,
 			  struct attrlist *fsalattr);

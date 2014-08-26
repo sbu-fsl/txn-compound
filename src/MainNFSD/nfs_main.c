@@ -94,12 +94,14 @@ int main(int argc, char *argv[])
 {
 	char *tempo_exec_name = NULL;
 	char localmachine[MAXHOSTNAMELEN + 1];
-	int c;
+	int c, rc;
 	int pidfile;
 #ifndef HAVE_DAEMON
+	int dev_null_fd = 0;
 	pid_t son_pid;
 #endif
 	sigset_t signals_to_block;
+	struct config_error_type err_type;
 
 	/* Set the server's boot time and epoch */
 	now(&ServerBootTime);
@@ -240,6 +242,10 @@ int main(int argc, char *argv[])
 			LogFatal(COMPONENT_MAIN,
 				 "Error detaching process from parent: %s",
 				 strerror(errno));
+
+		/* In the child process, change the log header
+		 * if not, the header will contain the parent's pid */
+		set_const_log_str();
 #else
 		/* Step 1: forking a service process */
 		switch (son_pid = fork()) {
@@ -258,6 +264,50 @@ int main(int argc, char *argv[])
 					 "Could not start nfs daemon (setsid error %d (%s)",
 					 errno, strerror(errno));
 			}
+
+			/* stdin, stdout and stderr should not refer to a tty
+			 * I close 0, 1 & 2  and redirect them to /dev/null */
+			dev_null_fd = open("/dev/null", O_RDWR);
+			if (dev_null_fd < 0)
+				LogFatal(COMPONENT_MAIN,
+					 "Could not open /dev/null: %d (%s)",
+					 errno, strerror(errno));
+
+			if (close(STDIN_FILENO) == -1)
+				LogEvent(COMPONENT_MAIN,
+					 "Error while closing stdin: %d (%s)",
+					  errno, strerror(errno));
+			else {
+				LogEvent(COMPONENT_MAIN, "stdin closed");
+				dup(dev_null_fd);
+			}
+
+			if (close(STDOUT_FILENO) == -1)
+				LogEvent(COMPONENT_MAIN,
+					 "Error while closing stdout: %d (%s)",
+					  errno, strerror(errno));
+			else {
+				LogEvent(COMPONENT_MAIN, "stdout closed");
+				dup(dev_null_fd);
+			}
+
+			if (close(STDERR_FILENO) == -1)
+				LogEvent(COMPONENT_MAIN,
+					 "Error while closing stderr: %d (%s)",
+					  errno, strerror(errno));
+			else {
+				LogEvent(COMPONENT_MAIN, "stderr closed");
+				dup(dev_null_fd);
+			}
+
+			if (close(dev_null_fd) == -1)
+				LogFatal(COMPONENT_MAIN,
+					 "Could not close tmp fd to /dev/null: %d (%s)",
+					 errno, strerror(errno));
+
+			/* In the child process, change the log header
+			 * if not, the header will contain the parent's pid */
+			set_const_log_str();
 			break;
 
 		default:
@@ -320,17 +370,31 @@ int main(int argc, char *argv[])
 			 "start_fsals: No configuration file named.");
 		return 1;
 	}
-	config_struct = config_ParseFile(config_path);
+	config_struct = config_ParseFile(config_path, &err_type);
 
-	if (!config_struct) {
-		LogFatal(COMPONENT_INIT, "Error while parsing %s: %s",
-			 config_path, config_GetErrorMsg());
+	if (!config_error_no_error(&err_type)) {
+		char *errstr = err_type_str(&err_type);
+
+		if (!config_error_is_harmless(&err_type))
+			LogFatal(COMPONENT_INIT,
+				 "Fatal error while parsing %s because of %s errors",
+				 config_path,
+				 errstr != NULL ? errstr : "unknown");
+			/* NOT REACHED */
+		LogCrit(COMPONENT_INIT,
+			"Minor parse errors found %s in %s",
+			errstr != NULL ? errstr : "unknown", config_path);
+		if (errstr != NULL)
+			gsh_free(errstr);
 	}
 
+	if (read_log_config(config_struct) < 0)
+		LogFatal(COMPONENT_INIT,
+			 "Error while parsing log configuration");
 	/* We need all the fsal modules loaded so we can have
 	 * the list available at exports parsing time.
 	 */
-	start_fsals(config_struct);
+	start_fsals();
 
 	/* parse configuration file */
 
@@ -339,14 +403,21 @@ int main(int argc, char *argv[])
 			 "Error setting parameters from configuration file.");
 	}
 
-	if (nfs_check_param_consistency()) {
+	/* initialize core subsystems and data structures */
+	if (init_server_pkgs() != 0)
 		LogFatal(COMPONENT_INIT,
-			 "Inconsistent parameters found. Exiting...");
-	}
-	if (init_fsals(config_struct)) { /* init the FSALs from the config */
+			 "Failed to initialize server packages");
+
+	/* Load export entries from parsed file
+	 * returns the number of export entries.
+	 */
+	rc = ReadExports(config_struct);
+	if (rc < 0)
 		LogFatal(COMPONENT_INIT,
-			 "FSALs could not initialize. Exiting...");
-	}
+			  "Error while parsing export entries");
+	else if (rc == 0)
+		LogWarn(COMPONENT_INIT,
+			"No export entries found in configuration file !!!");
 
 	/* freeing syntax tree : */
 

@@ -48,6 +48,7 @@
 #include "hashtable.h"
 #include "fsal.h"
 #include "sal_functions.h"
+#include "export_mgr.h"
 
 pool_t *state_owner_pool;	/*< Pool for NFSv4 files's open owner */
 
@@ -163,6 +164,10 @@ const char *state_err_str(state_status_t err)
 		return "STATE_TOOSMALL";
 	case STATE_XDEV:
 		return "STATE_XDEV";
+	case STATE_IN_GRACE:
+		return "STATE_IN_GRACE";
+	case STATE_BADHANDLE:
+		return "STATE_BADHANDLE";
 	}
 	return "unknown";
 }
@@ -207,6 +212,7 @@ state_status_t cache_inode_status_to_state_status(cache_inode_status_t status)
 		return STATE_NOT_FOUND;
 	case CACHE_INODE_BADNAME:
 	case CACHE_INODE_INVALID_ARGUMENT:
+	case CACHE_INODE_CROSS_JUNCTION:
 		return STATE_INVALID_ARGUMENT;
 	case CACHE_INODE_INSERT_ERROR:
 		return STATE_INSERT_ERROR;
@@ -237,6 +243,7 @@ state_status_t cache_inode_status_to_state_status(cache_inode_status_t status)
 	case CACHE_INODE_ASYNC_POST_ERROR:
 		return STATE_ASYNC_POST_ERROR;
 	case CACHE_INODE_NOT_SUPPORTED:
+	case CACHE_INODE_UNION_NOTSUPP:
 		return STATE_NOT_SUPPORTED;
 	case CACHE_INODE_STATE_ERROR:
 		return STATE_STATE_ERROR;
@@ -262,6 +269,10 @@ state_status_t cache_inode_status_to_state_status(cache_inode_status_t status)
 		return STATE_TOOSMALL;
 	case CACHE_INODE_FSAL_XDEV:
 		return STATE_XDEV;
+	case CACHE_INODE_IN_GRACE:
+		return STATE_IN_GRACE;
+	case CACHE_INODE_BADHANDLE:
+		return STATE_BADHANDLE;
 	}
 	return STATE_CACHE_INODE_ERR;
 }
@@ -303,7 +314,6 @@ state_status_t state_error_convert(fsal_status_t fsal_status)
 		return STATE_IO_ERROR;
 
 	case ERR_FSAL_STALE:
-	case ERR_FSAL_BADHANDLE:
 	case ERR_FSAL_FHEXPIRED:
 		return STATE_FSAL_ESTALE;
 
@@ -316,6 +326,7 @@ state_status_t state_error_convert(fsal_status_t fsal_status)
 
 	case ERR_FSAL_NOTSUPP:
 	case ERR_FSAL_ATTRNOTSUPP:
+	case ERR_FSAL_UNION_NOTSUPP:
 		return STATE_NOT_SUPPORTED;
 
 	case ERR_FSAL_NOMEM:
@@ -350,6 +361,12 @@ state_status_t state_error_convert(fsal_status_t fsal_status)
 
 	case ERR_FSAL_BLOCKED:
 		return STATE_LOCK_BLOCKED;
+
+	case ERR_FSAL_IN_GRACE:
+		return STATE_IN_GRACE;
+
+	case ERR_FSAL_BADHANDLE:
+		return STATE_BADHANDLE;
 
 	case ERR_FSAL_DQUOT:
 	case ERR_FSAL_NAMETOOLONG:
@@ -532,8 +549,16 @@ nfsstat4 nfs4_Errno_state(state_status_t error)
 		nfserror = NFS4ERR_TOOSMALL;
 		break;
 
+	case STATE_IN_GRACE:
+		nfserror = NFS4ERR_GRACE;
+		break;
+
 	case STATE_XDEV:
 		nfserror = NFS4ERR_XDEV;
+		break;
+
+	case STATE_BADHANDLE:
+		nfserror = NFS4ERR_BADHANDLE;
 		break;
 
 	case STATE_INVALID_ARGUMENT:
@@ -685,6 +710,14 @@ nfsstat3 nfs3_Errno_state(state_status_t error)
 		nfserror = NFS3ERR_XDEV;
 		break;
 
+	case STATE_IN_GRACE:
+		nfserror = NFS3ERR_JUKEBOX;
+		break;
+
+	case STATE_BADHANDLE:
+		nfserror = NFS3ERR_BADHANDLE;
+		break;
+
 	case STATE_CACHE_INODE_ERR:
 	case STATE_INCONSISTENT_ENTRY:
 	case STATE_HASH_TABLE_ERROR:
@@ -705,6 +738,13 @@ nfsstat3 nfs3_Errno_state(state_status_t error)
 	}
 
 	return nfserror;
+}
+
+bool state_unlock_err_ok(state_status_t status)
+{
+	return status == STATE_SUCCESS ||
+	       status == STATE_FSAL_ESTALE ||
+	       status == STATE_DEAD_ENTRY;
 }
 
 /** String for undefined state owner types */
@@ -761,20 +801,14 @@ bool different_owners(state_owner_t *owner1, state_owner_t *owner2)
 
 	switch (owner1->so_type) {
 	case STATE_LOCK_OWNER_NLM:
-		if (owner2->so_type != STATE_LOCK_OWNER_NLM)
-			return true;
 		return compare_nlm_owner(owner1, owner2);
 #ifdef _USE_9P
 	case STATE_LOCK_OWNER_9P:
-		if (owner2->so_type != STATE_LOCK_OWNER_9P)
-			return true;
 		return compare_9p_owner(owner1, owner2);
 #endif
 	case STATE_OPEN_OWNER_NFSV4:
 	case STATE_LOCK_OWNER_NFSV4:
 	case STATE_CLIENTID_OWNER_NFSV4:
-		if (owner1->so_type != owner2->so_type)
-			return true;
 		return compare_nfs4_owner(owner1, owner2);
 
 	case STATE_LOCK_OWNER_UNKNOWN:
@@ -800,6 +834,7 @@ int DisplayOwner(state_owner_t *owner, char *buf)
 	switch (owner->so_type) {
 	case STATE_LOCK_OWNER_NLM:
 		return display_nlm_owner(owner, buf);
+
 #ifdef _USE_9P
 	case STATE_LOCK_OWNER_9P:
 		return display_9p_owner(owner, buf);
@@ -1286,5 +1321,26 @@ void dump_all_owners(void)
 	pthread_mutex_unlock(&all_state_owners_mutex);
 }
 #endif
+
+/**
+ * @brief Release all the state belonging to an export.
+ *
+ * @param[in]  exp   The export to release state for.
+ *
+ */
+
+void state_release_export(struct gsh_export *export)
+{
+	struct root_op_context root_op_context;
+
+	/* Initialize req_ctx */
+	init_root_op_context(&root_op_context, export, export->fsal_export,
+			     0, 0, UNKNOWN_REQUEST);
+
+	state_export_unlock_all();
+	state_export_release_nfs4_state();
+	state_export_unshare_all();
+	release_root_op_context();
+}
 
 /** @} */

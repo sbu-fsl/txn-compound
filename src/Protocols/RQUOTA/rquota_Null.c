@@ -34,8 +34,6 @@
 #include "nfs_core.h"
 #include "cache_inode.h"
 #include "nfs_exports.h"
-#include "nfs_creds.h"
-#include "nfs_tools.h"
 #include "mount.h"
 #include "rquota.h"
 #include "nfs_proto_functions.h"
@@ -45,14 +43,13 @@
  *
  * @param[in]  arg    Ignored
  * @param[in]  export Ignored
- * @param[in]  req_ctx Ignored
  * @param[in]  worker Ignored
  * @param[in]  req    Ignored
  * @param[out] res    Ignored
  */
 
-int rquota_Null(nfs_arg_t *arg, exportlist_t *export,
-		struct req_op_context *req_ctx, nfs_worker_data_t *worker,
+int rquota_Null(nfs_arg_t *arg,
+		nfs_worker_data_t *worker,
 		struct svc_req *req, nfs_res_t *res)
 {
 	LogFullDebug(COMPONENT_NFSPROTO,

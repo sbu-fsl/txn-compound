@@ -48,9 +48,9 @@
 #include "rquota.h"
 #include "nfs_init.h"
 #include "nfs_core.h"
+#include "nfs_convert.h"
 #include "cache_inode.h"
 #include "nfs_exports.h"
-#include "nfs_creds.h"
 #include "nfs_proto_functions.h"
 #include "nfs_req_queue.h"
 #include "nfs_dupreq.h"
@@ -352,6 +352,8 @@ void Bind_sockets(void)
 		}
 }
 
+/* The following routine must ONLY be called from the shutdown
+ * thread */
 void Clean_RPC(void)
 {
   /**
@@ -361,8 +363,6 @@ void Clean_RPC(void)
 	unregister_rpc();
 	close_rpc_fd();
 }
-
-cleanup_list_element clean_rpc = { NULL, Clean_RPC };
 
 #define UDP_REGISTER(prot, vers, netconfig) \
 	svc_reg(udp_xprt[prot], nfs_param.core_param.program[prot], \
@@ -433,6 +433,8 @@ void nfs_Init_svc()
 
 	LogInfo(COMPONENT_DISPATCH, "NFS INIT: using TIRPC");
 
+	memset(&svc_params, 0, sizeof(svc_params));
+
 	/* New TI-RPC package init function */
 	svc_params.flags = SVC_INIT_EPOLL;	/* use EPOLL event mgmt */
 	svc_params.flags |= SVC_INIT_NOREG_XPRTS; /* don't call xprt_register */
@@ -445,6 +447,8 @@ void nfs_Init_svc()
 	svc_params.gss_ctx_hash_partitions = 17;
 	svc_params.gss_max_idle_gen = 1024;	/* GSS ctx cache expiration */
 	svc_params.gss_max_gc = 200;
+	svc_params.ioq_thrd_max = /* max ioq worker threads */
+		nfs_param.core_param.rpc.ioq_thrd_max;
 
 	svc_init(&svc_params);
 
@@ -594,7 +598,6 @@ void nfs_Init_svc()
 
 	/* Unregister from portmapper/rpcbind */
 	unregister_rpc();
-	RegisterCleanup(&clean_rpc);
 
 	/* Set up well-known xprt handles */
 	Create_SVCXPRTs();
@@ -808,11 +811,10 @@ void thr_stallq(struct fridgethr_context *thr_ctx)
 				glist_del(&xu->stallq);
 				--(nfs_req_st.stallq.stalled);
 				xu->flags &= ~XPRT_PRIVATE_FLAG_STALLED;
-				pthread_mutex_unlock(&xprt->xp_lock);
-				(void)svc_rqst_rearm_events(xprt,
-							    SVC_RQST_FLAG_NONE);
+				(void)svc_rqst_rearm_events(
+					xprt, SVC_RQST_FLAG_NONE);
 				/* drop stallq ref */
-				gsh_xprt_unref(xprt, XPRT_PRIVATE_FLAG_NONE,
+				gsh_xprt_unref(xprt, XPRT_PRIVATE_FLAG_LOCKED,
 					       __func__, __LINE__);
 				goto restart;
 			}
@@ -899,17 +901,13 @@ void nfs_rpc_queue_init(void)
 	reqparams.thr_max = 0;
 	reqparams.thr_min = 1;
 	reqparams.thread_delay =
-	    ((nfs_param.core_param.decoder_fridge_expiration_delay >= 0) ?
-	     nfs_param.core_param.decoder_fridge_expiration_delay :
-	     600);
+		nfs_param.core_param.decoder_fridge_expiration_delay;
 	reqparams.deferment = fridgethr_defer_block;
 	reqparams.block_delay =
-	    ((nfs_param.core_param.decoder_fridge_block_timeout >= 0) ?
-	     nfs_param.core_param.decoder_fridge_block_timeout :
-	     600);
+		nfs_param.core_param.decoder_fridge_block_timeout;
 
 	/* decoder thread pool */
-	rc = fridgethr_init(&req_fridge, "decoder_thr", &reqparams);
+	rc = fridgethr_init(&req_fridge, "decoder", &reqparams);
 	if (rc != 0)
 		LogFatal(COMPONENT_DISPATCH,
 			 "Unable to initialize decoder thread pool: %d", rc);

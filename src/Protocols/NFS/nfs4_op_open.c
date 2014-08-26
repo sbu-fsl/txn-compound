@@ -38,8 +38,11 @@
 #include "sal_functions.h"
 #include "nfs_proto_functions.h"
 #include "nfs_proto_tools.h"
+#include "nfs_convert.h"
 #include "cache_inode_lru.h"
 #include "fsal_convert.h"
+#include "nfs_creds.h"
+#include "export_mgr.h"
 
 static const char *open_tag = "OPEN";
 
@@ -110,13 +113,13 @@ static nfsstat4 open4_do_open(struct nfs_argop4 *op, compound_data_t *data,
 	}
 
 	if (args->share_access & OPEN4_SHARE_ACCESS_WRITE)
-		access_mask |= FSAL_READ_ACCESS;
+		access_mask |= FSAL_WRITE_ACCESS;
 
 	if (args->share_access & OPEN4_SHARE_ACCESS_READ)
 		access_mask |= FSAL_READ_ACCESS;
 
 	cache_status =
-	    cache_inode_access(data->current_entry, access_mask, data->req_ctx);
+	    cache_inode_access(data->current_entry, access_mask);
 
 	if (cache_status != CACHE_INODE_SUCCESS) {
 		/* If non-permission error, return it. */
@@ -141,8 +144,7 @@ static nfsstat4 open4_do_open(struct nfs_argop4 *op, compound_data_t *data,
 		cache_status = cache_inode_access(
 			data->current_entry,
 			FSAL_MODE_MASK_SET(FSAL_X_OK) |
-				FSAL_ACE4_MASK_SET(FSAL_ACE_PERM_EXECUTE),
-			data->req_ctx);
+				FSAL_ACE4_MASK_SET(FSAL_ACE_PERM_EXECUTE));
 
 		if (cache_status != CACHE_INODE_SUCCESS) {
 			LogDebug(COMPONENT_STATE,
@@ -153,7 +155,7 @@ static nfsstat4 open4_do_open(struct nfs_argop4 *op, compound_data_t *data,
 	}
 
 	candidate_data.share.share_access =
-	    args->share_access & ~OPEN4_SHARE_ACCESS_WANT_DELEG_MASK;
+	    args->share_access & OPEN4_SHARE_ACCESS_BOTH;
 	candidate_data.share.share_deny = args->share_deny;
 	candidate_data.share.share_access_prev = 0;
 	candidate_data.share.share_deny_prev = 0;
@@ -173,10 +175,6 @@ static nfsstat4 open4_do_open(struct nfs_argop4 *op, compound_data_t *data,
 	glist_for_each(glist, &data->current_entry->state_list) {
 		state_iterate = glist_entry(glist, state_t, state_list);
 
-		/**
-		 * @todo This will need to be updated when we get
-		 * delegations.
-		 */
 		if (state_iterate->state_type != STATE_TYPE_SHARE)
 			continue;
 
@@ -223,31 +221,31 @@ static nfsstat4 open4_do_open(struct nfs_argop4 *op, compound_data_t *data,
 		glist_init(&(file_state->state_data.share.share_lockstates));
 
 		/* Attach this open to an export */
-		file_state->state_export = data->export;
-		pthread_mutex_lock(&data->export->exp_state_mutex);
-		glist_add_tail(&data->export->exp_state_list,
+		file_state->state_export = op_ctx->export;
+		PTHREAD_RWLOCK_wrlock(&op_ctx->export->lock);
+		glist_add_tail(&op_ctx->export->exp_state_list,
 			       &file_state->state_export_list);
-		pthread_mutex_unlock(&data->export->exp_state_mutex);
+		PTHREAD_RWLOCK_unlock(&op_ctx->export->lock);
 	} else {
 		/* Check if open from another export */
-		if (file_state->state_export != data->export) {
+		if (file_state->state_export != op_ctx->export) {
 			LogEvent(COMPONENT_STATE,
 				 "Lock Owner Export Conflict, Lock held for export %d (%s), request for export %d (%s)",
-				 file_state->state_export->id,
+				 file_state->state_export->export_id,
 				 file_state->state_export->fullpath,
-				 data->export->id, data->export->fullpath);
+				 op_ctx->export->export_id,
+				 op_ctx->export->fullpath);
 			return STATE_INVALID_ARGUMENT;
 		}
 	}
 
 	/* Fill in the clientid for NFSv4.0 */
 	if (data->minorversion == 0) {
-		data->req_ctx->clientid =
+		op_ctx->clientid =
 		    &owner->so_owner.so_nfs4_owner.so_clientid;
 	}
 
-	cache_status =
-	    cache_inode_open(data->current_entry, openflags, data->req_ctx, 0);
+	cache_status = cache_inode_open(data->current_entry, openflags, 0);
 
 	if (cache_status != CACHE_INODE_SUCCESS)
 		return nfs4_Errno(cache_status);
@@ -255,14 +253,16 @@ static nfsstat4 open4_do_open(struct nfs_argop4 *op, compound_data_t *data,
 	/* Clear the clientid for NFSv4.0 */
 
 	if (data->minorversion == 0)
-		data->req_ctx->clientid = NULL;
+		op_ctx->clientid = NULL;
 
 	/* Push share state to SAL (and FSAL) and update the union of
 	   file share state. */
 
 	if (*new_state) {
-		state_status =
-		    state_share_add(data->current_entry, owner, file_state);
+		state_status = state_share_add(data->current_entry,
+					       owner,
+					       file_state,
+					       (openflags & FSAL_O_RECLAIM));
 
 		if (state_status != STATE_SUCCESS) {
 			cache_status =
@@ -283,10 +283,12 @@ static nfsstat4 open4_do_open(struct nfs_argop4 *op, compound_data_t *data,
 		    && (file_state->state_type == STATE_TYPE_SHARE)) {
 			LogFullDebug(COMPONENT_STATE,
 				     "Update existing share state");
-			state_status = state_share_upgrade(data->current_entry,
-							   &candidate_data,
-							   owner,
-							   file_state);
+			state_status = state_share_upgrade(
+						   data->current_entry,
+						   &candidate_data,
+						   owner,
+						   file_state,
+						   openflags & FSAL_O_RECLAIM);
 
 			if (state_status != STATE_SUCCESS) {
 				cache_status =
@@ -331,7 +333,9 @@ static nfsstat4 open4_create_fh(compound_data_t *data, cache_entry_t *entry)
 	newfh4.nfs_fh4_len = sizeof(struct alloc_file_handle_v4);
 
 	/* Building a new fh */
-	if (!nfs4_FSALToFhandle(&newfh4, entry->obj_handle))
+	if (!nfs4_FSALToFhandle(&newfh4,
+				entry->obj_handle,
+				op_ctx->export))
 		return NFS4ERR_SERVERFAULT;
 
 	/* This new fh replaces the current FH */
@@ -340,11 +344,8 @@ static nfsstat4 open4_create_fh(compound_data_t *data, cache_entry_t *entry)
 	       newfh4.nfs_fh4_val,
 	       newfh4.nfs_fh4_len);
 
-	/* Mark current_stateid as invalid */
-	data->current_stateid_valid = false;
-
-	data->current_entry = entry;
-	data->current_filetype = entry->type;
+	/* Update the current entry */
+	set_current_entry(data, entry, true);
 
 	return NFS4_OK;
 }
@@ -387,7 +388,7 @@ static nfsstat4 open4_validate_claim(compound_data_t *data,
 		if (data->minorversion == 0)
 			status = NFS4ERR_NOTSUPP;
 
-		if (nfs_in_grace())
+		if (!fsal_grace() && nfs_in_grace())
 			status = NFS4ERR_GRACE;
 		break;
 
@@ -493,21 +494,17 @@ bool open4_open_owner(struct nfs_argop4 *op, compound_data_t *data,
 			 */
 			if (res_OPEN4->status == NFS4_OK) {
 				/* Check if filename is correct */
-				cache_status = nfs4_utf8string2dynamic(
+				res_OPEN4->status = nfs4_utf8string2dynamic(
 				     &arg_OPEN4->claim.open_claim4_u.file,
 				     UTF8_SCAN_ALL,
 				     &filename);
 
-				if (cache_status != CACHE_INODE_SUCCESS) {
-					res_OPEN4->status =
-					    nfs4_Errno(cache_status);
+				if (res_OPEN4->status != NFS4_OK)
 					return false;
-				}
 
 				cache_status =
 				    cache_inode_lookup(data->current_entry,
 						       filename,
-						       data->req_ctx,
 						       &entry_lookup);
 				if (filename) {
 					gsh_free(filename);
@@ -567,15 +564,12 @@ static nfsstat4 open4_create(OPEN4args *arg, compound_data_t *data,
 
 	*entry = NULL;
 
-	memset(&sattr, 0, sizeof(struct attrlist));
-
 	/* if quota support is active, then we should check is
 	   the FSAL allows inode creation or not */
-	fsal_status = data->export->export_hdl->ops->check_quota(
-						data->export->export_hdl,
-						data->export->fullpath,
-						FSAL_QUOTA_INODES,
-						data->req_ctx);
+	fsal_status = op_ctx->fsal_export->ops->check_quota(
+						op_ctx->fsal_export,
+						op_ctx->export->fullpath,
+						FSAL_QUOTA_INODES);
 
 	if (FSAL_IS_ERROR(fsal_status))
 		return NFS4ERR_DQUOT;
@@ -685,7 +679,6 @@ static nfsstat4 open4_create(OPEN4args *arg, compound_data_t *data,
 					  REGULAR_FILE,
 					  mode,
 					  NULL,
-					  data->req_ctx,
 					  &entry_newfile);
 
 	/* Complete failure */
@@ -701,7 +694,6 @@ static nfsstat4 open4_create(OPEN4args *arg, compound_data_t *data,
 			return nfs4_Errno(cache_status);
 		} else if (verf_provided
 			   && !cache_inode_create_verify(entry_newfile,
-							 data->req_ctx,
 							 verf_hi,
 							 verf_lo)) {
 			cache_inode_put(entry_newfile);
@@ -728,9 +720,7 @@ static nfsstat4 open4_create(OPEN4args *arg, compound_data_t *data,
 		/* If owner or owner_group are set, and the credential was
 		 * squashed, then we must squash the set owner and owner_group.
 		 */
-		squash_setattr(&data->export_perms,
-			       data->req_ctx->creds,
-			       &sattr);
+		squash_setattr(&sattr);
 
 		/* Skip setting attributes if all asked attributes
 		 * are handled by create
@@ -739,15 +729,14 @@ static nfsstat4 open4_create(OPEN4args *arg, compound_data_t *data,
 		     (ATTR_ACL | ATTR_ATIME | ATTR_MTIME | ATTR_CTIME |
 		      ATTR_SIZE)) ||
 		    ((sattr.mask & ATTR_OWNER)
-			&& (data->req_ctx->creds->caller_uid != sattr.owner))
+			&& (op_ctx->creds->caller_uid != sattr.owner))
 		    || ((sattr.mask & ATTR_GROUP)
-			&& (data->req_ctx->creds->caller_gid != sattr.group))) {
+			&& (op_ctx->creds->caller_gid != sattr.group))) {
 
 			cache_status =
 			    cache_inode_setattr(entry_newfile, &sattr,
-						(arg->share_access &
-						 OPEN4_SHARE_ACCESS_WRITE) != 0,
-						data->req_ctx);
+					(arg->share_access &
+					 OPEN4_SHARE_ACCESS_WRITE) != 0);
 
 			if (cache_status != CACHE_INODE_SUCCESS)
 				return nfs4_Errno(cache_status);
@@ -815,7 +804,7 @@ static nfsstat4 open4_claim_null(OPEN4args *arg, compound_data_t *data,
 
 	case OPEN4_NOCREATE:
 		cache_status =
-		    cache_inode_lookup(parent, filename, data->req_ctx, entry);
+		    cache_inode_lookup(parent, filename, entry);
 
 		if (cache_status != CACHE_INODE_SUCCESS)
 			nfs_status = nfs4_Errno(cache_status);
@@ -832,51 +821,169 @@ static nfsstat4 open4_claim_null(OPEN4args *arg, compound_data_t *data,
 	return nfs_status;
 }
 
-static void get_delegation(compound_data_t *data, state_t *file_state,
-			   state_owner_t *powner, OPEN4resok *resok)
+
+/**
+ * @brief Create a new delegation state then get the delegation.
+ *
+ * Create a new delegation state for this client and file.
+ * Then attempt to get a LEASE lock to delegate the file
+ * according to whether the client opened READ or READ/WRITE.
+ * Note: Entry state needs to be locked before executing this function!
+ *
+ * @param[in] data Compound data for this request
+ * @param[in] op NFS arguments for the request
+ * @param[in] open_state Open state for the inode to be delegated.
+ * @param[in] openowner Open owner of the open state.
+ * @param[in] client Client that will own the delegation.
+ * @param[in/out] resok Delegation attempt result to be returned to client.
+ */
+static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
+			   state_t *open_state, state_owner_t *openowner,
+			   nfs_client_id_t *client, OPEN4resok *resok)
 {
 	state_status_t state_status;
 	fsal_lock_param_t lock_desc;
+	state_data_t deleg_data, candidate_data, *saved_data;
+	open_delegation_type4 deleg_type;
+	state_owner_t *clientowner = &client->cid_owner;
+	OPEN4args *args = &op->nfs_argop4_u.opopen;
+	struct state_refer refer;
+	state_t *new_state;
 
-	lock_desc.lock_type = FSAL_LOCK_R;
+	resok->delegation.delegation_type = OPEN_DELEGATE_NONE;
+
+	/* Record the sequence info */
+	if (data->minorversion > 0) {
+		memcpy(refer.session,
+		       data->session->session_id,
+		       sizeof(sessionid4));
+		refer.sequence = data->sequence;
+		refer.slot = data->slot;
+	}
+
+	if (args->share_access & OPEN4_SHARE_ACCESS_WRITE) {
+		if (!(op_ctx->export_perms->options &
+		      EXPORT_OPTION_WRITE_DELEG)) {
+			LogDebug(COMPONENT_STATE,
+				 "WRITE delegs not allowed by export.");
+			return;
+		}
+		lock_desc.lock_type = FSAL_LOCK_W;
+		deleg_type = OPEN_DELEGATE_WRITE;
+	} else if (args->share_access & OPEN4_SHARE_ACCESS_READ) {
+		if (!(op_ctx->export_perms->options &
+		      EXPORT_OPTION_READ_DELEG)) {
+			LogDebug(COMPONENT_STATE,
+				 "READ delegs not allowed by export.");
+			return;
+		}
+		lock_desc.lock_type = FSAL_LOCK_R;
+		deleg_type = OPEN_DELEGATE_READ;
+	} else {
+		return;
+	}
+
+	LogDebug(COMPONENT_STATE, "Attempting to grant %s delegation",
+		 lock_desc.lock_type == FSAL_LOCK_W ? "WRITE" : "READ");
+
 	lock_desc.lock_start = 0;
 	lock_desc.lock_length = 0;
 	lock_desc.lock_sle_type = FSAL_LEASE_LOCK;
 
-	state_status = state_lock(data->current_entry,
-				  data->export,
-				  data->req_ctx,
-				  powner,
-				  file_state,
-				  STATE_NON_BLOCKING,
-				  NULL,	/* No block data */
-				  &lock_desc,
-				  NULL,
-				  NULL,
-				  LEASE_LOCK);
+	init_new_deleg_state(&deleg_data, open_state, deleg_type, client);
 
+	/* Check for conflict. */
+	candidate_data.share.share_access =
+	    args->share_access & OPEN4_SHARE_ACCESS_BOTH;
+	candidate_data.share.share_deny = args->share_deny;
+	candidate_data.share.share_access_prev = 0;
+	candidate_data.share.share_deny_prev = 0;
+
+	state_status =
+	    state_share_check_conflict(data->current_entry,
+				       candidate_data.share.share_access,
+				       candidate_data.share.share_deny);
+
+	/* Add the delegation state */
+	state_status = state_add_impl(data->current_entry, STATE_TYPE_DELEG,
+				      &deleg_data,
+				      clientowner, &new_state,
+				      data->minorversion > 0 ? &refer : NULL);
 	if (state_status != STATE_SUCCESS) {
-
 		LogDebug(COMPONENT_NFS_V4_LOCK,
-			 "get_delegation call failed with status %s",
+			 "get_delegation call failed to add state with status %s",
 			 state_err_str(state_status));
+		return;
 	} else {
-		resok->delegation.delegation_type = OPEN_DELEGATE_READ;
-		resok->delegation.open_delegation4_u.read.stateid =
-		    resok->stateid;
-		resok->delegation.open_delegation4_u.read.recall = FALSE;
-		resok->delegation.open_delegation4_u.read.permissions.type =
-		    ACE4_ACCESS_ALLOWED_ACE_TYPE;
-		resok->delegation.open_delegation4_u.read.permissions.flag = 0;
-		resok->delegation.open_delegation4_u.read.permissions.
-		    access_mask = 0;
-		resok->delegation.open_delegation4_u.read.permissions.who.
-		    utf8string_len = 0;
-		resok->delegation.open_delegation4_u.read.permissions.who.
-		    utf8string_val = NULL;
+		saved_data = &new_state->state_data;
+		saved_data->deleg.sd_stateid.seqid = ++new_state->state_seqid;
+		memcpy(saved_data->deleg.sd_stateid.other,
+		       new_state->stateid_other,
+		       sizeof(saved_data->deleg.sd_stateid.other));
+
+		LogFullDebugOpaque(COMPONENT_STATE,
+				   "delegation state added, stateid: %s",
+				   100, &saved_data->deleg.sd_stateid.other,
+				   sizeof(saved_data->deleg.sd_stateid.other));
+
+		/* Attach this open to an export */
+		new_state->state_export = op_ctx->export;
+
+		PTHREAD_RWLOCK_wrlock(&op_ctx->export->lock);
+		glist_add_tail(&op_ctx->export->exp_state_list,
+			       &new_state->state_export_list);
+		PTHREAD_RWLOCK_unlock(&op_ctx->export->lock);
+
+
+		/* PTHREAD_RWLOCK_unlock(&data->current_entry->state_lock); */
+		state_status = state_lock(data->current_entry,
+					  clientowner,
+					  new_state,
+					  STATE_NON_BLOCKING,
+					  NULL,	/* No block data */
+					  &lock_desc,
+					  NULL,
+					  NULL,
+					  LEASE_LOCK);
+		if (state_status != STATE_SUCCESS) {
+			LogDebug(COMPONENT_NFS_V4_LOCK,
+				 "get_delegation call added state but failed to"
+				 " lock with status %s",
+				 state_err_str(state_status));
+			state_del(new_state, false);
+			return;
+		} else {
+			resok->delegation.delegation_type = deleg_type;
+			if (deleg_type == OPEN_DELEGATE_WRITE) {
+				open_write_delegation4 *writeres =
+				&resok->delegation.open_delegation4_u.write;
+				writeres->
+					space_limit.limitby = NFS_LIMIT_SIZE;
+				writeres->
+				space_limit.nfs_space_limit4_u.filesize =
+									100000;
+				writeres->stateid =
+						saved_data->deleg.sd_stateid;
+				writeres->recall = FALSE;
+				get_deleg_perm(data->current_entry,
+					       &writeres->permissions,
+					       deleg_type);
+			} else {
+				assert(deleg_type == OPEN_DELEGATE_READ);
+				open_read_delegation4 *readres =
+				&resok->delegation.open_delegation4_u.read;
+				readres->stateid = saved_data->deleg.sd_stateid;
+				readres->recall = FALSE;
+				get_deleg_perm(data->current_entry,
+					       &readres->permissions,
+					       deleg_type);
+			}
+		}
 	}
-	LogDebug(COMPONENT_NFS_V4_LOCK, "get_delegation powner %p status %s",
-		 powner, state_err_str(state_status));
+
+	LogDebug(COMPONENT_NFS_V4_LOCK,
+		 "get_delegation openowner %p clientowner %p status %s",
+		 openowner, clientowner, state_err_str(state_status));
 }
 
 /**
@@ -911,9 +1018,7 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 	 */
 	cache_entry_t *entry_change = NULL;
 	/* Open flags to be passed to the FSAL */
-	fsal_openflags_t openflags = 0;
-	/* Return code from state oeprations */
-	state_status_t state_status = STATE_SUCCESS;
+	fsal_openflags_t openflags;
 	/* The found client record */
 	nfs_client_id_t *clientid = NULL;
 	/* The found or created state owner for this open */
@@ -949,7 +1054,7 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 
 	/* Check export permissions if OPEN4_CREATE */
 	if ((arg_OPEN4->openhow.opentype == OPEN4_CREATE) &&
-	    ((data->export_perms.options &
+	    ((op_ctx->export_perms->options &
 	      EXPORT_OPTION_MD_WRITE_ACCESS) == 0)) {
 		res_OPEN4->status = NFS4ERR_ROFS;
 
@@ -961,7 +1066,8 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 
 	/* Check export permissions if OPEN4_SHARE_ACCESS_WRITE */
 	if (((arg_OPEN4->share_access & OPEN4_SHARE_ACCESS_WRITE) != 0) &&
-	    ((data->export_perms.options & EXPORT_OPTION_WRITE_ACCESS) == 0)) {
+	    ((op_ctx->export_perms->options &
+	      EXPORT_OPTION_WRITE_ACCESS) == 0)) {
 		res_OPEN4->status = NFS4ERR_ROFS;
 
 		LogDebug(COMPONENT_NFS_V4,
@@ -976,16 +1082,6 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 
 	if (res_OPEN4->status != NFS4_OK)
 		return res_OPEN4->status;
-
-	if (nfs4_Is_Fh_Pseudo(&(data->currentFH))) {
-		res_OPEN4->status = NFS4ERR_PERM;
-
-		LogDebug(COMPONENT_NFS_V4,
-			 "Status of OP_OPEN due to PseudoFS handle = %s",
-			 nfsstat4_to_str(res_OPEN4->status));
-
-		return res_OPEN4->status;
-	}
 
 	if (data->current_entry == NULL) {
 		/* This should be impossible, as PUTFH fills in the
@@ -1064,7 +1160,7 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 	cache_inode_lru_ref(entry_change, LRU_FLAG_NONE);
 
 	res_OPEN4->OPEN4res_u.resok4.cinfo.before =
-	    cache_inode_get_changeid4(entry_change, data->req_ctx);
+	    cache_inode_get_changeid4(entry_change);
 
 	/* Check if share_access does not have any access set, or has
 	 * invalid bits that are set.  check that share_deny doesn't
@@ -1083,17 +1179,6 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 		goto out;
 	}
 
-	/* Set openflags. */
-	if ((arg_OPEN4->share_access & OPEN4_SHARE_ACCESS_BOTH) ==
-	    OPEN4_SHARE_ACCESS_BOTH)
-		openflags = FSAL_O_RDWR;
-	else if ((arg_OPEN4->share_access & OPEN4_SHARE_ACCESS_BOTH) ==
-		   OPEN4_SHARE_ACCESS_READ)
-		openflags = FSAL_O_READ;
-	else if ((arg_OPEN4->share_access & OPEN4_SHARE_ACCESS_BOTH) ==
-		   OPEN4_SHARE_ACCESS_WRITE)
-		openflags = FSAL_O_WRITE;
-
 	/* Set the current entry to the file to be opened */
 	switch (claim) {
 	case CLAIM_NULL:
@@ -1106,8 +1191,7 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 				/* Decrement the current entry here, because
 				 * nfs4_create_fh replaces the current fh.
 				 */
-				cache_inode_put(data->current_entry);
-				data->current_entry = NULL;
+				set_current_entry(data, NULL, false);
 				res_OPEN4->status =
 				    open4_create_fh(data, entry);
 			}
@@ -1122,8 +1206,8 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 
 	case CLAIM_DELEGATE_CUR:
 
-		if (!data->export->export_hdl->ops->fs_supports(
-				data->export->export_hdl, fso_delegations)) {
+		if (!op_ctx->fsal_export->ops->fs_supports(
+				op_ctx->fsal_export, fso_delegations)) {
 			res_OPEN4->status = NFS4ERR_NOTSUPP;
 			LogDebug(COMPONENT_STATE,
 				 "NFS4 OPEN returning NFS4ERR_NOTSUPP for CLAIM_DELEGATE");
@@ -1177,44 +1261,29 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 		/* Does a file with this name already exist ? */
 		cache_status = cache_inode_lookup(entry_parent,
 						  filename,
-						  data->req_ctx,
 						  &entry_lookup);
 
 		gsh_free(filename);
 
-		if (cache_status != CACHE_INODE_NOT_FOUND) {
-			if (cache_status != CACHE_INODE_SUCCESS) {
-				res_OPEN4->status = nfs4_Errno(cache_status);
-				return res_OPEN4->status;
-			}
-
+		if (cache_status == CACHE_INODE_SUCCESS) {
 			PTHREAD_RWLOCK_wrlock(&entry_lookup->state_lock);
-
 			glist_for_each(glist,
 				       &entry_lookup->object.file.lock_list) {
 				found_entry = glist_entry(glist,
 							  state_lock_entry_t,
 							  sle_list);
 
-				if (found_entry != NULL) {
-					LogDebug(COMPONENT_NFS_CB,
-						 "found_entry %p",
-						 found_entry);
-					file_state = found_entry->sle_state;
-				} else {
-					LogDebug(COMPONENT_NFS_CB,
-						 "list is empty %p",
-						 found_entry);
-					PTHREAD_RWLOCK_unlock(&entry_lookup->
-							      state_lock);
-					res_OPEN4->status = NFS4ERR_BAD_STATEID;
-					return res_OPEN4->status;
-				}
+				LogDebug(COMPONENT_NFS_CB, "found_entry %p",
+						found_entry);
+				file_state = found_entry->sle_state;
 				break;
 			}
-
 			PTHREAD_RWLOCK_unlock(&entry_lookup->state_lock);
 
+			if (file_state == NULL) {
+				res_OPEN4->status = nfs4_Errno(cache_status);
+				goto out;
+			}
 			res_OPEN4->OPEN4res_u.resok4.stateid.seqid =
 			    file_state->state_seqid;
 			memcpy(res_OPEN4->OPEN4res_u.resok4.stateid.other,
@@ -1230,12 +1299,13 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 			LogDebug(COMPONENT_NFS_V4,
 				 "done with CLAIM_DELEGATE_CUR");
 			goto out;
-		} else
-			LogDebug(COMPONENT_NFS_CB,
-				 "did not find entry %p",
-				 entry_lookup);
-
-		break;
+		} else if (cache_status == CACHE_INODE_NOT_FOUND) {
+			LogDebug(COMPONENT_NFS_CB, "did not find entry");
+			break;
+		} else {
+			res_OPEN4->status = nfs4_Errno(cache_status);
+			return res_OPEN4->status;
+		}
 
 	default:
 		LogFatal(COMPONENT_STATE,
@@ -1267,15 +1337,22 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 		goto out;
 	}
 
-	/* Set the openflags variable */
-	if (arg_OPEN4->share_deny & OPEN4_SHARE_DENY_WRITE)
-		openflags |= FSAL_O_READ;
-
-	if (arg_OPEN4->share_deny & OPEN4_SHARE_DENY_READ)
-		openflags |= FSAL_O_WRITE;
-
-	if (arg_OPEN4->share_access & OPEN4_SHARE_ACCESS_WRITE)
+	/* Set openflags. */
+	switch (arg_OPEN4->share_access & OPEN4_SHARE_ACCESS_BOTH) {
+	case OPEN4_SHARE_ACCESS_READ:
+		openflags = FSAL_O_READ;
+		break;
+	case OPEN4_SHARE_ACCESS_WRITE:
+		/* clients may read as well due to buffer cache constraints */
+		/* Fallthrough */
+	case OPEN4_SHARE_ACCESS_BOTH:
+	default:
 		openflags = FSAL_O_RDWR;
+		break;
+	}
+
+	if (arg_OPEN4->claim.claim)
+		openflags = FSAL_O_RECLAIM;
 
 	PTHREAD_RWLOCK_wrlock(&data->current_entry->state_lock);
 
@@ -1313,29 +1390,55 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 
 	/* Update change_info4 */
 	res_OPEN4->OPEN4res_u.resok4.cinfo.after =
-		cache_inode_get_changeid4(entry_change, data->req_ctx);
+		cache_inode_get_changeid4(entry_change);
 	cache_inode_put(entry_change);
 	entry_change = NULL;
 	res_OPEN4->OPEN4res_u.resok4.cinfo.atomic = FALSE;
 
-	/* We do not support delegations */
+	/* This will be updated laster if we actually delegate */
 	res_OPEN4->OPEN4res_u.resok4.delegation.delegation_type =
-	    OPEN_DELEGATE_NONE;
+		OPEN_DELEGATE_NONE;
 
-	/* Handle stateid/seqid for success */
+	/* Handle open stateid/seqid for success */
 	update_stateid(file_state,
 		       &res_OPEN4->OPEN4res_u.resok4.stateid,
 		       data,
 		       open_tag);
 
-	if (data->export->export_hdl->ops->
-	    fs_supports(data->export->export_hdl, fso_delegations)
-	    && (data->export->export_perms.options & EXPORT_OPTION_USE_DELEG)
-	    && owner->so_owner.so_nfs4_owner.so_confirmed == TRUE
-	    && claim != CLAIM_DELEGATE_CUR)
+	/* Update delegation open stats */
+	if (data->current_entry->type == REGULAR_FILE) {
+		if (data->current_entry->object.file.deleg_heuristics.num_opens
+		    == 0) {
+			data->current_entry->object.file.deleg_heuristics
+						.first_open = time(NULL);
+		}
+		data->current_entry->object.file.deleg_heuristics.num_opens++;
+	}
 
-		get_delegation(data, file_state, owner,
+	pthread_mutex_lock(&clientid->cid_mutex);
+	/* Decide if we should delegate, then add it. */
+	if (nfs_param.nfsv4_param.allow_delegations &&
+	    data->current_entry->type != DIRECTORY
+	    && op_ctx->fsal_export->ops->fs_supports(
+						op_ctx->fsal_export,
+						fso_delegations)
+	    && (op_ctx->export_perms->options &
+		EXPORT_OPTION_DELEGATIONS)
+	    && owner->so_owner.so_nfs4_owner.so_confirmed == TRUE
+	    && !clientid->cb_chan_down
+	    && claim != CLAIM_DELEGATE_CUR
+	    && should_we_grant_deleg(data->current_entry,
+				     clientid,
+				     file_state)) {
+		LogDebug(COMPONENT_STATE, "Attempting to grant delegation");
+		pthread_mutex_unlock(&clientid->cid_mutex);
+		get_delegation(data, op, file_state, owner, clientid,
 			       &res_OPEN4->OPEN4res_u.resok4);
+	} else {
+		pthread_mutex_unlock(&clientid->cid_mutex);
+		res_OPEN4->OPEN4res_u.resok4.delegation.open_delegation4_u.
+			od_whynone.ond_why = WND4_NOT_WANTED;
+	}
 
  out:
 
@@ -1376,11 +1479,7 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 	if ((file_state != NULL) && new_state &&
 	    (res_OPEN4->status != NFS4_OK)) {
 		/* Need to destroy open owner and state */
-		state_status = state_del(file_state, false);
-		if (state_status != STATE_SUCCESS)
-			LogDebug(COMPONENT_STATE,
-				 "state_del failed with status %s",
-				 state_err_str(state_status));
+		state_del(file_state, false);
 	}
 
 	if (entry_change)

@@ -38,15 +38,14 @@
  *
  * @param[in]  arg
  * @param[in]  export
- * @param[in]  req_ctx
  * @param[in]  worker
  * @param[in]  req
  * @param[out] res
  *
  */
 
-int nlm4_Cancel(nfs_arg_t *args, exportlist_t *export,
-		struct req_op_context *req_ctx, nfs_worker_data_t *worker,
+int nlm4_Cancel(nfs_arg_t *args,
+		nfs_worker_data_t *worker,
 		struct svc_req *req, nfs_res_t *res)
 {
 	nlm4_cancargs *arg = &args->arg_nlm4_cancel;
@@ -59,7 +58,11 @@ int nlm4_Cancel(nfs_arg_t *args, exportlist_t *export,
 	fsal_lock_param_t lock;
 	int rc;
 
-	if (export == NULL) {
+	/* NLM doesn't have a BADHANDLE error, nor can rpc_execute deal with
+	 * responding to an NLM_*_MSG call, so we check here if the export is
+	 * NULL and if so, handle the response.
+	 */
+	if (op_ctx->export == NULL) {
 		res->res_nlm4.stat.stat = NLM4_STALE_FH;
 		LogInfo(COMPONENT_NLM, "INVALID HANDLE: nlm4_Cancel");
 		return NFS_REQ_OK;
@@ -93,9 +96,7 @@ int nlm4_Cancel(nfs_arg_t *args, exportlist_t *export,
 				    arg->exclusive,
 				    &arg->alock,
 				    &lock,
-				    req_ctx,
 				    &entry,
-				    export,
 				    CARE_NOT,
 				    &nsm_client,
 				    &nlm_client,
@@ -111,7 +112,7 @@ int nlm4_Cancel(nfs_arg_t *args, exportlist_t *export,
 		return NFS_REQ_OK;
 	}
 
-	state_status = state_cancel(entry, export, req_ctx, nlm_owner, &lock);
+	state_status = state_cancel(entry, nlm_owner, &lock);
 	if (state_status != STATE_SUCCESS) {
 		/* Cancel could fail in the FSAL and make a bit of a mess,
 		 * especially if we are in out of memory situation. Such an
@@ -135,8 +136,7 @@ int nlm4_Cancel(nfs_arg_t *args, exportlist_t *export,
 	return NFS_REQ_OK;
 }				/* nlm4_Cancel */
 
-static void nlm4_cancel_message_resp(state_async_queue_t *arg,
-				     struct req_op_context *req_ctx)
+static void nlm4_cancel_message_resp(state_async_queue_t *arg)
 {
 	state_nlm_async_data_t *nlm_arg =
 	    &arg->state_async_data.state_nlm_async_data;
@@ -166,14 +166,12 @@ static void nlm4_cancel_message_resp(state_async_queue_t *arg,
  *
  *  @param[in]  arg
  *  @param[in]  export
- *  @param[in]  req_ctx
  *  @param[in]  worker
  *  @param[in]  req
  *  @param[out] res
  *
  */
-int nlm4_Cancel_Message(nfs_arg_t *args, exportlist_t *export,
-			struct req_op_context *req_ctx,
+int nlm4_Cancel_Message(nfs_arg_t *args,
 			nfs_worker_data_t *worker, struct svc_req *req,
 			nfs_res_t *res)
 {
@@ -198,7 +196,7 @@ int nlm4_Cancel_Message(nfs_arg_t *args, exportlist_t *export,
 	if (nlm_client == NULL)
 		rc = NFS_REQ_DROP;
 	else
-		rc = nlm4_Cancel(args, export, req_ctx, worker, req, res);
+		rc = nlm4_Cancel(args, worker, req, res);
 
 	if (rc == NFS_REQ_OK)
 		rc = nlm_send_async_res_nlm4(nlm_client,

@@ -34,8 +34,6 @@
 #include "nfs_core.h"
 #include "cache_inode.h"
 #include "nfs_exports.h"
-#include "nfs_creds.h"
-#include "nfs_tools.h"
 #include "mount.h"
 #include <os/quota.h>		/* For USRQUOTA */
 #include "rquota.h"
@@ -47,14 +45,13 @@
  *
  * @param[in]  arg    Ignored
  * @param[in]  export Ignored
- * @param[in]  req_ctx Ignored
  * @param[in]  worker Ignored
  * @param[in]  req    Ignored
  * @param[out] res    Ignored
  *
  */
-int rquota_getquota(nfs_arg_t *arg, exportlist_t *export,
-		    struct req_op_context *req_ctx, nfs_worker_data_t *worker,
+int rquota_getquota(nfs_arg_t *arg,
+		    nfs_worker_data_t *worker,
 		    struct svc_req *req, nfs_res_t *res)
 {
 	fsal_status_t fsal_status;
@@ -72,8 +69,8 @@ int rquota_getquota(nfs_arg_t *arg, exportlist_t *export,
 	qres->status = Q_EPERM;
 
 	if (arg->arg_rquota_getquota.gqa_pathp[0] == '/') {
-		exp =
-		    get_gsh_export_by_path(arg->arg_rquota_getquota.gqa_pathp);
+		exp = get_gsh_export_by_path(arg->arg_rquota_getquota.gqa_pathp,
+					     false);
 		if (exp == NULL)
 			goto out;
 		quota_path = arg->arg_rquota_getquota.gqa_pathp;
@@ -82,12 +79,12 @@ int rquota_getquota(nfs_arg_t *arg, exportlist_t *export,
 		    get_gsh_export_by_tag(arg->arg_rquota_getquota.gqa_pathp);
 		if (exp == NULL)
 			goto out;
-		quota_path = exp->export.fullpath;
+		quota_path = exp->fullpath;
 	}
 	fsal_status =
-	    exp->export.export_hdl->ops->get_quota(exp->export.export_hdl,
-						   quota_path, quota_type,
-						   req_ctx, &fsal_quota);
+	    exp->fsal_export->ops->get_quota(exp->fsal_export,
+					     quota_path, quota_type,
+					     &fsal_quota);
 	if (FSAL_IS_ERROR(fsal_status)) {
 		if (fsal_status.major == ERR_FSAL_NO_QUOTA)
 			qres->status = Q_NOQUOTA;

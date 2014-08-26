@@ -39,9 +39,7 @@
 #include "nfs_core.h"
 #include "cache_inode.h"
 #include "nfs_exports.h"
-#include "nfs_creds.h"
 #include "nfs_proto_functions.h"
-#include "nfs_tools.h"
 #include "nfs_proto_tools.h"
 #include "nfs_file_handle.h"
 
@@ -73,10 +71,6 @@ int nfs4_op_getattr(struct nfs_argop4 *op, compound_data_t *data,
 
 	if (res_GETATTR4->status != NFS4_OK)
 		return res_GETATTR4->status;
-
-	/* Pseudo Fs management */
-	if (nfs4_Is_Fh_Pseudo(&(data->currentFH)))
-		return nfs4_op_getattr_pseudo(op, data, resp);
 
 	/* Sanity check: if no attributes are wanted, nothing is to be
 	 * done.  In this case NFS4_OK is to be returned */

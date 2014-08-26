@@ -279,7 +279,7 @@ int display_force_overflow(struct display_buffer *dspbuf)
  * @brief Format a string into the buffer.
  *
  * @param[in,out] dspbuf The buffer.
- * @oaram[in]     fmt    The format string
+ * @param[in]     fmt    The format string
  * @param[in]     args   The va_list args
  *
  * @return the bytes remaining in the buffer.
@@ -320,7 +320,7 @@ int display_vprintf(struct display_buffer *dspbuf, const char *fmt,
  * @brief Display a number of opaque bytes as a hex string.
  *
  * @param[in,out] dspbuf The buffer.
- * @oaram[in]     value  The bytes to display
+ * @param[in]     value  The bytes to display
  * @param[in]     len    The number of bytes to display
  *
  * @return the bytes remaining in the buffer.
@@ -363,7 +363,7 @@ int display_opaque_bytes(struct display_buffer *dspbuf, void *value, int len)
  *        of bytes used from the opaque value.
  *
  * @param[in,out] dspbuf The buffer.
- * @oaram[in]     value  The bytes to display
+ * @param[in]     value  The bytes to display
  * @param[in]     len    The number of bytes to display
  * @param[in]     max    Max number of bytes from the opaque value to display
  *
@@ -433,7 +433,7 @@ int display_opaque_value_max(struct display_buffer *dspbuf, void *value,
  * @brief Append a length delimited string to the buffer.
  *
  * @param[in,out] dspbuf The buffer.
- * @oaram[in]     str    The string
+ * @param[in]     str    The string
  * @param[in]     len    The length of the string
  *
  * @return the bytes remaining in the buffer.
@@ -475,7 +475,7 @@ int display_len_cat(struct display_buffer *dspbuf, char *str, int len)
  * @brief Append a null delimited string to the buffer, truncating it.
  *
  * @param[in,out] dspbuf The buffer.
- * @oaram[in]     str    The string
+ * @param[in]     str    The string
  * @param[in]     max    Truncate the string to this maximum length
  *
  * @return the bytes remaining in the buffer.

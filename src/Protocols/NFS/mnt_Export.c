@@ -48,10 +48,9 @@ struct proc_state {
 	int retval;
 };
 
-static bool proc_export(struct gsh_export *exp, void *arg)
+static bool proc_export(struct gsh_export *export, void *arg)
 {
-	struct proc_state *state = (struct proc_state *)arg;
-	exportlist_t *export = &exp->export;
+	struct proc_state *state = arg;
 	struct exportnode *new_expnode;
 	struct glist_head *glist_item;
 	exportlist_client_entry_t *client;
@@ -60,13 +59,28 @@ static bool proc_export(struct gsh_export *exp, void *arg)
 	char addr_buf[INET6_ADDRSTRLEN + 1];
 
 	state->retval = 0;
+
+	/* If client does not have any access to the export,
+	 * don't add it to the list
+	 */
+	op_ctx->export = export;
+	op_ctx->fsal_export = export->fsal_export;
+	export_check_access();
+	if (op_ctx->export_perms->options == 0) {
+		LogFullDebug(COMPONENT_NFSPROTO,
+			     "Client is not allowed to access Export_Id %d %s",
+			     export->export_id, export->fullpath);
+
+		return true;
+	}
+
 	new_expnode = gsh_calloc(1, sizeof(struct exportnode));
 	if (new_expnode == NULL)
 		goto nomem;
 	new_expnode->ex_dir = gsh_strdup(export->fullpath);
 	if (new_expnode->ex_dir == NULL)
 		goto nomem;
-	glist_for_each(glist_item, &export->clients.client_list) {
+	glist_for_each(glist_item, &export->clients) {
 		client =
 		    glist_entry(glist_item, exportlist_client_entry_t,
 				cle_list);
@@ -75,7 +89,7 @@ static bool proc_export(struct gsh_export *exp, void *arg)
 		if (group == NULL)
 			goto nomem;
 
-		if (new_expnode->ex_groups == NULL)
+		if (grp_tail == NULL)
 			new_expnode->ex_groups = group;
 		else
 			grp_tail->gr_next = group;
@@ -103,10 +117,13 @@ static bool proc_export(struct gsh_export *exp, void *arg)
 			break;
 		case NETGROUP_CLIENT:
 			grp_name = client->client.netgroup.netgroupname;
+			break;
 		case GSSPRINCIPAL_CLIENT:
 			grp_name = client->client.gssprinc.princname;
+			break;
 		case MATCH_ANY_CLIENT:
 			grp_name = "*";
+			break;
 		default:
 			grp_name = "<unknown>";
 		}
@@ -124,6 +141,19 @@ static bool proc_export(struct gsh_export *exp, void *arg)
 	return true;
 
  nomem:
+	if (new_expnode != NULL) {
+		if (new_expnode->ex_dir != NULL)
+			gsh_free(new_expnode->ex_dir);
+		for (group = new_expnode->ex_groups;
+		     group != NULL;
+		     group = grp_tail) {
+			grp_tail = group->gr_next;
+			if (group->gr_name != NULL)
+				gsh_free(group->gr_name);
+			gsh_free(group);
+		}
+		gsh_free(new_expnode);
+	}
 	state->retval = errno;
 	return false;
 }
@@ -135,15 +165,14 @@ static bool proc_export(struct gsh_export *exp, void *arg)
  *
  * @param[in]  arg     Ignored
  * @param[in]  export  The export list to be return to the client.
- * @param[in]  req_ctx  Ignored
  * @param[in]  worker  Ignored
  * @param[in]  req     Ignored
  * @param[out] res     Pointer to the export list
  *
  */
 
-int mnt_Export(nfs_arg_t *arg, exportlist_t *export,
-	       struct req_op_context *req_ctx, nfs_worker_data_t *worker,
+int mnt_Export(nfs_arg_t *arg,
+	       nfs_worker_data_t *worker,
 	       struct svc_req *req, nfs_res_t *res)
 {
 	struct proc_state proc_state;
@@ -158,6 +187,8 @@ int mnt_Export(nfs_arg_t *arg, exportlist_t *export,
 			"Processing exports failed. error = \"%s\" (%d)",
 			strerror(proc_state.retval), proc_state.retval);
 	}
+	op_ctx->export = NULL;
+	op_ctx->fsal_export = NULL;
 	res->res_mntexport = proc_state.head;
 	return NFS_REQ_OK;
 }				/* mnt_Export */
@@ -167,7 +198,7 @@ int mnt_Export(nfs_arg_t *arg, exportlist_t *export,
  *
  * Frees the result structure allocated for mnt_Dump.
  *
- * @param res        [INOUT]   Pointer to the result structure.
+ * @param res	[INOUT]   Pointer to the result structure.
  *
  */
 void mnt_Export_Free(nfs_res_t *res)

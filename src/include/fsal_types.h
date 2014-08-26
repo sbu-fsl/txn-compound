@@ -36,24 +36,18 @@
 #ifndef _FSAL_TYPES_H
 #define _FSAL_TYPES_H
 
-/*
- * labels in the config file
- */
-
-static const char *CONF_LABEL_FSAL __attribute__ ((unused)) = "FSAL";
-static const char *CONF_LABEL_FS_COMMON __attribute__ ((unused)) = "FileSystem";
-
 /* other includes */
 #include <sys/types.h>
 #include <sys/param.h>
 #include <dirent.h>		/* for MAXNAMLEN */
 #include "config_parsing.h"
-#include "err_fsal.h"
 #include "ganesha_rpc.h"
 #include "ganesha_types.h"
+#include "uid2grp.h"
 
 /* Forward declarations */
 struct fsal_staticfsinfo_t;
+struct fsal_export;
 
 /* Cookie to be used in FSAL_ListXAttrs() to bypass RO xattr */
 static const uint32_t FSAL_XATTR_RW_COOKIE = ~0;
@@ -70,18 +64,8 @@ typedef enum {
 	SOCKET_FILE = 5,
 	FIFO_FILE = 6,
 	DIRECTORY = 7,
-	FS_JUNCTION = 8,
-	EXTENDED_ATTR = 9
+	EXTENDED_ATTR = 8
 } object_file_type_t;
-
-/**
- * As per chat with lieb, the call-limit should be FSAL internal, not
- * global.  If there are FSAL configuration options that cut across
- * FSALs, they should go here.
- */
-
-typedef struct fsal_init_info__ {
-} fsal_init_info_t;
 
 /* ---------------
  *  FS dependant :
@@ -101,22 +85,32 @@ typedef struct fsal_init_info__ {
 
 /** object name.  */
 
-#define USER_CRED_ANONYMOUS     0x0001
-#define USER_CRED_GSS_PROCESSED 0x0002
-#define USER_CRED_SAVED         0x0004
-
 /* Used to record the uid and gid of the client that made a request. */
 struct user_cred {
 	uid_t caller_uid;
 	gid_t caller_gid;
-	uid_t caller_uid_saved;
-	gid_t caller_gid_saved;
-	int caller_flags;
-	unsigned int caller_glen_saved;
-	unsigned int caller_gpos_root;
 	unsigned int caller_glen;
 	gid_t *caller_garray;
 };
+
+struct export_perms {
+	uid_t anonymous_uid;	/* root uid when no root access is available
+				 * uid when access is available but all users
+				 * are being squashed. */
+	gid_t anonymous_gid;	/* root gid when no root access is available
+				 * gid when access is available but all users
+				 * are being squashed. */
+	uint32_t options;	/* avail. mnt options */
+	uint32_t set;		/* Options that have been set */
+};
+
+/* Define bit values for cred_flags */
+#define CREDS_LOADED	0x01
+#define CREDS_ANON	0x02
+#define UID_SQUASHED	0x04
+#define GID_SQUASHED	0x08
+#define GARRAY_SQUASHED	0x10
+#define MANAGED_GIDS	0x20
 
 /**
  * @brief request op context
@@ -153,6 +147,11 @@ struct user_cred {
 
 struct req_op_context {
 	struct user_cred *creds;	/*< resolved user creds from request */
+	struct user_cred original_creds;	/*< Saved creds */
+	struct group_data *caller_gdata;
+	gid_t *caller_garray_copy;	/*< Copied garray from AUTH_SYS */
+	gid_t *managed_garray_copy;	/*< Copied garray from managed gids */
+	int	cred_flags;		/* Various cred flags */
 	sockaddr_t *caller_addr;	/*< IP connection info */
 	const uint64_t *clientid;	/*< Client ID of caller, NULL if
 					   unknown/not applicable. */
@@ -161,10 +160,82 @@ struct req_op_context {
 	uint32_t req_type;	/*< request_type NFS | 9P */
 	struct gsh_client *client;	/*< client host info including stats */
 	struct gsh_export *export;	/*< current export */
+	struct fsal_export *fsal_export;	/*< current fsal export */
+	struct export_perms *export_perms;	/*< Effective export perms */
 	nsecs_elapsed_t start_time;	/*< start time of this op/request */
 	nsecs_elapsed_t queue_wait;	/*< time in wait queue */
+	void *fsal_private;		/*< private for FSAL use */
 	/* add new context members here */
 };
+
+/**
+ * @brief Thread private storage.
+ *
+ * TLS variables look like globals but since they are global only in the
+ * context of a single thread, they do not require locks.  This is true
+ * of all thread either within or separate from a/the fridge.
+ *
+ * All thread local storage is declared extern here.  The actual
+ * storage declaration is in fridgethr.c.
+ */
+
+/**
+ * @brief Operation context.
+ *
+ * This carries everything relevant to a protocol operation
+ * Space for the struct itself is allocated elsewhere.
+ * Test/assert opctx != NULL first (or let the SEGV kill you)
+ */
+
+extern __thread struct req_op_context *op_ctx;
+
+/**
+ * @brief Ops context for asynch and not protocol tasks that need to use
+ * subsystems that depend on op_ctx.
+ */
+
+struct root_op_context {
+	struct req_op_context req_ctx;
+	struct req_op_context *old_op_ctx;
+	struct user_cred creds;
+	struct export_perms export_perms;
+};
+
+/* Expor permissions for root op context, defined in protocol layer */
+uint32_t root_op_export_options;
+uint32_t root_op_export_set;
+
+static inline void init_root_op_context(struct root_op_context *ctx,
+					struct gsh_export *exp,
+					struct fsal_export *fsal_exp,
+					uint32_t nfs_vers,
+					uint32_t nfs_minorvers,
+					uint32_t req_type)
+{
+	/* Initialize req_ctx.
+	 * Note that a zeroed creds works just fine as root creds.
+	 */
+	memset(ctx, 0, sizeof(*ctx));
+	ctx->req_ctx.creds = &ctx->creds;
+	ctx->req_ctx.nfs_vers = nfs_vers;
+	ctx->req_ctx.nfs_minorvers = nfs_minorvers;
+	ctx->req_ctx.req_type = req_type;
+	ctx->req_ctx.export = exp;
+	ctx->req_ctx.fsal_export = fsal_exp;
+	ctx->req_ctx.export_perms = &ctx->export_perms;
+	ctx->export_perms.set = root_op_export_set;
+	ctx->export_perms.options = root_op_export_options;
+	ctx->old_op_ctx = op_ctx;
+	op_ctx = &ctx->req_ctx;
+}
+
+static inline void release_root_op_context(void)
+{
+	struct root_op_context *ctx;
+
+	ctx = container_of(op_ctx, struct root_op_context, req_ctx);
+	op_ctx = ctx->old_op_ctx;
+}
 
 /** filesystem identifier */
 
@@ -399,6 +470,8 @@ typedef uint64_t attrmask_t;
 #define ATTR_SIZE 0x0000000000000004
 /* filesystem id */
 #define ATTR_FSID 0x0000000000000008
+/* file space reserve */
+#define ATTR4_SPACE_RESERVED 0x0000000000000010
 /* ACL */
 #define ATTR_ACL 0x0000000000000020
 /* file id */
@@ -476,7 +549,7 @@ struct attrlist {
 	uint64_t spaceused;	/*< Space used on underlying filesystem */
 	uint64_t change;	/*< A 'change id' */
 	uint64_t generation;	/*< Generation number for this file */
-	uint32_t grace_period_attr;	/*< Expiration time interval in seconds
+	int32_t expire_time_attr;	/*< Expiration time interval in seconds
 					   for attributes. Settable by FSAL. */
 };
 
@@ -544,6 +617,7 @@ typedef uint16_t fsal_openflags_t;
 						     * so that FSAL_O_RDWR can
 						     * be used as a mask */
 #define FSAL_O_SYNC     0x0004	/* sync */
+#define FSAL_O_RECLAIM  0x0008	/* open reclaim */
 
 #define FSAL_O_DIRECT   0x0008  /* direct IO */
 
@@ -571,8 +645,12 @@ typedef enum enum_fsal_fsinfo_options {
 	fso_accesscheck_support,
 	fso_share_support,
 	fso_share_support_owner,
-	fso_pnfs_ds_supported
+	fso_pnfs_ds_supported,
+	fso_reopen_method
 } fsal_fsinfo_options_t;
+
+/* The largest maxread and maxwrite value */
+#define FSAL_MAXIOSIZE (64*1024*1024)
 
 struct fsal_staticfsinfo_t {
 	uint64_t maxfilesize;	/*< maximum allowed filesize     */
@@ -599,8 +677,8 @@ struct fsal_staticfsinfo_t {
 	attrmask_t supported_attrs;	/*< If the FS is homogenous, this
 					   indicates the set of
 					   supported attributes. */
-	uint32_t maxread;	/*< Max read size */
-	uint32_t maxwrite;	/*< Max write size */
+	uint64_t maxread;	/*< Max read size */
+	uint64_t maxwrite;	/*< Max write size */
 	uint32_t umask;		/*< This mask is applied to the mode of created
 				   objects */
 	bool auth_exportpath_xdev;	/*< This flag indicates weither
@@ -616,7 +694,62 @@ struct fsal_staticfsinfo_t {
 					   with open owners ? */
 	bool delegations;	/*< fsal supports delegations */
 	bool pnfs_file;		/*< fsal supports file pnfs */
+	bool reopen_method;	/* fsal supports reopen method */
+	bool fsal_trace;	/*< fsal trace supports */
 };
+
+/**
+ * @brief The return error values of FSAL calls.
+ */
+
+typedef enum fsal_errors_t {
+	ERR_FSAL_NO_ERROR = 0,
+	ERR_FSAL_PERM = 1,
+	ERR_FSAL_NOENT = 2,
+	ERR_FSAL_IO = 5,
+	ERR_FSAL_NXIO = 6,
+	ERR_FSAL_NOMEM = 12,
+	ERR_FSAL_ACCESS = 13,
+	ERR_FSAL_FAULT = 14,
+	ERR_FSAL_EXIST = 17,
+	ERR_FSAL_XDEV = 18,
+	ERR_FSAL_NOTDIR = 20,
+	ERR_FSAL_ISDIR = 21,
+	ERR_FSAL_INVAL = 22,
+	ERR_FSAL_FBIG = 27,
+	ERR_FSAL_NOSPC = 28,
+	ERR_FSAL_ROFS = 30,
+	ERR_FSAL_MLINK = 31,
+	ERR_FSAL_DQUOT = 49,
+	ERR_FSAL_NAMETOOLONG = 78,
+	ERR_FSAL_NOTEMPTY = 93,
+	ERR_FSAL_STALE = 151,
+	ERR_FSAL_BADHANDLE = 10001,
+	ERR_FSAL_BADCOOKIE = 10003,
+	ERR_FSAL_NOTSUPP = 10004,
+	ERR_FSAL_TOOSMALL = 10005,
+	ERR_FSAL_SERVERFAULT = 10006,
+	ERR_FSAL_BADTYPE = 10007,
+	ERR_FSAL_DELAY = 10008,
+	ERR_FSAL_FHEXPIRED = 10014,
+	ERR_FSAL_SHARE_DENIED = 10015,
+	ERR_FSAL_SYMLINK = 10029,
+	ERR_FSAL_ATTRNOTSUPP = 10032,
+	ERR_FSAL_NOT_INIT = 20001,
+	ERR_FSAL_ALREADY_INIT = 20002,
+	ERR_FSAL_BAD_INIT = 20003,
+	ERR_FSAL_SEC = 20004,
+	ERR_FSAL_NO_QUOTA = 20005,
+	ERR_FSAL_NOT_OPENED = 20010,
+	ERR_FSAL_DEADLOCK = 20011,
+	ERR_FSAL_OVERFLOW = 20012,
+	ERR_FSAL_INTERRUPT = 20013,
+	ERR_FSAL_BLOCKED = 20014,
+	ERR_FSAL_TIMEOUT = 20015,
+	ERR_FSAL_FILE_OPEN = 10046,
+	ERR_FSAL_UNION_NOTSUPP = 10094,
+	ERR_FSAL_IN_GRACE = 10095,
+} fsal_errors_t;
 
 /**
  * @brief The return status of FSAL calls.
@@ -668,18 +801,10 @@ typedef enum {
  */
 
 typedef enum fsal_digesttype_t {
-	FSAL_DIGEST_SIZEOF,	/* just tell me how big... */
 	/* NFS handles */
-	FSAL_DIGEST_NFSV2,
 	FSAL_DIGEST_NFSV3,
 	FSAL_DIGEST_NFSV4,
 } fsal_digesttype_t;
-
-/* output digest sizes */
-
-static const size_t FSAL_DIGEST_SIZE_HDLV2 = 29;
-static const size_t FSAL_DIGEST_SIZE_HDLV3 = 61;
-static const size_t FSAL_DIGEST_SIZE_HDLV4 = 108;
 
 typedef enum {
 	FSAL_OP_LOCKT,		/*< test if this lock may be applied      */
@@ -705,11 +830,13 @@ typedef struct fsal_lock_param_t {
 	fsal_lock_t lock_type;
 	uint64_t lock_start;
 	uint64_t lock_length;
+	bool lock_reclaim;
 } fsal_lock_param_t;
 
 typedef struct fsal_share_param_t {
 	uint32_t share_access;
 	uint32_t share_deny;
+	bool share_reclaim;
 } fsal_share_param_t;
 
 #endif				/* _FSAL_TYPES_H */

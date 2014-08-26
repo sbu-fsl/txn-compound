@@ -47,7 +47,6 @@
 #include "mount.h"
 #include "nfs_proto_functions.h"
 #include "wait_queue.h"
-#include "err_hashtable.h"
 #include "gsh_config.h"
 #include "cache_inode.h"
 #ifdef _USE_9P
@@ -57,16 +56,7 @@
 #include "err_inject.h"
 #endif
 
-#define RQCRED_SIZE 400		/* this size is excessive */
-
 /* Arbitrary string buffer lengths */
-#define PWENT_MAX_LEN 81
-
-/* Hard and soft limit for nfsv4 quotas */
-#define NFS_V4_MAX_QUOTA_SOFT 4294967296LL	/*  4 GB */
-#define NFS_V4_MAX_QUOTA_HARD 17179869184LL	/* 16 GB */
-#define NFS_V4_MAX_QUOTA      34359738368LL	/* 32 GB */
-
 #define XATTR_BUFFERSIZE 4096
 
 char *host_name;
@@ -140,6 +130,7 @@ struct _rpc_call {
 };
 
 typedef enum request_type {
+	UNKNOWN_REQUEST,
 	NFS_CALL,
 	NFS_REQUEST,
 #ifdef _USE_9P
@@ -150,8 +141,6 @@ typedef enum request_type {
 typedef struct request_data {
 	struct glist_head req_q;	/* chaining of pending requests */
 	request_type_t rtype;
-	pthread_mutex_t mtx;
-	pthread_cond_t cv;
 	union request_content {
 		rpc_call_t *call;
 		nfs_request_data_t *nfs;
@@ -223,9 +212,6 @@ extern pool_t *dupreq_pool;	/* XXX hide */
 struct nfs_worker_data {
 	unsigned int worker_index;	/*< Index for log messages */
 	wait_q_entry_t wqe;	/*< Queue for coordinating with decoder */
-	exportlist_client_entry_t related_client;	/*< Identity that
-							   governs access to
-							   export */
 
 	sockaddr_t hostaddr;	/*< Client address */
 	struct fridgethr_context *ctx;	/*< Link back to thread context */
@@ -243,44 +229,19 @@ extern char *config_path;
 extern char *pidfile_path;
 extern ushort g_nodeid;
 
-typedef enum process_status {
-	PROCESS_DISPATCHED,
-	PROCESS_LOST_CONN,
-	PROCESS_DONE
-} process_status_t;
-
-#if 0				/* XXXX */
-typedef enum worker_available_rc {
-	WORKER_AVAILABLE,
-	WORKER_BUSY,
-	WORKER_PAUSED,
-	WORKER_GC,
-	WORKER_ALL_PAUSED,
-	WORKER_EXIT
-} worker_available_rc;
-#endif
-
-extern pool_t *nfs_clientid_pool;
-
 /*
  * function prototypes
  */
 request_data_t *nfs_rpc_get_nfsreq(uint32_t flags);
 void nfs_rpc_enqueue_req(request_data_t *req);
-int stats_snmp(void);
 
 /*
  * Thread entry functions
  */
 void *rpc_dispatcher_thread(void *UnusedArg);
 void *admin_thread(void *UnusedArg);
-void *stats_thread(void *UnusedArg);
-void *long_processing_thread(void *UnusedArg);
-void *stat_exporter_thread(void *UnusedArg);
 void *reaper_thread(void *UnusedArg);
-void *rpc_tcp_socket_manager_thread(void *Arg);
 void *sigmgr_thread(void *UnusedArg);
-void *state_async_thread(void *UnusedArg);
 
 #ifdef _USE_9P
 void *_9p_dispatcher_thread(void *arg);
@@ -300,29 +261,21 @@ void _9p_rdma_process_request(struct _9p_request_data *req9p,
 void _9p_rdma_cleanup_conn(msk_trans_t *trans);
 #endif
 
-void nfs_operate_on_sigusr1(void);
-void nfs_operate_on_sigterm(void);
-void nfs_operate_on_sighup(void);
-
 void nfs_Init_svc(void);
 int nfs_Init_worker_data(nfs_worker_data_t *pdata);
 int nfs_Init_request_data(nfs_request_data_t *pdata);
 void nfs_rpc_dispatch_threads(pthread_attr_t *attr_thr);
 void nfs_rpc_dispatch_stop(void);
+void Clean_RPC(void);
 
 /* Config parsing routines */
 extern config_file_t config_struct;
-
-int nfs_read_core_conf(config_file_t in_config, nfs_core_parameter_t *pparam);
-int nfs_read_ip_name_conf(config_file_t in_config,
-			  nfs_ip_name_parameter_t *pparam);
-int nfs_read_version4_conf(config_file_t in_config,
-			   nfs_version4_parameter_t *pparam);
+extern struct config_block nfs_core;
+extern struct config_block nfs_ip_name;
 #ifdef _HAVE_GSSAPI
-int nfs_read_krb5_conf(config_file_t in_config, nfs_krb5_parameter_t *pparam);
+extern struct config_block krb5_param;
 #endif
-cache_inode_status_t nfs_export_get_root_entry(exportlist_t *export,
-					       cache_entry_t **entryp);
+extern struct config_block version4_param;
 
 /* Admin thread control */
 
@@ -331,11 +284,7 @@ void admin_replace_exports(void);
 void admin_halt(void);
 
 /* Tools */
-unsigned int get_rpc_xid(struct svc_req *);
 
-void nfs_reset_stats(void);
-
-const char *auth_stat2str(enum auth_stat);
 int compare_state_id(struct gsh_buffdesc *buff1, struct gsh_buffdesc *buff2);
 
 /* used in DBUS-api diagnostic functions (e.g., serialize sessionid) */
@@ -345,9 +294,8 @@ int b64_pton(char const *src, u_char *target, size_t targsize);
 
 unsigned int nfs_core_select_worker_queue(unsigned int avoid_index);
 
-int nfs_Init_ip_name(nfs_ip_name_parameter_t param);
+int nfs_Init_ip_name(void);
 
-extern const nfs_function_desc_t *INVALID_FUNCDESC;
 void nfs_rpc_destroy_chan(rpc_call_channel_t *chan);
 int32_t nfs_rpc_dispatch_call(rpc_call_t *call, uint32_t flags);
 
@@ -356,7 +304,5 @@ int reaper_shutdown(void);
 
 int worker_init(void);
 int worker_shutdown(void);
-int worker_pause(void);
-int worker_resume(void);
 
 #endif				/* !NFS_CORE_H */

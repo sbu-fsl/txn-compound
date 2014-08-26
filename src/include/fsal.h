@@ -39,7 +39,6 @@
 
 #include <stddef.h>
 
-#include "nlm_list.h"
 /* fsal_types contains constants and type definitions for FSAL */
 #include "fsal_types.h"
 #include "common_utils.h"
@@ -122,30 +121,6 @@ typedef struct fsal_xattrent {
 /* function for getting an attribute value */
 #define XATTR_RW_COOKIE ~0
 
-/**
- * fsal2unix_mode:
- * Convert FSAL mode to posix mode.
- *
- * \param fsal_mode (input):
- *        The FSAL mode to be translated.
- *
- * \return The posix mode associated to fsal_mode.
- */
-mode_t fsal2unix_mode(uint32_t fsal_mode);
-
-fsal_dev_t posix2fsal_devt(dev_t posix_devid);
-
-/**
- * unix2fsal_mode:
- * Convert posix mode to FSAL mode.
- *
- * \param unix_mode (input):
- *        The posix mode to be translated.
- *
- * \return The FSAL mode associated to unix_mode.
- */
-uint32_t unix2fsal_mode(mode_t unix_mode);
-
 /******************************************************
  *                Structure used to define a fsal
  ******************************************************/
@@ -163,6 +138,9 @@ void display_fsinfo(struct fsal_staticfsinfo_t *info);
 static const size_t fsal_default_linksize = 4096;
 
 void destroy_fsals(void);
+void emergency_cleanup_fsals(void);
+
+const char *msg_fsal_err(fsal_errors_t fsal_err);
 
 #endif				/* !FSAL_H */
 /** @} */

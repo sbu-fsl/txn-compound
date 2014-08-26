@@ -54,35 +54,22 @@
  * @retval ERR_FSAL_BUSY if the export is in use.
  */
 
-static fsal_status_t release(struct fsal_export *export_pub)
+static void release(struct fsal_export *export_pub)
 {
 	/* The priate, expanded export */
 	struct export *export = container_of(export_pub, struct export, export);
-	/* Return code */
-	fsal_status_t status = { ERR_FSAL_INVAL, 0 };
 
 	deconstruct_handle(export->root);
 	export->root = 0;
 
-	pthread_mutex_lock(&export->export.lock);
-	if ((export->export.refs > 0)
-	    || (!glist_empty(&export->export.handles))) {
-		pthread_mutex_lock(&export->export.lock);
-		status.major = ERR_FSAL_INVAL;
-		return status;
-	}
 	fsal_detach_export(export->export.fsal, &export->export.exports);
 	free_export_ops(&export->export);
-	pthread_mutex_unlock(&export->export.lock);
 
 	export->export.ops = NULL;
 	ceph_shutdown(export->cmount);
 	export->cmount = NULL;
-	pthread_mutex_destroy(&export->export.lock);
 	gsh_free(export);
 	export = NULL;
-
-	return status;
 }
 
 /**
@@ -102,7 +89,6 @@ static fsal_status_t release(struct fsal_export *export_pub)
  */
 
 static fsal_status_t lookup_path(struct fsal_export *export_pub,
-				 const struct req_op_context *opctx,
 				 const char *path,
 				 struct fsal_obj_handle **pub_handle)
 {
@@ -178,7 +164,6 @@ static fsal_status_t extract_handle(struct fsal_export *exp_hdl,
 {
 	switch (in_type) {
 		/* Digested Handles */
-	case FSAL_DIGEST_NFSV2:
 	case FSAL_DIGEST_NFSV3:
 	case FSAL_DIGEST_NFSV4:
 		/* wire handles */
@@ -240,11 +225,7 @@ nfsstat4 create_ds_handle(struct fsal_export * const export_pub,
 		return NFS4ERR_BADHANDLE;
 	}
 
-	if (fsal_ds_handle_init
-	    (&ds->ds, export->export.ds_ops, &export->export)) {
-		gsh_free(ds);
-		return NFS4ERR_SERVERFAULT;
-	}
+	fsal_ds_handle_init(&ds->ds, export->export.ds_ops, export->fsal);
 
 	*ds_pub = &ds->ds;
 
@@ -266,7 +247,6 @@ nfsstat4 create_ds_handle(struct fsal_export * const export_pub,
  * @return FSAL status.
  */
 static fsal_status_t create_handle(struct fsal_export *export_pub,
-				   const struct req_op_context *opctx,
 				   struct gsh_buffdesc *desc,
 				   struct fsal_obj_handle **pub_handle)
 {
@@ -332,7 +312,7 @@ static fsal_status_t create_handle(struct fsal_export *export_pub,
  */
 
 static fsal_status_t get_fs_dynamic_info(struct fsal_export *export_pub,
-					 const struct req_op_context *opctx,
+					 struct fsal_obj_handle *obj_hdl,
 					 fsal_dynamicfsinfo_t *info)
 {
 	/* Full 'private' export */
@@ -429,7 +409,11 @@ static bool fs_supports(struct fsal_export *export_pub,
 
 	case fso_pnfs_ds_supported:
 		return false;
+
 	case fso_delegations:
+		return false;
+
+	case fso_reopen_method:
 		return false;
 	}
 

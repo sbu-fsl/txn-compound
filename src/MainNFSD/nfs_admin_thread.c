@@ -34,14 +34,13 @@
 #include <string.h>
 #include <pthread.h>
 #include "nfs_core.h"
-#include "nfs_tools.h"
 #include "log.h"
 #include "sal_functions.h"
 #include "sal_data.h"
-#include "fsal_up.h"
 #include "cache_inode_lru.h"
 #include "idmapper.h"
 #include "delayed_exec.h"
+#include "export_mgr.h"
 #ifdef USE_DBUS
 #include "ganesha_dbus.h"
 #endif
@@ -68,7 +67,6 @@ static pthread_cond_t admin_control_cv = PTHREAD_COND_INITIALIZER;
 typedef enum {
 	admin_none_pending,	/*< No command.  The admin thread sets this on
 				   startup and after */
-	admin_reload_exports,	/*< Reload the exports */
 	admin_shutdown		/*< Shut down Ganesha */
 } admin_command_t;
 
@@ -78,7 +76,6 @@ typedef enum {
 
 typedef enum {
 	admin_stable,		/*< The admin thread is not doing an action. */
-	admin_reloading,	/*< The admin thread is reloading exports */
 	admin_shutting_down,	/*< The admin thread is shutting down Ganesha */
 	admin_halted		/*< All threads should exit. */
 } admin_status_t;
@@ -89,54 +86,20 @@ static admin_status_t admin_status;
 #ifdef USE_DBUS
 
 /**
- * @brief Dbus method for reloading configuration
- *
- * @param[in]  args  Unused
- * @param[out] reply Unused
- */
-
-static bool admin_dbus_reload(DBusMessageIter *args, DBusMessage *reply)
-{
-	char *errormsg = "Exports reloaded";
-	bool success = true;
-	DBusMessageIter iter;
-
-	dbus_message_iter_init_append(reply, &iter);
-	if (args != NULL) {
-		errormsg = "Replace exports take no arguments.";
-		LogWarn(COMPONENT_DBUS, "%s", errormsg);
-		goto out;
-	}
-
-	admin_replace_exports();
-
- out:
-	dbus_status_reply(&iter, success, errormsg);
-	return success;
-}
-
-static struct gsh_dbus_method method_reload = {
-	.name = "reload",
-	.method = admin_dbus_reload,
-	.args = {STATUS_REPLY,
-		 END_ARG_LIST}
-};
-
-/**
  * @brief Dbus method start grace period
  *
  * @param[in]  args  Unused
  * @param[out] reply Unused
  */
 
-static bool admin_dbus_grace(DBusMessageIter *args, DBusMessage *reply)
+static bool admin_dbus_grace(DBusMessageIter *args,
+			     DBusMessage *reply,
+			     DBusError *error)
 {
-#define IP_INPUT 120
 	char *errormsg = "Started grace period";
 	bool success = true;
 	DBusMessageIter iter;
 	nfs_grace_start_t gsp;
-	char buf[IP_INPUT];
 	char *input = NULL;
 	char *ip;
 
@@ -158,15 +121,17 @@ static bool admin_dbus_grace(DBusMessageIter *args, DBusMessage *reply)
 	gsp.nodeid = -1;
 	gsp.event = EVENT_TAKE_IP;
 
-	ip = strstr(input, ":");
+	ip = index(input, ':');
 	if (ip == NULL)
 		gsp.ipaddr = input;	/* no event specified */
 	else {
+		char *buf = alloca(strlen(input) + 1);
+
 		gsp.ipaddr = ip + 1;	/* point at the ip passed the : */
-		strncpy(buf, input, IP_INPUT);
+		strcpy(buf, input);
 		ip = strstr(buf, ":");
 		if (ip != NULL) {
-			*ip = 0x0;	/* replace ":" with null */
+			*ip = '\0';	/* replace ":" with null */
 			gsp.event = atoi(buf);
 		}
 		if (gsp.event == EVENT_TAKE_NODEID)
@@ -193,7 +158,9 @@ static struct gsh_dbus_method method_grace_period = {
  * @param[out] reply Unused
  */
 
-static bool admin_dbus_shutdown(DBusMessageIter *args, DBusMessage *reply)
+static bool admin_dbus_shutdown(DBusMessageIter *args,
+				DBusMessage *reply,
+				DBusError *error)
 {
 	char *errormsg = "Server shut down";
 	bool success = true;
@@ -221,10 +188,46 @@ static struct gsh_dbus_method method_shutdown = {
 		 END_ARG_LIST}
 };
 
+/**
+ * @brief Dbus method for flushing manage gids cache
+ *
+ * @param[in]  args
+ * @param[out] reply
+ */
+static bool admin_dbus_purge_gids(DBusMessageIter *args,
+				  DBusMessage *reply,
+				  DBusError *error)
+{
+	char *errormsg = "Purge gids cache";
+	bool success = true;
+	DBusMessageIter iter;
+
+	dbus_message_iter_init_append(reply, &iter);
+	if (args != NULL) {
+		errormsg = "Purge gids takes no arguments.";
+		success = false;
+		LogWarn(COMPONENT_DBUS, "%s", errormsg);
+		goto out;
+	}
+
+	uid2grp_clear_cache();
+
+ out:
+	dbus_status_reply(&iter, success, errormsg);
+	return success;
+}
+
+static struct gsh_dbus_method method_purge_gids = {
+	.name = "purge_gids",
+	.method = admin_dbus_purge_gids,
+	.args = {STATUS_REPLY,
+		 END_ARG_LIST}
+};
+
 static struct gsh_dbus_method *admin_methods[] = {
 	&method_shutdown,
-	&method_reload,
 	&method_grace_period,
+	&method_purge_gids,
 	NULL
 };
 
@@ -292,155 +295,10 @@ void admin_halt(void)
 	admin_issue_command(admin_shutdown);
 }
 
-/**
- * @TODO commented out because it doesn't work.
- * return to this when export manager and pseudo fs fsal is in place
- */
-
-/* Skips deleting first entry of export list. */
-int rebuild_export_list(void)
-{
-#if 0
-	int status = 0;
-	config_file_t config_struct;
-
-	/* If no configuration file is given, then the caller must want to
-	 * reparse the configuration file from startup. */
-	if (config_path == NULL) {
-		LogCrit(COMPONENT_CONFIG,
-			"Error: No configuration file was specified for reloading exports.");
-		return 0;
-	}
-
-	/* Attempt to parse the new configuration file */
-	config_struct = config_ParseFile(config_path);
-	if (!config_struct) {
-		LogCrit(COMPONENT_CONFIG,
-			"rebuild_export_list: Error while parsing new configuration file %s: %s",
-			config_path, config_GetErrorMsg());
-		return 0;
-	}
-
-	/* Create the new exports list */
-	status = ReadExports(config_struct, &temp_exportlist);
-	if (status < 0) {
-		LogCrit(COMPONENT_CONFIG,
-			"rebuild_export_list: Error while parsing export entries");
-		return status;
-	} else if (status == 0) {
-		LogWarn(COMPONENT_CONFIG,
-			"rebuild_export_list: No export entries found in configuration file !!!");
-		return 0;
-	}
-
-	return 1;
-#else
-	return 0;
-#endif
-}
-
-static int ChangeoverExports()
-{
-
-#if 0
-	exportlist_t *pcurrent = NULL;
-
-  /**
-   * @@TODO@@ This is all totally bogus code now that exports are under the
-   * control of the export manager. Left as unfinished business.
-   */
-	if (nfs_param.pexportlist)
-		pcurrent = nfs_param.pexportlist->next;
-
-	while (pcurrent != NULL) {
-		/* Leave the head so that the list may be replaced later without
-		 * changing the reference pointer in worker threads. */
-
-		if (pcurrent == nfs_param.pexportlist)
-			break;
-
-		nfs_param.pexportlist->next = RemoveExportEntry(pcurrent);
-		pcurrent = nfs_param.pexportlist->next;
-	}
-
-	/* Allocate memory if needed, could have started with NULL exports */
-	if (nfs_param.pexportlist == NULL)
-		nfs_param.pexportlist = gsh_malloc(sizeof(exportlist_t));
-
-	if (nfs_param.pexportlist == NULL)
-		return ENOMEM;
-
-	/* Changed the old export list head to the new export list head.
-	 * All references to the exports list should be up-to-date now. */
-	memcpy(nfs_param.pexportlist, temp_pexportlist, sizeof(exportlist_t));
-
-	/* We no longer need the head that was created for
-	 * the new list since the export list is built as a linked list. */
-	gsh_free(temp_pexportlist);
-	temp_pexportlist = NULL;
-	return 0;
-#else
-	return ENOTSUP;
-#endif
-}
-
-static void redo_exports(void)
-{
-  /**
-   * @todo If we make this accessible by DBUS we should have a good
-   * way of indicating error.
-   */
-	int rc = 0;
-
-	if (rebuild_export_list() <= 0)
-		return;
-
-	rc = state_async_pause();
-	if (rc != STATE_SUCCESS) {
-		LogMajor(COMPONENT_THREAD,
-			 "Error pausing async state thread: %d", rc);
-		return;
-	}
-
-	if (worker_pause() != 0) {
-		LogMajor(COMPONENT_MAIN, "Unable to pause workers.");
-		return;
-	}
-
-	/* Clear the id mapping cache for gss principals to uid/gid.  The id
-	 * mapping may have changed.
-	 */
-#ifdef _HAVE_GSSAPI
-#ifdef USE_NFSIDMAP
-	idmapper_clear_cache();
-#endif				/* USE_NFSIDMAP */
-#endif				/* _HAVE_GSSAPI */
-
-	if (ChangeoverExports()) {
-		LogCrit(COMPONENT_MAIN, "ChangeoverExports failed.");
-		return;
-	}
-
-	if (worker_resume() != 0) {
-		/* It's not as if there's anything you can do if this
-		   happens... */
-		LogFatal(COMPONENT_MAIN, "Unable to resume workers.");
-		return;
-	}
-
-	rc = state_async_resume();
-	if (rc != STATE_SUCCESS) {
-		LogFatal(COMPONENT_THREAD,
-			 "Error resumeing down upcall system: %d", rc);
-	}
-
-	LogEvent(COMPONENT_MAIN, "Exports reloaded and active");
-
-}
-
 static void do_shutdown(void)
 {
 	int rc = 0;
+	bool disorderly = false;
 
 	LogEvent(COMPONENT_MAIN, "NFS EXIT: stopping NFS service");
 
@@ -454,6 +312,7 @@ static void do_shutdown(void)
 		LogMajor(COMPONENT_THREAD,
 			 "Error shutting down state asynchronous request system: %d",
 			 rc);
+		disorderly = true;
 	} else {
 		LogEvent(COMPONENT_THREAD,
 			 "State asynchronous request system shut down.");
@@ -469,10 +328,12 @@ static void do_shutdown(void)
 		LogMajor(COMPONENT_THREAD,
 			 "Shutdown timed out, cancelling threads!");
 		fridgethr_cancel(req_fridge);
+		disorderly = true;
 	} else if (rc != 0) {
 		LogMajor(COMPONENT_THREAD,
 			 "Failed to shut down the request thread fridge: %d!",
 			 rc);
+		disorderly = true;
 	} else {
 		LogEvent(COMPONENT_THREAD, "Request threads shut down.");
 	}
@@ -481,20 +342,24 @@ static void do_shutdown(void)
 
 	rc = worker_shutdown();
 
-	if (rc != 0)
+	if (rc != 0) {
 		LogMajor(COMPONENT_THREAD,
 			 "Unable to shut down worker threads: %d", rc);
-	else
+		disorderly = true;
+	} else {
 		LogEvent(COMPONENT_THREAD,
 			 "Worker threads successfully shut down.");
+	}
 
 	/* finalize RPC package */
+	Clean_RPC(); /* we MUST do this first */
 	(void)svc_shutdown(SVC_SHUTDOWN_FLAG_NONE);
 
 	rc = general_fridge_shutdown();
 	if (rc != 0) {
 		LogMajor(COMPONENT_THREAD,
 			 "Error shutting down general fridge: %d", rc);
+		disorderly = true;
 	} else {
 		LogEvent(COMPONENT_THREAD, "General fridge shut down.");
 	}
@@ -503,6 +368,7 @@ static void do_shutdown(void)
 	if (rc != 0) {
 		LogMajor(COMPONENT_THREAD,
 			 "Error shutting down reaper thread: %d", rc);
+		disorderly = true;
 	} else {
 		LogEvent(COMPONENT_THREAD, "Reaper thread shut down.");
 	}
@@ -510,19 +376,34 @@ static void do_shutdown(void)
 	LogEvent(COMPONENT_MAIN, "Stopping LRU thread.");
 	rc = cache_inode_lru_pkgshutdown();
 	if (rc != 0) {
-		LogMajor(COMPONENT_THREAD, "Error shutting down LRU thread: %d",
+		LogMajor(COMPONENT_THREAD,
+			 "Error shutting down LRU thread: %d",
 			 rc);
+		disorderly = true;
 	} else {
 		LogEvent(COMPONENT_THREAD, "LRU thread system shut down.");
 	}
 
-	LogEvent(COMPONENT_MAIN, "Destroying the inode cache.");
-	cache_inode_destroyer();
-	LogEvent(COMPONENT_MAIN, "Inode cache destroyed.");
+	LogEvent(COMPONENT_MAIN, "Removing all exports.");
+	remove_all_exports();
 
-	LogEvent(COMPONENT_MAIN, "Destroying the FSAL system.");
-	destroy_fsals();
-	LogEvent(COMPONENT_MAIN, "FSAL system destroyed.");
+	if (disorderly) {
+		LogMajor(COMPONENT_MAIN,
+			 "Error in shutdown, taking emergency cleanup.");
+		/* We don't attempt to free state, clean the cache,
+		   or unload the FSALs more cleanly, since doing
+		   anything more than this risks hanging up on
+		   potentially invalid locks. */
+		emergency_cleanup_fsals();
+	} else {
+		LogEvent(COMPONENT_MAIN, "Destroying the inode cache.");
+		cache_inode_destroyer();
+		LogEvent(COMPONENT_MAIN, "Inode cache destroyed.");
+
+		LogEvent(COMPONENT_MAIN, "Destroying the FSAL system.");
+		destroy_fsals();
+		LogEvent(COMPONENT_MAIN, "FSAL system destroyed.");
+	}
 
 	unlink(pidfile_path);
 }
@@ -533,18 +414,6 @@ void *admin_thread(void *UnusedArg)
 
 	pthread_mutex_lock(&admin_control_mtx);
 	while (admin_command != admin_shutdown) {
-		/* If we add more commands we can expand this into a
-		   switch/case... */
-		if (admin_command == admin_reload_exports) {
-			admin_command = admin_none_pending;
-			admin_status = admin_reloading;
-			pthread_cond_broadcast(&admin_control_cv);
-			pthread_mutex_unlock(&admin_control_mtx);
-			redo_exports();
-			pthread_mutex_lock(&admin_control_mtx);
-			admin_status = admin_stable;
-			pthread_cond_broadcast(&admin_control_cv);
-		}
 		if (admin_command != admin_none_pending)
 			continue;
 		pthread_cond_wait(&admin_control_cv, &admin_control_mtx);

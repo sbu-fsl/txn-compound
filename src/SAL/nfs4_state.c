@@ -48,6 +48,7 @@
 #include "fsal.h"
 #include "sal_functions.h"
 #include "cache_inode_lru.h"
+#include "export_mgr.h"
 
 pool_t *state_v4_pool;		/*< Pool for NFSv4 files's states */
 
@@ -55,6 +56,123 @@ pool_t *state_v4_pool;		/*< Pool for NFSv4 files's states */
 struct glist_head state_v4_all;
 pthread_mutex_t all_state_v4_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
+
+/**
+ * @brief Checks for a conflict between an existing delegation state and a
+ * candidate state.
+ *
+ * @param[in] state      Existing state
+ * @param[in] state_type Type of candidate state
+ * @param[in] state_data Data for the candidate state
+ *
+ * @retval true if there is a conflict.
+ * @retval false if no conflict has been found
+ */
+static bool check_deleg_conflict(state_t *state, state_type_t candidate_type,
+				 state_data_t *candidate_data,
+				 state_owner_t *candidate_owner)
+{
+	struct glist_head *glist;
+	clientid4 candidate_clientid, deleg_clientid;
+	state_lock_entry_t *found_lock;
+
+	LogDebug(COMPONENT_STATE, "Checking for conflict!!");
+
+	if (state == NULL || candidate_data == NULL)
+		return true;
+
+	deleg_clientid =
+		state->state_data.deleg.clfile_stats.clientid->cid_clientid;
+	candidate_clientid =
+		candidate_owner->so_owner.so_nfs4_owner.so_clientid;
+
+	if (state->state_type != STATE_TYPE_DELEG) {
+		LogDebug(COMPONENT_STATE,
+			 "ERROR: Non-delegation state found in delegation list!");
+		return false;
+	}
+
+	/* We are getting a new share, checking if delegations conflict. */
+	switch (candidate_type) {
+	case STATE_TYPE_DELEG:
+		/* This should not happen, but we'll see. */
+		if (deleg_clientid == candidate_clientid) {
+			LogDebug(COMPONENT_STATE,
+				 "Requesting delegation for client that has a delegation on this file. no conflict");
+			return false;
+		}
+		if (state->state_data.deleg.sd_type == OPEN_DELEGATE_WRITE) {
+			LogDebug(COMPONENT_STATE,
+				 "Getting a delegation when write delegation exists on different client conflict");
+			return true;
+		}
+		if (candidate_data->deleg.sd_type
+		    == OPEN_DELEGATE_WRITE) {
+			LogDebug(COMPONENT_STATE,
+				 "Getting a write delegation  when delegation exists on different client conflict");
+			return true;
+		}
+		break;
+	case STATE_TYPE_SHARE:
+		if (deleg_clientid == candidate_clientid) {
+			LogDebug(COMPONENT_STATE,
+				 "New share state is for same client that owns delegation. no conflict.");
+			return false;
+		}
+
+		if (state->state_data.deleg.sd_type == OPEN_DELEGATE_READ
+		    && candidate_data->share.share_access
+		    & OPEN4_SHARE_ACCESS_WRITE) {
+			LogDebug(COMPONENT_STATE,
+				 "Read delegation exists. New share is WRITE on different client. conflict");
+			return true;
+		}
+		if (state->state_data.deleg.sd_type == OPEN_DELEGATE_WRITE) {
+			LogDebug(COMPONENT_STATE,
+				 "Write delegation exists. New share is with diff client. conflict.");
+			return true;
+		}
+		break;
+	case STATE_TYPE_LOCK:
+		if (deleg_clientid == candidate_clientid) {
+			LogDebug(COMPONENT_STATE,
+				 "Creating lock for client that owns the delegation. no conflict.");
+			return false;
+		}
+
+		/* Search for a posix lock that conflicts with delegation */
+		glist_for_each(glist, &candidate_data->lock.state_locklist) {
+			found_lock = glist_entry(glist, state_lock_entry_t,
+						 sle_state_locks);
+			if (found_lock->sle_type != POSIX_LOCK) {
+				LogDebug(COMPONENT_STATE,
+					 "non posix lock in lock list");
+				continue;
+			}
+			if (found_lock->sle_lock.lock_type == FSAL_LOCK_R
+			    && state->state_data.deleg.sd_type
+			    == OPEN_DELEGATE_WRITE) {
+				LogDebug(COMPONENT_STATE,
+					 "Trying to get read lock. write delegation exists. conflict");
+				return true; /*recall delegation*/
+			}
+			if (found_lock->sle_lock.lock_type == FSAL_LOCK_W) {
+				LogDebug(COMPONENT_STATE,
+					 "Trying to get write lock. delegation exists. conflict");
+				return true;
+			}
+		}
+	case STATE_TYPE_LAYOUT:
+		return false;
+		break;
+	case STATE_TYPE_NONE:
+	default:
+		LogDebug(COMPONENT_STATE, "Shouldn't be here.");
+		break;
+	}
+
+	return false;
+}
 
 /**
  * @brief Checks for a conflict between an existing state and a candidate state.
@@ -67,9 +185,9 @@ pthread_mutex_t all_state_v4_mutex = PTHREAD_MUTEX_INITIALIZER;
  * @retval false if no conflict has been found
  */
 bool state_conflict(state_t *state, state_type_t state_type,
-		    state_data_t *state_data)
+		    state_data_t *candidate_data)
 {
-	if (state == NULL || state_data == NULL)
+	if (state == NULL || candidate_data == NULL)
 		return true;
 
 	switch (state_type) {
@@ -78,11 +196,13 @@ bool state_conflict(state_t *state, state_type_t state_type,
 
 	case STATE_TYPE_SHARE:
 		if (state->state_type == STATE_TYPE_SHARE) {
-			if ((state->state_data.share.share_access & state_data->
-			     share.share_deny)
-			    || (state->state_data.share.
-				share_deny & state_data->share.share_access))
+			if ((state->state_data.share.share_access &
+			     candidate_data->share.share_deny)
+			    || (state->state_data.share.share_deny &
+				candidate_data->share.share_access)) {
+				/* Conflicting share reservation */
 				return true;
+			}
 		}
 		return false;
 
@@ -95,13 +215,29 @@ bool state_conflict(state_t *state, state_type_t state_type,
 		return false;
 
 	case STATE_TYPE_DELEG:
-		/** @todo: Not yet implemented for now, answer true to avoid
-		 * weird behavior
+		/* This will appear during new OPEN share state
+		 * We are getting a delegation and found a diff share entry.
 		 */
-		return true;
+		if (state->state_type == STATE_TYPE_SHARE) {
+			/* */
+			if (candidate_data->deleg.sd_type
+			    == OPEN_DELEGATE_READ
+			    && state->state_data.share.share_access
+			    & OPEN4_SHARE_ACCESS_WRITE)
+				return true;
+			if (candidate_data->deleg.sd_type
+			    == OPEN_DELEGATE_WRITE
+			    && state->state_data.share.share_access
+			    & OPEN4_SHARE_ACCESS_READ)
+				return true;
+			if (candidate_data->deleg.sd_type
+			    == OPEN_DELEGATE_WRITE
+			    && state->state_data.share.share_access
+			    & OPEN4_SHARE_ACCESS_WRITE)
+				return true;
+		}
 	}
-
-	return true;
+	return false;
 }
 
 /**
@@ -125,10 +261,10 @@ state_status_t state_add_impl(cache_entry_t *entry, state_type_t state_type,
 			      state_owner_t *owner_input, state_t **state,
 			      struct state_refer *refer)
 {
-	state_t *pnew_state = NULL;
-	state_t *piter_state = NULL;
+	state_t *pnew_state, *piter_state = NULL;
+	state_lock_entry_t *piter_lock;
 	char debug_str[OTHERSIZE * 2 + 1];
-	struct glist_head *glist;
+	struct glist_head *glist = NULL, *glistn = NULL;
 	cache_inode_status_t cache_status;
 	bool got_pinned = false;
 	state_status_t status = 0;
@@ -156,10 +292,36 @@ state_status_t state_add_impl(cache_entry_t *entry, state_type_t state_type,
 		status = STATE_MALLOC_ERROR;
 
 		if (got_pinned)
-			cache_inode_dec_pin_ref(entry, FALSE);
+			cache_inode_dec_pin_ref(entry, false);
 
 		return status;
 	}
+
+	/* Check conflicting delegations and recall if necessary */
+	if (entry->type == REGULAR_FILE
+	    && (!glist_empty(&entry->object.file.deleg_list)))
+		glist_for_each_safe(glist, glistn,
+				    &entry->object.file.deleg_list) {
+			piter_lock = glist_entry(glist, state_lock_entry_t,
+						 sle_list);
+			piter_state = piter_lock->sle_state;
+			if (piter_lock->sle_type != LEASE_LOCK) {
+				LogDebug(COMPONENT_STATE, "Wrong lock type");
+				continue;
+			}
+			if (piter_state->state_type != STATE_TYPE_DELEG) {
+				LogDebug(COMPONENT_STATE, "Wrong state type");
+				continue;
+			}
+			if (check_deleg_conflict(piter_state, state_type,
+						 state_data, owner_input)) {
+				status = delegrecall(entry, true);
+				if (status != STATE_SUCCESS) {
+					LogDebug(COMPONENT_STATE,
+						 "Failed to recall delegation");
+				}
+			}
+		}
 
 	/* Browse the state's list */
 	glist_for_each(glist, &entry->state_list) {
@@ -176,7 +338,7 @@ state_status_t state_add_impl(cache_entry_t *entry, state_type_t state_type,
 			status = STATE_STATE_CONFLICT;
 
 			if (got_pinned)
-				cache_inode_dec_pin_ref(entry, FALSE);
+				cache_inode_dec_pin_ref(entry, false);
 
 			return status;
 		}
@@ -220,7 +382,7 @@ state_status_t state_add_impl(cache_entry_t *entry, state_type_t state_type,
 		status = STATE_MALLOC_ERROR;
 
 		if (got_pinned)
-			cache_inode_dec_pin_ref(entry, FALSE);
+			cache_inode_dec_pin_ref(entry, false);
 
 		return status;
 	}
@@ -304,10 +466,9 @@ state_status_t state_add(cache_entry_t *entry, state_type_t state_type,
  * @param[in]     state The state to remove
  * @param[in,out] entry The cache entry to modify
  *
- * @return State status.
  */
 
-state_status_t state_del_locked(state_t *state, cache_entry_t *entry)
+void state_del_locked(state_t *state, cache_entry_t *entry)
 {
 	char debug_str[OTHERSIZE * 2 + 1];
 
@@ -316,15 +477,8 @@ state_status_t state_del_locked(state_t *state, cache_entry_t *entry)
 
 	LogFullDebug(COMPONENT_STATE, "Deleting state %s", debug_str);
 
-	/* Remove the entry from the HashTable */
-	if (!nfs4_State_Del(state->stateid_other)) {
-		sprint_mem(debug_str, (char *)state->stateid_other, OTHERSIZE);
-
-		LogCrit(COMPONENT_STATE, "Could not delete state %s",
-			debug_str);
-
-		return STATE_STATE_ERROR;
-	}
+	/* Remove the entry from the HashTable, which can't fail */
+	nfs4_State_Del(state->stateid_other);
 
 	/* Remove from list of states owned by owner */
 
@@ -344,9 +498,9 @@ state_status_t state_del_locked(state_t *state, cache_entry_t *entry)
 		glist_del(&state->state_data.lock.state_sharelist);
 
 	/* Remove from list of states for a particular export */
-	pthread_mutex_lock(&state->state_export->exp_state_mutex);
+	PTHREAD_RWLOCK_wrlock(&state->state_export->lock);
 	glist_del(&state->state_export_list);
-	pthread_mutex_unlock(&state->state_export->exp_state_mutex);
+	PTHREAD_RWLOCK_unlock(&state->state_export->lock);
 
 #ifdef DEBUG_SAL
 	pthread_mutex_lock(&all_state_v4_mutex);
@@ -361,9 +515,7 @@ state_status_t state_del_locked(state_t *state, cache_entry_t *entry)
 	LogFullDebug(COMPONENT_STATE, "Deleted state %s", debug_str);
 
 	if (glist_empty(&entry->state_list))
-		cache_inode_dec_pin_ref(entry, FALSE);
-
-	return STATE_SUCCESS;
+		cache_inode_dec_pin_ref(entry, false);
 }
 
 /**
@@ -372,23 +524,18 @@ state_status_t state_del_locked(state_t *state, cache_entry_t *entry)
  * @param[in] state     State to delete
  * @param[in] hold_lock If we already hold the lock
  *
- * @return Status of operation
- *
  */
-state_status_t state_del(state_t *state, bool hold_lock)
+void state_del(state_t *state, bool hold_lock)
 {
 	cache_entry_t *entry = state->state_entry;
-	state_status_t status = 0;
 
 	if (!hold_lock)
 		PTHREAD_RWLOCK_wrlock(&entry->state_lock);
 
-	status = state_del_locked(state, state->state_entry);
+	state_del_locked(state, state->state_entry);
 
 	if (!hold_lock)
 		PTHREAD_RWLOCK_unlock(&entry->state_lock);
-
-	return status;
 }
 
 /**
@@ -422,7 +569,6 @@ void state_nfs4_state_wipe(cache_entry_t *entry)
  */
 void release_lockstate(state_owner_t *lock_owner)
 {
-	state_status_t state_status;
 	struct glist_head *glist, *glistn;
 
 	glist_for_each_safe(glist, glistn,
@@ -437,12 +583,7 @@ void release_lockstate(state_owner_t *lock_owner)
 		 * state_del */
 		cache_inode_lru_ref(state_found->state_entry, LRU_FLAG_NONE);
 
-		state_status = state_del(state_found, false);
-		if (state_status != STATE_SUCCESS) {
-			LogDebug(COMPONENT_CLIENTID,
-				 "release_lockstate failed to release stateid error %s",
-				 state_err_str(state_status));
-		}
+		state_del(state_found, false);
 
 		/* Release the lru ref to the cache inode we held while
 		 * calling state_del
@@ -476,23 +617,20 @@ void release_openstate(state_owner_t *open_owner)
 		PTHREAD_RWLOCK_wrlock(&entry->state_lock);
 
 		if (state_found->state_type == STATE_TYPE_SHARE) {
+			op_ctx->export = state_found->state_export;
+			op_ctx->fsal_export = op_ctx->export->fsal_export;
+
 			state_status =
 			    state_share_remove(state_found->state_entry,
 					       open_owner, state_found);
-			if (state_status != STATE_SUCCESS) {
+			if (!state_unlock_err_ok(state_status)) {
 				LogEvent(COMPONENT_CLIENTID,
 					 "EXPIRY failed to release share stateid error %s",
 					 state_err_str(state_status));
 			}
 		}
 
-		state_status = state_del_locked(state_found, entry);
-
-		if (state_status != STATE_SUCCESS) {
-			LogDebug(COMPONENT_CLIENTID,
-				 "EXPIRY failed to release stateid error %s",
-				 state_err_str(state_status));
-		}
+		state_del_locked(state_found, entry);
 
 		/* Close the file in FSAL through the cache inode */
 		cache_inode_close(entry, 0);
@@ -503,6 +641,44 @@ void release_openstate(state_owner_t *open_owner)
 		 * calling state_del
 		 */
 		cache_inode_lru_unref(entry, LRU_FLAG_NONE);
+	}
+}
+
+/**
+ * @brief Remove all state belonging to an export.
+ *
+ */
+
+void state_export_release_nfs4_state(void)
+{
+	state_t *state;
+	state_status_t state_status;
+
+	while (1) {
+		PTHREAD_RWLOCK_wrlock(&op_ctx->export->lock);
+
+		state = glist_first_entry(&op_ctx->export->exp_state_list,
+					  state_t,
+					  state_export_list);
+
+		PTHREAD_RWLOCK_unlock(&op_ctx->export->lock);
+
+		if (state == NULL)
+			break;
+
+		if (state->state_type == STATE_TYPE_SHARE) {
+			state_status = state_share_remove(state->state_entry,
+							  state->state_owner,
+							  state);
+
+			if (!state_unlock_err_ok(state_status)) {
+				LogEvent(COMPONENT_CLIENTID,
+					 "EXPIRY failed to release share stateid error %s",
+					 state_err_str(state_status));
+			}
+		}
+
+		state_del(state, false);
 	}
 }
 

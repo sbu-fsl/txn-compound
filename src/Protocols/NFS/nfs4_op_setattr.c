@@ -39,8 +39,9 @@
 #include "cache_inode.h"
 #include "nfs_proto_functions.h"
 #include "nfs_proto_tools.h"
-#include "nfs_tools.h"
+#include "nfs_convert.h"
 #include "sal_functions.h"
+#include "nfs_creds.h"
 
 /**
  * @brief The NFS4_OP_SETATTR operation.
@@ -67,7 +68,6 @@ int nfs4_op_setattr(struct nfs_argop4 *op, compound_data_t *data,
 	state_t *state_open = NULL;
 	cache_entry_t *entry = NULL;
 
-	memset(&sattr, 0, sizeof(sattr));
 	resp->resop = NFS4_OP_SETATTR;
 	res_SETATTR4->status = NFS4_OK;
 
@@ -102,7 +102,8 @@ int nfs4_op_setattr(struct nfs_argop4 *op, compound_data_t *data,
 	/* Trunc may change Xtime so we have to start with trunc and
 	 * finish by the mtime and atime
 	 */
-	if (FSAL_TEST_MASK(sattr.mask, ATTR_SIZE)) {
+	if ((FSAL_TEST_MASK(sattr.mask, ATTR_SIZE))
+	     || (FSAL_TEST_MASK(sattr.mask, ATTR4_SPACE_RESERVED))) {
 		/* Setting the size of a directory is prohibited */
 		if (data->current_filetype == DIRECTORY) {
 			res_SETATTR4->status = NFS4ERR_ISDIR;
@@ -183,34 +184,6 @@ int nfs4_op_setattr(struct nfs_argop4 *op, compound_data_t *data,
 		}
 	}
 
-	/* Now, we set the mode */
-	if (FSAL_TEST_MASK(sattr.mask, ATTR_MODE)
-	    || FSAL_TEST_MASK(sattr.mask, ATTR_OWNER)
-	    || FSAL_TEST_MASK(sattr.mask, ATTR_GROUP)
-	    || FSAL_TEST_MASK(sattr.mask, ATTR_SIZE)
-	    || FSAL_TEST_MASK(sattr.mask, ATTR_MTIME_SERVER)
-	    || FSAL_TEST_MASK(sattr.mask, ATTR_MTIME_SERVER)
-	    || FSAL_TEST_MASK(sattr.mask, ATTR_MTIME)
-	    || FSAL_TEST_MASK(sattr.mask, ATTR_ACL)
-	    || FSAL_TEST_MASK(sattr.mask, ATTR_ATIME)) {
-		/* Check for root access when using chmod */
-		if (FSAL_TEST_MASK(sattr.mask, ATTR_MODE)) {
-			if ((sattr.mode & S_ISUID)
-			    && ((data->export->export_perms.
-			      options & EXPORT_OPTION_NOSUID)
-			     || ((sattr.mode & S_ISGID)
-				 && ((data->export->export_perms.
-				   options & EXPORT_OPTION_NOSGID))))) {
-				LogInfo(COMPONENT_NFS_V4,
-					"Setattr denied because setuid or setgid bit is disabled in configuration file. setuid=%d, setgid=%d",
-					sattr.mode & S_ISUID ? 1 : 0,
-					sattr.mode & S_ISGID ? 1 : 0);
-				res_SETATTR4->status = NFS4ERR_PERM;
-				return res_SETATTR4->status;
-			}
-		}
-	}
-
 	const time_t S_NSECS = 1000000000UL;
 	/* Set the atime and mtime (ctime is not setable) */
 
@@ -228,7 +201,7 @@ int nfs4_op_setattr(struct nfs_argop4 *op, compound_data_t *data,
 	/* If owner or owner_group are set, and the credential was
 	 * squashed, then we must squash the set owner and owner_group.
 	 */
-	squash_setattr(&data->export_perms, data->req_ctx->creds, &sattr);
+	squash_setattr(&sattr);
 
 	/* If a SETATTR comes with an open stateid, and size is being
 	 * set, then the open MUST be for write (checked above), so
@@ -237,8 +210,7 @@ int nfs4_op_setattr(struct nfs_argop4 *op, compound_data_t *data,
 	 */
 	cache_status = cache_inode_setattr(data->current_entry,
 					   &sattr,
-					   state_open != NULL,
-					   data->req_ctx);
+					   state_open != NULL);
 
 	if (cache_status != CACHE_INODE_SUCCESS) {
 		res_SETATTR4->status = nfs4_Errno(cache_status);

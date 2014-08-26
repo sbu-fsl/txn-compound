@@ -70,7 +70,6 @@
  * around the real (non symlink resolved) path.
  *
  * @param[in]  entry   Entry whose parent is to be obtained
- * @param[in]  req_ctx FSAL operation context
  * @param[out] parent  Parent directory
  *
  * @return CACHE_INODE_SUCCESS or errors.
@@ -78,30 +77,37 @@
 
 cache_inode_status_t
 cache_inode_lookupp_impl(cache_entry_t *entry,
-			 struct req_op_context *req_ctx,
 			 cache_entry_t **parent)
 {
 	cache_inode_status_t status = CACHE_INODE_SUCCESS;
 
 	/* Never even think of calling FSAL_lookup on root/.. */
 
-	if (entry->type == DIRECTORY
-	    && entry == req_ctx->export->export.exp_root_cache_inode) {
-		/* This entry is the root of the current export, so if we get
-		 * this far, return itself. Note that NFS v4 LOOKUPP will not
-		 * come here, it catches the root entry earlier.
-		 */
-		/* Bump the refcount on the current entry (so the caller's
-		   releasing decrementing it doesn't take us below the
-		   sentinel count) */
-		cache_inode_lru_ref(entry, LRU_FLAG_NONE);
-		*parent = entry;
-		return CACHE_INODE_SUCCESS;
+	if (entry->type == DIRECTORY) {
+		PTHREAD_RWLOCK_rdlock(&op_ctx->export->lock);
+
+		if (entry == op_ctx->export->exp_root_cache_inode) {
+			/* This entry is the root of the current export, so if
+			 * we get this far, return itself. Note that NFS v4
+			 * LOOKUPP will not come here, it catches the root entry
+			 * earlier.
+			 *
+			 * Bump the refcount on the current entry (so the
+			 * caller's releasing decrementing it doesn't take us
+			 * below the sentinel count)
+			 */
+			PTHREAD_RWLOCK_unlock(&op_ctx->export->lock);
+			cache_inode_lru_ref(entry, LRU_FLAG_NONE);
+			*parent = entry;
+			return CACHE_INODE_SUCCESS;
+		}
+
+		PTHREAD_RWLOCK_unlock(&op_ctx->export->lock);
 	}
 
 	/* Try to lookup by key (fh) */
 	*parent =
-	    cache_inode_get_keyed(&entry->object.dir.parent, req_ctx,
+	    cache_inode_get_keyed(&entry->object.dir.parent,
 				  CIG_KEYED_FLAG_NONE, &status);
 	if (!(*parent)) {
 		/* If we didn't find it, drop the read lock, get a write
@@ -113,7 +119,7 @@ cache_inode_lookupp_impl(cache_entry_t *entry,
 		PTHREAD_RWLOCK_wrlock(&entry->content_lock);
 
 		fsal_status =
-		    entry->obj_handle->ops->lookup(entry->obj_handle, req_ctx,
+		    entry->obj_handle->ops->lookup(entry->obj_handle,
 						   "..", &parent_handle);
 		if (FSAL_IS_ERROR(fsal_status)) {
 			if (fsal_status.major == ERR_FSAL_STALE) {
@@ -152,7 +158,6 @@ cache_inode_lookupp_impl(cache_entry_t *entry,
  * If a cache entry is returned, its refcount is +1.
  *
  * @param[in]  entry   Entry whose parent is to be obtained.
- * @param[in]  req_ctx FSAL credentials
  * @param[out] parent  Parent directory
  *
  * @return CACHE_INODE_SUCCESS or errors.
@@ -160,12 +165,11 @@ cache_inode_lookupp_impl(cache_entry_t *entry,
 
 cache_inode_status_t
 cache_inode_lookupp(cache_entry_t *entry,
-		    struct req_op_context *req_ctx,
 		    cache_entry_t **parent)
 {
 	cache_inode_status_t status;
 	PTHREAD_RWLOCK_rdlock(&entry->content_lock);
-	status = cache_inode_lookupp_impl(entry, req_ctx, parent);
+	status = cache_inode_lookupp_impl(entry, parent);
 	PTHREAD_RWLOCK_unlock(&entry->content_lock);
 	return status;
 }

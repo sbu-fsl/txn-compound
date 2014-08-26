@@ -40,7 +40,7 @@
 #include <fcntl.h>
 #include "FSAL/fsal_commonlib.h"
 #include "vfs_methods.h"
-#include "fsal_handle_syscalls.h"
+
 #include "dixio.h"
 
 /** vfs_open
@@ -48,7 +48,6 @@
  */
 
 fsal_status_t vfs_open(struct fsal_obj_handle *obj_hdl,
-		       const struct req_op_context *opctx,
 		       fsal_openflags_t openflags)
 {
 	struct vfs_fsal_obj_handle *myself;
@@ -58,6 +57,15 @@ fsal_status_t vfs_open(struct fsal_obj_handle *obj_hdl,
 	int retval = 0;
 
 	myself = container_of(obj_hdl, struct vfs_fsal_obj_handle, obj_handle);
+
+	if (obj_hdl->fsal != obj_hdl->fs->fsal) {
+		LogDebug(COMPONENT_FSAL,
+			 "FSAL %s operation for handle belonging to FSAL %s, return EXDEV",
+			 obj_hdl->fsal->name, obj_hdl->fs->fsal->name);
+		retval = EXDEV;
+		fsal_error = posix2fsal_error(retval);
+		return fsalstat(fsal_error, retval);
+	}
 
 	assert(myself->u.file.fd == -1
 	       && myself->u.file.openflags == FSAL_O_CLOSED && openflags != 0);
@@ -84,6 +92,7 @@ fsal_openflags_t vfs_status(struct fsal_obj_handle *obj_hdl)
 	struct vfs_fsal_obj_handle *myself;
 
 	myself = container_of(obj_hdl, struct vfs_fsal_obj_handle, obj_handle);
+
 	return myself->u.file.openflags;
 }
 
@@ -92,7 +101,7 @@ fsal_openflags_t vfs_status(struct fsal_obj_handle *obj_hdl)
  */
 
 fsal_status_t vfs_read(struct fsal_obj_handle *obj_hdl,
-		       const struct req_op_context *opctx, uint64_t offset,
+		       uint64_t offset,
 		       size_t buffer_size, void *buffer, size_t *read_amount,
 		       bool *end_of_file)
 {
@@ -102,6 +111,15 @@ fsal_status_t vfs_read(struct fsal_obj_handle *obj_hdl,
 	int retval = 0;
 
 	myself = container_of(obj_hdl, struct vfs_fsal_obj_handle, obj_handle);
+
+	if (obj_hdl->fsal != obj_hdl->fs->fsal) {
+		LogDebug(COMPONENT_FSAL,
+			 "FSAL %s operation for handle belonging to FSAL %s, return EXDEV",
+			 obj_hdl->fsal->name, obj_hdl->fs->fsal->name);
+		retval = EXDEV;
+		fsal_error = posix2fsal_error(retval);
+		return fsalstat(fsal_error, retval);
+	}
 
 	assert(myself->u.file.fd >= 0
 	       && myself->u.file.openflags != FSAL_O_CLOSED);
@@ -122,7 +140,7 @@ fsal_status_t vfs_read(struct fsal_obj_handle *obj_hdl,
 
 	*read_amount = nb_read;
 
-	/* dual eof condition, cf. GPFS */
+	/* dual eof condition */
 	*end_of_file = ((nb_read == 0) /* most clients */ ||	/* ESXi */
 			(((offset + nb_read) >= obj_hdl->attributes.filesize)))
 	    ? true : false;
@@ -136,7 +154,7 @@ fsal_status_t vfs_read(struct fsal_obj_handle *obj_hdl,
  */
 
 fsal_status_t vfs_write(struct fsal_obj_handle *obj_hdl,
-			const struct req_op_context *opctx, uint64_t offset,
+			uint64_t offset,
 			size_t buffer_size, void *buffer, size_t *write_amount,
 			bool *fsal_stable)
 {
@@ -147,10 +165,19 @@ fsal_status_t vfs_write(struct fsal_obj_handle *obj_hdl,
 
 	myself = container_of(obj_hdl, struct vfs_fsal_obj_handle, obj_handle);
 
+	if (obj_hdl->fsal != obj_hdl->fs->fsal) {
+		LogDebug(COMPONENT_FSAL,
+			 "FSAL %s operation for handle belonging to FSAL %s, return EXDEV",
+			 obj_hdl->fsal->name, obj_hdl->fs->fsal->name);
+		retval = EXDEV;
+		fsal_error = posix2fsal_error(retval);
+		return fsalstat(fsal_error, retval);
+	}
+
 	assert(myself->u.file.fd >= 0
 	       && myself->u.file.openflags != FSAL_O_CLOSED);
 
-	fsal_set_credentials(opctx->creds);
+	fsal_set_credentials(op_ctx->creds);
 	/* XXX WORKAROUND: use dixio interface (DIRECT_IO) */
 	if (obj_hdl->type == REGULAR_FILE)
 		nb_written = dixio_pwrite(myself->u.file.fd,
@@ -169,7 +196,7 @@ fsal_status_t vfs_write(struct fsal_obj_handle *obj_hdl,
 	*write_amount = nb_written;
 
 	/* attempt stability */
-	if (*fsal_stable) {
+	if (fsal_stable != NULL && *fsal_stable) {
 		retval = fsync(myself->u.file.fd);
 		if (retval == -1) {
 			retval = errno;
@@ -286,6 +313,15 @@ fsal_status_t vfs_commit(struct fsal_obj_handle *obj_hdl,	/* sync */
 
 	myself = container_of(obj_hdl, struct vfs_fsal_obj_handle, obj_handle);
 
+	if (obj_hdl->fsal != obj_hdl->fs->fsal) {
+		LogDebug(COMPONENT_FSAL,
+			 "FSAL %s operation for handle belonging to FSAL %s, return EXDEV",
+			 obj_hdl->fsal->name, obj_hdl->fs->fsal->name);
+		retval = EXDEV;
+		fsal_error = posix2fsal_error(retval);
+		return fsalstat(fsal_error, retval);
+	}
+
 	assert(myself->u.file.fd >= 0
 	       && myself->u.file.openflags != FSAL_O_CLOSED);
 
@@ -304,7 +340,7 @@ fsal_status_t vfs_commit(struct fsal_obj_handle *obj_hdl,	/* sync */
  */
 
 fsal_status_t vfs_lock_op(struct fsal_obj_handle *obj_hdl,
-			  const struct req_op_context *opctx, void *p_owner,
+			  void *p_owner,
 			  fsal_lock_op_t lock_op,
 			  fsal_lock_param_t *request_lock,
 			  fsal_lock_param_t *conflicting_lock)
@@ -316,6 +352,16 @@ fsal_status_t vfs_lock_op(struct fsal_obj_handle *obj_hdl,
 	int retval = 0;
 
 	myself = container_of(obj_hdl, struct vfs_fsal_obj_handle, obj_handle);
+
+	if (obj_hdl->fsal != obj_hdl->fs->fsal) {
+		LogDebug(COMPONENT_FSAL,
+			 "FSAL %s operation for handle belonging to FSAL %s, return EXDEV",
+			 obj_hdl->fsal->name, obj_hdl->fs->fsal->name);
+		retval = EXDEV;
+		fsal_error = posix2fsal_error(retval);
+		return fsalstat(fsal_error, retval);
+	}
+
 	if (myself->u.file.fd < 0 ||
 	    myself->u.file.openflags == FSAL_O_CLOSED) {
 		LogDebug(COMPONENT_FSAL,
@@ -417,6 +463,16 @@ fsal_status_t vfs_close(struct fsal_obj_handle *obj_hdl)
 
 	assert(obj_hdl->type == REGULAR_FILE);
 	myself = container_of(obj_hdl, struct vfs_fsal_obj_handle, obj_handle);
+
+	if (obj_hdl->fsal != obj_hdl->fs->fsal) {
+		LogDebug(COMPONENT_FSAL,
+			 "FSAL %s operation for handle belonging to FSAL %s, return EXDEV",
+			 obj_hdl->fsal->name, obj_hdl->fs->fsal->name);
+		retval = EXDEV;
+		fsal_error = posix2fsal_error(retval);
+		return fsalstat(fsal_error, retval);
+	}
+
 	if (myself->u.file.fd >= 0 &&
 	    myself->u.file.openflags != FSAL_O_CLOSED) {
 		retval = close(myself->u.file.fd);
@@ -444,6 +500,16 @@ fsal_status_t vfs_lru_cleanup(struct fsal_obj_handle *obj_hdl,
 	int retval = 0;
 
 	myself = container_of(obj_hdl, struct vfs_fsal_obj_handle, obj_handle);
+
+	if (obj_hdl->fsal != obj_hdl->fs->fsal) {
+		LogDebug(COMPONENT_FSAL,
+			 "FSAL %s operation for handle belonging to FSAL %s, return EXDEV",
+			 obj_hdl->fsal->name, obj_hdl->fs->fsal->name);
+		retval = EXDEV;
+		fsal_error = posix2fsal_error(retval);
+		return fsalstat(fsal_error, retval);
+	}
+
 	if (obj_hdl->type == REGULAR_FILE && myself->u.file.fd >= 0) {
 		retval = close(myself->u.file.fd);
 		myself->u.file.fd = -1;

@@ -37,7 +37,7 @@
 #include <string.h>
 #include <limits.h>
 #include <sys/types.h>
-#include "nlm_list.h"
+#include "ganesha_list.h"
 #include "FSAL/fsal_init.h"
 #include "nullfs_methods.h"
 
@@ -56,7 +56,6 @@
 struct nullfs_fsal_module {
 	struct fsal_module fsal;
 	struct fsal_staticfsinfo_t fs_info;
-	fsal_init_info_t fsal_info;
 	/* nullfsfs_specific_initinfo_t specific_info;  placeholder */
 };
 
@@ -64,7 +63,7 @@ const char myname[] = "NULLFS";
 
 /* filesystem info for NULLFS */
 static struct fsal_staticfsinfo_t default_posix_info = {
-	.maxfilesize = 0xFFFFFFFFFFFFFFFFLL,	/* (64bits) */
+	.maxfilesize = UINT64_MAX,
 	.maxlink = _POSIX_LINK_MAX,
 	.maxnamelen = 1024,
 	.maxpathlen = 1024,
@@ -84,8 +83,8 @@ static struct fsal_staticfsinfo_t default_posix_info = {
 	.cansettime = true,
 	.homogenous = true,
 	.supported_attrs = NULLFS_SUPPORTED_ATTRIBUTES,
-	.maxread = 0,
-	.maxwrite = 0,
+	.maxread = FSAL_MAXIOSIZE,
+	.maxwrite = FSAL_MAXIOSIZE,
 	.umask = 0,
 	.auth_exportpath_xdev = false,
 	.xattr_access_rights = 0400,	/* root=RW, owner=R */
@@ -114,20 +113,20 @@ static fsal_status_t init_config(struct fsal_module *fsal_hdl,
 {
 	struct nullfs_fsal_module *nullfs_me =
 	    container_of(fsal_hdl, struct nullfs_fsal_module, fsal);
-	fsal_status_t fsal_status;
 
 	/* get a copy of the defaults */
 	nullfs_me->fs_info = default_posix_info;
 
-	fsal_status =
-	    fsal_load_config(fsal_hdl->ops->get_name(fsal_hdl), config_struct,
-			     &nullfs_me->fsal_info, &nullfs_me->fs_info, NULL);
-
-	if (FSAL_IS_ERROR(fsal_status))
-		return fsal_status;
-	/* if we have fsal specific params, do them here
-	 * fsal_hdl->name is used to find the block containing the
-	 * params.
+	/* Configuration setting options:
+	 * 1. there are none that are changable. (this case)
+	 *
+	 * 2. we set some here.  These must be independent of whatever
+	 *    may be set by lower level fsals.
+	 *
+	 * If there is any filtering or change of parameters in the stack,
+	 * this must be done in export data structures, not fsal params because
+	 * a stackable could be configured above multiple fsals for multiple
+	 * diverse exports.
 	 */
 
 	display_fsinfo(&nullfs_me->fs_info);
@@ -147,12 +146,8 @@ static fsal_status_t init_config(struct fsal_module *fsal_hdl,
  */
 
 fsal_status_t nullfs_create_export(struct fsal_module *fsal_hdl,
-				   const char *export_path,
-				   const char *fs_options,
-				   struct exportlist *exp_entry,
-				   struct fsal_module *next_fsal,
-				   const struct fsal_up_vector *up_ops,
-				   struct fsal_export **export);
+				   void *parse_node,
+				   const struct fsal_up_vector *up_ops);
 
 /* Module initialization.
  * Called by dlopen() to register the module
@@ -173,16 +168,14 @@ MODULE_INIT void nullfs_init(void)
 	int retval;
 	struct fsal_module *myself = &NULLFS.fsal;
 
-	retval =
-	    register_fsal(myself, myname, FSAL_MAJOR_VERSION,
-			  FSAL_MINOR_VERSION);
+	retval = register_fsal(myself, myname, FSAL_MAJOR_VERSION,
+			       FSAL_MINOR_VERSION, FSAL_ID_NO_PNFS);
 	if (retval != 0) {
 		fprintf(stderr, "NULLFS module failed to register");
 		return;
 	}
 	myself->ops->create_export = nullfs_create_export;
 	myself->ops->init_config = init_config;
-	init_fsal_parameters(&NULLFS.fsal_info);
 }
 
 MODULE_FINI void nullfs_unload(void)

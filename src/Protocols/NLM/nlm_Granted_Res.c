@@ -32,20 +32,19 @@
 #include "cache_inode.h"
 #include "nlm_util.h"
 #include "nlm_async.h"
+#include "export_mgr.h"
 
 /**
  * @brief Lock Granted Result Handler
  *
  * @param[in]  arg
  * @param[in]  export
- * @param[in]  req_ctx
  * @param[in]  worker
  * @param[in]  req
  * @param[out] res
  *
  */
-int nlm4_Granted_Res(nfs_arg_t *args, exportlist_t *export,
-		     struct req_op_context *req_ctx,
+int nlm4_Granted_Res(nfs_arg_t *args,
 		     nfs_worker_data_t *worker, struct svc_req *req,
 		     nfs_res_t *res)
 {
@@ -74,9 +73,7 @@ int nlm4_Granted_Res(nfs_arg_t *args, exportlist_t *export,
 	PTHREAD_RWLOCK_wrlock(&cookie_entry->sce_entry->state_lock);
 
 	if (cookie_entry->sce_lock_entry == NULL
-	    || cookie_entry->sce_lock_entry->sle_block_data == NULL
-	    || !nlm_block_data_to_export(cookie_entry->sce_lock_entry->
-					 sle_block_data)) {
+	    || cookie_entry->sce_lock_entry->sle_block_data == NULL) {
 		/* This must be an old NLM_GRANTED_RES */
 		PTHREAD_RWLOCK_unlock(&cookie_entry->sce_entry->state_lock);
 		LogFullDebug(COMPONENT_NLM,
@@ -87,16 +84,20 @@ int nlm4_Granted_Res(nfs_arg_t *args, exportlist_t *export,
 
 	PTHREAD_RWLOCK_unlock(&cookie_entry->sce_entry->state_lock);
 
+	/* Fill in op_ctx */
+	op_ctx->export = cookie_entry->sce_lock_entry->sle_export;
+	get_gsh_export_ref(op_ctx->export); /* nfs_rpc_execute will release */
+	op_ctx->fsal_export = op_ctx->export->fsal_export;
 	if (arg->stat.stat != NLM4_GRANTED) {
 		LogMajor(COMPONENT_NLM,
 			 "Granted call failed due to client error, releasing lock");
-		state_status = state_release_grant(cookie_entry, req_ctx);
+		state_status = state_release_grant(cookie_entry);
 		if (state_status != STATE_SUCCESS) {
 			LogDebug(COMPONENT_NLM,
 				 "cache_inode_release_grant failed");
 		}
 	} else {
-		state_complete_grant(cookie_entry, req_ctx);
+		state_complete_grant(cookie_entry);
 		nlm_signal_async_resp(cookie_entry);
 	}
 

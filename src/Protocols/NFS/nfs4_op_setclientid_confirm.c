@@ -37,6 +37,8 @@
 #include "nfs_core.h"
 #include "sal_functions.h"
 #include "nfs_proto_functions.h"
+#include "nfs_rpc_callback.h"
+#include "nfs_creds.h"
 
 /**
  *
@@ -317,7 +319,7 @@ int nfs4_op_setclientid_confirm(struct nfs_argop4 *op, compound_data_t *data,
 		}
 
 		/* Expire clientid and release our reference. */
-		nfs_client_id_expire(conf, data->req_ctx);
+		nfs_client_id_expire(conf);
 
 		dec_client_id_ref(conf);
 
@@ -365,6 +367,12 @@ int nfs4_op_setclientid_confirm(struct nfs_argop4 *op, compound_data_t *data,
 			display_client_id_rec(conf, str);
 			LogDebug(COMPONENT_CLIENTID, "Updated %s", str);
 		}
+		/* Check and update call back channel state */
+		if (nfs_param.nfsv4_param.allow_delegations &&
+		    nfs_test_cb_chan(conf) != RPC_SUCCESS)
+			conf->cb_chan_down = true;
+		else
+			conf->cb_chan_down = false;
 
 		/* Release our reference to the confirmed clientid. */
 		dec_client_id_ref(conf);
@@ -378,6 +386,9 @@ int nfs4_op_setclientid_confirm(struct nfs_argop4 *op, compound_data_t *data,
 				     "Confirming new %s",
 				     str);
 		}
+
+		/* Create client name for recovery */
+		nfs4_create_clid_name(client_record, unconf, data->req);
 
 		rc = nfs_client_id_confirm(unconf, COMPONENT_CLIENTID);
 
@@ -394,12 +405,6 @@ int nfs4_op_setclientid_confirm(struct nfs_argop4 *op, compound_data_t *data,
 			goto out;
 		}
 
-		/* We have successfully added a new confirmed client
-		 * id.  Now add it to stable storage.
-		 */
-		nfs4_create_clid_name(client_record, unconf, data->req);
-		nfs4_add_clid(unconf);
-
 		/* check if the client can perform reclaims */
 		nfs4_chk_clid(unconf);
 
@@ -410,6 +415,13 @@ int nfs4_op_setclientid_confirm(struct nfs_argop4 *op, compound_data_t *data,
 
 			LogDebug(COMPONENT_CLIENTID, "Confirmed %s", str);
 		}
+
+		/* Check and update call back channel state */
+		if (nfs_param.nfsv4_param.allow_delegations &&
+		    nfs_test_cb_chan(unconf) != RPC_SUCCESS)
+			unconf->cb_chan_down = true;
+		else
+			unconf->cb_chan_down = false;
 
 		/* Release our reference to the now confirmed record */
 		dec_client_id_ref(unconf);

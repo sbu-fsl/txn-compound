@@ -44,9 +44,7 @@
 #include "nfs_core.h"
 #include "cache_inode.h"
 #include "nfs_exports.h"
-#include "nfs_creds.h"
 #include "nfs_proto_functions.h"
-#include "nfs_tools.h"
 #include "sal_functions.h"
 
 /**
@@ -70,10 +68,11 @@ int nfs4_op_delegreturn(struct nfs_argop4 *op, compound_data_t *data,
 
 	state_status_t state_status;
 	state_t *pstate_found = NULL;
+	state_deleg_t *deleg_found = NULL;
 	state_owner_t *plock_owner;
 	fsal_lock_param_t lock_desc;
 	unsigned int rc = 0;
-	struct glist_head *glist;
+	struct glist_head *glist, *glistn;
 	cache_entry_t *pentry = NULL;
 	state_lock_entry_t *found_entry = NULL;
 	const char *tag = "DELEGRETURN";
@@ -84,8 +83,8 @@ int nfs4_op_delegreturn(struct nfs_argop4 *op, compound_data_t *data,
 	/* Initialize to sane default */
 	resp->resop = NFS4_OP_DELEGRETURN;
 
-	if (!data->export->export_hdl->ops->fs_supports(
-				data->export->export_hdl, fso_delegations)) {
+	if (!op_ctx->fsal_export->ops->fs_supports(
+				op_ctx->fsal_export, fso_delegations)) {
 		res_DELEGRETURN4->status = NFS4_OK;
 		return res_DELEGRETURN4->status;
 	}
@@ -134,41 +133,40 @@ int nfs4_op_delegreturn(struct nfs_argop4 *op, compound_data_t *data,
 	pentry = data->current_entry;
 
 	PTHREAD_RWLOCK_wrlock(&pentry->state_lock);
-
-	glist_for_each(glist, &pentry->object.file.lock_list) {
+	glist_for_each_safe(glist, glistn, &pentry->object.file.deleg_list) {
 		found_entry = glist_entry(glist, state_lock_entry_t, sle_list);
-
-		if (found_entry != NULL) {
-			LogDebug(COMPONENT_NFS_V4_LOCK, "found_entry %p",
-				 found_entry);
-		} else {
-			LogDebug(COMPONENT_NFS_V4_LOCK, "list is empty %p",
-				 found_entry);
-			PTHREAD_RWLOCK_unlock(&pentry->state_lock);
-			res_DELEGRETURN4->status = NFS4ERR_BAD_STATEID;
+		if (found_entry == NULL)
+			continue;
+		LogDebug(COMPONENT_NFS_V4_LOCK, "found_entry %p", found_entry);
+		if (found_entry->sle_state->state_type != STATE_TYPE_DELEG) {
+			found_entry = NULL;
+			continue;
+		}
+		deleg_found = &found_entry->sle_state->state_data.deleg;
+		if (memcmp(&deleg_found->sd_stateid.other,
+			   &arg_DELEGRETURN4->deleg_stateid.other,
+			   sizeof(deleg_found->sd_stateid.other)) != 0) {
+			found_entry = NULL;
+			continue;
+		}
+		LogDebug(COMPONENT_NFS_V4_LOCK, "Matching state found!");
+		if (deleg_found->sd_stateid.seqid !=
+		    arg_DELEGRETURN4->deleg_stateid.seqid) {
+			res_DELEGRETURN4->status = NFS4ERR_BAD_SEQID;
 			return res_DELEGRETURN4->status;
 		}
 		break;
 	}
-
 	PTHREAD_RWLOCK_unlock(&pentry->state_lock);
 
-	plock_owner = found_entry->sle_owner;
-
-	/* Check seqid (lock_seqid or open_seqid) */
-	if (!Check_nfs4_seqid(plock_owner,
-			      arg_DELEGRETURN4->deleg_stateid.seqid,
-			      op,
-			      data->current_entry,
-			      resp,
-			      tag)) {
-#if 0				/** @todo: temp fix */
-		/* Response is all setup for us and LogDebug
-		 * told what was wrong
-		 */
-		return res_DELEGRETURN4.status;
-#endif
+	if (found_entry == NULL) {
+		LogDebug(COMPONENT_NFS_V4_LOCK,
+			 "We did not find a delegation in the delegation lock list.");
+		res_DELEGRETURN4->status = NFS4ERR_BAD_STATEID;
+		return res_DELEGRETURN4->status;
 	}
+
+	plock_owner = found_entry->sle_owner;
 
 	LogLock(COMPONENT_NFS_V4_LOCK, NIV_FULL_DEBUG, tag, data->current_entry,
 		plock_owner, &lock_desc);
@@ -177,8 +175,6 @@ int nfs4_op_delegreturn(struct nfs_argop4 *op, compound_data_t *data,
 	 * Go ahead and push unlock into SAL (and FSAL).
 	 */
 	state_status = state_unlock(data->current_entry,
-				    data->export,
-				    data->req_ctx,
 				    plock_owner,
 				    pstate_found,
 				    &lock_desc,
@@ -197,6 +193,12 @@ int nfs4_op_delegreturn(struct nfs_argop4 *op, compound_data_t *data,
 
 		return res_DELEGRETURN4->status;
 	}
+
+	/* Remove state entry and update stats */
+	deleg_heuristics_recall(data->current_entry,
+				pstate_found->state_data.deleg.clfile_stats
+					.clientid);
+	state_del(pstate_found, false);
 
 	/* Successful exit */
 	res_DELEGRETURN4->status = NFS4_OK;

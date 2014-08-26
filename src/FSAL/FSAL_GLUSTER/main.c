@@ -38,11 +38,11 @@
 /* GLUSTERFS FSAL module private storage
  */
 
-const char glfsal_name[] = "GLUSTERFS";
+const char glfsal_name[] = "GLUSTER";
 
 /* filesystem info for GLUSTERFS */
 static struct fsal_staticfsinfo_t default_gluster_info = {
-	.maxfilesize = 0xFFFFFFFFFFFFFFFFLL,	/* (64bits) */
+	.maxfilesize = UINT64_MAX,
 	.maxlink = _POSIX_LINK_MAX,
 	.maxnamelen = 1024,
 	.maxpathlen = 1024,
@@ -58,7 +58,7 @@ static struct fsal_staticfsinfo_t default_gluster_info = {
 	.named_attr = true,
 	.unique_handles = true,
 	.lease_time = {10, 0},
-	.acl_support = FSAL_ACLSUPPORT_ALLOW,
+	.acl_support = FSAL_ACLSUPPORT_ALLOW | FSAL_ACLSUPPORT_DENY,
 	.cansettime = true,
 	.homogenous = true,
 	.supported_attrs = GLUSTERFS_SUPPORTED_ATTRIBUTES,
@@ -84,9 +84,8 @@ MODULE_INIT void glusterfs_init(void)
 		return;
 	}
 
-	if (register_fsal
-	    (&glfsal_module->fsal, glfsal_name, FSAL_MAJOR_VERSION,
-	     FSAL_MINOR_VERSION) != 0) {
+	if (register_fsal(&glfsal_module->fsal, glfsal_name, FSAL_MAJOR_VERSION,
+			  FSAL_MINOR_VERSION, FSAL_ID_GLUSTER) != 0) {
 		gsh_free(glfsal_module);
 		LogCrit(COMPONENT_FSAL,
 			"Gluster FSAL module failed to register.");

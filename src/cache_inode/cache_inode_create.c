@@ -60,7 +60,6 @@
  * @param[in]  type       Type of the object to create
  * @param[in]  mode       Mode to be used at file creation
  * @param[in]  create_arg Additional argument for object creation
- * @param[in]  req_ctx    Request context
  * @param[out] entry      Cache entry for the created file
  *
  * @return CACHE_INODE_SUCCESS or errors.
@@ -71,7 +70,6 @@ cache_inode_create(cache_entry_t *parent,
 		   const char *name,
 		   object_file_type_t type, uint32_t mode,
 		   cache_inode_create_arg_t *create_arg,
-		   struct req_op_context *req_ctx,
 		   cache_entry_t **entry)
 {
 	cache_inode_status_t status = CACHE_INODE_SUCCESS;
@@ -107,27 +105,27 @@ cache_inode_create(cache_entry_t *parent,
 	/* we pass in attributes to the create.  We will get them back below */
 	FSAL_SET_MASK(object_attributes.mask,
 		      ATTR_MODE | ATTR_OWNER | ATTR_GROUP);
-	object_attributes.owner = req_ctx->creds->caller_uid;
-	object_attributes.group = req_ctx->creds->caller_gid; /* be more
+	object_attributes.owner = op_ctx->creds->caller_uid;
+	object_attributes.group = op_ctx->creds->caller_gid; /* be more
 							       * selective? */
 	object_attributes.mode = mode;
 
 	switch (type) {
 	case REGULAR_FILE:
 		fsal_status =
-		    dir_handle->ops->create(dir_handle, req_ctx, name,
+		    dir_handle->ops->create(dir_handle, name,
 					    &object_attributes, &object_handle);
 		break;
 
 	case DIRECTORY:
 		fsal_status =
-		    dir_handle->ops->mkdir(dir_handle, req_ctx, name,
+		    dir_handle->ops->mkdir(dir_handle, name,
 					   &object_attributes, &object_handle);
 		break;
 
 	case SYMBOLIC_LINK:
 		fsal_status =
-		    dir_handle->ops->symlink(dir_handle, req_ctx, name,
+		    dir_handle->ops->symlink(dir_handle, name,
 					     create_arg->link_content,
 					     &object_attributes,
 					     &object_handle);
@@ -135,7 +133,7 @@ cache_inode_create(cache_entry_t *parent,
 
 	case SOCKET_FILE:
 	case FIFO_FILE:
-		fsal_status = dir_handle->ops->mknode(dir_handle, req_ctx,
+		fsal_status = dir_handle->ops->mknode(dir_handle,
 						      name, type,
 						      NULL, /* dev_t !needed */
 						      &object_attributes,
@@ -145,12 +143,13 @@ cache_inode_create(cache_entry_t *parent,
 	case BLOCK_FILE:
 	case CHARACTER_FILE:
 		fsal_status =
-		    dir_handle->ops->mknode(dir_handle, req_ctx, name, type,
+		    dir_handle->ops->mknode(dir_handle, name, type,
 					    &create_arg->dev_spec,
 					    &object_attributes, &object_handle);
 		break;
 
-	default:
+	case NO_FILE_TYPE:
+	case EXTENDED_ATTR:
 		/* we should never go there */
 		status = CACHE_INODE_INCONSISTENT_ENTRY;
 		*entry = NULL;
@@ -161,7 +160,7 @@ cache_inode_create(cache_entry_t *parent,
 	}
 
 	/* Refresh the parent's attributes */
-	cache_inode_refresh_attrs_locked(parent, req_ctx);
+	cache_inode_refresh_attrs_locked(parent);
 
 	/* Check for the result */
 	if (FSAL_IS_ERROR(fsal_status)) {
@@ -172,7 +171,7 @@ cache_inode_create(cache_entry_t *parent,
 		} else if (fsal_status.major == ERR_FSAL_EXIST) {
 			/* Already exists. Check if type if correct */
 			status =
-			    cache_inode_lookup(parent, name, req_ctx, entry);
+			    cache_inode_lookup(parent, name, entry);
 			if (*entry != NULL) {
 				status = CACHE_INODE_ENTRY_EXISTS;
 				LogFullDebug(COMPONENT_CACHE_INODE,
@@ -222,10 +221,17 @@ cache_inode_create(cache_entry_t *parent,
 		goto out;
 	}
 
+	if (type == DIRECTORY) {
+		/* Insert Parent's key */
+		cache_inode_key_dup(&(*entry)->object.dir.parent,
+				    &parent->fh_hk.key);
+	}
+
  out:
 	LogFullDebug(COMPONENT_CACHE_INODE,
-		     "Returning entry=%p status=%s for %s", entry,
-		     cache_inode_err_str(status), name);
+		     "Returning entry=%p status=%s for %s FSAL=%s", *entry,
+		     cache_inode_err_str(status), name,
+		     parent->obj_handle->fsal->name);
 
 	return status;
 }
@@ -259,7 +265,6 @@ cache_inode_create_set_verifier(struct attrlist *sattr, uint32_t verf_hi,
  * This function returns true if the create verifier matches
  *
  * @param[in] entry   Entry to be managed.
- * @param[in] req_ctx Request context(user creds, client address etc)
  * @param[in] verf_hi High long of verifier
  * @param[in] verf_lo Low long of verifier
  *
@@ -268,7 +273,6 @@ cache_inode_create_set_verifier(struct attrlist *sattr, uint32_t verf_hi,
  */
 bool
 cache_inode_create_verify(cache_entry_t *entry,
-			  const struct req_op_context *req_ctx,
 			  uint32_t verf_hi, uint32_t verf_lo)
 {
 	/* True if the verifier matches */
@@ -277,7 +281,7 @@ cache_inode_create_verify(cache_entry_t *entry,
 	/* Lock (and refresh if necessary) the attributes, copy them
 	   out, and unlock. */
 
-	if (cache_inode_lock_trust_attrs(entry, req_ctx, false)
+	if (cache_inode_lock_trust_attrs(entry, false)
 	    == CACHE_INODE_SUCCESS) {
 		if (FSAL_TEST_MASK
 		    (entry->obj_handle->attributes.mask, ATTR_ATIME)

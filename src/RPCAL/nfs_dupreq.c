@@ -46,7 +46,6 @@
 #include "nfs23.h"
 #include "nfs4.h"
 #include "fsal.h"
-#include "nfs_tools.h"
 
 #include "nfs_dupreq.h"
 #include "city.h"
@@ -269,35 +268,26 @@ void dupreq2_pkginit(void)
 {
 	int code __attribute__ ((unused)) = 0;
 
-	dupreq_pool =
-	    pool_init("Duplicate Request Pool", sizeof(dupreq_entry_t),
-		      pool_basic_substrate, NULL, NULL, NULL);
-	if (unlikely(!(dupreq_pool))) {
-		LogCrit(COMPONENT_INIT,
-			"Error while allocating duplicate request pool");
-		LogError(COMPONENT_INIT, ERR_SYS, ERR_MALLOC, errno);
-		Fatal();
-	}
+	dupreq_pool = pool_init("Duplicate Request Pool",
+				sizeof(dupreq_entry_t),
+				pool_basic_substrate, NULL, NULL, NULL);
+	if (unlikely(!(dupreq_pool)))
+		LogFatal(COMPONENT_INIT,
+			 "Error while allocating duplicate request pool");
 
-	nfs_res_pool =
-	    pool_init("nfs_res_t pool", sizeof(nfs_res_t), pool_basic_substrate,
-		      NULL, NULL, NULL);
-	if (unlikely(!(nfs_res_pool))) {
-		LogCrit(COMPONENT_INIT,
-			"Error while allocating nfs_res_t pool");
-		LogError(COMPONENT_INIT, ERR_SYS, ERR_MALLOC, errno);
-		Fatal();
-	}
+	nfs_res_pool = pool_init("nfs_res_t pool", sizeof(nfs_res_t),
+				 pool_basic_substrate,
+				 NULL, NULL, NULL);
+	if (unlikely(!(nfs_res_pool)))
+		LogFatal(COMPONENT_INIT,
+			 "Error while allocating nfs_res_t pool");
 
-	tcp_drc_pool =
-	    pool_init("TCP DRC Pool", sizeof(drc_t), pool_basic_substrate, NULL,
-		      NULL, NULL);
-	if (!(dupreq_pool)) {
-		LogCrit(COMPONENT_INIT,
-			"Error while allocating duplicate request pool");
-		LogError(COMPONENT_INIT, ERR_SYS, ERR_MALLOC, errno);
-		Fatal();
-	}
+	tcp_drc_pool = pool_init("TCP DRC Pool", sizeof(drc_t),
+				 pool_basic_substrate,
+				 NULL, NULL, NULL);
+	if (!(dupreq_pool))
+		LogFatal(COMPONENT_INIT,
+			 "Error while allocating duplicate request pool");
 
 	drc_st = gsh_calloc(1, sizeof(struct drc_st));
 
@@ -691,22 +681,24 @@ void nfs_dupreq_put_drc(SVCXPRT *xprt, drc_t *drc, uint32_t flags)
 				/* note t's lock order wrt drc->mtx is
 				 * the opposite of drc->xt[*].lock */
 				drc->d_u.tcp.recycle_time = time(NULL);
+				drc->flags |= DRC_FLAG_RECYCLE;
+				pthread_mutex_unlock(&drc->mtx); /* !LOCKED */
 				DRC_ST_LOCK();
 				TAILQ_INSERT_TAIL(&drc_st->tcp_drc_recycle_q,
 						  drc, d_u.tcp.recycle_q);
 				++(drc_st->tcp_drc_recycle_qlen);
-				drc->flags |= DRC_FLAG_RECYCLE;
 				LogFullDebug(COMPONENT_DUPREQ,
 					     "enqueue drc %p for recycle", drc);
 				DRC_ST_UNLOCK();
+				goto out;
 			}
 		}
 	default:
 		break;
 	};
 
-	pthread_mutex_unlock(&drc->mtx);	/* !LOCKED */
-
+	pthread_mutex_unlock(&drc->mtx); /* !LOCKED */
+out:
 	return;
 }
 
@@ -900,6 +892,7 @@ static inline bool nfs_dupreq_v4_cacheable(nfs_request_data_t *nfs_req)
 	     (NFS_LOOKAHEAD_OPEN | /* all logical OPEN */
 	      NFS_LOOKAHEAD_CLOSE | NFS_LOOKAHEAD_LOCK | /* includes LOCKU */
 	      NFS_LOOKAHEAD_READ | /* because large, though idempotent */
+	      NFS_LOOKAHEAD_READLINK |
 	      NFS_LOOKAHEAD_READDIR)))
 		return false;
 	return true;

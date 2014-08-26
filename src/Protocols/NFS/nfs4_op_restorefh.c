@@ -40,7 +40,6 @@
 #include "nfs_exports.h"
 #include "nfs_proto_functions.h"
 #include "nfs_proto_tools.h"
-#include "nfs_tools.h"
 #include "nfs_file_handle.h"
 #include "export_mgr.h"
 
@@ -101,58 +100,40 @@ int nfs4_op_restorefh(struct nfs_argop4 *op, compound_data_t *data,
 
 	data->currentFH.nfs_fh4_len = data->savedFH.nfs_fh4_len;
 
-	/* Restore the saved stateid */
-	data->current_stateid = data->saved_stateid;
-	data->current_stateid_valid = data->saved_stateid_valid;
-
-	if (data->req_ctx->export != NULL)
-		put_gsh_export(data->req_ctx->export);
+	if (op_ctx->export != NULL)
+		put_gsh_export(op_ctx->export);
 
 	/* Restore the export information */
-	data->req_ctx->export = data->saved_export;
-	if (data->req_ctx->export != NULL) {
-		data->export = &data->req_ctx->export->export;
+	op_ctx->export = data->saved_export;
+	if (op_ctx->export != NULL) {
+		op_ctx->fsal_export = op_ctx->export->fsal_export;
 
 		/* Get a reference to the export for the new CurrentFH
 		 * independent of SavedFH if appropriate.
 		 */
-		(void)get_gsh_export(data->req_ctx->export->export.id, true);
+		get_gsh_export_ref(op_ctx->export);
 	}
 
-	data->export_perms = data->saved_export_perms;
+	*op_ctx->export_perms = data->saved_export_perms;
 
 	/* No need to call nfs4_SetCompoundExport or nfs4_MakeCred
 	 * because we are restoring saved information, and the
 	 * credential checking may be skipped.
 	 */
 
-	/* If current and saved entry are identical, get no references and
-	 * make no changes.
-	 */
-	if (data->current_entry == data->saved_entry)
-		goto out;
+	/* Update the current entry */
+	set_current_entry(data, data->saved_entry, true);
 
-	if (data->current_entry) {
-		cache_inode_put(data->current_entry);
-		data->current_entry = NULL;
+	/* Restore the saved stateid */
+	data->current_stateid = data->saved_stateid;
+	data->current_stateid_valid = data->saved_stateid_valid;
+
+	/* Make RESTOREFH work right for DS handle */
+	if (data->current_ds != NULL) {
+		data->current_ds = data->saved_ds;
+		data->current_filetype = data->saved_filetype;
+		ds_get(data->current_ds);
 	}
-
-	if (data->current_ds) {
-		data->current_ds->ops->put(data->current_ds);
-		data->current_ds = NULL;
-	}
-
-	data->current_entry = data->saved_entry;
-	data->current_filetype = data->saved_filetype;
-
-	/* Take another reference.  As of now the filehandle is both saved
-	 * and current and both must be counted.  Protect in case of
-	 * pseudofs handle.
-	 */
-	if (data->current_entry)
-		cache_inode_lru_ref(data->current_entry, LRU_FLAG_NONE);
-
- out:
 
 	if (isFullDebug(COMPONENT_NFS_V4)) {
 		char str[LEN_FH_STR];

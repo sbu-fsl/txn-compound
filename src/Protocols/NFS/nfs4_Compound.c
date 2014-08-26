@@ -33,10 +33,11 @@
  */
 #include "config.h"
 #include "sal_functions.h"
-#include "nfs_tools.h"
+#include "nfs_convert.h"
 #include "nfs_proto_tools.h"
 #include "server_stats.h"
 #include "export_mgr.h"
+#include "nfs_creds.h"
 
 struct nfs4_op_desc {
 	char *name;
@@ -347,16 +348,53 @@ static const struct nfs4_op_desc optabv4[] = {
 		.funct = nfs4_op_reclaim_complete,
 		.free_res = nfs4_op_reclaim_complete_Free,
 		.exp_perm_flags = 0},
+
+	/* NFSv4.2 */
+	[NFS4_OP_COPY] = {
+				.name = "OP_COPY",
+				.funct = nfs4_op_notsupp,
+				.free_res = nfs4_op_notsupp_Free,
+				.exp_perm_flags = 0},
+	[NFS4_OP_OFFLOAD_ABORT] = {
+				.name = "OP_OFFLOAD_ABORT",
+				.funct = nfs4_op_notsupp,
+				.free_res = nfs4_op_notsupp_Free,
+				.exp_perm_flags = 0},
+	[NFS4_OP_COPY_NOTIFY] = {
+				.name = "OP_COPY_NOTIFY",
+				.funct = nfs4_op_notsupp,
+				.free_res = nfs4_op_notsupp_Free,
+				.exp_perm_flags = 0},
+	[NFS4_OP_OFFLOAD_REVOKE] = {
+				.name = "OP_OFFLOAD_REVOKE",
+				.funct = nfs4_op_notsupp,
+				.free_res = nfs4_op_notsupp_Free,
+				.exp_perm_flags = 0},
+	[NFS4_OP_OFFLOAD_STATUS] = {
+				.name = "OP_OFFLOAD_STATUS",
+				.funct = nfs4_op_notsupp,
+				.free_res = nfs4_op_notsupp_Free,
+				.exp_perm_flags = 0},
 	[NFS4_OP_WRITE_PLUS] = {
-		.name = "OP_WRITE_PLUS",
-		.funct = nfs4_op_write_plus,
-		.free_res = nfs4_op_write_plus_Free,
-		.exp_perm_flags = EXPORT_OPTION_WRITE_ACCESS},
+				.name = "OP_WRITE_PLUS",
+				.funct = nfs4_op_write_plus,
+				.free_res = nfs4_op_write_Free,
+				.exp_perm_flags = 0},
 	[NFS4_OP_READ_PLUS] = {
-		.name = "OP_READ_PLUS",
-		.funct = nfs4_op_read_plus,
-		.free_res = nfs4_op_read_plus_Free,
-		.exp_perm_flags = EXPORT_OPTION_READ_ACCESS},
+				.name = "OP_READ_PLUS",
+				.funct = nfs4_op_read_plus,
+				.free_res = nfs4_op_read_plus_Free,
+				.exp_perm_flags = 0},
+	[NFS4_OP_SEEK] = {
+				.name = "OP_SEEK",
+				.funct = nfs4_op_seek,
+				.free_res = nfs4_op_write_Free,
+				.exp_perm_flags = 0},
+	[NFS4_OP_IO_ADVISE] = {
+				.name = "OP_IO_ADVISE",
+				.funct = nfs4_op_io_advise,
+				.free_res = nfs4_op_io_advise_Free,
+				.exp_perm_flags = 0}
 };
 
 /**
@@ -371,7 +409,6 @@ static const struct nfs4_op_desc optabv4[] = {
  *
  *  @param[in]  arg        Generic nfs arguments
  *  @param[in]  export     The full export list
- *  @param[in]  req_ctx    Context for the FSAL
  *  @param[in]  worker     Worker thread data
  *  @param[in]  req        NFSv4 request structure
  *  @param[out] res        NFSv4 reply structure
@@ -383,8 +420,8 @@ static const struct nfs4_op_desc optabv4[] = {
  * @retval NFS_REQ_DROP if we pretend we never saw the request.
  */
 
-int nfs4_Compound(nfs_arg_t *arg, exportlist_t *export,
-		  struct req_op_context *req_ctx, nfs_worker_data_t *worker,
+int nfs4_Compound(nfs_arg_t *arg,
+		  nfs_worker_data_t *worker,
 		  struct svc_req *req, nfs_res_t *res)
 {
 	unsigned int i = 0;
@@ -395,14 +432,12 @@ int nfs4_Compound(nfs_arg_t *arg, exportlist_t *export,
 	const uint32_t argarray_len = arg->arg_compound4.argarray.argarray_len;
 	nfs_argop4 * const argarray = arg->arg_compound4.argarray.argarray_val;
 	nfs_resop4 *resarray;
-#ifdef USE_DBUS_STATS
 	nsecs_elapsed_t op_start_time;
-#endif
 	struct timespec ts;
 	int perm_flags;
 	char *tagname = NULL;
 
-	if (compound4_minor > 1) {
+	if (compound4_minor > 2) {
 		LogCrit(COMPONENT_NFS_V4, "Bad Minor Version %d",
 			compound4_minor);
 
@@ -456,7 +491,7 @@ int nfs4_Compound(nfs_arg_t *arg, exportlist_t *export,
 	}
 
 	/* Check for too long request */
-	if (argarray_len > 30) {
+	if (argarray_len > 100) {
 		LogMajor(COMPONENT_NFS_V4,
 			 "A COMPOUND with too many operations (%d) was received",
 			 argarray_len);
@@ -468,15 +503,11 @@ int nfs4_Compound(nfs_arg_t *arg, exportlist_t *export,
 
 	/* Initialisation of the compound request internal's data */
 	memset(&data, 0, sizeof(data));
-	data.req_ctx = req_ctx;
-	data.export_perms.anonymous_uid = (uid_t) ANON_UID;
-	data.export_perms.anonymous_gid = (gid_t) ANON_GID;
-	req_ctx->nfs_minorvers = compound4_minor;
+	op_ctx->nfs_minorvers = compound4_minor;
 
 	/* Minor version related stuff */
 	data.minorversion = compound4_minor;
 	data.worker = worker;
-	data.pseudofs = nfs4_GetPseudoFs();
 	data.req = req;
 
 	/* Building the client credential field */
@@ -504,7 +535,7 @@ int nfs4_Compound(nfs_arg_t *arg, exportlist_t *export,
 
 	/* Manage errors NFS4ERR_OP_NOT_IN_SESSION and NFS4ERR_NOT_ONLY_OP.
 	 * These checks apply only to 4.1 */
-	if (compound4_minor == 1) {
+	if (compound4_minor > 0) {
 
 		if (argarray[0].argop != NFS4_OP_ILLEGAL
 		    && argarray[0].argop != NFS4_OP_SEQUENCE
@@ -568,9 +599,7 @@ int nfs4_Compound(nfs_arg_t *arg, exportlist_t *export,
 
 		/* time each op */
 		now(&ts);
-#ifdef USE_DBUS_STATS
 		op_start_time = timespec_diff(&ServerBootTime, &ts);
-#endif
 		opcode = argarray[i].argop;
 		if (compound4_minor == 0) {
 			if (opcode > NFS4_OP_RELEASE_LOCKOWNER &&
@@ -589,7 +618,7 @@ int nfs4_Compound(nfs_arg_t *arg, exportlist_t *export,
 				}
 			}
 
-			if (opcode > NFS4_OP_READ_PLUS)
+			if (opcode > NFS4_OP_IO_ADVISE)
 				opcode = 0;
 		}
 		LogDebug(COMPONENT_NFS_V4,
@@ -613,13 +642,13 @@ int nfs4_Compound(nfs_arg_t *arg, exportlist_t *export,
 			 * perms. Perms should even be set reasonably for pseudo
 			 * file system.
 			 */
-			LogFullDebug(COMPONENT_NFS_V4,
-				     "Check export perms export = %08x req = %08x",
-				     data.export_perms.
-				     options & EXPORT_OPTION_ACCESS_TYPE,
-				     perm_flags);
-			if ((data.export_perms.options & perm_flags) !=
-			    perm_flags) {
+			LogMidDebugAlt(COMPONENT_NFS_V4, COMPONENT_EXPORT,
+				       "Check export perms export = %08x req = %08x",
+				       op_ctx->export_perms->options &
+						EXPORT_OPTION_ACCESS_TYPE,
+				       perm_flags);
+			if ((op_ctx->export_perms->options &
+			     perm_flags) != perm_flags) {
 				/* Export doesn't allow requested
 				 * access for this client.
 				 */
@@ -629,10 +658,10 @@ int nfs4_Compound(nfs_arg_t *arg, exportlist_t *export,
 				else
 					status = NFS4ERR_ACCESS;
 
-				LogDebug(COMPONENT_NFS_V4,
-					 "Status of %s due to export permissions in position %d = %s",
-					 optabv4[opcode].name, i,
-					 nfsstat4_to_str(status));
+				LogDebugAlt(COMPONENT_NFS_V4, COMPONENT_EXPORT,
+					    "Status of %s due to export permissions in position %d = %s",
+					    optabv4[opcode].name, i,
+					    nfsstat4_to_str(status));
  bad_op_state:
 				/* All the operation, like NFS4_OP_ACESS, have
 				 * a first replied field called .status
@@ -661,10 +690,8 @@ int nfs4_Compound(nfs_arg_t *arg, exportlist_t *export,
 		 */
 		resarray[i].nfs_resop4_u.opaccess.status = status;
 
-#ifdef USE_DBUS_STATS
-		server_stats_nfsv4_op_done(data.req_ctx, argarray[i].argop,
+		server_stats_nfsv4_op_done(opcode,
 					   op_start_time, status == NFS4_OK);
-#endif				/* USE_DBUS_STATS */
 
 		if (status != NFS4_OK) {
 			/* An error occured, we do not manage the other requests
@@ -703,9 +730,7 @@ int nfs4_Compound(nfs_arg_t *arg, exportlist_t *export,
 		}
 	}			/* for */
 
-#ifdef USE_DBUS_STATS
-	server_stats_compound_done(req_ctx, argarray_len, status);
-#endif
+	server_stats_compound_done(argarray_len, status);
 
 	/* Complete the reply, in particular, tell where you stopped if
 	 * unsuccessfull COMPOUD
@@ -839,12 +864,12 @@ void compound_data_Free(compound_data_t *data)
 		cache_inode_put(data->saved_entry);
 
 	if (data->current_ds) {
-		data->current_ds->ops->put(data->current_ds);
+		ds_put(data->current_ds);
 		data->current_ds = NULL;
 	}
 
 	if (data->saved_ds) {
-		data->saved_ds->ops->put(data->saved_ds);
+		ds_put(data->saved_ds);
 		data->saved_ds = NULL;
 	}
 
@@ -854,10 +879,10 @@ void compound_data_Free(compound_data_t *data)
 	}
 
 	/* Release CurrentFH reference to export. */
-	if (data->req_ctx->export) {
-		put_gsh_export(data->req_ctx->export);
-		data->req_ctx->export = NULL;
-		data->export = NULL;
+	if (op_ctx->export) {
+		put_gsh_export(op_ctx->export);
+		op_ctx->export = NULL;
+		op_ctx->fsal_export = NULL;
 	}
 
 	/* Release SavedFH reference to export. */
@@ -868,9 +893,6 @@ void compound_data_Free(compound_data_t *data)
 
 	if (data->currentFH.nfs_fh4_val != NULL)
 		gsh_free(data->currentFH.nfs_fh4_val);
-
-	if (data->rootFH.nfs_fh4_val != NULL)
-		gsh_free(data->rootFH.nfs_fh4_val);
 
 	if (data->savedFH.nfs_fh4_val != NULL)
 		gsh_free(data->savedFH.nfs_fh4_val);
@@ -995,8 +1017,17 @@ void nfs4_Compound_CopyResOne(nfs_resop4 *res_dst, nfs_resop4 *res_src)
 	case NFS4_OP_WANT_DELEGATION:
 	case NFS4_OP_DESTROY_CLIENTID:
 	case NFS4_OP_RECLAIM_COMPLETE:
+
+	/* NFSv4.2 */
+	case NFS4_OP_COPY:
+	case NFS4_OP_OFFLOAD_ABORT:
+	case NFS4_OP_COPY_NOTIFY:
+	case NFS4_OP_OFFLOAD_REVOKE:
+	case NFS4_OP_OFFLOAD_STATUS:
 	case NFS4_OP_WRITE_PLUS:
 	case NFS4_OP_READ_PLUS:
+	case NFS4_OP_SEEK:
+	case NFS4_OP_IO_ADVISE:
 		break;
 
 	case NFS4_OP_ILLEGAL:

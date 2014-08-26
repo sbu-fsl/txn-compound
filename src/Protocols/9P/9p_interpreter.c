@@ -38,10 +38,10 @@
 #include "cache_inode.h"
 #include "fsal.h"
 #include "nfs_exports.h"
-#include "nfs_creds.h"
 #include "nfs_proto_functions.h"
 #include "nfs_dupreq.h"
 #include "nfs_file_handle.h"
+#include "server_stats.h"
 
 /* opcode to function array */
 const struct _9p_function_desc _9pfuncdesc[] = {
@@ -106,6 +106,15 @@ static ssize_t tcp_conn_send(struct _9p_conn *conn, const void *buf, size_t len,
 	pthread_mutex_lock(&conn->sock_lock);
 	ret = send(conn->trans_data.sockfd, buf, len, flags);
 	pthread_mutex_unlock(&conn->sock_lock);
+
+	if (ret < 0)
+		server_stats_transport_done(conn->client,
+					    0, 0, 0,
+					    0, 0, 1);
+	else
+		server_stats_transport_done(conn->client,
+					    0, 0, 0,
+					    ret, 1, 0);
 	return ret;
 }
 
@@ -169,7 +178,7 @@ int _9p_process_buffer(struct _9p_request_data *req9p,
 	rc = _9pfuncdesc[msgtype].service_function(req9p,
 						   (void *)worker_data,
 						   poutlen, replydata);
-
+	op_ctx = NULL; /* poison the op context to disgard it */
 	if (rc < 0)
 		LogDebug(COMPONENT_9P, "%s: Error",
 			 _9pfuncdesc[msgtype].funcname);

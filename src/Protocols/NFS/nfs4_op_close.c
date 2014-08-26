@@ -37,6 +37,7 @@
 #include "sal_functions.h"
 #include "nfs_proto_tools.h"
 #include "nfs_proto_functions.h"
+#include "nfs_convert.h"
 
 /* Tag passed to state functions */
 static const char *close_tag = "CLOSE";
@@ -82,7 +83,6 @@ void cleanup_layouts(compound_data_t *data)
 		      == data->session->clientid_record) &&
 		    state->state_data.layout.state_return_on_close) {
 			nfs4_return_one_state(data->current_entry,
-					      data->req_ctx,
 					      LAYOUTRETURN4_FILE,
 					      circumstance_roc,
 					      state,
@@ -247,14 +247,7 @@ int nfs4_op_close(struct nfs_argop4 *op, compound_data_t *data,
 						  state_data.lock.
 						  state_sharelist);
 
-		state_status =
-			state_del_locked(lock_state, data->current_entry);
-
-		if (state_status != STATE_SUCCESS) {
-			LogEvent(COMPONENT_STATE,
-				 "CLOSE failed to release lock stateid "
-				 "error %s", state_err_str(state_status));
-		}
+		state_del_locked(lock_state, data->current_entry);
 	}
 
 	/* File is closed, release the share state */
@@ -271,14 +264,7 @@ int nfs4_op_close(struct nfs_argop4 *op, compound_data_t *data,
 	}
 
 	/* File is closed, release the corresponding state */
-	state_status = state_del_locked(state_found,
-					data->current_entry);
-
-	if (state_status != STATE_SUCCESS) {
-		LogEvent(COMPONENT_STATE,
-			 "CLOSE failed to release stateid error %s",
-			 state_err_str(state_status));
-	}
+	state_del_locked(state_found, data->current_entry);
 
 	/* Poison the current stateid */
 	data->current_stateid_valid = false;
@@ -288,7 +274,7 @@ int nfs4_op_close(struct nfs_argop4 *op, compound_data_t *data,
 
 	/* Fill in the clientid for NFSv4.0 */
 	if (data->minorversion == 0) {
-		data->req_ctx->clientid =
+		op_ctx->clientid =
 		    &open_owner->so_owner.so_nfs4_owner.so_clientid;
 	}
 
@@ -303,7 +289,7 @@ int nfs4_op_close(struct nfs_argop4 *op, compound_data_t *data,
 	}
 
 	if (data->minorversion == 0)
-		data->req_ctx->clientid = NULL;
+		op_ctx->clientid = NULL;
 
 	PTHREAD_RWLOCK_unlock(&data->current_entry->state_lock);
 	res_CLOSE4->status = NFS4_OK;

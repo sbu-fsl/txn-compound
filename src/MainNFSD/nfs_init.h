@@ -55,10 +55,11 @@ int nfs_set_param_from_conf(config_file_t config_struct,
 			    nfs_start_info_t *p_start_info);
 
 /**
- * nfs_check_param_consistency:
- * Checks parameters concistency (limits, ...)
+ * Initialization that needs config file parse but must be done
+ * before any services actually start (exports, net sockets...)
  */
-int nfs_check_param_consistency();
+
+int init_server_pkgs(void);
 
 /**
  * nfs_start:

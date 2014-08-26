@@ -37,10 +37,8 @@
 #include "nfs_core.h"
 #include "cache_inode.h"
 #include "nfs_exports.h"
-#include "nfs_creds.h"
 #include "nfs_proto_functions.h"
 #include "nfs_proto_tools.h"
-#include "nfs_tools.h"
 #include "nfs_file_handle.h"
 
 /**
@@ -72,12 +70,6 @@ int nfs4_op_verify(struct nfs_argop4 *op, compound_data_t *data,
 
 	if (res_VERIFY4->status != NFS4_OK)
 		return res_VERIFY4->status;
-
-	/* operation is always permitted on pseudofs */
-	if (nfs4_Is_Fh_Pseudo(&(data->currentFH))) {
-		res_VERIFY4->status = NFS4_OK;
-		return res_VERIFY4->status;
-	}
 
 	/* Get only attributes that are allowed to be read */
 	if (!nfs4_Fattr_Check_Access

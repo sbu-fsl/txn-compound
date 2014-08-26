@@ -55,6 +55,7 @@ struct nlmv4_stats;
 struct rquota_stats;
 struct nfsv40_stats;
 struct nfsv41_stats;
+struct nfsv42_stats;
 struct _9p_stats;
 
 struct gsh_stats {
@@ -64,6 +65,7 @@ struct gsh_stats {
 	struct rquota_stats *rquota;
 	struct nfsv40_stats *nfsv40;
 	struct nfsv41_stats *nfsv41;
+	struct nfsv41_stats *nfsv42;
 	struct _9p_stats *_9p;
 };
 
@@ -98,7 +100,7 @@ struct export_stats {
 	struct gsh_export export;
 };
 
-#ifdef USE_DBUS_STATS
+#ifdef USE_DBUS
 
 /* Bits for introspect arg structures
  */
@@ -127,6 +129,45 @@ struct export_stats {
 	.name = "write",   \
 	.type = "(tttttt)",\
 	.direction = "out" \
+}
+
+#define TRANSPORT_REPLY    \
+{                          \
+	.name = "rx_bytes",\
+	.type = "(t)",     \
+	.direction = "out" \
+},                         \
+{                          \
+	.name = "rx_pkt",  \
+	.type = "(t)",     \
+	.direction = "out" \
+},                         \
+{                          \
+	.name = "rx_err",  \
+	.type = "(t)",     \
+	.direction = "out" \
+},                         \
+{                          \
+	.name = "tx_bytes",\
+	.type = "(t)",     \
+	.direction = "out" \
+},                         \
+{                          \
+	.name = "tx_pkt",  \
+	.type = "(t)",     \
+	.direction = "out" \
+},                         \
+{                          \
+	.name = "tx_err",  \
+	.type = "(t)",     \
+	.direction = "out" \
+}
+
+#define TOTAL_OPS_REPLY      \
+{                            \
+	.name = "op",        \
+	.type = "a(st)",     \
+	.direction = "out"   \
 }
 
 #define LAYOUTS_REPLY		\
@@ -161,9 +202,19 @@ void server_dbus_v3_iostats(struct nfsv3_stats *v3p, DBusMessageIter *iter);
 void server_dbus_v40_iostats(struct nfsv40_stats *v40p, DBusMessageIter *iter);
 void server_dbus_v41_iostats(struct nfsv41_stats *v41p, DBusMessageIter *iter);
 void server_dbus_v41_layouts(struct nfsv41_stats *v41p, DBusMessageIter *iter);
+void server_dbus_v42_iostats(struct nfsv41_stats *v42p, DBusMessageIter *iter);
+void server_dbus_v42_layouts(struct nfsv41_stats *v42p, DBusMessageIter *iter);
+void server_dbus_total_ops(struct export_stats *export_st,
+			   DBusMessageIter *iter);
+void global_dbus_total_ops(DBusMessageIter *iter);
+void server_dbus_fast_ops(DBusMessageIter *iter);
+void cache_inode_dbus_show(DBusMessageIter *iter);
 
 void server_dbus_9p_iostats(struct _9p_stats *_9pp, DBusMessageIter *iter);
-#endif				/* USE_DBUS_STATS */
+void server_dbus_9p_transstats(struct _9p_stats *_9pp, DBusMessageIter *iter);
+void server_dbus_9p_tcpstats(struct _9p_stats *_9pp, DBusMessageIter *iter);
+void server_dbus_9p_rdmastats(struct _9p_stats *_9pp, DBusMessageIter *iter);
+#endif				/* USE_DBUS */
 
 void server_stats_free(struct gsh_stats *statsp);
 

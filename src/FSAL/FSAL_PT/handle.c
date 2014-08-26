@@ -18,13 +18,13 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
  *
- * ------------- 
+ * -------------
  */
 
 /* handle.c
- * VFS object (file|dir) handle object
+ * PT object (file|dir) handle object
  */
 
 #ifdef HAVE_CONFIG_H
@@ -39,12 +39,27 @@
 #include <sys/types.h>
 #include <sys/syscall.h>
 #include <mntent.h>
-#include "nlm_list.h"
+#include "ganesha_list.h"
 #include "fsal_internal.h"
 #include "fsal_convert.h"
 #include "FSAL/fsal_commonlib.h"
 #include "pt_methods.h"
 #include "pt_ganesha.h"
+
+/* PT is effectively a single filesystem, describe it and assign all
+ * PT handles to it.
+ */
+struct fsal_filesystem pt_filesystem = {
+	.children = GLIST_HEAD_INIT(pt_filesystem.children),
+	.exported = true,
+	/** @todo fill in the following
+	.dev = xxxxx,
+	.fsid_tyoe = xxxx,
+	.fsid = xxxx,
+	*/
+	.path = "/PT",
+	.type = "PT",
+};
 
 /* helpers
  */
@@ -54,10 +69,10 @@
  * this uses malloc/free for the time being.
  */
 
-static struct pt_fsal_obj_handle *alloc_handle(ptfsal_handle_t * fh,
+static struct pt_fsal_obj_handle *alloc_handle(ptfsal_handle_t *fh,
 					       struct attrlist *attributes,
 					       const char *link_content,
-					       ptfsal_handle_t * dir_fh,
+					       ptfsal_handle_t *dir_fh,
 					       const char *unopenable_name,
 					       struct fsal_export *exp_hdl)
 {
@@ -69,9 +84,10 @@ static struct pt_fsal_obj_handle *alloc_handle(ptfsal_handle_t * fh,
 		return NULL;
 	memset(hdl, 0,
 	       (sizeof(struct pt_fsal_obj_handle) + sizeof(ptfsal_handle_t)));
-	hdl->handle = (ptfsal_handle_t *) & hdl[1];
+	hdl->handle = (ptfsal_handle_t *) &hdl[1];
 	memcpy(hdl->handle, fh, sizeof(ptfsal_handle_t));
 	hdl->obj_handle.type = attributes->type;
+	hdl->obj_handle.fs = &pt_filesystem;
 	if (hdl->obj_handle.type == REGULAR_FILE) {
 		hdl->u.file.fd = -1;	/* no open on this yet */
 		hdl->u.file.openflags = FSAL_O_CLOSED;
@@ -80,9 +96,8 @@ static struct pt_fsal_obj_handle *alloc_handle(ptfsal_handle_t * fh,
 		size_t len = strlen(link_content) + 1;
 
 		hdl->u.symlink.link_content = gsh_malloc(len);
-		if (hdl->u.symlink.link_content == NULL) {
+		if (hdl->u.symlink.link_content == NULL)
 			goto spcerr;
-		}
 		memcpy(hdl->u.symlink.link_content, link_content, len);
 		hdl->u.symlink.link_size = len;
 	} else if (pt_unopenable_type(hdl->obj_handle.type)
@@ -97,18 +112,14 @@ static struct pt_fsal_obj_handle *alloc_handle(ptfsal_handle_t * fh,
 			goto spcerr;
 		strcpy(hdl->u.unopenable.name, unopenable_name);
 	}
-	hdl->obj_handle.export = exp_hdl;
 	hdl->obj_handle.attributes.mask =
 	    exp_hdl->ops->fs_supported_attrs(exp_hdl);
 	memcpy(&hdl->obj_handle.attributes, attributes,
 	       sizeof(struct attrlist));
 
-	if (!fsal_obj_handle_init(&hdl->obj_handle, exp_hdl, attributes->type))
-		return hdl;
+	fsal_obj_handle_init(&hdl->obj_handle, exp_hdl, attributes->type);
+	return hdl;
 
-	hdl->obj_handle.ops = NULL;
-	pthread_mutex_unlock(&hdl->obj_handle.lock);
-	pthread_mutex_destroy(&hdl->obj_handle.lock);
  spcerr:
 	if (hdl->obj_handle.type == SYMBOLIC_LINK) {
 		if (hdl->u.symlink.link_content != NULL)
@@ -131,40 +142,34 @@ static struct pt_fsal_obj_handle *alloc_handle(ptfsal_handle_t * fh,
  */
 
 static fsal_status_t pt_lookup(struct fsal_obj_handle *parent,
-			       const struct req_op_context *opctx,
 			       const char *path,
 			       struct fsal_obj_handle **handle)
 {
 	fsal_errors_t fsal_error = ERR_FSAL_NO_ERROR;
 	int retval = 0;
 	fsal_status_t status;
-	struct pt_fsal_obj_handle *parent_hdl, *hdl;
-	int mount_fd;
+	struct pt_fsal_obj_handle *hdl;
 	struct attrlist attrib;
 	ptfsal_handle_t *fh = alloca(sizeof(ptfsal_handle_t));
 
 	*handle = NULL;		/* poison it first */
-	if (!path) {
+	if (!path)
 		return fsalstat(ERR_FSAL_FAULT, 0);
-	}
 	memset(fh, 0, sizeof(ptfsal_handle_t));
-	fh->data.handle.handle_size = OPENHANDLE_HANDLE_LEN;
-	mount_fd = pt_get_root_fd(parent->export);
-	parent_hdl =
-	    container_of(parent, struct pt_fsal_obj_handle, obj_handle);
+	fh->data.handle.handle_size = FSI_CCL_PERSISTENT_HANDLE_N_BYTES;
 	if (!parent->ops->handle_is(parent, DIRECTORY)) {
 		LogCrit(COMPONENT_FSAL,
 			"Parent handle is not a directory. hdl = 0x%p", parent);
 		return fsalstat(ERR_FSAL_NOTDIR, 0);
 	}
 	attrib.mask = parent->attributes.mask;
-	status = PTFSAL_lookup(opctx, parent, path, &attrib, fh);
-	if (FSAL_IS_ERROR(status)) {
+	status = PTFSAL_lookup(op_ctx, parent, path, &attrib, fh);
+	if (FSAL_IS_ERROR(status))
 		return status;
-	}
 
 	/* allocate an obj_handle and fill it up */
-	hdl = alloc_handle(fh, &attrib, NULL, NULL, NULL, parent->export);
+	hdl = alloc_handle(fh, &attrib, NULL, NULL, NULL,
+			   op_ctx->fsal_export);
 	if (hdl == NULL) {
 		retval = ENOMEM;
 		goto hdlerr;
@@ -182,14 +187,12 @@ static fsal_status_t pt_lookup(struct fsal_obj_handle *parent,
  */
 
 static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
-			    const struct req_op_context *opctx,
 			    const char *name, struct attrlist *attrib,
 			    struct fsal_obj_handle **handle)
 {
 	fsal_errors_t fsal_error = ERR_FSAL_NO_ERROR;
 	int retval = 0;
-	struct pt_fsal_obj_handle *myself, *hdl;
-	int mount_fd;
+	struct pt_fsal_obj_handle *hdl;
 	fsal_status_t status;
 
 	ptfsal_handle_t *fh = alloca(sizeof(ptfsal_handle_t));
@@ -202,18 +205,17 @@ static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
 		return fsalstat(ERR_FSAL_NOTDIR, 0);
 	}
 	memset(fh, 0, sizeof(ptfsal_handle_t));
-	fh->data.handle.handle_size = OPENHANDLE_HANDLE_LEN;
-	myself = container_of(dir_hdl, struct pt_fsal_obj_handle, obj_handle);
-	mount_fd = pt_get_root_fd(dir_hdl->export);
+	fh->data.handle.handle_size = FSI_CCL_PERSISTENT_HANDLE_N_BYTES;
 
 	attrib->mask =
-	    dir_hdl->export->ops->fs_supported_attrs(dir_hdl->export);
-	status = PTFSAL_create(dir_hdl, name, opctx, attrib->mode, fh, attrib);
+	    op_ctx->fsal_export->ops->fs_supported_attrs(op_ctx->fsal_export);
+	status = PTFSAL_create(dir_hdl, name, op_ctx,
+			       attrib->mode, fh, attrib);
 	if (FSAL_IS_ERROR(status))
 		return status;
 
 	/* allocate an obj_handle and fill it up */
-	hdl = alloc_handle(fh, attrib, NULL, NULL, NULL, dir_hdl->export);
+	hdl = alloc_handle(fh, attrib, NULL, NULL, NULL, op_ctx->fsal_export);
 	if (hdl == NULL) {
 		retval = ENOMEM;
 		goto fileerr;
@@ -227,13 +229,12 @@ static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
 }
 
 static fsal_status_t makedir(struct fsal_obj_handle *dir_hdl,
-			     const struct req_op_context *opctx,
 			     const char *name, struct attrlist *attrib,
 			     struct fsal_obj_handle **handle)
 {
 	fsal_errors_t fsal_error = ERR_FSAL_NO_ERROR;
 	int retval = 0;
-	struct pt_fsal_obj_handle *myself, *hdl;
+	struct pt_fsal_obj_handle *hdl;
 	fsal_status_t status;
 	ptfsal_handle_t *fh = alloca(sizeof(ptfsal_handle_t));
 
@@ -245,17 +246,16 @@ static fsal_status_t makedir(struct fsal_obj_handle *dir_hdl,
 		return fsalstat(ERR_FSAL_NOTDIR, 0);
 	}
 	memset(fh, 0, sizeof(ptfsal_handle_t));
-	fh->data.handle.handle_size = OPENHANDLE_HANDLE_LEN;
-	myself = container_of(dir_hdl, struct pt_fsal_obj_handle, obj_handle);
+	fh->data.handle.handle_size = FSI_CCL_PERSISTENT_HANDLE_N_BYTES;
 
 	attrib->mask =
-	    dir_hdl->export->ops->fs_supported_attrs(dir_hdl->export);
-	status = PTFSAL_mkdir(dir_hdl, name, opctx, attrib->mode, fh, attrib);
+	    op_ctx->fsal_export->ops->fs_supported_attrs(op_ctx->fsal_export);
+	status = PTFSAL_mkdir(dir_hdl, name, op_ctx, attrib->mode, fh, attrib);
 	if (FSAL_IS_ERROR(status))
 		return status;
 
 	/* allocate an obj_handle and fill it up */
-	hdl = alloc_handle(fh, attrib, NULL, NULL, NULL, dir_hdl->export);
+	hdl = alloc_handle(fh, attrib, NULL, NULL, NULL, op_ctx->fsal_export);
 	if (hdl == NULL) {
 		retval = ENOMEM;
 		goto fileerr;
@@ -268,15 +268,17 @@ static fsal_status_t makedir(struct fsal_obj_handle *dir_hdl,
 	return fsalstat(fsal_error, retval);
 }
 
-static fsal_status_t makenode(struct fsal_obj_handle *dir_hdl, const struct req_op_context *opctx, const char *name, object_file_type_t nodetype,	/* IN */
-			      fsal_dev_t * dev,	/* IN */
+static fsal_status_t makenode(struct fsal_obj_handle *dir_hdl,
+			      const char *name,
+			      object_file_type_t nodetype,	/* IN */
+			      fsal_dev_t *dev,	/* IN */
 			      struct attrlist *attrib,
 			      struct fsal_obj_handle **handle)
 {
 	fsal_errors_t fsal_error = ERR_FSAL_NO_ERROR;
 	int retval = 0;
 	fsal_status_t status;
-	struct pt_fsal_obj_handle *myself, *hdl;
+	struct pt_fsal_obj_handle *hdl;
 	ptfsal_handle_t *dir_fh = NULL;
 	ptfsal_handle_t *fh = alloca(sizeof(ptfsal_handle_t));
 
@@ -289,19 +291,20 @@ static fsal_status_t makenode(struct fsal_obj_handle *dir_hdl, const struct req_
 		return fsalstat(ERR_FSAL_NOTDIR, 0);
 	}
 	memset(fh, 0, sizeof(ptfsal_handle_t));
-	fh->data.handle.handle_size = OPENHANDLE_HANDLE_LEN;
-	myself = container_of(dir_hdl, struct pt_fsal_obj_handle, obj_handle);
+	fh->data.handle.handle_size = FSI_CCL_PERSISTENT_HANDLE_N_BYTES;
 
 	attrib->mask =
-	    dir_hdl->export->ops->fs_supported_attrs(dir_hdl->export);
+	    op_ctx->fsal_export->ops->fs_supported_attrs(op_ctx->fsal_export);
 	status =
-	    PTFSAL_mknode(dir_hdl, name, opctx, attrib->mode, nodetype, dev, fh,
+	    PTFSAL_mknode(dir_hdl, name, op_ctx, attrib->mode,
+			  nodetype, dev, fh,
 			  attrib);
 	if (FSAL_IS_ERROR(status))
 		return status;
 
 	/* allocate an obj_handle and fill it up */
-	hdl = alloc_handle(fh, attrib, NULL, dir_fh, NULL, dir_hdl->export);
+	hdl = alloc_handle(fh, attrib, NULL, dir_fh, NULL,
+			   op_ctx->fsal_export);
 	if (hdl == NULL) {
 		retval = ENOMEM;
 		goto nodeerr;
@@ -321,7 +324,6 @@ static fsal_status_t makenode(struct fsal_obj_handle *dir_hdl, const struct req_
  */
 
 static fsal_status_t makesymlink(struct fsal_obj_handle *dir_hdl,
-				 const struct req_op_context *opctx,
 				 const char *name, const char *link_path,
 				 struct attrlist *attrib,
 				 struct fsal_obj_handle **handle)
@@ -330,7 +332,6 @@ static fsal_status_t makesymlink(struct fsal_obj_handle *dir_hdl,
 }
 
 static fsal_status_t readsymlink(struct fsal_obj_handle *obj_hdl,
-				 const struct req_op_context *opctx,
 				 struct gsh_buffdesc *link_content,
 				 bool refresh)
 {
@@ -338,7 +339,6 @@ static fsal_status_t readsymlink(struct fsal_obj_handle *obj_hdl,
 }
 
 static fsal_status_t linkfile(struct fsal_obj_handle *obj_hdl,
-			      const struct req_op_context *opctx,
 			      struct fsal_obj_handle *destdir_hdl,
 			      const char *name)
 {
@@ -375,36 +375,31 @@ struct linux_dirent {
  * @param eof [OUT] eof marker true == end of dir
  */
 static fsal_status_t read_dirents(struct fsal_obj_handle *dir_hdl,
-				  const struct req_op_context *opctx,
-				  uint64_t * whence, void *dir_state,
-				  fsal_readdir_cb cb, bool * eof)
+				  uint64_t *whence, void *dir_state,
+				  fsal_readdir_cb cb, bool *eof)
 {
 	struct pt_fsal_obj_handle *myself;
-	int dirfd, mntfd;
+	int dirfd;
 	off_t seekloc = 0;
-	fsal_cookie_t *entry_cookie;
+	ptfsal_cookie_t *entry_cookie;
 	char fsi_parent_dir_path[PATH_MAX];
 	char fsi_dname[PATH_MAX];
 	char fsi_name[PATH_MAX];
 	int readdir_rc, rc;
 	int readdir_record = 0;
 	fsi_stat_struct buffstat;
-	ptfsal_dir_t dir_desc;
 	static fsal_status_t status;
 
-	if (whence != NULL) {
+	if (whence != NULL)
 		memcpy(&seekloc, &whence, sizeof(off_t));
-	}
 	entry_cookie = alloca(sizeof(fsal_cookie_t) + sizeof(off_t));
 	myself = container_of(dir_hdl, struct pt_fsal_obj_handle, obj_handle);
-	mntfd = pt_get_root_fd(dir_hdl->export);
 	status =
-	    fsal_internal_handle2fd_at(opctx, myself, &dirfd,
+	    fsal_internal_handle2fd_at(op_ctx, myself, &dirfd,
 				       (O_RDONLY | O_DIRECTORY));
 
-	if (dirfd < 0) {
+	if (dirfd < 0)
 		return status;
-	}
 
 	if (seekloc != 0) {
 		FSI_TRACE(FSI_DEBUG,
@@ -416,32 +411,25 @@ static fsal_status_t read_dirents(struct fsal_obj_handle *dir_hdl,
 	/* browse the directory */
 	/************************/
 
-	ptfsal_handle_to_name(myself->handle, opctx, dir_hdl->export,
+	ptfsal_handle_to_name(myself->handle, op_ctx, op_ctx->fsal_export,
 			      fsi_parent_dir_path);
 
 	fsi_parent_dir_path[sizeof(fsi_parent_dir_path) - 1] = '\0';
 	FSI_TRACE(FSI_DEBUG, "Parent dir path --- %s\n", fsi_parent_dir_path);
-
-	dir_desc.fd = dirfd;
-	dir_desc.context = opctx;
-	dir_desc.handle = myself->handle;
-	dir_desc.dir_offset = 0;
-	strncpy(dir_desc.path, fsi_parent_dir_path, sizeof(dir_desc.path));
 
 	*eof = 0;
 	while (*eof == 0) {
 		/***********************/
 		/* read the next entry */
 		/***********************/
-		readdir_rc =
-		    ptfsal_readdir(opctx, dir_hdl->export, &dir_desc, &buffstat,
-				   fsi_dname);
+		readdir_rc = ptfsal_readdir(op_ctx, op_ctx->fsal_export,
+					    dirfd, &buffstat, fsi_dname);
 		memset(fsi_name, 0, sizeof(fsi_name));
 		fsi_get_whole_path(fsi_parent_dir_path, fsi_dname, fsi_name);
 		FSI_TRACE(FSI_DEBUG, "fsi_dname %s, whole path %s\n", fsi_dname,
 			  fsi_name);
 
-		// convert FSI return code to rc
+		/* convert FSI return code to rc */
 		rc = 1;
 		if (readdir_rc != 0)
 			rc = 0;
@@ -460,7 +448,7 @@ static fsal_status_t read_dirents(struct fsal_obj_handle *dir_hdl,
 
 		FSI_TRACE(FSI_DEBUG, "fsi_dname: %s\n", fsi_dname);
 
-		// /* skip . and .. */
+		 /* skip . and .. */
 		if (!strcmp(fsi_dname, ".") || !strcmp(fsi_dname, "..")) {
 			FSI_TRACE(FSI_DEBUG, "skipping . or ..\n");
 			continue;
@@ -474,9 +462,11 @@ static fsal_status_t read_dirents(struct fsal_obj_handle *dir_hdl,
 		readdir_record++;
 
 		/* callback to cache inode */
-		if (!cb(opctx, fsi_dname, dir_state, entry_cookie->data.cookie)) {
-			FSI_TRACE(FSI_DEBUG, "callback failed\n");
-			break;
+		if (!cb(fsi_dname,
+			dir_state,
+			entry_cookie->data.cookie)) {
+				FSI_TRACE(FSI_DEBUG, "callback failed\n");
+				break;
 		}
 
 	}
@@ -487,7 +477,6 @@ static fsal_status_t read_dirents(struct fsal_obj_handle *dir_hdl,
 }
 
 static fsal_status_t renamefile(struct fsal_obj_handle *olddir_hdl,
-				const struct req_op_context *opctx,
 				const char *old_name,
 				struct fsal_obj_handle *newdir_hdl,
 				const char *new_name)
@@ -495,8 +484,8 @@ static fsal_status_t renamefile(struct fsal_obj_handle *olddir_hdl,
 	fsal_status_t status;
 
 	status =
-	    PTFSAL_rename(olddir_hdl, old_name, newdir_hdl, new_name, opctx);
-	return (status);
+	    PTFSAL_rename(olddir_hdl, old_name, newdir_hdl, new_name, op_ctx);
+	return status;
 }
 
 /* FIXME: attributes are now merged into fsal_obj_handle.  This
@@ -506,49 +495,46 @@ static fsal_status_t renamefile(struct fsal_obj_handle *olddir_hdl,
  * cache entry.
  */
 
-static fsal_status_t getattrs(struct fsal_obj_handle *obj_hdl,
-			      const struct req_op_context *opctx)
+static fsal_status_t getattrs(struct fsal_obj_handle *obj_hdl)
 {
 	struct pt_fsal_obj_handle *myself;
-	int mntfd;
 	fsal_status_t status;
 
 	myself = container_of(obj_hdl, struct pt_fsal_obj_handle, obj_handle);
-	mntfd = pt_get_root_fd(obj_hdl->export);
 
 	obj_hdl->attributes.mask =
-	    obj_hdl->export->ops->fs_supported_attrs(obj_hdl->export);
+	    op_ctx->fsal_export->ops->fs_supported_attrs(op_ctx->fsal_export);
 	status =
-	    PTFSAL_getattrs(obj_hdl->export, opctx, myself->handle,
+	    PTFSAL_getattrs(op_ctx->fsal_export, op_ctx, myself->handle,
 			    &obj_hdl->attributes);
 	if (FSAL_IS_ERROR(status)) {
 		FSAL_CLEAR_MASK(obj_hdl->attributes.mask);
 		FSAL_SET_MASK(obj_hdl->attributes.mask, ATTR_RDATTR_ERR);
 	}
-	return (status);
+	return status;
 }
 
 /*
- * NOTE: this is done under protection of the attributes rwlock in the cache entry.
+ * NOTE: this is done under protection of the
+ * attributes rwlock in the cache entry.
  */
 
 static fsal_status_t setattrs(struct fsal_obj_handle *obj_hdl,
-			      const struct req_op_context *opctx,
 			      struct attrlist *attrs)
 {
 	fsal_status_t status;
 
-	status = PTFSAL_setattrs(obj_hdl, opctx, attrs, NULL);
+	status = PTFSAL_setattrs(obj_hdl, op_ctx, attrs, NULL);
 
-	return (status);
+	return status;
 }
 
 /* compare
  * compare two handles.
  * return true for equal, false for anything else
  */
-bool compare(struct fsal_obj_handle * obj_hdl,
-	     struct fsal_obj_handle * other_hdl)
+bool compare(struct fsal_obj_handle *obj_hdl,
+	     struct fsal_obj_handle *other_hdl)
 {
 	struct pt_fsal_obj_handle *myself, *other;
 
@@ -575,13 +561,12 @@ bool compare(struct fsal_obj_handle * obj_hdl,
  */
 /*
 static fsal_status_t file_truncate(struct fsal_obj_handle *obj_hdl,
-                                   const struct req_op_context *opctx,
+				   const struct req_op_context *opctx,
 				   uint64_t length)
 {
 	fsal_errors_t fsal_error = ERR_FSAL_NO_ERROR;
-        fsal_status_t status;
+	fsal_status_t status;
 	struct pt_fsal_obj_handle *myself;
-	int mount_fd;
 	int retval = 0;
 
 	if(obj_hdl->type != REGULAR_FILE) {
@@ -589,13 +574,13 @@ static fsal_status_t file_truncate(struct fsal_obj_handle *obj_hdl,
 		goto errout;
 	}
 	myself = container_of(obj_hdl, struct pt_fsal_obj_handle, obj_handle);
-	mount_fd = pt_get_root_fd(obj_hdl->export);
-	
-	status = PTFSAL_truncate(obj_hdl->export, myself, opctx, length, NULL);
+
+	status = PTFSAL_truncate(opctx->fsal_export, myself,
+				 opctx, length, NULL);
 	return (status);
 
 errout:
-	return fsalstat(fsal_error, retval);	
+	return fsalstat(fsal_error, retval);
 }
 */
 
@@ -604,14 +589,13 @@ errout:
  */
 
 static fsal_status_t file_unlink(struct fsal_obj_handle *dir_hdl,
-				 const struct req_op_context *opctx,
 				 const char *name)
 {
 	fsal_status_t status;
 
-	status = PTFSAL_unlink(dir_hdl, name, opctx, NULL);
+	status = PTFSAL_unlink(dir_hdl, name, op_ctx, NULL);
 
-	return (status);
+	return status;
 }
 
 /* handle_digest
@@ -621,9 +605,9 @@ static fsal_status_t file_unlink(struct fsal_obj_handle *dir_hdl,
  * the whole struct.
  */
 
-fsal_status_t handle_digest(const struct fsal_obj_handle * obj_hdl,
+fsal_status_t handle_digest(const struct fsal_obj_handle *obj_hdl,
 			    fsal_digesttype_t output_type,
-			    struct gsh_buffdesc * fh_desc)
+			    struct gsh_buffdesc *fh_desc)
 {
 	struct pt_fsal_obj_handle *myself;
 	ptfsal_handle_t *fh;
@@ -636,9 +620,7 @@ fsal_status_t handle_digest(const struct fsal_obj_handle * obj_hdl,
 	fh = myself->handle;
 
 	switch (output_type) {
-	case FSAL_DIGEST_NFSV2:
 	case FSAL_DIGEST_NFSV3:
-	case FSAL_DIGEST_NFSV4:
 		fh_size = pt_sizeof_handle(fh);
 		if (fh_desc->len < fh_size)
 			goto errout;
@@ -680,37 +662,20 @@ static void handle_to_key(struct fsal_obj_handle *obj_hdl,
  * release our export first so they know we are gone
  */
 
-static fsal_status_t release(struct fsal_obj_handle *obj_hdl)
+static void release(struct fsal_obj_handle *obj_hdl)
 {
 	struct pt_fsal_obj_handle *myself;
-	int retval = 0;
 	object_file_type_t type = obj_hdl->type;
 
 	if (type == REGULAR_FILE) {
 		fsal_status_t st = pt_close(obj_hdl);
-		if (FSAL_IS_ERROR(st)) {
-			return st;
-		}
+		if (FSAL_IS_ERROR(st))
+			LogCrit(COMPONENT_FSAL,
+				"Could not close");
 	}
 	myself = container_of(obj_hdl, struct pt_fsal_obj_handle, obj_handle);
 
-	if (type == REGULAR_FILE
-	    && (myself->u.file.fd >= 0
-		|| myself->u.file.openflags != FSAL_O_CLOSED)) {
-		LogCrit(COMPONENT_FSAL,
-			"Tried to release busy handle, "
-			"hdl = 0x%p, fd = %d, openflags = 0x%x", obj_hdl,
-			myself->u.file.fd, myself->u.file.openflags);
-		return fsalstat(posix2fsal_error(EINVAL), EINVAL);
-	}
-
-	retval = fsal_obj_handle_uninit(obj_hdl);
-	if (retval != 0) {
-		LogCrit(COMPONENT_FSAL,
-			"Tried to release busy handle, "
-			"hdl = 0x%p->refs = %d", obj_hdl, obj_hdl->refs);
-		return fsalstat(posix2fsal_error(retval), retval);
-	}
+	fsal_obj_handle_uninit(obj_hdl);
 
 	if (type == SYMBOLIC_LINK) {
 		if (myself->u.symlink.link_content != NULL)
@@ -722,28 +687,7 @@ static fsal_status_t release(struct fsal_obj_handle *obj_hdl)
 			gsh_free(myself->u.unopenable.dir);
 	}
 	gsh_free(myself);
-
-	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
-
-/* pt_share_op
- */
-#if 0
-static fsal_status_t share_op(struct fsal_obj_handle *obj_hdl, void *p_owner,
-			      fsal_share_param_t request_share)
-{
-	fsal_status_t status;
-	int fd, mntfd;
-	struct pt_fsal_obj_handle *myself;
-
-	myself = container_of(obj_hdl, struct pt_fsal_obj_handle, obj_handle);
-	mntfd = fd = myself->u.file.fd;
-
-	status = PTFSAL_share_op(mntfd, fd, p_owner, request_share);
-
-	return (status);
-}
-#endif
 
 void pt_handle_ops_init(struct fsal_obj_ops *ops)
 {
@@ -781,7 +725,6 @@ void pt_handle_ops_init(struct fsal_obj_ops *ops)
  */
 
 fsal_status_t pt_lookup_path(struct fsal_export *exp_hdl,
-			     const struct req_op_context *opctx,
 			     const char *path, struct fsal_obj_handle **handle)
 {
 
@@ -795,12 +738,11 @@ fsal_status_t pt_lookup_path(struct fsal_export *exp_hdl,
 	char *basepart;
 	char *link_content = NULL;
 	ssize_t retlink;
-	ptfsal_handle_t *dir_fh = NULL;
 	struct attrlist attributes;
 	ptfsal_handle_t *fh = alloca(sizeof(ptfsal_handle_t));
 
 	memset(fh, 0, sizeof(ptfsal_handle_t));
-	fh->data.handle.handle_size = OPENHANDLE_HANDLE_LEN;
+	fh->data.handle.handle_size = FSI_CCL_PERSISTENT_HANDLE_N_BYTES;
 	if (path == NULL || path[0] != '/' || strlen(path) > PATH_MAX
 	    || strlen(path) < 2) {
 		fsal_error = ERR_FSAL_INVAL;
@@ -811,53 +753,48 @@ fsal_status_t pt_lookup_path(struct fsal_export *exp_hdl,
 		fsal_error = ERR_FSAL_INVAL;
 		goto errout;
 	}
-	fsal_status = fsal_internal_get_handle(opctx, exp_hdl, path, fh);
-	if (FSAL_IS_ERROR(fsal_status)) {
+	fsal_status = fsal_internal_get_handle(op_ctx, exp_hdl, path, fh);
+	if (FSAL_IS_ERROR(fsal_status))
 		return fsal_status;
-	}
 
 	if (basepart == path) {
-		dir_fd = ptfsal_opendir(opctx, exp_hdl, "/", NULL, 0);
+		dir_fd = ptfsal_opendir(op_ctx, exp_hdl, "/", NULL, 0);
 	} else {
 		char *dirpart = alloca(basepart - path + 1);
 
 		memcpy(dirpart, path, basepart - path);
 		dirpart[basepart - path] = '\0';
-		dir_fd = ptfsal_opendir(opctx, exp_hdl, dirpart, NULL, 0);
+		dir_fd = ptfsal_opendir(op_ctx, exp_hdl, dirpart, NULL, 0);
 	}
 	if (dir_fd < 0) {
 		retval = errno;
 		fsal_error = posix2fsal_error(retval);
 		goto errout;
 	}
-	retval = ptfsal_stat_by_name(opctx, exp_hdl, basepart, &p_stat);
+	retval = ptfsal_stat_by_name(op_ctx, exp_hdl, basepart, &p_stat);
 	fsi_stat2stat(&p_stat, &stat);
-	if (retval < 0) {
+	if (retval < 0)
 		goto fileerr;
-	}
 
-	if (!S_ISDIR(stat.st_mode)) {	// this had better be a DIR! 
+	if (!S_ISDIR(stat.st_mode)) /* this had better be a DIR! */
 		goto fileerr;
-	}
 
 	basepart++;
 	fsal_status =
-	    fsal_internal_get_handle_at(opctx, exp_hdl, dir_fd, basepart, fh);
-	if (FSAL_IS_ERROR(fsal_status)) {
+	    fsal_internal_get_handle_at(op_ctx, exp_hdl, dir_fd, basepart, fh);
+	if (FSAL_IS_ERROR(fsal_status))
 		goto fileerr;
-	}
-	// what about the file? Do no symlink chasing here. 
-	retval = ptfsal_stat_by_name(opctx, exp_hdl, basepart, &p_stat);
+
+	/* what about the file? Do no symlink chasing here. */
+	retval = ptfsal_stat_by_name(op_ctx, exp_hdl, basepart, &p_stat);
 	fsi_stat2stat(&p_stat, &stat);
-	if (retval < 0) {
+	if (retval < 0)
 		goto fileerr;
-	}
 
 	attributes.mask = exp_hdl->ops->fs_supported_attrs(exp_hdl);
-	fsal_status = posix2fsal_attributes(&stat, &attributes);
-	if (FSAL_IS_ERROR(fsal_status)) {
+	fsal_status = pt_posix2fsal_attributes(&stat, &attributes);
+	if (FSAL_IS_ERROR(fsal_status))
 		goto fileerr;
-	}
 
 	if (S_ISLNK(stat.st_mode)) {
 		link_content = gsh_malloc(PATH_MAX);
@@ -870,17 +807,15 @@ fsal_status_t pt_lookup_path(struct fsal_export *exp_hdl,
 		}
 		link_content[retlink] = '\0';
 	}
-	ptfsal_closedir_fd(opctx, exp_hdl, dir_fd);
+	ptfsal_closedir_fd(op_ctx, exp_hdl, dir_fd);
 
-	// allocate an obj_handle and fill it up 
+	/* allocate an obj_handle and fill it up */
 	hdl = alloc_handle(fh, &attributes, NULL, NULL, NULL, exp_hdl);
 	if (link_content != NULL)
 		gsh_free(link_content);
-	if (dir_fh != NULL)
-		gsh_free(dir_fh);
 	if (hdl == NULL) {
 		fsal_error = ERR_FSAL_NOMEM;
-		*handle = NULL;	// poison it 
+		*handle = NULL;	/* poison it */
 		goto errout;
 	}
 	*handle = &hdl->obj_handle;
@@ -891,9 +826,7 @@ fsal_status_t pt_lookup_path(struct fsal_export *exp_hdl,
  linkerr:
 	if (link_content != NULL)
 		gsh_free(link_content);
-	if (dir_fh != NULL)
-		gsh_free(dir_fh);
-	ptfsal_closedir_fd(opctx, exp_hdl, dir_fd);
+	ptfsal_closedir_fd(op_ctx, exp_hdl, dir_fd);
 	fsal_error = posix2fsal_error(retval);
 
  errout:
@@ -912,10 +845,9 @@ fsal_status_t pt_lookup_path(struct fsal_export *exp_hdl,
  * Ideas and/or clever hacks are welcome...
  */
 
-fsal_status_t pt_create_handle(struct fsal_export * exp_hdl,
-			       const struct req_op_context * opctx,
-			       struct gsh_buffdesc * hdl_desc,
-			       struct fsal_obj_handle ** handle)
+fsal_status_t pt_create_handle(struct fsal_export *exp_hdl,
+			       struct gsh_buffdesc *hdl_desc,
+			       struct fsal_obj_handle **handle)
 {
 	fsal_errors_t fsal_error = ERR_FSAL_NO_ERROR;
 	int retval = 0;
@@ -926,17 +858,17 @@ fsal_status_t pt_create_handle(struct fsal_export * exp_hdl,
 	char *link_content = NULL;
 
 	*handle = NULL;		/* poison it first */
-	if ((hdl_desc->len != (sizeof(ptfsal_handle_t)))) {
+	if ((hdl_desc->len != (sizeof(ptfsal_handle_t))))
 		return fsalstat(ERR_FSAL_FAULT, 0);
-	}
+
 
 	fh = alloca(hdl_desc->len);
-	memcpy(fh, hdl_desc->addr, hdl_desc->len);	/* struct aligned copy */
+	memcpy(fh, hdl_desc->addr, hdl_desc->len); /* struct aligned copy */
 
 	attrib.mask = exp_hdl->ops->fs_supported_attrs(exp_hdl);
-	status = PTFSAL_getattrs(exp_hdl, opctx, fh, &attrib);
+	status = PTFSAL_getattrs(exp_hdl, op_ctx, fh, &attrib);
 	if (FSAL_IS_ERROR(status))
-		return (status);
+		return status;
 
 	hdl = alloc_handle(fh, &attrib, link_content, NULL, NULL, exp_hdl);
 	if (hdl == NULL) {

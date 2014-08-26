@@ -32,7 +32,7 @@
 #include "config.h"
 #include "sal_functions.h"
 #include "nfs_rpc_callback.h"
-#include "nfs_tools.h"
+#include "nfs_convert.h"
 
 /**
  * @brief the NFS4_OP_SEQUENCE operation
@@ -250,7 +250,7 @@ int nfs4_op_sequence(struct nfs_argop4 *op, compound_data_t *data,
 	/* If we were successful, stash the clientid in the request
 	 * context.
 	 */
-	data->req_ctx->clientid = &data->session->clientid;
+	op_ctx->clientid = &data->session->clientid;
 
 	res_SEQUENCE4->sr_status = NFS4_OK;
 	return res_SEQUENCE4->sr_status;

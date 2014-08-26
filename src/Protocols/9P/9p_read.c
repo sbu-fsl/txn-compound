@@ -92,6 +92,8 @@ int _9p_read(struct _9p_request_data *req9p, void *worker_data,
 				  preply);
 	}
 
+	op_ctx = &pfid->op_context;
+
 	/* Start building the reply already
 	 * So we don't need to use an intermediate data buffer
 	 */
@@ -111,26 +113,24 @@ int _9p_read(struct _9p_request_data *req9p, void *worker_data,
 		cache_status =
 		    cache_inode_rdwr(pfid->pentry, CACHE_INODE_READ, *offset,
 				     *count, &read_size, databuffer, &eof_met,
-				     &pfid->op_context, &sync);
+				     &sync);
 
-#ifdef USE_DBUS_STATS
 		/* Get the handle, for stats */
-		sockaddr_t *paddr = (sockaddr_t *) &req9p->pconn->addrpeer;
-		struct gsh_client *client = get_gsh_client(paddr, false);
+		struct gsh_client *client = req9p->pconn->client;
 
-		if (client == NULL)
+		if (client == NULL) {
 			LogDebug(COMPONENT_9P,
 				 "Cannot get client block for 9P request");
-		pfid->op_context.client = client;
+		} else {
+			pfid->op_context.client = client;
 
-		server_stats_io_done(&pfid->op_context, *count, read_size,
-				     (cache_status ==
-				      CACHE_INODE_SUCCESS) ? true : false,
-				     false);
-
-		if (client != NULL)
-			put_gsh_client(client);
-#endif
+			server_stats_io_done(*count,
+					     read_size,
+					     (cache_status ==
+					      CACHE_INODE_SUCCESS) ?
+					      true : false,
+					     false);
+		}
 
 		if (cache_status != CACHE_INODE_SUCCESS)
 			return _9p_rerror(req9p, worker_data, msgtag,

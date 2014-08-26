@@ -27,7 +27,7 @@
  */
 
 /* export.c
- * VFS FSAL export object
+ * NULL FSAL export object
  */
 
 #include "config.h"
@@ -40,14 +40,16 @@
 #include <os/mntent.h>
 #include <os/quota.h>
 #include <dlfcn.h>
-#include "nlm_list.h"
+#include "ganesha_list.h"
+#include "config_parsing.h"
 #include "fsal_convert.h"
 #include "FSAL/fsal_commonlib.h"
 #include "FSAL/fsal_config.h"
-#include "fsal_handle_syscalls.h"
 #include "nullfs_methods.h"
+#include "nfs_exports.h"
+#include "export_mgr.h"
 
-/* helpers to/from other VFS objects
+/* helpers to/from other NULL objects
  */
 
 struct fsal_staticfsinfo_t *nullfs_staticinfo(struct fsal_module *hdl);
@@ -55,43 +57,30 @@ struct fsal_staticfsinfo_t *nullfs_staticinfo(struct fsal_module *hdl);
 /* export object methods
  */
 
-static fsal_status_t release(struct fsal_export *exp_hdl)
+static void release(struct fsal_export *exp_hdl)
 {
 	struct nullfs_fsal_export *myself;
-	fsal_errors_t fsal_error = ERR_FSAL_NO_ERROR;
-	int retval = 0;
-
-	/* Question : should I release next_fsal or not ? */
-	next_ops.exp_ops->release(exp_hdl);
+	struct fsal_module *sub_fsal;
 
 	myself = container_of(exp_hdl, struct nullfs_fsal_export, export);
+	sub_fsal = myself->sub_export->fsal;
 
-	pthread_mutex_lock(&exp_hdl->lock);
-	if (exp_hdl->refs > 0 || !glist_empty(&exp_hdl->handles)) {
-		LogMajor(COMPONENT_FSAL, "VFS release: export (0x%p)busy",
-			 exp_hdl);
-		fsal_error = posix2fsal_error(EBUSY);
-		retval = EBUSY;
-		goto errout;
-	}
+	/* Release the sub_export */
+	myself->sub_export->ops->release(myself->sub_export);
+	fsal_put(sub_fsal);
+
 	fsal_detach_export(exp_hdl->fsal, &exp_hdl->exports);
 	free_export_ops(exp_hdl);
-	pthread_mutex_unlock(&exp_hdl->lock);
 
-	pthread_mutex_destroy(&exp_hdl->lock);
 	gsh_free(myself);	/* elvis has left the building */
-	return fsalstat(fsal_error, retval);
-
- errout:
-	pthread_mutex_unlock(&exp_hdl->lock);
-	return fsalstat(fsal_error, retval);
 }
 
 static fsal_status_t get_dynamic_info(struct fsal_export *exp_hdl,
-				      const struct req_op_context *opctx,
+				      struct fsal_obj_handle *obj_hdl,
 				      fsal_dynamicfsinfo_t *infop)
 {
-	return next_ops.exp_ops->get_fs_dynamic_info(exp_hdl, opctx, infop);
+	return next_ops.exp_ops->get_fs_dynamic_info(exp_hdl, obj_hdl,
+						     infop);
 }
 
 static bool fs_supports(struct fsal_export *exp_hdl,
@@ -166,11 +155,10 @@ static uint32_t fs_xattr_access_rights(struct fsal_export *exp_hdl)
 
 static fsal_status_t get_quota(struct fsal_export *exp_hdl,
 			       const char *filepath, int quota_type,
-			       struct req_op_context *req_ctx,
 			       fsal_quota_t *pquota)
 {
 	return next_ops.exp_ops->get_quota(exp_hdl, filepath, quota_type,
-					   req_ctx, pquota);
+					   pquota);
 }
 
 /* set_quota
@@ -179,11 +167,10 @@ static fsal_status_t get_quota(struct fsal_export *exp_hdl,
 
 static fsal_status_t set_quota(struct fsal_export *exp_hdl,
 			       const char *filepath, int quota_type,
-			       struct req_op_context *req_ctx,
 			       fsal_quota_t *pquota, fsal_quota_t *presquota)
 {
 	return next_ops.exp_ops->set_quota(exp_hdl, filepath, quota_type,
-					   req_ctx, pquota, presquota);
+					   pquota, presquota);
 }
 
 /* extract a file handle from a buffer.
@@ -227,6 +214,33 @@ void nullfs_export_ops_init(struct export_ops *ops)
 	ops->set_quota = set_quota;
 }
 
+struct subfsal_args {
+	char *name;
+	void *fsal_node;
+};
+
+static struct config_item sub_fsal_params[] = {
+	CONF_ITEM_STR("name", 1, 10, NULL,
+		      subfsal_args, name),
+	CONFIG_EOL
+};
+
+static struct config_item export_params[] = {
+	CONF_ITEM_NOOP("name"),
+	CONF_RELAX_BLOCK("FSAL", sub_fsal_params,
+			 noop_conf_init, noop_conf_commit,
+			 subfsal_args, fsal_node),
+	CONFIG_EOL
+};
+
+static struct config_block export_param = {
+	.dbus_interface_name = "org.ganesha.nfsd.config.fsal.nullfs-export%d",
+	.blk_desc.name = "FSAL",
+	.blk_desc.type = CONFIG_BLOCK,
+	.blk_desc.u.blk.init = noop_conf_init,
+	.blk_desc.u.blk.params = export_params,
+	.blk_desc.u.blk.commit = noop_conf_commit
+};
 
 /* create_export
  * Create an export point and return a handle to it to be kept
@@ -236,56 +250,79 @@ void nullfs_export_ops_init(struct export_ops *ops)
  */
 
 fsal_status_t nullfs_create_export(struct fsal_module *fsal_hdl,
-				   const char *export_path,
-				   const char *fs_specific,
-				   struct exportlist *exp_entry,
-				   struct fsal_module *next_fsal,
-				   struct fsal_up_vector *up_ops,
-				   struct fsal_export **export)
+				   void *parse_node,
+				   const struct fsal_up_vector *up_ops)
 {
 	fsal_status_t expres;
 	struct fsal_module *fsal_stack;
+	struct nullfs_fsal_export *myself;
+	struct subfsal_args subfsal;
+	struct config_error_type err_type;
+	int retval;
 
-	/* We use the parameter passed as a string in fs_specific
-	 *  to know which FSAL is to be loaded */
-	fsal_stack = lookup_fsal(fs_specific);
+	/* process our FSAL block to get the name of the fsal
+	 * underneath us.
+	 */
+	retval = load_config_from_node(parse_node,
+				       &export_param,
+				       &subfsal,
+				       true,
+				       &err_type);
+	if (retval != 0)
+		return fsalstat(ERR_FSAL_INVAL, 0);
+	fsal_stack = lookup_fsal(subfsal.name);
 	if (fsal_stack == NULL) {
 		LogMajor(COMPONENT_FSAL,
 			 "nullfs_create_export: failed to lookup for FSAL %s",
-			 fs_specific);
+			 subfsal.name);
 		return fsalstat(ERR_FSAL_INVAL, EINVAL);
 	}
 
-	expres =
-	    fsal_stack->ops->create_export(fsal_stack, export_path, fs_specific,
-					   exp_entry, NULL, up_ops, export);
+	myself = gsh_calloc(1, sizeof(struct nullfs_fsal_export));
+	if (myself == NULL) {
+		LogMajor(COMPONENT_FSAL,
+			 "Could not allocate memory for export %s",
+			 op_ctx->export->fullpath);
+		return fsalstat(ERR_FSAL_NOMEM, ENOMEM);
+	}
 
+	expres = fsal_stack->ops->create_export(fsal_stack,
+						subfsal.fsal_node,
+						up_ops);
+	fsal_put(fsal_stack);
 	if (FSAL_IS_ERROR(expres)) {
 		LogMajor(COMPONENT_FSAL,
-			 "nullfs_create_export: failed to call create_export on underlying FSAL %s",
-			 fs_specific);
+			 "Failed to call create_export on underlying FSAL %s",
+			 subfsal.name);
+		gsh_free(myself);
 		return expres;
 	}
 
+	myself->sub_export = op_ctx->fsal_export;
 	/* Init next_ops structure */
 	next_ops.exp_ops = gsh_malloc(sizeof(struct export_ops));
 	next_ops.obj_ops = gsh_malloc(sizeof(struct fsal_obj_ops));
 	next_ops.ds_ops = gsh_malloc(sizeof(struct fsal_ds_ops));
 
-	memcpy(next_ops.exp_ops, (*export)->ops, sizeof(struct export_ops));
-	memcpy(next_ops.obj_ops, (*export)->obj_ops,
+	memcpy(next_ops.exp_ops,
+	       myself->sub_export->ops,
+	       sizeof(struct export_ops));
+	memcpy(next_ops.obj_ops,
+	       myself->sub_export->obj_ops,
 	       sizeof(struct fsal_obj_ops));
-	memcpy(next_ops.ds_ops, (*export)->ds_ops, sizeof(struct fsal_ds_ops));
+	memcpy(next_ops.ds_ops,
+	       myself->sub_export->ds_ops,
+	       sizeof(struct fsal_ds_ops));
 	next_ops.up_ops = up_ops;
 
-	/* End of tmp code */
+	/*	End of tmp code */
 
-	nullfs_export_ops_init((*export)->ops);
-	nullfs_handle_ops_init((*export)->obj_ops);
+	nullfs_export_ops_init(myself->export.ops);
+	nullfs_handle_ops_init(myself->export.obj_ops);
 
 	/* lock myself before attaching to the fsal.
 	 * keep myself locked until done with creating myself.
 	 */
-
+	op_ctx->fsal_export = &myself->export;
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }

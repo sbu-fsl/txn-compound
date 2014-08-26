@@ -51,7 +51,6 @@
 #include "nfs23.h"
 #include "nfs4.h"
 #include "fsal.h"
-#include "nfs_tools.h"
 #include "nfs_exports.h"
 #include "nfs_file_handle.h"
 #include "nfs_dupreq.h"
@@ -348,9 +347,7 @@ int sockaddr_cmpf(sockaddr_t *addr1, sockaddr_t *addr2,
 		struct sockaddr_in6 *in2 = (struct sockaddr_in6 *)addr2;
 		int acmp = memcmp(in1->sin6_addr.s6_addr,
 				  in2->sin6_addr.s6_addr,
-				  sizeof(struct sockaddr_in6));
-		if (acmp < 1)
-			return -1;
+				  sizeof(struct in6_addr));
 		if (acmp == 0) {
 			if (ignore_port)
 				return 0;
@@ -360,8 +357,8 @@ int sockaddr_cmpf(sockaddr_t *addr1, sockaddr_t *addr2,
 			if (in1->sin6_port == in2->sin6_port)
 				return 0;
 			return 1;
-		}
-		return 1;
+		} else
+			return acmp < 0 ? -1 : 1;
 	}
 	default:
 		/* unhandled AF */

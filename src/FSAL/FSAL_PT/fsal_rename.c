@@ -1,12 +1,14 @@
-// ----------------------------------------------------------------------------
-// Copyright IBM Corp. 2012, 2012
-// All Rights Reserved
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// Filename:    fsal_rename.c
-// Description: Common FSI IPC Client and Server definitions
-// Author:      FSI IPC dev team
-// ----------------------------------------------------------------------------
+/*
+ * ----------------------------------------------------------------------------
+ * Copyright IBM Corp. 2012, 2012
+ * All Rights Reserved
+ * ----------------------------------------------------------------------------
+ * ----------------------------------------------------------------------------
+ * Filename:    fsal_rename.c
+ * Description: Common FSI IPC Client and Server definitions
+ * Author:      FSI IPC dev team
+ * ----------------------------------------------------------------------------
+ */
 
 /*
  * vim:noexpandtab:shiftwidth=8:tabstop=8:
@@ -28,7 +30,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
  *
  * -------------
  */
@@ -63,16 +65,15 @@
  *        - Another error code if an error occured.
  */
 
-fsal_status_t PTFSAL_rename(struct fsal_obj_handle * old_hdl,	/* IN */
+fsal_status_t PTFSAL_rename(struct fsal_obj_handle *old_hdl,	/* IN */
 			    const char *p_old_name,	/* IN */
-			    struct fsal_obj_handle * new_hdl,	/* IN */
+			    struct fsal_obj_handle *new_hdl,	/* IN */
 			    const char *p_new_name,	/* IN */
-			    const struct req_op_context * p_context)
+			    const struct req_op_context *p_context)
 {				/* IN */
 
 	int rc, errsv;
 	struct stat st;
-	int mount_fd;
 	struct pt_fsal_obj_handle *old_pt_hdl, *new_pt_hdl;
 	int stat_rc;
 
@@ -81,26 +82,23 @@ fsal_status_t PTFSAL_rename(struct fsal_obj_handle * old_hdl,	/* IN */
 	/* sanity checks.
 	 * note : src/tgt_dir_attributes are optional.
 	 */
-	if (!old_hdl || !new_hdl || !p_old_name || !p_new_name || !p_context) {
+	if (!old_hdl || !new_hdl || !p_old_name || !p_new_name || !p_context)
 		return fsalstat(ERR_FSAL_FAULT, 0);
-	}
 
 	old_pt_hdl =
 	    container_of(old_hdl, struct pt_fsal_obj_handle, obj_handle);
 	new_pt_hdl =
 	    container_of(new_hdl, struct pt_fsal_obj_handle, obj_handle);
-	mount_fd = pt_get_root_fd(old_hdl->export);
 
 	/* build file paths */
 	memset(&st, 0, sizeof(st));
 	stat_rc =
-	    ptfsal_stat_by_handle(p_context, old_pt_hdl->obj_handle.export,
+	    ptfsal_stat_by_handle(p_context, p_context->fsal_export,
 				  old_pt_hdl->handle, &st);
 
 	errsv = errno;
-	if (stat_rc) {
+	if (stat_rc)
 		return fsalstat(posix2fsal_error(errsv), errsv);
-	}
 
   /*************************************
    * Rename the file on the filesystem *
@@ -109,9 +107,8 @@ fsal_status_t PTFSAL_rename(struct fsal_obj_handle * old_hdl,	/* IN */
 			   p_new_name);
 	errsv = errno;
 
-	if (rc) {
-		return fsalstat(posix2fsal_error(errsv), errsv);;
-	}
+	if (rc)
+		return fsalstat(posix2fsal_error(errsv), errsv);
 
 	/* OK */
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);

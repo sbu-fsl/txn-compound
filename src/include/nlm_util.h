@@ -25,11 +25,9 @@
 #ifndef _NLM_UTIL_H
 #define _NLM_UTIL_H
 
-#include "nlm_list.h"
+#include "ganesha_list.h"
 #include "nlm4.h"
 #include "sal_functions.h"
-
-bool nlm_block_data_to_export(state_block_data_t *block_data);
 
 extern const char *lock_result_str(int rc);
 extern netobj *copy_netobj(netobj *dst, netobj *src);
@@ -60,8 +58,7 @@ extern void netobj_to_string(netobj *obj, char *buffer, int maxlen);
  */
 int nlm_process_parameters(struct svc_req *, bool,
 			   nlm4_lock *, fsal_lock_param_t *,
-			   struct req_op_context *,
-			   cache_entry_t **, exportlist_t *,
+			   cache_entry_t **,
 			   care_t, state_nsm_client_t **,
 			   state_nlm_client_t **,
 			   state_owner_t **,
@@ -69,7 +66,6 @@ int nlm_process_parameters(struct svc_req *, bool,
 
 int nlm_process_share_parms(struct svc_req *req, nlm4_share *share,
 			    struct fsal_export *exp_hdl,
-			    struct req_op_context *req_ctx,
 			    cache_entry_t **ppentry, care_t care,
 			    state_nsm_client_t **ppnsm_client,
 			    state_nlm_client_t **ppnlm_client,
@@ -81,7 +77,6 @@ void nlm_process_conflict(nlm4_holder *nlm_holder, state_owner_t *holder,
 nlm4_stats nlm_convert_state_error(state_status_t status);
 
 state_status_t nlm_granted_callback(cache_entry_t *pentry,
-				    struct req_op_context *req_ctx,
 				    state_lock_entry_t *lock_entry);
 
 #endif				/* _NLM_UTIL_H */

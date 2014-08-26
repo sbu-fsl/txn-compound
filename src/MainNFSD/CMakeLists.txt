@@ -23,7 +23,7 @@ SET(MainServices_STAT_SRCS
    nfs_rpc_tcp_socket_manager_thread.c
    nfs_init.c
    nfs_reaper_thread.c
-   ../Protocols/client_mgr.c
+   ../support/client_mgr.c
 )
 
 if(USE_9P)
@@ -68,12 +68,10 @@ add_library(MainServices STATIC ${MainServices_STAT_SRCS})
 # present and available for runtime linkage.
 
 set(fsal_CORE_SRCS
-   ../FSAL/fsal_errors.c
    ../FSAL/fsal_convert.c
-   ../FSAL/fsal_commonlib.c
+   ../FSAL/commonlib.c
    ../FSAL/fsal_manager.c
    ../FSAL/access_check.c
-   ../FSAL/common_functions.c
    ../FSAL/fsal_config.c
    ../FSAL/default_methods.c
    ../FSAL/common_pnfs.c
@@ -98,7 +96,7 @@ target_link_libraries(ganesha.nfsd
   MainServices
   ${PROTOCOLS}
   ${GANESHA_CORE}
-  ConfigParsing
+  config_parsing
   ${LIBTIRPC_LIBRARIES}
   ${SYSTEM_LIBRARIES}
 )

@@ -1,4 +1,5 @@
 /*
+ * vim:noexpandtab:shiftwidth=8:tabstop=8:
  *
  *
  * Copyright CEA/DAM/DIF  (2008)
@@ -47,8 +48,6 @@
 #include "nfs4.h"
 #include "fsal_types.h"
 
-struct exportlist;
-
 /**
  * @brief An enumeration of protocols in the NFS family
  */
@@ -60,11 +59,6 @@ typedef enum protos {
 	P_RQUOTA,		/*< RQUOTA (for v3) */
 	P_COUNT			/*< Number of protocols */
 } protos;
-
-/**
- * @brief Divisions in state and clientid tables.
- */
-#define PRIME_STATE 17
 
 /**
  * @defgroup config_core Structure and defaults for NFS_Core_Param
@@ -81,11 +75,6 @@ typedef enum protos {
  * @brief Default RQUOTA port.
  */
 #define RQUOTA_PORT 875
-
-/**
- * @brief Constant naming this block
- */
-#define CONF_LABEL_NFS_CORE "NFS_Core_Param"
 
 /**
  * @brief Default value for core_param.nb_worker
@@ -199,9 +188,6 @@ typedef struct nfs_core_param {
 	/** Number of worker threads.  Set to NB_WORKER_DEFAULT by
 	    default and changed with the Nb_Worker option. */
 	uint32_t nb_worker;
-	/** Maximum core dump size for Ganesha.  Set to -1 by default
-	    and configured with the Core_Dump_Size option. */
-	size_t core_dump_size;
 	/** For NFSv3, whether to drop rather than reply to requests
 	    yielding I/O errors.  True by default and settable with
 	    Drop_IO_Errors.  As this generally results in client
@@ -317,11 +303,10 @@ typedef struct nfs_core_param {
 		uint32_t max_recv_buffer_size;
 		/** Idle timeout (seconds).  Defaults to 5m */
 		uint32_t idle_timeout_s;
+		/** TIRPC ioq max simultaneous io threads.  Defaults to
+		    200 and settable by RPC_Ioq_ThrdMax. */
+		uint32_t ioq_thrd_max;
 	} rpc;
-	/** Interval (in seconds) at which to report an unusually
-	    long.  Defaults to 10.  Settable by
-	    Long_Processing_Threshold. */
-	uint64_t long_processing_threshold;
 	/** How long (in seconds) to let unused decoder threads wait before
 	    exiting.  Settable with Decoder_Fridge_Expiration_Delay. */
 	time_t decoder_fridge_expiration_delay;
@@ -347,6 +332,15 @@ typedef struct nfs_core_param {
 	/** Whether to support the Remote Quota protocol.  Defaults
 	    to true and is settable with Enable_RQUOTA. */
 	bool enable_RQUOTA;
+	/** Whether to use fast stats.  Defaults to false. */
+	bool enable_FASTSTATS;
+	/** How long the server will trust information it got by
+	    calling getgroups() when "Manage_Gids = TRUE" is
+	    used in a export entry. */
+	time_t manage_gids_expiration;
+	/** Path to the directory containing server specific
+	    modules.  In particular, this is where FSALs live. */
+	char *ganesha_modules_loc;
 } nfs_core_parameter_t;
 
 /** @} */
@@ -356,11 +350,6 @@ typedef struct nfs_core_param {
  *
  * @{
  */
-
-/**
- * @brief Label for NFSv4 config block
- */
-#define CONF_LABEL_NFS_VERSION4 "NFSv4"
 
 /**
  * @brief Default value for lease_lifetime
@@ -377,15 +366,13 @@ typedef struct nfs_core_param {
  */
 #define DOMAINNAME_DEFAULT "localdomain"
 
-/**
- * @brief Default value of idmapconf.
- */
-#define IDMAPCONF_DEFAULT "/etc/idmapd.conf"
-
 typedef struct nfs_version4_parameter {
 	/** Whether to disable the NFSv4 grace period.  Defaults to
 	    false and settable with Graceless. */
 	bool graceless;
+	/** Whether to grace period handled by FSAL.  Defaults to
+	    false and settable with FSAL_Grace. */
+	bool fsal_grace;
 	/** The NFSv4 lease lifetime.  Defaults to
 	    LEASE_LIFETIME_DEFAULT and is settable with
 	    Lease_Lifetime. */
@@ -408,220 +395,12 @@ typedef struct nfs_version4_parameter {
 	    group identifiers.  Defaults to true and is settable with
 	    Allow_Numeric_Owners. */
 	bool allow_numeric_owners;
+	/** Whether to allow delegations. Defaults to false and settable
+	    with Delegations */
+	bool allow_delegations;
 } nfs_version4_parameter_t;
 
 /** @} */
-
-/**
- * @defgroup config_9p Structure and defaults for _9P
- *
- * @{
- */
-
-#ifdef _USE_9P
-
-/**
- * @brief Label for 9p configuration block
- */
-#define CONF_LABEL_9P "_9P"
-
-/**
- * @brief Default value for _9p_tcp_port
- */
-#define _9P_TCP_PORT 564
-
-/**
- * @brief Default value for _9p_rdma_port
- */
-#define _9P_RDMA_PORT 5640
-
-/**
- * @brief Default value for _9p_tcp_msize
- */
-#define _9P_TCP_MSIZE 65536
-
-/**
- * @brief Default value for _9p_rdma_msize
- */
-#define _9P_RDMA_MSIZE 1048576
-
-/**
- * @brief 9p configuration
- */
-
-typedef struct _9p_param {
-	/** TCP port for 9p operations.  Defaults to _9P_TCP_PORT,
-	    settable by _9P_TCP_Port */
-	uint16_t _9p_tcp_port;
-	/** RDMA port for 9p operations.  Defaults to _9P_RDMA_PORT,
-	    settable by _9P_RDMA_Port */
-	uint16_t _9p_rdma_port;
-	/** Msize for 9P operation on tcp.  Defaults to _9P_TCP_MSIZE,
-	    settable by _9P_TCP_Msize */
-	uint32_t _9p_tcp_msize;
-	/** Msize for 9P operation on rdma.  Defaults to _9P_RDMA_MSIZE,
-	    settable by _9P_RDMA_Msize */
-	uint32_t _9p_rdma_msize;
-	/** Backlog for 9P operation on rdma.  Defaults to _9P_RDMA_BACKLOG,
-	    settable by _9P_RDMA_Backlog */
-	uint32_t _9p_rdma_backlog;
-} _9p_parameter_t;
-#endif				/* _USE_9P */
-
-/** @} */
-
-/**
- * @defgroup config_cache_inode Structure and defaults for Cache_Inode
- *
- * @{
- */
-
-/**
- * @brief Block label for Cache_Inode configuration
- */
-
-#define CONF_LABEL_CACHE_INODE "CacheInode"
-
-/**
- * @brief Determine whether inode data, such as attributes, expire.
- */
-
-typedef enum cache_inode_expire_type {
-	CACHE_INODE_EXPIRE = 0,	/*< Data expire when they have been
-				   refreshed less recently than grace
-				   period for their type allows. */
-	CACHE_INODE_EXPIRE_NEVER = 1,	/*< Data never expire based on
-					   time. */
-	CACHE_INODE_EXPIRE_IMMEDIATE = 2	/*< Data are always treated
-						   as expired. */
-} cache_inode_expire_type_t;
-
-/**
- * @brief Structure to hold cache_inode paramaters
- */
-
-typedef struct cache_inode_parameter {
-	/**
-	 * Parameters used for lock cookie hash table initialization.
-	 *
-	 * @todo Switch the cookie table to something else and get rid
-	 * of this.
-	 */
-	hash_parameter_t cookie_param;
-	/** Partitions in the Cache_Inode tree.  Defaults to 7,
-	 * settable with NParts. */
-	uint32_t nparts;
-	/** Expiration type for attributes.  Defaults to never,
-	    settable with Attr_Expiration_Time. */
-	cache_inode_expire_type_t expire_type_attr;
-	/** Expiration time interval in seconds for attributes.  Settable with
-	    Attr_Expiration_Time. */
-	time_t grace_period_attr;
-	/** Use getattr for directory invalidation.  Defaults to
-	    false.  Settable with Use_Getattr_Directory_Invalidation. */
-	bool getattr_dir_invalidation;
-	/** High water mark for cache entries.  Defaults to 100000,
-	    settable by Entries_HWMark. */
-	uint32_t entries_hwmark;
-	/** Base interval in seconds between runs of the LRU cleaner
-	    thread. Defaults to 60, settable with LRU_Run_Interval. */
-	time_t lru_run_interval;
-	/** Whether to cache open files.  Defaults to true, settable
-	    with Cache_FDs. */
-	bool use_fd_cache;
-	/** The percentage of the system-imposed maximum of file
-	    descriptors at which Ganesha will deny requests.
-	    Defaults to 99, settable with FD_Limit_Percent. */
-	uint32_t fd_limit_percent;
-	/** The percentage of the system-imposed maximum of file
-	    descriptors above which Ganesha will make greater efforts
-	    at reaping. Defaults to 90, settable with
-	    FD_HWMark_Percent. */
-	uint32_t fd_hwmark_percent;
-	/** The percentage of the system-imposed maximum of file
-	    descriptors below which Ganesha will not reap file
-	    descriptonot reap file descriptors.  Defaults to 50,
-	    settable with FD_LWMark_Percent. */
-	uint32_t fd_lwmark_percent;
-	/** Roughly, the amount of work to do on each pass through the
-	    thread under normal conditions.  (Ideally, a multiple of
-	    the number of lanes.)  Defaults to 1000, settable with
-	    Reaper_Work. */
-	uint32_t reaper_work;
-	/** The largest window (as a percentage of the system-imposed
-	    limit on FDs) of work that we will do in extremis.
-	    Defaults to 40, settable with Biggest_Window */
-	uint32_t biggest_window;
-	/** Percentage of progress toward the high water mark required
-	    in in a pass through the thread when in extremis.
-	    Defaults to 5, settable with Required_Progress. */
-	uint32_t required_progress;
-	/** Number of failures to approach the high watermark before
-	    we disable caching, when in extremis.  Defaults to 8,
-	    settable with Futility_Count */
-	uint32_t futility_count;
-} cache_inode_parameter_t;
-
-/** @} */
-
-/**
- * @defgroup config_ipnamemap Structure and defaults for NFS_IP_Name
- *
- * @{
- */
-
-/**
- * @brief Block label for NFS_IP_Name
- */
-
-#define CONF_LABEL_NFS_IP_NAME "NFS_IP_Name"
-
-/**
- * @brief Label for host mapping stanza
- */
-#define CONF_LABEL_IP_NAME_HOSTS "Hosts"
-
-/**
- * @brief Default index size for IP-Name hash
- */
-#define PRIME_IP_NAME 17
-
-/**
- * @brief Default value for ip_name_param.expiration-time
- */
-#define IP_NAME_EXPIRATION 36000
-
-/**
- * @brief NFS_IP_Name configuration stanza
- */
-
-typedef struct nfs_ip_name_param {
-	/** Configuration for hash table for NFS Name/IP map.
-	    Defautl index size is PRIME_IP_NAME, settable with
-	    Index_Size. */
-	hash_parameter_t hash_param;
-	/** Expiration time for ip-name mappings.  Defautls to
-	    IP_NAME_Expiration, and settable with Expiration_Time. */
-	uint32_t expiration_time;
-	/** File holding mappings to preload.  Defautls to NULL,
-	    settable with Map. */
-	char *mapfile;
-} nfs_ip_name_parameter_t;
-
-/** @} */
-
-/**
- * @brief Client ID hash parameters
- */
-
-typedef struct nfs_client_id_param {
-	/** Parameters for confirmed client IDs */
-	hash_parameter_t cid_confirmed_hash_param;
-	/** Parameters for unconfirmed client IDs */
-	hash_parameter_t cid_unconfirmed_hash_param;
-	/** Parameters for client owner records */
-	hash_parameter_t cr_hash_param;
-} nfs_client_id_parameter_t;
 
 typedef struct nfs_param {
 	/** NFS Core parameters, settable in the NFS_Core_Param
@@ -629,38 +408,10 @@ typedef struct nfs_param {
 	nfs_core_parameter_t core_param;
 	/** NFSv4 specific parameters, settable in the NFSv4 stanza. */
 	nfs_version4_parameter_t nfsv4_param;
-#ifdef _USE_9P
-	/* 9P parameters, settable in the 9P stanza. */
-	_9p_parameter_t _9p_param;
-#endif
-	/** File cache configuration, settable in the CacheInode
-	    stanza. */
-	cache_inode_parameter_t cache_param;
-	/** IP-Name map configuration, settable in the NFS_IP_Name
-	    stanza. */
-	nfs_ip_name_parameter_t ip_name_param;
 #ifdef _HAVE_GSSAPI
 	/** kerberos configuration.  Settable in the NFS_KRB5 stanza. */
 	nfs_krb5_parameter_t krb5_param;
 #endif				/* _HAVE_GSSAPI */
-	/** Client ID cache parameters  */
-	nfs_client_id_parameter_t client_id_param;
-	/** State ID cache parameters  */
-	hash_parameter_t state_id_param;
-	/** Session ID cache parameters  */
-	hash_parameter_t session_id_param;
-	/** NFS owner cache parameters  */
-	hash_parameter_t nfs4_owner_param;
-	/** NSM cache parameters  */
-	hash_parameter_t nsm_client_hash_param;
-	/** NLM client cache parameters  */
-	hash_parameter_t nlm_client_hash_param;
-	/** NLM owner cache parameters  */
-	hash_parameter_t nlm_owner_hash_param;
-#ifdef _USE_9P
-	/** 9P owner cache parameters  */
-	hash_parameter_t _9p_owner_hash_param;
-#endif				/* _USE_9P */
 } nfs_parameter_t;
 
 extern nfs_parameter_t nfs_param;

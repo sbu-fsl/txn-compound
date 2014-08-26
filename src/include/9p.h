@@ -67,13 +67,6 @@ typedef uint64_t u64;
 #define _9P_BLK_SIZE 4096
 #define _9P_IOUNIT   0
 
-/* number of receive buffers per child */
-#define _9P_RDMA_BUFF_NUM 32
-/* shared pool for sends - optimal when set to number of workers
- * (todo: use conf value) */
-#define _9P_RDMA_OUT 32
-#define _9P_RDMA_BACKLOG 10
-
 /**
  * enum _9p_msg_t - 9P message types
  * @_9P_TLERROR: not used
@@ -293,7 +286,7 @@ struct _9p_fid {
 	u32 fid;
 	struct req_op_context op_context;
 	struct user_cred ucred;
-	exportlist_t *export;
+	struct group_data *gdata;
 	cache_entry_t *pentry;
 	struct _9p_qid qid;
 	cache_entry_t *ppentry;
@@ -343,7 +336,7 @@ struct _9p_flush_bucket {
 	struct glist_head list;
 };
 
-#define FLUSH_BUCKETS 64
+#define FLUSH_BUCKETS 32
 
 struct _9p_conn {
 	union trans_data {
@@ -354,7 +347,7 @@ struct _9p_conn {
 	} trans_data;
 	enum _9p_trans_type trans_type;
 	uint32_t refcount;
-	struct sockaddr_storage addrpeer;
+	struct gsh_client *client;
 	struct timeval birth;	/* This is useful if same sockfd is
 				   reused on socket's close/open */
 	struct _9p_fid *fids[_9P_FID_PER_CONN];
@@ -371,12 +364,17 @@ struct _9p_outqueue {
 	pthread_cond_t cond;
 };
 
-struct _9p_rdma_priv {
-	struct _9p_conn *pconn;
+struct _9p_rdma_priv_pernic {
+	struct ibv_mr *outmr;
+	struct ibv_mr *inmr;
 	uint8_t *rdmabuf;
 	msk_data_t *rdata;
+};
+
+struct _9p_rdma_priv {
+	struct _9p_conn *pconn;
 	struct _9p_outqueue *outqueue;
-	struct ibv_mr *outmr;
+	struct _9p_rdma_priv_pernic *pernic;
 };
 #define _9p_rdma_priv_of(x) ((struct _9p_rdma_priv *)x->private_data)
 #endif
@@ -558,19 +556,100 @@ do {                                                   \
 #define _9P_LOCK_FLAGS_BLOCK 1
 #define _9P_LOCK_FLAGS_RECLAIM 2
 
+
+/**
+ * @defgroup config_9p Structure and defaults for _9P
+ *
+ * @{
+ */
+
+/**
+ * @brief Default value for _9p_tcp_port
+ */
+#define _9P_TCP_PORT 564
+
+/**
+ * @brief Default value for _9p_rdma_port
+ */
+#define _9P_RDMA_PORT 5640
+
+/**
+ * @brief Default value for _9p_tcp_msize
+ */
+#define _9P_TCP_MSIZE 65536
+
+/**
+ * @brief Default value for _9p_rdma_msize
+ */
+#define _9P_RDMA_MSIZE 1048576
+
+/**
+ * @brief Default number of receive buffer per nic
+ */
+#define _9P_RDMA_INPOOL_SIZE 64
+
+/**
+ * @brief Default number of send buffer (total, not per nic)
+ *
+ * shared pool for sends - optimal when set oh-so-slightly
+ * higher than the number of worker threads
+ */
+#define _9P_RDMA_OUTPOOL_SIZE 32
+
+/**
+ * @brief Default rdma connection backlog
+ * (number of pending connection requests)
+ */
+#define _9P_RDMA_BACKLOG 10
+
+
+/**
+ * @brief 9p configuration
+ */
+
+struct _9p_param {
+	/** TCP port for 9p operations.  Defaults to _9P_TCP_PORT,
+	    settable by _9P_TCP_Port */
+	uint16_t _9p_tcp_port;
+	/** RDMA port for 9p operations.  Defaults to _9P_RDMA_PORT,
+	    settable by _9P_RDMA_Port */
+	uint16_t _9p_rdma_port;
+	/** Msize for 9P operation on tcp.  Defaults to _9P_TCP_MSIZE,
+	    settable by _9P_TCP_Msize */
+	uint32_t _9p_tcp_msize;
+	/** Msize for 9P operation on rdma.  Defaults to _9P_RDMA_MSIZE,
+	    settable by _9P_RDMA_Msize */
+	uint32_t _9p_rdma_msize;
+	/** Backlog for 9P rdma connections.  Defaults to _9P_RDMA_BACKLOG,
+	    settable by _9P_RDMA_Backlog */
+	uint16_t _9p_rdma_backlog;
+	/** Input buffer pool size for 9P rdma connections.
+	    Defaults to _9P_RDMA_INPOOL_SIZE,
+	    settable by _9P_RDMA_Inpool_Size */
+	uint16_t _9p_rdma_inpool_size;
+	/** Output buffer pool size for 9P rdma connections.
+	    Defaults to _9P_RDMA_OUTPOOL_SIZE,
+	    settable by _9P_RDMA_OutPool_Size */
+	uint16_t _9p_rdma_outpool_size;
+
+};
+
+
+/** @} */
+
+/* protocol parameter tables */
+extern struct _9p_param _9p_param;
+extern struct config_block _9p_param_blk;
+
 /* service functions */
-int _9p_read_conf(config_file_t in_config, _9p_parameter_t *pparam);
-int _9p_init(_9p_parameter_t *pparam);
+int _9p_init(void);
 
 /* Tools functions */
 int _9p_tools_get_req_context_by_uid(u32 uid, struct _9p_fid *pfid);
 int _9p_tools_get_req_context_by_name(int uname_len, char *uname_str,
 				      struct _9p_fid *pfid);
 int _9p_tools_errno(cache_inode_status_t cache_status);
-void _9p_tools_fsal_attr2stat(struct attrlist *pfsalattr, struct stat *pstat);
-void _9p_tools_acess2fsal(u32 *paccessin, fsal_accessflags_t *pfsalaccess);
 void _9p_openflags2FSAL(u32 *inflags, fsal_openflags_t *outflags);
-void _9p_chomp_attr_value(char *str, size_t size);
 int _9p_tools_clunk(struct _9p_fid *pfid);
 void _9p_cleanup_fids(struct _9p_conn *conn);
 

@@ -56,10 +56,10 @@
 #include "nfs_core.h"
 #include "nfs4.h"
 #include "fsal.h"
-#include "nfs_tools.h"
 #include "nfs_exports.h"
 #include "nfs_file_handle.h"
 #include "sal_functions.h"
+#include "nfs_proto_tools.h"
 
 /**
  * @brief Hash table for stateids.
@@ -198,21 +198,29 @@ uint64_t state_id_rbt_hash_func(hash_parameter_t *hparam,
 	return val;
 }
 
+static hash_parameter_t state_id_param = {
+	.index_size = PRIME_STATE,
+	.hash_func_key = state_id_value_hash_func,
+	.hash_func_rbt = state_id_rbt_hash_func,
+	.compare_key = compare_state_id,
+	.key_to_str = display_state_id_key,
+	.val_to_str = display_state_id_val,
+	.flags = HT_FLAG_CACHE,
+};
+
 /**
  * @brief Init the hashtable for stateids
- *
- * @param[in] param Parameter used to init the stateid table
  *
  * @retval 0 if successful.
  * @retval -1 on failure.
  */
-int nfs4_Init_state_id(hash_parameter_t *param)
+int nfs4_Init_state_id(void)
 {
 	/* Init  all_one */
 	memset(all_zero, 0, OTHERSIZE);
 	memset(all_ones, 0xFF, OTHERSIZE);
 
-	ht_state_id = hashtable_init(param);
+	ht_state_id = hashtable_init(&state_id_param);
 
 	if (ht_state_id == NULL) {
 		LogCrit(COMPONENT_STATE, "Cannot init State Id cache");
@@ -319,18 +327,19 @@ int nfs4_State_Get_Pointer(char other[OTHERSIZE], state_t **state_data)
  *
  * @param[in] other stateid4.other
  *
- * @retval 1 if ok.
- * @retval 0 if not ok.
+ * This really can't fail.
  */
-int nfs4_State_Del(char other[OTHERSIZE])
+void nfs4_State_Del(char other[OTHERSIZE])
 {
 	struct gsh_buffdesc buffkey, old_key, old_value;
+	hash_error_t err;
 
 	buffkey.addr = other;
 	buffkey.len = OTHERSIZE;
 
-	if (HashTable_Del(ht_state_id, &buffkey, &old_key, &old_value) ==
-	    HASHTABLE_SUCCESS) {
+	err = HashTable_Del(ht_state_id, &buffkey, &old_key, &old_value);
+
+	if (err == HASHTABLE_SUCCESS) {
 		/* free the key that was stored in hash table */
 		LogFullDebug(COMPONENT_STATE, "Freeing stateid key %p",
 			     old_key.addr);
@@ -339,10 +348,11 @@ int nfs4_State_Del(char other[OTHERSIZE])
 		/* State is managed in stuff alloc, no free is needed for
 		 * old_value.addr
 		 */
-
-		return 1;
-	} else
-		return 0;
+	} else {
+		LogCrit(COMPONENT_STATE,
+			"Failure to delete state %s",
+			hash_table_err_to_str(err));
+	}
 }
 
 /**
@@ -369,7 +379,12 @@ nfsstat4 nfs4_Check_Stateid(stateid4 *stateid, cache_entry_t *entry,
 	uint32_t epoch = 0;
 	uint64_t epoch_low = ServerEpoch & 0xFFFFFFFF;
 	state_t *state2 = NULL;
-	char str[OTHERSIZE * 2 + 1 + 6];
+
+	/* string str has to accomodate stateid->other(OTHERSIZE * 2 ),
+	 * stateid->seqid(max 10 bytes),
+	 * a colon (:) and a terminating null character.
+	 */
+	char str[OTHERSIZE * 2 + 10 + 2];
 	int32_t diff;
 	clientid4 clientid;
 	nfs_client_id_t *pclientid;
@@ -663,8 +678,6 @@ nfsstat4 nfs4_Check_Stateid(stateid4 *stateid, cache_entry_t *entry,
 
 	if ((flags & STATEID_SPECIAL_FREE) != 0) {
 		switch (state2->state_type) {
-			break;
-
 		case STATE_TYPE_LOCK:
 			PTHREAD_RWLOCK_rdlock(&state2->state_entry->state_lock);
 			if (glist_empty

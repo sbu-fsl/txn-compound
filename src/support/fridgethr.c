@@ -489,6 +489,28 @@ static bool fridgethr_freeze(struct fridgethr *fr,
 	   there's nothing more to do than: */
 	return true;
 }
+/**
+ * @brief Operation context.
+ *
+ * This carries everything relevant to a protocol operation
+ * Since it is a thread local, it is exclusively in the thread context
+ * and cannot be shared with another thread.
+ *
+ * This will always point to a valid structure.  When its contents go out
+ * of scope this is set to NULL but since dereferencing with this expectation,
+ * a SEGV will result.  This will point to one of three structures:
+ *
+ * 1. The req_ctx declared in rpc_execute().  This is the state for any NFS op.
+ *
+ * 2. The op_context declared/referenced in a 9P fid.
+ *    Same as req_ctx but for 9P operations.
+ *
+ * 3. A root context which is used for upcalls, exports bashing, and async
+ *    events that call functions that expect a context set up.
+ */
+
+__thread struct req_op_context *op_ctx;
+
 
 /**
  * @brief Initialization of a new thread in the fridge
@@ -581,16 +603,12 @@ static int fridgethr_spawn(struct fridgethr *fr,
 	/* The condition variable has/not been initialized */
 	bool conditioned = false;
 
-	PTHREAD_MUTEX_unlock(&fr->mtx);
 	fe = gsh_calloc(sizeof(struct fridgethr_entry), 1);
 	if (fe == NULL)
 		goto create_err;
 
-	/* Make a new thread */
-	++(fr->nthreads);
-
+	glist_init(&fe->thread_link);
 	fe->fr = fr;
-	glist_add_tail(&fr->thread_list, &fe->thread_link);
 	rc = pthread_mutex_init(&fe->ctx.mtx, NULL);
 	if (rc != 0) {
 		LogMajor(COMPONENT_THREAD,
@@ -628,14 +646,15 @@ static int fridgethr_spawn(struct fridgethr *fr,
 		     "fr %p created thread %u (nthreads %u nidle %u)", fr,
 		     (unsigned int)fe->ctx.id, fr->nthreads, fr->nidle);
 #endif
+	/* Make a new thread */
+	++(fr->nthreads);
+
+	glist_add_tail(&fr->thread_list, &fe->thread_link);
+	PTHREAD_MUTEX_unlock(&fr->mtx);
 
 	return rc;
 
  create_err:
-
-	PTHREAD_MUTEX_lock(&fr->mtx);
-	--(fr->nthreads);
-	PTHREAD_MUTEX_unlock(&fr->mtx);
 
 	if (conditioned)
 		pthread_cond_destroy(&fe->ctx.cv);
@@ -645,6 +664,7 @@ static int fridgethr_spawn(struct fridgethr *fr,
 
 	if (fe != NULL)
 		gsh_free(fe);
+	PTHREAD_MUTEX_unlock(&fr->mtx);
 
 	return rc;
 }
@@ -789,11 +809,6 @@ static int fridgethr_block(struct fridgethr *fr,
 			}
 		}
 	} while (!dispatched && (rc == 0));
-	if (rc != 0) {
-		/* Get the fridge lock so we can decrement the count
-		   of waiters.  Plus, the caller expects it. */
-		PTHREAD_MUTEX_lock(&fr->mtx);
-	}
 	--(fr->deferment.block.waiters);
 	/* We check here, too, in case we get around to falling out
 	   after the last thread exited. */
@@ -830,6 +845,12 @@ int fridgethr_submit(struct fridgethr *fr,
 {
 	/* Return code */
 	int rc = 0;
+
+	if (fr == NULL) {
+		LogMajor(COMPONENT_THREAD,
+			 "Attempt to schedule job with no fridge thread");
+		return EPIPE;
+	}
 
 	PTHREAD_MUTEX_lock(&fr->mtx);
 	if (fr->command == fridgethr_comm_stop) {
@@ -1304,22 +1325,20 @@ int fridgethr_sync_command(struct fridgethr *fr, fridgethr_comm_t command,
 		ts.tv_sec += timeout;
 	}
 
- retry:
-	while ((rc == 0) && !done) {
-		if (timeout == 0)
+	while (!done) {
+		if (timeout == 0) {
 			rc = pthread_cond_wait(&cv, &mtx);
-		else
+			assert(rc == 0);
+		} else {
 			rc = pthread_cond_timedwait(&cv, &mtx, &ts);
+			if (rc == ETIMEDOUT)
+				LogMajor(COMPONENT_THREAD,
+					"Sync command seems to be stalled");
+			else
+				assert(rc == 0);
+		}
 	}
-
-	if (rc == EINTR) {
-		PTHREAD_MUTEX_lock(&mtx);
-		goto retry;
-	}
-
-	if (rc == 0)
-		PTHREAD_MUTEX_unlock(&mtx);
-
+	PTHREAD_MUTEX_unlock(&mtx);
 	return rc;
 }
 
@@ -1517,7 +1536,7 @@ int general_fridge_init(void)
 	frp.flavor = fridgethr_flavor_worker;
 	frp.deferment = fridgethr_defer_queue;
 
-	rc = fridgethr_init(&general_fridge, "General Use Fridge", &frp);
+	rc = fridgethr_init(&general_fridge, "Gen_Fridge", &frp);
 	if (rc != 0) {
 		LogMajor(COMPONENT_THREAD,
 			 "Unable to initialize general fridge, error code %d.",

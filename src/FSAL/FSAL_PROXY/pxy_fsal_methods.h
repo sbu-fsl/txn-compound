@@ -1,22 +1,21 @@
 #ifndef _PXY_FSAL_METHODS_H
 #define _PXY_FSAL_METHODS_H
 
-#ifdef _HANDLE_MAPPING
+#ifdef PROXY_HANDLE_MAPPING
 #include "handle_mapping/handle_mapping.h"
 #endif
 
-typedef struct {
+typedef struct pxy_client_params {
 	unsigned int retry_sleeptime;
-	unsigned int srv_addr;
+	struct sockaddr srv_addr;
 	unsigned int srv_prognum;
 	unsigned int srv_sendsize;
 	unsigned int srv_recvsize;
 	unsigned int srv_timeout;
 	unsigned short srv_port;
 	unsigned int use_privileged_client_port;
-	char srv_proto[MAXNAMLEN + 1];
-	char remote_principal[MAXNAMLEN + 1];
-	char keytab[MAXPATHLEN + 1];
+	char *remote_principal;
+	char *keytab;
 	unsigned int cred_lifetime;
 	unsigned int sec_type;
 	bool active_krb5;
@@ -24,7 +23,7 @@ typedef struct {
 	/* initialization info for handle mapping */
 	int enable_handle_mapping;
 
-#ifdef _HANDLE_MAPPING
+#ifdef PROXY_HANDLE_MAPPING
 	handle_map_param_t hdlmap;
 #endif
 } proxyfs_specific_initinfo_t;
@@ -32,7 +31,6 @@ typedef struct {
 struct pxy_fsal_module {
 	struct fsal_module module;
 	struct fsal_staticfsinfo_t fsinfo;
-	fsal_init_info_t init;
 	proxyfs_specific_initinfo_t special;
 /*       struct fsal_ops pxy_ops; */
 };
@@ -93,24 +91,19 @@ fsal_status_t pxy_remove_extattr_by_name(struct fsal_obj_handle *obj_hdl,
 					 const char *xattr_name);
 
 fsal_status_t pxy_lookup_path(struct fsal_export *exp_hdl,
-			      const struct req_op_context *opctx,
 			      const char *path,
 			      struct fsal_obj_handle **handle);
 
 fsal_status_t pxy_create_handle(struct fsal_export *exp_hdl,
-				const struct req_op_context *opctx,
 				struct gsh_buffdesc *hdl_desc,
 				struct fsal_obj_handle **handle);
 
 fsal_status_t pxy_create_export(struct fsal_module *fsal_hdl,
-				const char *export_path, const char *fs_options,
-				struct exportlist *exp_entry,
-				struct fsal_module *next_fsal,
-				const struct fsal_up_vector *up_ops,
-				struct fsal_export **export);
+				void *parse_node,
+				const struct fsal_up_vector *up_ops);
 
 fsal_status_t pxy_get_dynamic_info(struct fsal_export *,
-				   const struct req_op_context *,
+				   struct fsal_obj_handle *,
 				   fsal_dynamicfsinfo_t *);
 
 fsal_status_t pxy_extract_handle(struct fsal_export *, fsal_digesttype_t,

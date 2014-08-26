@@ -90,7 +90,7 @@ int _9p_walk(struct _9p_request_data *req9p, void *worker_data,
 		return _9p_rerror(req9p, worker_data, msgtag, EIO, plenout,
 				  preply);
 	}
-
+	op_ctx = &pfid->op_context;
 	pnewfid = gsh_calloc(1, sizeof(struct _9p_fid));
 	if (pnewfid == NULL)
 		return _9p_rerror(req9p, worker_data, msgtag, ERANGE, plenout,
@@ -108,7 +108,7 @@ int _9p_walk(struct _9p_request_data *req9p, void *worker_data,
 		pnewfid->from_attach = FALSE;
 
 		/* Increments refcount */
-		cache_inode_lru_ref(pnewfid->pentry, 0);
+		cache_inode_lru_ref(pnewfid->pentry, LRU_FLAG_NONE);
 	} else {
 		/* the walk is in fact a lookup */
 		pentry = pfid->pentry;
@@ -128,8 +128,7 @@ int _9p_walk(struct _9p_request_data *req9p, void *worker_data,
 
 			/* refcount +1 */
 			cache_status =
-			    cache_inode_lookup(pentry, name, &pfid->op_context,
-					       &pnewfid->pentry);
+			    cache_inode_lookup(pentry, name, &pnewfid->pentry);
 
 			if (pnewfid->pentry == NULL) {
 				gsh_free(pnewfid);
@@ -146,16 +145,18 @@ int _9p_walk(struct _9p_request_data *req9p, void *worker_data,
 
 		pnewfid->fid = *newfid;
 		pnewfid->op_context = pfid->op_context;
-		pnewfid->export = pfid->export;
 		pnewfid->ppentry = pfid->pentry;
-		strncpy(pnewfid->name, name, MAXNAMLEN);
+		strncpy(pnewfid->name, name, MAXNAMLEN-1);
+
+		/* gdata ref is not hold : the pfid, which use same gdata */
+		/*  will be clunked after pnewfid */
+		/* This clunk release the gdata */
+		pnewfid->gdata = pfid->gdata;
 
 		/* This is not a TATTACH fid */
 		pnewfid->from_attach = FALSE;
 
-		cache_status =
-		    cache_inode_fileid(pnewfid->pentry, &pfid->op_context,
-				       &fileid);
+		cache_status = cache_inode_fileid(pnewfid->pentry, &fileid);
 		if (cache_status != CACHE_INODE_SUCCESS) {
 			gsh_free(pnewfid);
 			return _9p_rerror(req9p, worker_data, msgtag,
@@ -186,7 +187,6 @@ int _9p_walk(struct _9p_request_data *req9p, void *worker_data,
 			break;
 
 		case DIRECTORY:
-		case FS_JUNCTION:
 			pnewfid->qid.type = _9P_QTDIR;
 			break;
 
@@ -206,6 +206,9 @@ int _9p_walk(struct _9p_request_data *req9p, void *worker_data,
 
 	/* As much qid as requested fid */
 	nwqid = nwname;
+
+	/* Hold refcount on gdata */
+	uid2grp_hold_group_data(pnewfid->gdata);
 
 	/* Build the reply */
 	_9p_setinitptr(cursor, preply, _9P_RWALK);

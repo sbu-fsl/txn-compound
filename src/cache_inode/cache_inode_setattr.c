@@ -41,6 +41,8 @@
 #include "cache_inode.h"
 #include "nfs4_acls.h"
 #include "FSAL/access_check.h"
+#include "nfs_exports.h"
+#include "export_mgr.h"
 
 /**
  * @brief Set the attributes for a file.
@@ -50,15 +52,13 @@
  *
  * @param[in]     entry   Entry whose attributes are to be set
  * @param[in,out] attr    Attributes to set/result of set
- * @param[in]     req_ctx FSAL credentials
  *
  * @retval CACHE_INODE_SUCCESS if operation is a success
  */
 cache_inode_status_t
 cache_inode_setattr(cache_entry_t *entry,
 		    struct attrlist *attr,
-		    bool is_open_write,
-		    struct req_op_context *req_ctx)
+		    bool is_open_write)
 {
 	struct fsal_obj_handle *obj_handle = entry->obj_handle;
 	fsal_status_t fsal_status = { 0, 0 };
@@ -70,7 +70,8 @@ cache_inode_setattr(cache_entry_t *entry,
 	/* True if we have taken the content lock on 'entry' */
 	bool content_locked = false;
 
-	if ((attr->mask & ATTR_SIZE) && (entry->type != REGULAR_FILE)) {
+	if ((attr->mask & (ATTR_SIZE | ATTR4_SPACE_RESERVED))
+	     && (entry->type != REGULAR_FILE)) {
 		LogWarn(COMPONENT_CACHE_INODE,
 			"Attempt to truncate non-regular file: type=%d",
 			entry->type);
@@ -78,8 +79,8 @@ cache_inode_setattr(cache_entry_t *entry,
 	}
 
 	/* Is it allowed to change times ? */
-	if (!obj_handle->export->ops->
-	    fs_supports(obj_handle->export, fso_cansettime)
+	if (!op_ctx->fsal_export->ops->fs_supports(op_ctx->fsal_export,
+						    fso_cansettime)
 	    &&
 	    (FSAL_TEST_MASK
 	     (attr->mask,
@@ -89,25 +90,23 @@ cache_inode_setattr(cache_entry_t *entry,
 	}
 
 	/* Get wrlock on attr_lock and verify attrs */
-	status = cache_inode_lock_trust_attrs(entry, req_ctx, true);
+	status = cache_inode_lock_trust_attrs(entry, true);
 	if (status != CACHE_INODE_SUCCESS)
 		return status;
 
 	/* Do permission checks */
-	status =
-	    cache_inode_check_setattr_perms(entry, attr, is_open_write,
-					    req_ctx);
+	status = cache_inode_check_setattr_perms(entry, attr, is_open_write);
 	if (status != CACHE_INODE_SUCCESS)
 		goto unlock;
 
-	if (attr->mask & ATTR_SIZE) {
+	if (attr->mask & (ATTR_SIZE | ATTR4_SPACE_RESERVED)) {
 		PTHREAD_RWLOCK_wrlock(&entry->content_lock);
 		content_locked = true;
 	}
 
 	saved_acl = obj_handle->attributes.acl;
 	before = obj_handle->attributes.change;
-	fsal_status = obj_handle->ops->setattrs(obj_handle, req_ctx, attr);
+	fsal_status = obj_handle->ops->setattrs(obj_handle, attr);
 	if (FSAL_IS_ERROR(fsal_status)) {
 		status = cache_inode_error_convert(fsal_status);
 		if (fsal_status.major == ERR_FSAL_STALE) {
@@ -117,7 +116,7 @@ cache_inode_setattr(cache_entry_t *entry,
 		}
 		goto unlock;
 	}
-	fsal_status = obj_handle->ops->getattrs(obj_handle, req_ctx);
+	fsal_status = obj_handle->ops->getattrs(obj_handle);
 	*attr = obj_handle->attributes;
 	if (FSAL_IS_ERROR(fsal_status)) {
 		status = cache_inode_error_convert(fsal_status);

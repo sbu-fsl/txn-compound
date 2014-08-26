@@ -1,26 +1,18 @@
-// ----------------------------------------------------------------------------
-// Copyright IBM Corp. 2012, 2012
-// All Rights Reserved
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// Filename:    fsal_create.c
-// Description: FSAL create operations implementation
-// Author:      FSI IPC dev team
-// ----------------------------------------------------------------------------
+/*
+ * ----------------------------------------------------------------------------
+ * Copyright IBM Corp. 2012, 2012
+ * All Rights Reserved
+ * ----------------------------------------------------------------------------
+ * ----------------------------------------------------------------------------
+ * Filename:    fsal_create.c
+ * Description: FSAL create operations implementation
+ * Author:      FSI IPC dev team
+ * ----------------------------------------------------------------------------
+ */
 /*
  * vim:noexpandtab:shiftwidth=4:tabstop=4:
  */
 
-/**
- *
- * \file    fsal_create.c
- * \author  $Author: leibovic $
- * \date    $Date: 2006/01/17 15:53:39 $
- * \version $Revision: 1.31 $
- * \brief   HPSS-FSAL type translation functions.
- *
- *
- */
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -33,7 +25,7 @@
 #include <fcntl.h>
 #include <fsal_api.h>
 
-// PTFSAL
+/* PTFSAL */
 #include "pt_ganesha.h"
 
 /**
@@ -68,12 +60,11 @@ fsal_status_t PTFSAL_create(struct fsal_obj_handle *dir_hdl,	/* IN */
 			    const char *p_filename,	/* IN */
 			    const struct req_op_context *p_context,	/* IN */
 			    uint32_t accessmode,	/* IN */
-			    ptfsal_handle_t * p_object_handle,	/* OUT */
+			    ptfsal_handle_t *p_object_handle,	/* OUT */
 			    struct attrlist *p_object_attributes)
 {				/* IN/OUT */
 
 	int errsv;
-	int mount_fd;
 	fsal_status_t status;
 	struct pt_fsal_obj_handle *pt_hdl;
 	mode_t unix_mode;
@@ -89,14 +80,13 @@ fsal_status_t PTFSAL_create(struct fsal_obj_handle *dir_hdl,	/* IN */
 		return fsalstat(ERR_FSAL_FAULT, 0);
 
 	pt_hdl = container_of(dir_hdl, struct pt_fsal_obj_handle, obj_handle);
-	mount_fd = pt_get_root_fd(dir_hdl->export);
 
 	/* convert fsal mode to unix mode. */
 	unix_mode = fsal2unix_mode(accessmode);
 
 	/* Apply umask */
-	unix_mode =
-	    unix_mode & ~dir_hdl->export->ops->fs_umask(dir_hdl->export);
+	unix_mode = unix_mode & ~p_context->fsal_export->ops->
+			fs_umask(p_context->fsal_export);
 
 	LogFullDebug(COMPONENT_FSAL, "Creation mode: 0%o", accessmode);
 
@@ -113,9 +103,9 @@ fsal_status_t PTFSAL_create(struct fsal_obj_handle *dir_hdl,	/* IN */
 
 	/* retrieve file attributes */
 	if (p_object_attributes) {
-		status =
-		    PTFSAL_getattrs(dir_hdl->export, p_context, p_object_handle,
-				    p_object_attributes);
+		status = PTFSAL_getattrs(p_context->fsal_export, p_context,
+					 p_object_handle,
+					 p_object_attributes);
 
 		/* on error, we set a special bit in the mask. */
 		if (FSAL_IS_ERROR(status)) {
@@ -162,12 +152,12 @@ fsal_status_t PTFSAL_create(struct fsal_obj_handle *dir_hdl,	/* IN */
  *        - ERR_FSAL_NO_ERROR     (no error)
  *        - Another error code if an error occured.
  */
-fsal_status_t PTFSAL_mkdir(struct fsal_obj_handle * dir_hdl,	/* IN */
+fsal_status_t PTFSAL_mkdir(struct fsal_obj_handle *dir_hdl,	/* IN */
 			   const char *p_dirname,	/* IN */
-			   const struct req_op_context * p_context,	/* IN */
+			   const struct req_op_context *p_context,	/* IN */
 			   uint32_t accessmode,	/* IN */
-			   ptfsal_handle_t * p_object_handle,	/* OUT */
-			   struct attrlist * p_object_attributes)
+			   ptfsal_handle_t *p_object_handle,	/* OUT */
+			   struct attrlist *p_object_attributes)
 {				/* IN/OUT */
 
 	int rc, errsv;
@@ -176,7 +166,6 @@ fsal_status_t PTFSAL_mkdir(struct fsal_obj_handle * dir_hdl,	/* IN */
 	fsal_status_t status;
 	struct attrlist parent_dir_attrs;
 	char newPath[PATH_MAX];
-	int mount_fd;
 	struct pt_fsal_obj_handle *pt_hdl;
 
 	FSI_TRACE(FSI_INFO, "MKDIR BEGIN-------------------------\n");
@@ -189,57 +178,51 @@ fsal_status_t PTFSAL_mkdir(struct fsal_obj_handle * dir_hdl,	/* IN */
 
 	pt_hdl = container_of(dir_hdl, struct pt_fsal_obj_handle, obj_handle);
 
-	mount_fd = pt_get_root_fd(dir_hdl->export);
-
 	/* convert FSAL mode to unix mode. */
 	unix_mode = fsal2unix_mode(accessmode);
 
 	/* Apply umask */
-	unix_mode =
-	    unix_mode & ~dir_hdl->export->ops->fs_umask(dir_hdl->export);
+	unix_mode = unix_mode & ~p_context->fsal_export->ops->
+			fs_umask(p_context->fsal_export);
 
 	/* get directory metadata */
-	parent_dir_attrs.mask =
-	    dir_hdl->export->ops->fs_supported_attrs(dir_hdl->export);
+	parent_dir_attrs.mask = p_context->fsal_export->ops->
+				fs_supported_attrs(p_context->fsal_export);
 	status =
-	    PTFSAL_getattrs(dir_hdl->export, p_context, pt_hdl->handle,
+	    PTFSAL_getattrs(p_context->fsal_export, p_context, pt_hdl->handle,
 			    &parent_dir_attrs);
 
-	if (FSAL_IS_ERROR(status)) {
+	if (FSAL_IS_ERROR(status))
 		return status;
-	}
 
-	/* Check the user can write in the directory, and check the 
-	 * setgid bit on the directory 
+	/* Check the user can write in the directory, and check the
+	 * setgid bit on the directory
 	 */
 
-	if (fsal2unix_mode(parent_dir_attrs.mode) & S_ISGID) {
+	if (fsal2unix_mode(parent_dir_attrs.mode) & S_ISGID)
 		setgid_bit = 1;
-	}
 
 	rc = ptfsal_mkdir(pt_hdl, p_dirname, p_context, unix_mode,
 			  p_object_handle);
 	errsv = errno;
-	if (rc) {
+	if (rc)
 		return fsalstat(posix2fsal_error(errsv), errsv);
-	}
 
-	if (FSAL_IS_ERROR(status)) {
-		return (status);
-	}
+	if (FSAL_IS_ERROR(status))
+		return status;
 
 	/* the directory has been created */
 	/* chown the dir to the current user/group */
 
 	if (p_context->creds->caller_uid != geteuid()) {
 		FSI_TRACE(FSI_DEBUG, "MKDIR %d", __LINE__);
-		/* if the setgid_bit was set on the parent directory, do not change 
-		 * the group of the created file, because it's already the parentdir's 
-		 * group       
+		/* if the setgid_bit was set on the parent directory, do not
+		 * change the group of the created file, because it's already
+		 * the parentdir's group
 		 */
 
 		if (fsi_get_name_from_handle
-		    (p_context, pt_hdl->obj_handle.export, pt_hdl->handle,
+		    (p_context, p_context->fsal_export, pt_hdl->handle,
 		     (char *)newPath, NULL) < 0) {
 			FSI_TRACE(FSI_DEBUG,
 				  "Failed to get name from handle %s",
@@ -247,22 +230,21 @@ fsal_status_t PTFSAL_mkdir(struct fsal_obj_handle * dir_hdl,	/* IN */
 				  f_handle);
 			return fsalstat(posix2fsal_error(errsv), errsv);
 		}
-		rc = ptfsal_chown(p_context, dir_hdl->export, newPath,
+		rc = ptfsal_chown(p_context, p_context->fsal_export, newPath,
 				  p_context->creds->caller_uid,
 				  setgid_bit ? -1 : (int)p_context->creds->
 				  caller_gid);
 		errsv = errno;
-		if (rc) {
+		if (rc)
 			return fsalstat(posix2fsal_error(errsv), errsv);
-		}
 	}
 
 	/* retrieve file attributes */
 	if (p_object_attributes) {
 		FSI_TRACE(FSI_DEBUG, "MKDIR %d", __LINE__);
-		status =
-		    PTFSAL_getattrs(dir_hdl->export, p_context, p_object_handle,
-				    p_object_attributes);
+		status = PTFSAL_getattrs(p_context->fsal_export, p_context,
+					 p_object_handle,
+					 p_object_attributes);
 
 		/* on error, we set a special bit in the mask. */
 		if (FSAL_IS_ERROR(status)) {
@@ -286,14 +268,14 @@ fsal_status_t PTFSAL_mkdir(struct fsal_obj_handle * dir_hdl,	/* IN */
  *
  * \return ERR_FSAL_NOTSUPP.
  */
-fsal_status_t PTFSAL_mknode(struct fsal_obj_handle * dir_hdl,	/* IN */
+fsal_status_t PTFSAL_mknode(struct fsal_obj_handle *dir_hdl,	/* IN */
 			    const char *p_node_name,	/* IN */
-			    const struct req_op_context * p_context,	/* IN */
+			    const struct req_op_context *p_context,	/* IN */
 			    uint32_t accessmode,	/* IN */
 			    mode_t nodetype,	/* IN */
-			    fsal_dev_t * dev,	/* IN */
-			    ptfsal_handle_t * p_object_handle,	/* OUT */
-			    struct attrlist * node_attributes)
+			    fsal_dev_t *dev,	/* IN */
+			    ptfsal_handle_t *p_object_handle,	/* OUT */
+			    struct attrlist *node_attributes)
 {				/* IN/OUT */
 	return fsalstat(ERR_FSAL_NOTSUPP, 0);
 }

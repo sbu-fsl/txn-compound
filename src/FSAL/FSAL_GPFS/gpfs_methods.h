@@ -1,23 +1,76 @@
 /* GPFS methods for handles
  */
 
+#include "include/gpfs_nfs.h"
+
 /* private helpers from export
  */
 
-int gpfs_get_root_fd(struct fsal_export *exp_hdl);
+struct fsal_staticfsinfo_t *gpfs_staticinfo(struct fsal_module *hdl);
 
 /* method proto linkage to handle.c for export
  */
 
 fsal_status_t gpfs_lookup_path(struct fsal_export *exp_hdl,
-			       const struct req_op_context *opctx,
 			       const char *path,
 			       struct fsal_obj_handle **handle);
 
 fsal_status_t gpfs_create_handle(struct fsal_export *exp_hdl,
-				 const struct req_op_context *opctx,
 				 struct gsh_buffdesc *hdl_desc,
 				 struct fsal_obj_handle **handle);
+
+/*
+ * GPFS internal export
+ */
+
+struct gpfs_fsal_export {
+	struct fsal_export export;
+	struct fsal_filesystem *root_fs;
+	struct glist_head filesystems;
+	bool pnfs_enabled;
+};
+
+/*
+ * GPFS internal filesystem
+ */
+struct gpfs_filesystem {
+	struct fsal_filesystem *fs;
+	int root_fd;
+	struct glist_head exports;
+	bool up_thread_started;
+	const struct fsal_up_vector *up_ops;
+	pthread_t up_thread; /* upcall thread */
+};
+
+/*
+ * Link GPFS file systems and exports
+ * Supports a many-to-many relationship
+ */
+struct gpfs_filesystem_export_map {
+	struct gpfs_fsal_export *exp;
+	struct gpfs_filesystem *fs;
+	struct glist_head on_exports;
+	struct glist_head on_filesystems;
+};
+
+void gpfs_extract_fsid(struct gpfs_file_handle *fh,
+		       enum fsid_type *fsid_type,
+		       struct fsal_fsid__ *fsid);
+
+void gpfs_unexport_filesystems(struct gpfs_fsal_export *exp);
+
+#define gpfs_alloc_handle(fh)						\
+	do {								\
+		(fh) = alloca(sizeof(struct gpfs_file_handle));		\
+		memset((fh), 0, (sizeof(struct gpfs_file_handle)));	\
+		(fh)->handle_size = OPENHANDLE_HANDLE_LEN;		\
+	} while (0)
+
+#define gpfs_malloc_handle(fh)						\
+	do {								\
+		(fh) = gsh_calloc(1, sizeof(struct gpfs_file_handle));	\
+		(fh)->handle_size = OPENHANDLE_HANDLE_LEN;		\
+	} while (0)
 
 /*
  * GPFS internal object handle
@@ -45,40 +98,40 @@ struct gpfs_fsal_obj_handle {
 			unsigned char *link_content;
 			int link_size;
 		} symlink;
-		struct {
-			struct gpfs_file_handle *dir;
-			char *name;
-		} unopenable;
 	} u;
 };
 
-static inline bool gpfs_unopenable_type(object_file_type_t type)
-{
-	if ((type == SOCKET_FILE) || (type == CHARACTER_FILE)
-	    || (type == BLOCK_FILE)) {
-		return true;
-	} else {
-		return false;
-	}
-}
-
 	/* I/O management */
 fsal_status_t gpfs_open(struct fsal_obj_handle *obj_hdl,
-			const struct req_op_context *opctx,
 			fsal_openflags_t openflags);
+fsal_status_t gpfs_reopen(struct fsal_obj_handle *obj_hdl,
+			  fsal_openflags_t openflags);
 fsal_openflags_t gpfs_status(struct fsal_obj_handle *obj_hdl);
 fsal_status_t gpfs_read(struct fsal_obj_handle *obj_hdl,
-			const struct req_op_context *opctx, uint64_t offset,
+			uint64_t offset,
 			size_t buffer_size, void *buffer, size_t *read_amount,
 			bool *end_of_file);
+fsal_status_t gpfs_read_plus(struct fsal_obj_handle *obj_hdl,
+			uint64_t offset,
+			size_t buffer_size, void *buffer, size_t *read_amount,
+			bool *end_of_file, struct io_info *info);
 fsal_status_t gpfs_write(struct fsal_obj_handle *obj_hdl,
-			 const struct req_op_context *opctx, uint64_t offset,
+			 uint64_t offset,
 			 size_t buffer_size, void *buffer,
 			 size_t *write_amount, bool *fsal_stable);
+fsal_status_t gpfs_write_plus(struct fsal_obj_handle *obj_hdl,
+			 uint64_t offset,
+			 size_t buffer_size, void *buffer,
+			 size_t *write_amount, bool *fsal_stable,
+			 struct io_info *info);
+fsal_status_t gpfs_seek(struct fsal_obj_handle *obj_hdl,
+			 struct io_info *info);
+fsal_status_t gpfs_io_advise(struct fsal_obj_handle *obj_hdl,
+			 struct io_hints *hints);
 fsal_status_t gpfs_commit(struct fsal_obj_handle *obj_hdl,	/* sync */
 			  off_t offset, size_t len);
 fsal_status_t gpfs_lock_op(struct fsal_obj_handle *obj_hdl,
-			   const struct req_op_context *opctx, void *p_owner,
+			   void *p_owner,
 			   fsal_lock_op_t lock_op,
 			   fsal_lock_param_t *request_lock,
 			   fsal_lock_param_t *conflicting_lock);

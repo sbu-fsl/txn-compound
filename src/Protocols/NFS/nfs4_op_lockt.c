@@ -116,6 +116,11 @@ int nfs4_op_lockt(struct nfs_argop4 *op, compound_data_t *data,
 	case WRITEW_LT:
 		lock_desc.lock_type = FSAL_LOCK_W;
 		break;
+	default:
+		LogDebug(COMPONENT_NFS_V4_LOCK,
+			 "Invalid lock type");
+		res_LOCKT4->status = NFS4ERR_INVAL;
+		return res_LOCKT4->status;
 	}
 
 	lock_desc.lock_start = arg_LOCKT4->offset;
@@ -181,7 +186,7 @@ int nfs4_op_lockt(struct nfs_argop4 *op, compound_data_t *data,
 		data->current_entry, lock_owner, &lock_desc);
 
 	if (data->minorversion == 0) {
-		data->req_ctx->clientid =
+		op_ctx->clientid =
 		    &lock_owner->so_owner.so_nfs4_owner.so_clientid;
 	}
 
@@ -190,8 +195,6 @@ int nfs4_op_lockt(struct nfs_argop4 *op, compound_data_t *data,
 	 */
 
 	state_status = state_test(data->current_entry,
-				  data->export,
-				  data->req_ctx,
 				  lock_owner,
 				  &lock_desc,
 				  &conflict_owner,
@@ -207,7 +210,7 @@ int nfs4_op_lockt(struct nfs_argop4 *op, compound_data_t *data,
 	}
 
 	if (data->minorversion == 0)
-		data->req_ctx->clientid = NULL;
+		op_ctx->clientid = NULL;
 
 	/* Release NFS4 Open Owner reference */
 	dec_state_owner_ref(lock_owner);

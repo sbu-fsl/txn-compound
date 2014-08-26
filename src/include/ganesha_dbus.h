@@ -71,6 +71,13 @@
 	.direction = "out"\
 }
 
+#define MESSAGE_REPLY		\
+{				\
+	.name = "message",	\
+	.type = "s",		\
+	.direction = "out"	\
+}
+
 #define END_ARG_LIST {NULL, NULL, NULL}
 
 #define IPADDR_ARG       \
@@ -78,6 +85,27 @@
 	.name = "ipaddr",\
 	.type = "s",     \
 	.direction = "in"\
+}
+
+#define ID_ARG			\
+{				\
+	.name = "id",		\
+	.type = "i",		\
+	.direction = "in"	\
+}
+
+#define PATH_ARG		\
+{				\
+	.name = "path",		\
+	.type = "s",		\
+	.direction = "in"	\
+}
+
+#define EXPR_ARG		\
+{				\
+	.name = "expr",		\
+	.type = "s",		\
+	.direction = "in"	\
 }
 
 /* Properties list helper macros
@@ -109,7 +137,9 @@ struct gsh_dbus_arg {
 
 struct gsh_dbus_method {
 	const char *name;
-	 bool(*method) (DBusMessageIter *args, DBusMessage *reply);
+	 bool(*method) (DBusMessageIter *args,
+			DBusMessage *reply,
+			DBusError *error);
 	struct gsh_dbus_arg args[];
 };
 

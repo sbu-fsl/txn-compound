@@ -36,10 +36,8 @@
 #include "nfs_core.h"
 #include "cache_inode.h"
 #include "nfs_exports.h"
-#include "nfs_creds.h"
 #include "nfs_proto_functions.h"
 #include "nfs_proto_tools.h"
-#include "nfs_tools.h"
 #include "sal_functions.h"
 #include "export_mgr.h"
 
@@ -60,7 +58,6 @@ int nfs4_op_secinfo_no_name(struct nfs_argop4 *op, compound_data_t *data,
 {
 	SECINFO_NO_NAME4res * const res_SECINFO_NO_NAME4 =
 	    &resp->nfs_resop4_u.opsecinfo_no_name;
-	cache_entry_t *entry_src = NULL;
 	sec_oid4 v5oid = { krb5oid.length, (char *)krb5oid.elements };
 	int num_entry = 0;
 
@@ -82,19 +79,22 @@ int nfs4_op_secinfo_no_name(struct nfs_argop4 *op, compound_data_t *data,
 	}
 
 	/* Get the number of entries */
-	if (data->export_perms.options & EXPORT_OPTION_AUTH_NONE)
+	if (op_ctx->export_perms->options & EXPORT_OPTION_AUTH_NONE)
 		num_entry++;
 
-	if (data->export_perms.options & EXPORT_OPTION_AUTH_UNIX)
+	if (op_ctx->export_perms->options & EXPORT_OPTION_AUTH_UNIX)
 		num_entry++;
 
-	if (data->export_perms.options & EXPORT_OPTION_RPCSEC_GSS_NONE)
+	if (op_ctx->export_perms->options &
+	    EXPORT_OPTION_RPCSEC_GSS_NONE)
 		num_entry++;
 
-	if (data->export_perms.options & EXPORT_OPTION_RPCSEC_GSS_INTG)
+	if (op_ctx->export_perms->options &
+	    EXPORT_OPTION_RPCSEC_GSS_INTG)
 		num_entry++;
 
-	if (data->export_perms.options & EXPORT_OPTION_RPCSEC_GSS_PRIV)
+	if (op_ctx->export_perms->options &
+	    EXPORT_OPTION_RPCSEC_GSS_PRIV)
 		num_entry++;
 
 	res_SECINFO_NO_NAME4->SECINFO4res_u.resok4.SECINFO4resok_val =
@@ -103,9 +103,6 @@ int nfs4_op_secinfo_no_name(struct nfs_argop4 *op, compound_data_t *data,
 	if (res_SECINFO_NO_NAME4->SECINFO4res_u.resok4.SECINFO4resok_val
 	    == NULL) {
 		res_SECINFO_NO_NAME4->status = NFS4ERR_SERVERFAULT;
-
-		if (entry_src != NULL)
-			cache_inode_put(entry_src);
 		goto out;
 	}
 
@@ -115,15 +112,16 @@ int nfs4_op_secinfo_no_name(struct nfs_argop4 *op, compound_data_t *data,
 	 * all implemented.
 	 */
 	int idx = 0;
-	if (data->export_perms.options & EXPORT_OPTION_AUTH_NONE)
+	if (op_ctx->export_perms->options & EXPORT_OPTION_AUTH_NONE)
 		res_SECINFO_NO_NAME4->SECINFO4res_u.resok4.
 		    SECINFO4resok_val[idx++].flavor = AUTH_NONE;
 
-	if (data->export_perms.options & EXPORT_OPTION_AUTH_UNIX)
+	if (op_ctx->export_perms->options & EXPORT_OPTION_AUTH_UNIX)
 		res_SECINFO_NO_NAME4->SECINFO4res_u.resok4.
 		    SECINFO4resok_val[idx++].flavor = AUTH_UNIX;
 
-	if (data->export_perms.options & EXPORT_OPTION_RPCSEC_GSS_NONE) {
+	if (op_ctx->export_perms->options &
+	    EXPORT_OPTION_RPCSEC_GSS_NONE) {
 		res_SECINFO_NO_NAME4->SECINFO4res_u.resok4.
 		    SECINFO4resok_val[idx].flavor = RPCSEC_GSS;
 		res_SECINFO_NO_NAME4->SECINFO4res_u.resok4.
@@ -137,7 +135,8 @@ int nfs4_op_secinfo_no_name(struct nfs_argop4 *op, compound_data_t *data,
 		    .secinfo4_u.flavor_info.oid = v5oid;
 	}
 
-	if (data->export_perms.options & EXPORT_OPTION_RPCSEC_GSS_INTG) {
+	if (op_ctx->export_perms->options &
+	    EXPORT_OPTION_RPCSEC_GSS_INTG) {
 		res_SECINFO_NO_NAME4->SECINFO4res_u.resok4.
 		    SECINFO4resok_val[idx].flavor = RPCSEC_GSS;
 		res_SECINFO_NO_NAME4->SECINFO4res_u.resok4.
@@ -151,7 +150,8 @@ int nfs4_op_secinfo_no_name(struct nfs_argop4 *op, compound_data_t *data,
 		    .secinfo4_u.flavor_info.oid = v5oid;
 	}
 
-	if (data->export_perms.options & EXPORT_OPTION_RPCSEC_GSS_PRIV) {
+	if (op_ctx->export_perms->options &
+	    EXPORT_OPTION_RPCSEC_GSS_PRIV) {
 		res_SECINFO_NO_NAME4->SECINFO4res_u.resok4.
 		    SECINFO4resok_val[idx]
 		    .flavor = RPCSEC_GSS;
@@ -168,23 +168,16 @@ int nfs4_op_secinfo_no_name(struct nfs_argop4 *op, compound_data_t *data,
 
 	res_SECINFO_NO_NAME4->SECINFO4res_u.resok4.SECINFO4resok_len = idx;
 
-	if (entry_src != NULL)
-		cache_inode_put(entry_src);
-
 	/* Need to clear out CurrentFH */
-	if (data->current_entry) {
-		cache_inode_put(data->current_entry);
-		data->current_entry = NULL;
-	}
+	set_current_entry(data, NULL, false);
 
 	data->currentFH.nfs_fh4_len = 0;
-	data->current_filetype = NO_FILE_TYPE;
 
 	/* Release CurrentFH reference to export. */
-	if (data->req_ctx->export) {
-		put_gsh_export(data->req_ctx->export);
-		data->req_ctx->export = NULL;
-		data->export = NULL;
+	if (op_ctx->export) {
+		put_gsh_export(op_ctx->export);
+		op_ctx->export = NULL;
+		op_ctx->fsal_export = NULL;
 	}
 
 	res_SECINFO_NO_NAME4->status = NFS4_OK;
