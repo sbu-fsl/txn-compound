@@ -40,7 +40,6 @@
 #include <string.h>
 #include <limits.h>
 #include <sys/types.h>
-#include "nlm_list.h"
 #include "FSAL/fsal_init.h"
 #include "secnfs_methods.h"
 #include "secnfs.h"
@@ -97,11 +96,14 @@ struct fsal_staticfsinfo_t *secnfs_staticinfo(struct fsal_module *hdl)
 
 /************************ Module methods **************************/
 
+// XXX fsal_init_info_t is removed in a3595873380
+// TODO how to load in 2.1
+/*
 static int secnfs_init_params(const char *key, const char *val,
 			      fsal_init_info_t *info, const char *name)
 {
         struct secnfs_fsal_module *secnfs = container_of(
-                        info, struct secnfs_fsal_module, fsal_info);
+                        fsal, struct secnfs_fsal_module, fsal);
         secnfs_info_t *secnfs_info = &secnfs->secnfs_info;
 
         if (!strcasecmp(key, "Context_Cache_File")) {
@@ -119,6 +121,7 @@ static int secnfs_init_params(const char *key, const char *val,
 
         return 0;
 }
+*/
 
 
 static int validate_conf_params(const secnfs_info_t *info)
@@ -155,6 +158,8 @@ static fsal_status_t init_config(struct fsal_module *fsal_hdl,
 	 * fsal_hdl->name is used to find the block containing the
 	 * params.
 	 */
+        // XXX fsal_load_config is removed git show 1b81f1e
+        /*
         st = fsal_load_config(fsal_hdl->ops->get_name(fsal_hdl), config_struct,
                               &secnfs_me->fsal_info, &secnfs_me->fs_info,
                               secnfs_init_params);
@@ -162,6 +167,7 @@ static fsal_status_t init_config(struct fsal_module *fsal_hdl,
                 LogCrit(COMPONENT_FSAL, "cannot load SECNFS config");
 		return st;
         }
+        */
 
         SECNFS_F("Context_Cache_File = %s", info->context_cache_file);
         SECNFS_F("secnfs_name = %s", info->secnfs_name);
@@ -194,12 +200,8 @@ static fsal_status_t init_config(struct fsal_module *fsal_hdl,
  */
 
 fsal_status_t secnfs_create_export(struct fsal_module * fsal_hdl,
-				   const char *export_path,
-				   const char *fs_options,
-				   struct exportlist * exp_entry,
-				   struct fsal_module * next_fsal,
-				   const struct fsal_up_vector * up_ops,
-				   struct fsal_export ** export);
+				   void *parse_node,
+				   const struct fsal_up_vector * up_ops);
 
 /* Module initialization.
  * Called by dlopen() to register the module
@@ -224,7 +226,7 @@ MODULE_INIT void secnfs_init(void)
 	struct fsal_module *myself = &SECNFS.fsal;
 
 	retval = register_fsal(myself, myname, FSAL_MAJOR_VERSION,
-			       FSAL_MINOR_VERSION);
+			       FSAL_MINOR_VERSION, FSAL_ID_SECNFS);
 	if (retval != 0) {
 		fprintf(stderr, "SECNFS module failed to register");
 		return;

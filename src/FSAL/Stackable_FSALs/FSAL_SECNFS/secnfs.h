@@ -20,7 +20,7 @@ extern "C" {
 
 #define SECNFS_KEY_LENGTH 16
 
-// TODO allow keyfile to be larger than 4096.
+// TODO allow keyfile to be larger
 #define FILE_HEADER_SIZE 8192
 #define FILE_META_SIZE 4096
 

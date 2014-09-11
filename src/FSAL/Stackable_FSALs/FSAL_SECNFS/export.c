@@ -27,7 +27,7 @@
  */
 
 /* export.c
- * VFS FSAL export object
+ * SECNFS FSAL export object
  */
 
 #include "config.h"
@@ -39,14 +39,16 @@
 #include <os/mntent.h>
 #include <os/quota.h>
 #include <dlfcn.h>
-#include "nlm_list.h"
+#include "config_parsing.h"
 #include "fsal_convert.h"
 #include "FSAL/fsal_commonlib.h"
 #include "FSAL/fsal_config.h"
 #include "fsal_handle_syscalls.h"
 #include "secnfs_methods.h"
+#include "export_mgr.h"
+#include "nfs_exports.h"
 
-/* helpers to/from other VFS objects
+/* helpers to/from other SECNFS objects
  */
 
 struct fsal_staticfsinfo_t *secnfs_staticinfo(struct fsal_module *hdl);
@@ -54,41 +56,25 @@ extern struct next_ops next_ops;
 
 /********************** export object methods ********************/
 
-static fsal_status_t release(struct fsal_export *export)
+static void release(struct fsal_export *export)
 {
-        fsal_status_t st = fsalstat(ERR_FSAL_NO_ERROR, 0);
         struct secnfs_fsal_export *exp = secnfs_export(export);
+        struct fsal_module *sub_fsal = exp->next_export->fsal;
 
-        /* FIXME : should I release next_fsal or not ? */
-        st = next_ops.exp_ops->release(exp->next_export);
-        if (FSAL_IS_ERROR(st)) {
-                LogMajor(COMPONENT_FSAL, "cannot release next export (0x%p)",
-                         exp->next_export);
-                return st;
-        }
+        next_ops.exp_ops->release(exp->next_export);
+        fsal_put(sub_fsal);
 
-        pthread_mutex_lock(&export->lock);
-        if (export->refs > 0 || !glist_empty(&export->handles)) {
-                LogMajor(COMPONENT_FSAL, "SECNFS release: export (0x%p)busy",
-                         export);
-                pthread_mutex_unlock(&export->lock);
-                return fsalstat(posix2fsal_error(EBUSY), EBUSY);
-        }
         fsal_detach_export(export->fsal, &export->exports);
         free_export_ops(export);
-        pthread_mutex_unlock(&export->lock);
 
-        pthread_mutex_destroy(&export->lock);
         gsh_free(exp);
-        return st;
 }
 
 static fsal_status_t get_dynamic_info(struct fsal_export *exp_hdl,
-				      const struct req_op_context *opctx,
 				      fsal_dynamicfsinfo_t * infop)
 {
         return next_ops.exp_ops->get_fs_dynamic_info(next_export(exp_hdl),
-                                                     opctx, infop);
+                                                     infop);
 }
 
 static bool fs_supports(struct fsal_export *exp_hdl,
@@ -163,11 +149,10 @@ static uint32_t fs_xattr_access_rights(struct fsal_export *exp_hdl)
 
 static fsal_status_t get_quota(struct fsal_export *exp_hdl,
                                const char *filepath, int quota_type,
-                               struct req_op_context *req_ctx,
                                fsal_quota_t * pquota)
 {
         return next_ops.exp_ops->get_quota(next_export(exp_hdl), filepath,
-                                           quota_type, req_ctx, pquota);
+                                           quota_type, pquota);
 }
 
 /* set_quota
@@ -176,11 +161,10 @@ static fsal_status_t get_quota(struct fsal_export *exp_hdl,
 
 static fsal_status_t set_quota(struct fsal_export *exp_hdl,
                                const char *filepath, int quota_type,
-                               struct req_op_context *req_ctx,
                                fsal_quota_t * pquota, fsal_quota_t * presquota)
 {
         return next_ops.exp_ops->set_quota(next_export(exp_hdl), filepath,
-                                           quota_type, req_ctx, pquota,
+                                           quota_type, pquota,
                                            presquota);
 }
 
@@ -228,60 +212,78 @@ void secnfs_export_ops_init(struct export_ops *ops)
 
 void secnfs_handle_ops_init(struct fsal_obj_ops *ops);
 
+extern struct fsal_up_vector fsal_up_top;
+
+struct subfsal_args {
+	char *name;
+	void *fsal_node;
+};
+
+static struct config_item sub_fsal_params[] = {
+	CONF_ITEM_STR("name", 1, 10, NULL,
+		      subfsal_args, name),
+	CONFIG_EOL
+};
+
+static struct config_item export_params[] = {
+	CONF_ITEM_NOOP("name"),
+	CONF_RELAX_BLOCK("FSAL", sub_fsal_params,
+			 noop_conf_init, noop_conf_commit,
+			 subfsal_args, fsal_node),
+	CONFIG_EOL
+};
+
 /* create_export
  * Create an export point and return a handle to it to be kept
  * in the export list.
  * First lookup the fsal, then create the export and then put the fsal back.
  * returns the export with one reference taken.
  */
-
-extern struct fsal_up_vector fsal_up_top;
-
 fsal_status_t secnfs_create_export(struct fsal_module *fsal_hdl,
-                                   const char *export_path,
-                                   const char *fs_specific,
-                                   struct exportlist *exp_entry,
-                                   struct fsal_module *unused,
-                                   struct fsal_up_vector *up_ops,
-                                   struct fsal_export **export)
+				   void *parse_node,
+                                   struct fsal_up_vector *up_ops)
 {
         fsal_status_t st;
         struct secnfs_fsal_export *exp;
-        struct fsal_export *next_exp;
         struct fsal_module *next_fsal;
+	struct subfsal_args subfsal;
+	struct config_error_type err_type;
+	int retval;
+
+	retval = load_config_from_node(parse_node,
+				       &export_param,
+				       &subfsal,
+				       true,
+				       &err_type);
+	if (retval != 0)
+		return fsalstat(ERR_FSAL_INVAL, 0);
+	next_fsal = lookup_fsal(subfsal.name);
+	if (next_fsal == NULL) {
+		LogMajor(COMPONENT_FSAL,
+			 "failed to lookup for FSAL %s",
+			 subfsal.name);
+		return fsalstat(ERR_FSAL_INVAL, EINVAL);
+	}
 
         exp = gsh_calloc(1, sizeof(*exp));
         if (!exp) {
                 LogMajor(COMPONENT_FSAL, "Out of Memory");
                 return fsalstat(ERR_FSAL_NOMEM, ENOMEM);
         }
-        if (fsal_export_init(&exp->export, exp_entry)) {
-                LogMajor(COMPONENT_FSAL, "Cannot init export of SECNFS");
-                st = fsalstat(ERR_FSAL_NOMEM, ENOMEM);
-                goto error_out;
-        }
 
-        /* We use the parameter passed as a string in fs_specific to know which
-         * FSAL is to be loaded */
-        next_fsal = lookup_fsal(fs_specific);
-        if (next_fsal == NULL) {
-                LogMajor(COMPONENT_FSAL,
-                         "failed to lookup for FSAL %s", fs_specific);
-                st = fsalstat(ERR_FSAL_INVAL, EINVAL);
-                goto error_out;
-        }
+	st = next_fsal->ops->create_export(next_fsal,
+					   subfsal.fsal_node,
+					   up_ops);
+	fsal_put(next_fsal);
+	if (FSAL_IS_ERROR(st)) {
+		LogMajor(COMPONENT_FSAL,
+			 "Failed to call create_export on underlying FSAL %s",
+			 subfsal.name);
+		gsh_free(exp);
+		return st;
+	}
 
-        /* FIXME: exp_entry? */
-        st = next_fsal->ops->create_export(next_fsal, export_path,
-                                           fs_specific, exp_entry, NULL,
-                                           up_ops, &next_exp);
-        if (FSAL_IS_ERROR(st)) {
-                LogMajor(COMPONENT_FSAL,
-                         "failed to call create_export on underlying FSAL %s",
-                         fs_specific);
-                goto error_out;
-        }
-
+	exp->next_export = op_ctx->fsal_export;
         /* Init next_ops structure */
         /* FIXME are the memory released? It is okay for now as next_ops is a
          * static variable with only one instance. */
@@ -289,26 +291,24 @@ fsal_status_t secnfs_create_export(struct fsal_module *fsal_hdl,
         next_ops.obj_ops = gsh_malloc(sizeof(struct fsal_obj_ops));
         next_ops.ds_ops = gsh_malloc(sizeof(struct fsal_ds_ops));
 
-        memcpy(next_ops.exp_ops, next_exp->ops, sizeof(struct export_ops));
-        memcpy(next_ops.obj_ops, next_exp->obj_ops,
+        memcpy(next_ops.exp_ops,
+               exp->next_export->ops,
+               sizeof(struct export_ops));
+        memcpy(next_ops.obj_ops,
+               exp->next_export->obj_ops,
                sizeof(struct fsal_obj_ops));
-        memcpy(next_ops.ds_ops, next_exp->ds_ops, sizeof(struct fsal_ds_ops));
+        memcpy(next_ops.ds_ops,
+               exp->next_export->ds_ops,
+               sizeof(struct fsal_ds_ops));
         next_ops.up_ops = up_ops;
 
         secnfs_export_ops_init(exp->export.ops);
         secnfs_handle_ops_init(exp->export.obj_ops);
         exp->export.up_ops = up_ops;
-
         exp->export.fsal = fsal_hdl;
 
-        exp->next_export = next_exp;
-        *export = &exp->export;
-
+        op_ctx->fsal_export = &exp->export;
         SECNFS_D("secnfs export created.\n");
 
-        return st;
-
-error_out:
-        gsh_free(exp);
-        return st;
+        return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
