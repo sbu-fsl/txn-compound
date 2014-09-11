@@ -2496,6 +2496,40 @@ extern "C" {
 	};
 	typedef struct RECLAIM_COMPLETE4res RECLAIM_COMPLETE4res;
 
+	/* NFS End-to-end Integrity */
+	enum nfs_protection_type4 {
+		NFS_PI_NOT_SUPPORTED = 0,
+		NFS_PI_TYPE1 = 1,
+		NFS_PI_TYPE2 = 2,
+		NFS_PI_TYPE3 = 3,
+		NFS_PI_TYPE4 = 4,
+		NFS_PI_TYPE5 = 5,
+		__NFS_PI_TYPELIMIT = 6,
+	};
+	typedef enum nfs_protection_type4 nfs_protection_type4;
+
+	struct nfs_protection_info4 {
+		nfs_protection_type4 pi_type;
+		uint32_t pi_intvl_size;
+		uint64_t pi_other_data;
+	};
+	typedef struct nfs_protection_info4 nfs_protection_info4;
+	typedef nfs_protection_info4 fattr4_protection_types;
+
+	struct INITPROTINFO4args {
+		nfs_protection_type4 ipi_type;
+		struct {
+			u_int ipi_data_len;
+			char *ipi_data_val;
+		} ipi_data;
+	};
+	typedef struct INITPROTINFO4args INITPROTINFO4args;
+
+	struct INITPROTINFO4res {
+		nfsstat4 status;
+	};
+	typedef struct INITPROTINFO4res INITPROTINFO4res;
+
 	/* NFSv4.2 */
 	enum netloc_type4 {
 		NL4_NAME        = 0,
@@ -2507,7 +2541,9 @@ extern "C" {
 	enum data_content4 {
 		NFS4_CONTENT_DATA = 0,
 		NFS4_CONTENT_APP_DATA_HOLE = 1,
-		NFS4_CONTENT_HOLE = 2
+		NFS4_CONTENT_HOLE = 2,
+		NFS4_CONTENT_PROTECTED_DATA = 3,
+		NFS4_CONTENT_PROTECT_INFO = 5,
 	};
 	typedef enum data_content4 data_content4;
 
@@ -2547,14 +2583,42 @@ extern "C" {
 		verifier4       wr_writeverf;
 	} write_response4;
 
+	struct data_protected4 {
+		nfs_protection_info4 pd_type;
+		offset4 pd_offset;
+		bool_t pd_allocated;
+		struct {
+			u_int pd_info_len;
+			char *pd_info_val;
+		} pd_info;
+		struct {
+			u_int pd_data_len;
+			char *pd_data_val;
+		} pd_data;
+	};
+	typedef struct data_protected4 data_protected4;
+
+	struct data_protect_info4 {
+		nfs_protection_info4 pi_type;
+		offset4 pi_offset;
+		bool_t pi_allocated;
+		struct {
+			u_int pi_data_len;
+			char *pi_data_val;
+		} pi_data;
+	};
+	typedef struct data_protect_info4 data_protect_info4;
+
 	typedef struct {
 		data_content4   what;
 		union {
 			data4           data;
 			app_data_hole4  adh;
 			data_info4      hole;
+			data_protected4 pdata;
+			data_protect_info4      pinfo;
 		};
-	} contents;
+	} contents; // read_plus_content4 / write_plus_content4
 
 	typedef struct {
 		bool_t            rpr_eof;
@@ -2665,6 +2729,8 @@ extern "C" {
 			data4           wp_data;
 			app_data_hole4  wp_adh;
 			data_info4      wp_hole;
+			data_protected4 wp_pdata;
+			data_protect_info4 wp_pinfo;
 		};
 	};
 	typedef struct WRITE_PLUS4args WRITE_PLUS4args;
@@ -7638,6 +7704,43 @@ extern "C" {
 		return true;
 	}
 
+	static inline bool
+	xdr_data_protected4(XDR *xdrs, data_protected4 *objp)
+	{
+		register int32_t *buf;
+
+		 if (!xdr_nfs_protection_info4(xdrs, &objp->pd_type))
+			 return false;
+		 if (!xdr_offset4(xdrs, &objp->pd_offset))
+			 return false;
+		 if (!xdr_bool(xdrs, &objp->pd_allocated))
+			 return false;
+		 if (!xdr_bytes(xdrs, (char **)&objp->pd_info.pd_info_val,
+		                (u_int *)&objp->pd_info.pd_info_len, ~0))
+			 return false;
+		 if (!xdr_bytes(xdrs, (char **)&objp->pd_data.pd_data_val,
+		                (u_int *)&objp->pd_data.pd_data_len, ~0))
+			 return false;
+		return true;
+	}
+
+	static inline bool
+	xdr_data_protect_info4(XDR *xdrs, data_protect_info4 *objp)
+	{
+		register int32_t *buf;
+
+		 if (!xdr_nfs_protection_info4(xdrs, &objp->pi_type))
+			 return false;
+		 if (!xdr_offset4(xdrs, &objp->pi_offset))
+			 return false;
+		 if (!xdr_bool(xdrs, &objp->pi_allocated))
+			 return false;
+		 if (!xdr_bytes(xdrs, (char **)&objp->pi_data.pi_data_val,
+		                (u_int *) &objp->pi_data.pi_data_len, ~0))
+			 return false;
+		return true;
+	}
+
 	static inline bool xdr_data_contents(XDR * xdrs, contents *objp)
 	{
 		if (!inline_xdr_enum(xdrs, (enum_t *)&objp->what))
@@ -7691,6 +7794,16 @@ extern "C" {
 			if (!inline_xdr_bool(xdrs,
 				  &objp->hole.di_allocated))
 				return false;
+			return true;
+		}
+		if (objp->what == NFS4_CONTENT_PROTECTED_DATA) {
+			 if (!xdr_data_protected4(xdrs, &objp->pdata))
+				 return false;
+			return true;
+		}
+		if (objp->what == NFS4_CONTENT_PROTECT_INFO) {
+			 if (!xdr_data_protect_info4(xdrs, &objp->pinfo))
+				 return false;
 			return true;
 		} else
 			return false;

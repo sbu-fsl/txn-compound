@@ -3331,7 +3331,7 @@ enum data_content4 {
     NFS4_CONTENT_APP_DATA_HOLE  = 1,
     NFS4_CONTENT_HOLE           = 2,
     NFS4_CONTENT_PROTECTED_DATA = 3,    /* data and protect information */
-    NFS4_CONTENT_PROTECT_INFO   = 4     /* protect information only */
+    NFS4_CONTENT_PROTECT_INFO   = 5     /* protect information only */
 };
 
 struct data_protected4 {
