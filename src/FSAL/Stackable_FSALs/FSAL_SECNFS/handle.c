@@ -34,7 +34,6 @@
 #include <pthread.h>
 #include <string.h>
 #include <sys/types.h>
-#include "nlm_list.h"
 #include "fsal_convert.h"
 #include "FSAL/fsal_commonlib.h"
 #include "secnfs_methods.h"
@@ -58,13 +57,14 @@
                 LogCrit(COMPONENT_FSAL, "secnfs " #func " failed");         \
                 return st;                                                  \
         }                                                                   \
-        return make_handle_from_next(parent->export, opctx, next_hdl, handle);
+        return make_handle_from_next(op_ctx->fsal_export, next_hdl, handle);
 
 
 extern struct next_ops next_ops;
 
 /************************* helpers **********************/
 
+// TODO remove exp: to use op_ctx->export
 static struct secnfs_fsal_obj_handle *alloc_handle(struct fsal_export *exp,
                                                    const struct attrlist *attr)
 {
@@ -79,10 +79,7 @@ static struct secnfs_fsal_obj_handle *alloc_handle(struct fsal_export *exp,
         hdl->obj_handle.attributes = *attr;
         hdl->info = &secnfs_fsal->secnfs_info;
 
-        if (fsal_obj_handle_init(&hdl->obj_handle, exp, attr->type)) {
-                gsh_free(hdl);
-                return NULL;
-        }
+        fsal_obj_handle_init(&hdl->obj_handle, exp, attr->type);
 
         return hdl;
 }
@@ -114,14 +111,12 @@ static void adjust_attributes_down(struct attrlist *attr,
  * Create a SECNFS obj handle from a corresponding handle of the next layer.
  *
  * @param[IN]       exp      SECNFS export
- * @param[IN]       opctx    request op context
  * @param[IN/OUT]   next_hdl handle of the next layer
  * @param[OUT]      handle   resultant SECNFS handle
  *
  * NOTE: next_hdl will be released on failure!
  */
 static fsal_status_t make_handle_from_next(struct fsal_export *exp,
-                                           const struct req_op_context *opctx,
                                            struct fsal_obj_handle *next_hdl,
                                            struct fsal_obj_handle **handle)
 {
@@ -147,7 +142,7 @@ static fsal_status_t make_handle_from_next(struct fsal_export *exp,
 
                 if (next_hdl->attributes.filesize > 0) {
                         SECNFS_D("hdl = %x; reading header\n", secnfs_hdl);
-                        st = read_header(*handle, opctx);
+                        st = read_header(*handle);
                         if (FSAL_IS_ERROR(st))
                                 goto err;
                         SECNFS_D("hdl = %x; file encrypted: %d\n",
@@ -174,15 +169,13 @@ err:
  * deprecated NULL parent && NULL path implies root handle
  */
 static fsal_status_t lookup(struct fsal_obj_handle *parent,
-			    const struct req_op_context *opctx,
 			    const char *path, struct fsal_obj_handle **handle)
 {
-        MAKE_SECNFS_FH(lookup, parent, handle, opctx, path);
+        MAKE_SECNFS_FH(lookup, parent, handle, path);
 }
 
 
-fsal_status_t read_header(struct fsal_obj_handle *fsal_hdl,
-                          const struct req_op_context *opctx)
+fsal_status_t read_header(struct fsal_obj_handle *fsal_hdl)
 {
         struct secnfs_fsal_obj_handle *hdl = secnfs_handle(fsal_hdl);
         fsal_status_t st;
@@ -199,7 +192,6 @@ fsal_status_t read_header(struct fsal_obj_handle *fsal_hdl,
 
         do {
                 st = next_ops.obj_ops->read(hdl->next_handle,
-                                            opctx,
                                             read_amount,
                                             buf_size - read_amount,
                                             buf + read_amount,
@@ -241,8 +233,7 @@ out:
 }
 
 
-fsal_status_t write_header(struct fsal_obj_handle *fsal_hdl,
-                           const struct req_op_context *opctx)
+fsal_status_t write_header(struct fsal_obj_handle *fsal_hdl)
 {
         struct secnfs_fsal_obj_handle *hdl = secnfs_handle(fsal_hdl);
         fsal_status_t st;
@@ -264,7 +255,7 @@ fsal_status_t write_header(struct fsal_obj_handle *fsal_hdl,
         hdl->data_offset = buf_size;
 
         do {
-                st = next_ops.obj_ops->write(hdl->next_handle, opctx,
+                st = next_ops.obj_ops->write(hdl->next_handle,
                                              write_amount,
                                              buf_size - write_amount,
                                              buf + write_amount,
@@ -286,7 +277,6 @@ out:
 
 
 static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
-                            const struct req_op_context *opctx,
                             const char *name, struct attrlist *attrib,
                             struct fsal_obj_handle **handle)
 {
@@ -297,12 +287,12 @@ static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
 
         SECNFS_D("CREATING '%s' in dir hdl (%x)", name, hdl);
 
-        st = next_ops.obj_ops->create(hdl->next_handle, opctx, name,
+        st = next_ops.obj_ops->create(hdl->next_handle, name,
                                       attrib, &next_hdl);
         if (FSAL_IS_ERROR(st))
                 return st;
 
-        st = make_handle_from_next(dir_hdl->export, opctx, next_hdl, handle);
+        st = make_handle_from_next(op_ctx->fsal_export, next_hdl, handle);
         if (FSAL_IS_ERROR(st)) {
                 LogCrit(COMPONENT_FSAL, "cannot create secnfs handle");
                 return st;
@@ -317,7 +307,7 @@ static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
                 new_hdl->encrypted = 0;
                 SECNFS_D("key in new handle (%x) initialized; encryption %s",
                          new_hdl, new_hdl->encrypted ? "enabled" : "disabled");
-                st = write_header(*handle, opctx);
+                st = write_header(*handle);
         }
 
         return st;
@@ -325,21 +315,19 @@ static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
 
 
 static fsal_status_t makedir(struct fsal_obj_handle *dir_hdl,
-			     const struct req_op_context *opctx,
 			     const char *name, struct attrlist *attrib,
 			     struct fsal_obj_handle **handle)
 {
-        MAKE_SECNFS_FH(mkdir, dir_hdl, handle, opctx, name, attrib);
+        MAKE_SECNFS_FH(mkdir, dir_hdl, handle, name, attrib);
 }
 
 static fsal_status_t makenode(struct fsal_obj_handle *dir_hdl,
-                              const struct req_op_context *opctx,
                               const char *name, object_file_type_t nodetype,	/* IN */
 			      fsal_dev_t * dev,	/* IN */
 			      struct attrlist *attrib,
 			      struct fsal_obj_handle **handle)
 {
-        MAKE_SECNFS_FH(mknode, dir_hdl, handle, opctx, name,
+        MAKE_SECNFS_FH(mknode, dir_hdl, handle, name,
                        nodetype, dev, attrib);
 }
 
@@ -350,32 +338,29 @@ static fsal_status_t makenode(struct fsal_obj_handle *dir_hdl,
  */
 
 static fsal_status_t makesymlink(struct fsal_obj_handle *dir_hdl,
-				 const struct req_op_context *opctx,
 				 const char *name, const char *link_path,
 				 struct attrlist *attrib,
 				 struct fsal_obj_handle **handle)
 {
-        MAKE_SECNFS_FH(symlink, dir_hdl, handle, opctx, name,
+        MAKE_SECNFS_FH(symlink, dir_hdl, handle, name,
                        link_path, attrib);
 }
 
 
 static fsal_status_t readsymlink(struct fsal_obj_handle *obj_hdl,
-				 const struct req_op_context *opctx,
 				 struct gsh_buffdesc *link_content,
 				 bool refresh)
 {
-        return next_ops.obj_ops->readlink(next_handle(obj_hdl), opctx,
+        return next_ops.obj_ops->readlink(next_handle(obj_hdl),
                                           link_content, refresh);
 }
 
 
 static fsal_status_t linkfile(struct fsal_obj_handle *obj_hdl,
-			      const struct req_op_context *opctx,
 			      struct fsal_obj_handle *destdir_hdl,
 			      const char *name)
 {
-        return next_ops.obj_ops->link(next_handle(obj_hdl), opctx,
+        return next_ops.obj_ops->link(next_handle(obj_hdl),
                                       next_handle(destdir_hdl), name);
 }
 
@@ -391,32 +376,29 @@ static fsal_status_t linkfile(struct fsal_obj_handle *obj_hdl,
  */
 
 static fsal_status_t read_dirents(struct fsal_obj_handle *dir_hdl,
-                                  const struct req_op_context *opctx,
                                   fsal_cookie_t *whence, void *dir_state,
                                   fsal_readdir_cb cb, bool *eof)
 {
-        return next_ops.obj_ops->readdir(next_handle(dir_hdl), opctx,
+        return next_ops.obj_ops->readdir(next_handle(dir_hdl),
                                          whence, dir_state, cb, eof);
 }
 
 
 static fsal_status_t renamefile(struct fsal_obj_handle *olddir_hdl,
-				const struct req_op_context *opctx,
 				const char *old_name,
 				struct fsal_obj_handle *newdir_hdl,
 				const char *new_name)
 {
         return next_ops.obj_ops->rename(next_handle(olddir_hdl),
-                                        opctx, old_name,
+                                        old_name,
                                         next_handle(newdir_hdl),
                                         new_name);
 }
 
 
-static fsal_status_t getattrs(struct fsal_obj_handle *obj_hdl,
-			      const struct req_op_context *opctx)
+static fsal_status_t getattrs(struct fsal_obj_handle *obj_hdl)
 {
-        PASS_DOWN(getattrs, obj_hdl, opctx);
+        PASS_DOWN(getattrs, obj_hdl);
 }
 
 
@@ -424,12 +406,11 @@ static fsal_status_t getattrs(struct fsal_obj_handle *obj_hdl,
  * NOTE: this is done under protection of the attributes rwlock in the cache entry.
  */
 static fsal_status_t setattrs(struct fsal_obj_handle *obj_hdl,
-			      const struct req_op_context *opctx,
 			      struct attrlist *attrs)
 {
         if (attrs->mask & ATTR_SIZE && obj_hdl->type == REGULAR_FILE) {
                 fsal_status_t st;
-                st = secnfs_truncate(obj_hdl, opctx, attrs->filesize);
+                st = secnfs_truncate(obj_hdl, attrs->filesize);
                 if (FSAL_IS_ERROR(st)) {
                         LogCrit(COMPONENT_FSAL, "truncate failed");
                         return st;
@@ -442,7 +423,7 @@ static fsal_status_t setattrs(struct fsal_obj_handle *obj_hdl,
          * we "truncate" a file.
          */
         adjust_attributes_down(attrs, obj_hdl->type);
-        PASS_DOWN(setattrs, obj_hdl, opctx, attrs);
+        PASS_DOWN(setattrs, obj_hdl, attrs);
 }
 
 
@@ -450,11 +431,10 @@ static fsal_status_t setattrs(struct fsal_obj_handle *obj_hdl,
  * unlink the named file in the directory
  */
 static fsal_status_t file_unlink(struct fsal_obj_handle *dir_hdl,
-				 const struct req_op_context *opctx,
 				 const char *name)
 {
         SECNFS_D("Unlink %s", name);
-        return next_ops.obj_ops->unlink(next_handle(dir_hdl), opctx, name);
+        return next_ops.obj_ops->unlink(next_handle(dir_hdl), name);
 }
 
 
@@ -492,28 +472,19 @@ static void handle_to_key(struct fsal_obj_handle *obj_hdl,
  * release
  * release our export first so they know we are gone
  */
-static fsal_status_t release(struct fsal_obj_handle *obj_hdl)
+static void release(struct fsal_obj_handle *obj_hdl)
 {
         struct secnfs_fsal_obj_handle *secnfs_hdl = secnfs_handle(obj_hdl);
-        struct fsal_obj_handle *next_hdl;
-        int retval;
+        struct fsal_obj_handle *next_hdl = secnfs_hdl->next_handle;
 
-        next_hdl = secnfs_hdl->next_handle;
-
-        retval = fsal_obj_handle_uninit(obj_hdl);
-        if (retval != 0) {
-                LogCrit(COMPONENT_FSAL,
-                        "Tried to release busy handle @ %p with %d refs",
-                        obj_hdl, obj_hdl->refs);
-                return fsalstat(ERR_FSAL_DELAY, EBUSY);
-        }
+        fsal_obj_handle_uninit(obj_hdl);
 
         secnfs_release_keyfile_cache(&secnfs_hdl->kf_cache);
         secnfs_release_blockmap(&secnfs_hdl->range_lock);
         secnfs_release_blockmap(&secnfs_hdl->holes);
         gsh_free(secnfs_hdl);
 
-	return next_ops.obj_ops->release(next_hdl);
+	next_ops.obj_ops->release(next_hdl);
 }
 
 
@@ -563,7 +534,6 @@ void secnfs_handle_ops_init(struct fsal_obj_ops *ops)
  * KISS
  */
 fsal_status_t secnfs_lookup_path(struct fsal_export *exp_hdl,
-                                 const struct req_op_context *opctx,
                                  const char *path,
                                  struct fsal_obj_handle **handle)
 {
@@ -571,13 +541,12 @@ fsal_status_t secnfs_lookup_path(struct fsal_export *exp_hdl,
         struct fsal_obj_handle *next_hdl;
         fsal_status_t st;
 
-        st = next_ops.exp_ops->lookup_path(exp->next_export, opctx,
-                                           path, &next_hdl);
+        st = next_ops.exp_ops->lookup_path(exp->next_export, path, &next_hdl);
         if (FSAL_IS_ERROR(st)) {
                 return st;
         }
 
-        return make_handle_from_next(exp_hdl, opctx, next_hdl, handle);
+        return make_handle_from_next(exp_hdl, next_hdl, handle);
 }
 
 
@@ -593,7 +562,6 @@ fsal_status_t secnfs_lookup_path(struct fsal_export *exp_hdl,
  * Ideas and/or clever hacks are welcome...
  */
 fsal_status_t secnfs_create_handle(struct fsal_export *exp,
-                                   const struct req_op_context *opctx,
                                    struct gsh_buffdesc *hdl_desc,
                                    struct fsal_obj_handle **handle)
 {
@@ -601,7 +569,7 @@ fsal_status_t secnfs_create_handle(struct fsal_export *exp,
         struct fsal_obj_handle *next_hdl;
         struct secnfs_fsal_export *secnfs_exp = secnfs_export(exp);
 
-        st = next_ops.exp_ops->create_handle(secnfs_exp->next_export, opctx,
+        st = next_ops.exp_ops->create_handle(secnfs_exp->next_export,
                                              hdl_desc, &next_hdl);
         if (FSAL_IS_ERROR(st)) {
                 SECNFS_ERR("cannot create next handle (%d, %d)",
@@ -611,5 +579,5 @@ fsal_status_t secnfs_create_handle(struct fsal_export *exp,
 
         SECNFS_F("handle created by secnfs_create_handle\n");
 
-        return make_handle_from_next(exp, opctx, next_hdl, handle);
+        return make_handle_from_next(exp, next_hdl, handle);
 }

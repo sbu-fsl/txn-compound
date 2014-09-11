@@ -56,7 +56,6 @@ static bool should_read_header(const struct secnfs_fsal_obj_handle *hdl)
  * called with appropriate locks taken at the cache inode level
  */
 fsal_status_t secnfs_open(struct fsal_obj_handle *obj_hdl,
-                          const struct req_op_context *opctx,
                           fsal_openflags_t openflags)
 {
         struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
@@ -64,12 +63,12 @@ fsal_status_t secnfs_open(struct fsal_obj_handle *obj_hdl,
 
         SECNFS_D("hdl = %x; openflag = %d\n", hdl, openflags);
 
-        st = next_ops.obj_ops->open(hdl->next_handle, opctx, openflags);
+        st = next_ops.obj_ops->open(hdl->next_handle, openflags);
 
         if (!FSAL_IS_ERROR(st) && should_read_header(hdl)) {
                 // read file key, iv and meta
                 SECNFS_D("hdl = %x; reading header\n", hdl);
-                st = read_header(obj_hdl, opctx);
+                st = read_header(obj_hdl);
         }
 
         return st;
@@ -104,7 +103,6 @@ inline fsal_status_t secnfs_to_fsal_status(secnfs_s s) {
  * concurrency (locks) is managed by caller
  */
 fsal_status_t do_aligned_read(struct secnfs_fsal_obj_handle *hdl,
-                              const struct req_op_context *opctx,
                               uint64_t offset_align, size_t size_align,
                               void *buffer_align, size_t *read_amount,
                               bool *end_of_file)
@@ -138,7 +136,6 @@ fsal_status_t do_aligned_read(struct secnfs_fsal_obj_handle *hdl,
                                            size_align, buffer_align);
 
         st = next_ops.obj_ops->read_plus(hdl->next_handle,
-                                         opctx,
                                          next_offset, size_align,
                                          buffer_align, read_amount,
                                          &data_plus,
@@ -212,7 +209,6 @@ out:
  * caller should maintain the file holes.
  */
 fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
-                               const struct req_op_context *opctx,
                                uint64_t offset_align, size_t size_align,
                                void *plain_align, size_t *write_amount,
                                bool *fsal_stable)
@@ -301,7 +297,6 @@ fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
                                            size_align, pd_buf);
 
         st = next_ops.obj_ops->write_plus(hdl->next_handle,
-                                          opctx,
                                           next_offset, size_align,
                                           pd_buf, write_amount,
                                           &data_plus,
@@ -319,7 +314,6 @@ fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
                 secnfs_range_has_hole(hdl->holes, offset_align, size_align)) {
                 SECNFS_D("hdl = %x; WORKAROUND write-then-write_plus", hdl);
                 st = next_ops.obj_ops->write(hdl->next_handle,
-                                             opctx,
                                              next_offset, size_align,
                                              pd_buf, write_amount,
                                              fsal_stable);
@@ -328,7 +322,6 @@ fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
                         goto out;
                 }
                 st = next_ops.obj_ops->write_plus(hdl->next_handle,
-                                                  opctx,
                                                   next_offset, size_align,
                                                   pd_buf, write_amount,
                                                   &data_plus,
@@ -364,8 +357,7 @@ out:
 inline secnfs_s read_modify_one(uint8_t *dst, void *src,
                                 uint64_t dst_offset, size_t src_size,
                                 uint64_t file_offset,
-                                struct secnfs_fsal_obj_handle *hdl,
-                                const struct req_op_context *opctx)
+                                struct secnfs_fsal_obj_handle *hdl)
 {
         fsal_status_t st;
         size_t read_amount;
@@ -380,7 +372,7 @@ inline secnfs_s read_modify_one(uint8_t *dst, void *src,
         if (file_offset < get_filesize(hdl) &&
                         !secnfs_offset_in_hole(hdl->holes, file_offset)) {
                 SECNFS_D("hdl = %x; READ remote block for update", hdl);
-                st = do_aligned_read(hdl, opctx, file_offset, PI_INTERVAL_SIZE,
+                st = do_aligned_read(hdl, file_offset, PI_INTERVAL_SIZE,
                                      dst, &read_amount, &end_of_file);
                 if (FSAL_IS_ERROR(st))
                         return SECNFS_READ_UPDATE_FAIL;
@@ -411,7 +403,6 @@ update:
  * ASSUMPTION: If filesize is not aligned, the last block is padded with zero.
  */
 secnfs_s secnfs_fill_zero(struct secnfs_fsal_obj_handle *hdl,
-                          const struct req_op_context *opctx,
                           size_t left, size_t right)
 {
         size_t left_down;
@@ -453,8 +444,7 @@ secnfs_s secnfs_fill_zero(struct secnfs_fsal_obj_handle *hdl,
 
         size_align = right - left_down;
         /* filling size can be arbitrarily large, allocate fixed buffer */
-        fs_maxwrite = hdl->obj_handle.export->ops->fs_maxwrite(
-                                                        hdl->obj_handle.export);
+        fs_maxwrite = op_ctx->fsal_export->ops->fs_maxwrite(op_ctx->fsal_export);
         buffer_size = MIN(MIN(size_align, FILL_ZERO_BUFFER_SIZE), fs_maxwrite);
         buffer = gsh_calloc(1, buffer_size);
 
@@ -466,7 +456,7 @@ secnfs_s secnfs_fill_zero(struct secnfs_fsal_obj_handle *hdl,
                 ret = read_modify_one(buffer, NULL,
                                       0, 0,
                                       left_down,
-                                      hdl, opctx);
+                                      hdl);
                 if (ret != SECNFS_OKAY)
                         goto out;
 
@@ -479,7 +469,7 @@ secnfs_s secnfs_fill_zero(struct secnfs_fsal_obj_handle *hdl,
         write_amount = 0;
         size = buffer_size;
         do {
-                st = do_aligned_write(hdl, opctx,
+                st = do_aligned_write(hdl,
                                       left_down + write_amount,
                                       size,
                                       buffer + write_amount % buffer_size,
@@ -518,7 +508,7 @@ out:
  * concurrency (locks) is managed in cache_inode_*
  */
 fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
-                          const struct req_op_context *opctx, uint64_t offset,
+                          uint64_t offset,
                           size_t buffer_size, void *buffer,
                           size_t *read_amount, bool *end_of_file)
 {
@@ -536,7 +526,7 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
         SECNFS_D("hdl = %x; read from %u (%u)\n", hdl, offset, buffer_size);
 
         if (obj_hdl->type != REGULAR_FILE) {
-                return next_ops.obj_ops->read(hdl->next_handle, opctx,
+                return next_ops.obj_ops->read(hdl->next_handle,
                                               offset,
                                               buffer_size, buffer,
                                               read_amount, end_of_file);
@@ -581,7 +571,7 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                 *read_amount = size_align;
                 st = fsalstat(ERR_FSAL_NO_ERROR, 0);
         } else {
-                st = do_aligned_read(hdl, opctx, offset_align, size_align,
+                st = do_aligned_read(hdl, offset_align, size_align,
                                 buffer_align, read_amount, end_of_file);
                 if (FSAL_IS_ERROR(st))
                         goto out;
@@ -595,7 +585,7 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                 else
                         *read_amount = *read_amount - offset_moved;
 
-                PTHREAD_MUTEX_lock(&obj_hdl->lock);
+                PTHREAD_RWLOCK_rdlock(&obj_hdl->lock);
                 /* buffer_size may be larger than effective amount */
                 if (offset + *read_amount >= get_filesize(hdl)) {
                         *end_of_file = 1;
@@ -603,7 +593,7 @@ fsal_status_t secnfs_read(struct fsal_obj_handle *obj_hdl,
                 } else {
                         *end_of_file = 0;
                 }
-                PTHREAD_MUTEX_unlock(&obj_hdl->lock);
+                PTHREAD_RWLOCK_unlock(&obj_hdl->lock);
 
                 if (!align)
                         memcpy(buffer, buffer_align + offset_moved,
@@ -621,7 +611,6 @@ out:
  * concurrency (locks) is managed in secnfs_write
  */
 secnfs_s prepare_aligned_buffer(struct secnfs_fsal_obj_handle *hdl,
-                                const struct req_op_context *opctx,
                                 void *buffer, void *plain_align,
                                 size_t buffer_size, uint64_t size_align,
                                 uint64_t offset_align, uint64_t offset_moved)
@@ -638,7 +627,7 @@ secnfs_s prepare_aligned_buffer(struct secnfs_fsal_obj_handle *hdl,
                         pi_count == 1 ?
                         buffer_size : PI_INTERVAL_SIZE - offset_moved,
                         offset_align,
-                        hdl, opctx);
+                        hdl);
 
         if (ret != SECNFS_OKAY)
                 return ret;
@@ -654,7 +643,7 @@ secnfs_s prepare_aligned_buffer(struct secnfs_fsal_obj_handle *hdl,
                         0,
                         offset_moved + buffer_size - tail_offset,
                         offset_align + tail_offset,
-                        hdl, opctx);
+                        hdl);
 
                 if (ret != SECNFS_OKAY)
                         return ret;
@@ -676,7 +665,7 @@ secnfs_s prepare_aligned_buffer(struct secnfs_fsal_obj_handle *hdl,
  * concurrency (locks) is managed in cache_inode_*
  */
 fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
-                           const struct req_op_context *opctx, uint64_t offset,
+                           uint64_t offset,
                            size_t buffer_size, void *buffer,
                            size_t *write_amount, bool *fsal_stable)
 {
@@ -693,7 +682,7 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
         SECNFS_D("hdl = %x; write to %u (%u)\n", hdl, offset, buffer_size);
 
         if (obj_hdl->type != REGULAR_FILE) {
-                return next_ops.obj_ops->write(hdl->next_handle, opctx,
+                return next_ops.obj_ops->write(hdl->next_handle,
                                                offset,
                                                buffer_size, buffer,
                                                write_amount,
@@ -726,7 +715,7 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
         }
 
         if (!align) {
-                ret = prepare_aligned_buffer(hdl, opctx, buffer, plain_align,
+                ret = prepare_aligned_buffer(hdl, buffer, plain_align,
                                              buffer_size, size_align_lock,
                                              offset_align, offset_moved);
                 if (ret != SECNFS_OKAY) {
@@ -735,7 +724,7 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
                 }
         }
 
-        st = do_aligned_write(hdl, opctx, offset_align, size_align_lock,
+        st = do_aligned_write(hdl, offset_align, size_align_lock,
                               plain_align, write_amount, fsal_stable);
         if (FSAL_IS_ERROR(st))
                 goto out;
@@ -744,7 +733,7 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
                 goto out;
         }
 
-        PTHREAD_MUTEX_lock(&obj_hdl->lock);
+        PTHREAD_RWLOCK_wrlock(&obj_hdl->lock);
 
         if (secnfs_hole_remove(hdl->holes, offset_align, *write_amount))
                 hdl->has_dirty_meta = 1;
@@ -770,7 +759,7 @@ fsal_status_t secnfs_write(struct fsal_obj_handle *obj_hdl,
         SECNFS_D("hdl = %x; client_size = %d; write_amount = %d\n", hdl,
                  get_filesize(hdl), *write_amount);
 
-        PTHREAD_MUTEX_unlock(&obj_hdl->lock);
+        PTHREAD_RWLOCK_unlock(&obj_hdl->lock);
 
 out:
         secnfs_range_unlock(hdl->range_lock, offset_align, size_align_lock);
@@ -784,7 +773,6 @@ out:
  * called by setattrs (with ATTR_SIZE mask) which holds cache write lock
  */
 fsal_status_t secnfs_truncate(struct fsal_obj_handle *obj_hdl,
-                              const struct req_op_context *opctx,
                               uint64_t newsize)
 {
         struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
@@ -803,7 +791,7 @@ fsal_status_t secnfs_truncate(struct fsal_obj_handle *obj_hdl,
         if (newsize != newsize_up) {
                 /* If newsize not aligned, explicitly fill zero for last
                  * block, since our file hole must be aligned. */ 
-                ret = secnfs_fill_zero(hdl, opctx, newsize, newsize_up);
+                ret = secnfs_fill_zero(hdl, newsize, newsize_up);
                 if (ret != SECNFS_OKAY)
                         return secnfs_to_fsal_status(ret);
         }
@@ -843,12 +831,12 @@ fsal_status_t secnfs_commit(struct fsal_obj_handle *obj_hdl,    /* sync */
  * check this.
  */
 fsal_status_t secnfs_lock_op(struct fsal_obj_handle *obj_hdl,
-                             const struct req_op_context *opctx, void *p_owner,
+                             void *p_owner,
                              fsal_lock_op_t lock_op,
                              fsal_lock_param_t *request_lock,
                              fsal_lock_param_t *conflicting_lock)
 {
-        return next_ops.obj_ops->lock_op(next_handle(obj_hdl), opctx, p_owner,
+        return next_ops.obj_ops->lock_op(next_handle(obj_hdl), p_owner,
                                          lock_op, request_lock,
                                          conflicting_lock);
 }
@@ -864,13 +852,12 @@ fsal_status_t secnfs_close(struct fsal_obj_handle *obj_hdl)
         struct secnfs_fsal_obj_handle *hdl = secnfs_handle(obj_hdl);
 
         if (obj_hdl->type == REGULAR_FILE && hdl->has_dirty_meta) {
-                struct req_op_context opctx = {0};
                 fsal_status_t st;
 
                 SECNFS_D("Closing hdl = %x; writing header (filesize: %u)",
                          hdl, get_filesize(hdl));
 
-                st = write_header(obj_hdl, &opctx);
+                st = write_header(obj_hdl);
 
                 if (FSAL_IS_ERROR(st)) {
                         /* when unlink a pinned file, fsal_close will not be
