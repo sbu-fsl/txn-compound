@@ -207,18 +207,16 @@ fsal_status_t vfs_write(struct fsal_obj_handle *obj_hdl,
 			bool *fsal_stable);
 
 fsal_status_t vfs_read_plus(struct fsal_obj_handle *obj_hdl,
-			    const struct req_op_context *opctx,
 			    uint64_t offset, size_t buffer_size,
 			    void *buffer, size_t *read_amount,
-                            struct data_plus *data_plus,
-			    bool *end_of_file);
+			    bool *end_of_file,
+                            struct io_info *info);
 
 fsal_status_t vfs_write_plus(struct fsal_obj_handle *obj_hdl,
-			     const struct req_op_context *opctx,
 			     uint64_t offset, size_t buffer_size,
 			     void *buffer, size_t *write_amount,
-                             struct data_plus *data_plus,
-			     bool *fsal_stable);
+			     bool *fsal_stable,
+                             struct io_info *info);
 
 fsal_status_t vfs_commit(struct fsal_obj_handle *obj_hdl,	/* sync */
 			 off_t offset, size_t len);

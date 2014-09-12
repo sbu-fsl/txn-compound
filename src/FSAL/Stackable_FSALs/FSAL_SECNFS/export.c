@@ -71,9 +71,11 @@ static void release(struct fsal_export *export)
 }
 
 static fsal_status_t get_dynamic_info(struct fsal_export *exp_hdl,
+				      struct fsal_obj_handle *obj_hdl,
 				      fsal_dynamicfsinfo_t * infop)
 {
         return next_ops.exp_ops->get_fs_dynamic_info(next_export(exp_hdl),
+                                                     obj_hdl,
                                                      infop);
 }
 
@@ -231,6 +233,15 @@ static struct config_item export_params[] = {
 			 noop_conf_init, noop_conf_commit,
 			 subfsal_args, fsal_node),
 	CONFIG_EOL
+};
+
+static struct config_block export_param = {
+	.dbus_interface_name = "org.ganesha.nfsd.config.fsal.secnfs-export%d",
+	.blk_desc.name = "FSAL",
+	.blk_desc.type = CONFIG_BLOCK,
+	.blk_desc.u.blk.init = noop_conf_init,
+	.blk_desc.u.blk.params = export_params,
+	.blk_desc.u.blk.commit = noop_conf_commit
 };
 
 /* create_export

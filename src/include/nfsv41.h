@@ -7704,6 +7704,41 @@ extern "C" {
 		return true;
 	}
 
+        /* new to NFS end-to-end integrity */
+
+        static inline bool
+        xdr_nfs_protection_type4(XDR *xdrs, nfs_protection_type4 *objp)
+        {
+                register int32_t *buf;
+
+                 if (!xdr_enum(xdrs, (enum_t *) objp))
+                         return false;
+                return true;
+        }
+
+        static inline bool
+        xdr_nfs_protection_info4(XDR *xdrs, nfs_protection_info4 *objp)
+        {
+                register int32_t *buf;
+
+                 if (!xdr_nfs_protection_type4(xdrs, &objp->pi_type))
+                         return false;
+                 if (!xdr_uint32_t(xdrs, &objp->pi_intvl_size))
+                         return false;
+                 if (!xdr_uint64_t(xdrs, &objp->pi_other_data))
+                         return false;
+                return true;
+        }
+
+        /* TODO to support get_protection_type in 2.1? */
+        static inline bool
+        xdr_fattr4_protection_types(XDR *xdrs, fattr4_protection_types *objp)
+        {
+                 if (!xdr_nfs_protection_info4(xdrs, objp))
+                         return false;
+                return true;
+        }
+
 	static inline bool
 	xdr_data_protected4(XDR *xdrs, data_protected4 *objp)
 	{

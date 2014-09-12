@@ -108,7 +108,7 @@ fsal_status_t do_aligned_read(struct secnfs_fsal_obj_handle *hdl,
                               bool *end_of_file)
 {
         uint64_t next_offset; /* include file header */
-        struct data_plus data_plus;
+        struct io_info info;
         struct secnfs_dif secnfs_dif;
         uint8_t *secnfs_dif_buf = NULL;
         uint8_t version_buf[8];
@@ -131,15 +131,18 @@ fsal_status_t do_aligned_read(struct secnfs_fsal_obj_handle *hdl,
                 goto out;
         }
 
+        // XXX PLUS
+        /*
         data_plus_type_protected_data_init(&data_plus, next_offset,
                                            pi_size, pi_buf,
                                            size_align, buffer_align);
+                                           */
 
         st = next_ops.obj_ops->read_plus(hdl->next_handle,
                                          next_offset, size_align,
                                          buffer_align, read_amount,
-                                         &data_plus,
-                                         end_of_file);
+                                         end_of_file,
+                                         &info);
         if (FSAL_IS_ERROR(st)) {
                 SECNFS_D("hdl = %x; read_plus failed: %u", hdl, st.major);
                 goto out;
@@ -151,8 +154,10 @@ fsal_status_t do_aligned_read(struct secnfs_fsal_obj_handle *hdl,
                 end_of_file = 0;
         }
         SECNFS_D("hdl = %x; read_amount_align = %u", hdl, *read_amount);
+        // XXX PLUS
+        /*
         SECNFS_D("hdl = %x; pd_info_len = %u", hdl,
-                        data_plus_to_pi_dlen(&data_plus));
+                        data_plus_to_pi_dlen(&data_plus)); */
         // dump_pi_buf(pi_buf, data_plus_to_pi_dlen(&data_plus));
 
         secnfs_dif_buf = gsh_malloc(PI_SECNFS_DIF_SIZE);
@@ -213,7 +218,7 @@ fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
                                void *plain_align, size_t *write_amount,
                                bool *fsal_stable)
 {
-        struct data_plus data_plus;
+        struct io_info info;
         uint64_t next_offset;
         size_t pi_size;
         uint8_t *pd_buf;
@@ -291,16 +296,19 @@ fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
         }
         // dump_pi_buf(pi_buf, pi_size);
 
+        // XXX PLUS
         /* prepare data_plus for write_plus */
+        /*
         data_plus_type_protected_data_init(&data_plus, next_offset,
                                            pi_size, pi_buf,
                                            size_align, pd_buf);
+        */
 
         st = next_ops.obj_ops->write_plus(hdl->next_handle,
                                           next_offset, size_align,
                                           pd_buf, write_amount,
-                                          &data_plus,
-                                          fsal_stable);
+                                          fsal_stable,
+                                          &info);
         if (FSAL_IS_ERROR(st)) {
                 SECNFS_D("hdl = %x; write_plus failed: %u", hdl, st.major);
                 /* XXX WORKAROUND for EINVAL kernel bug */
@@ -324,8 +332,8 @@ fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
                 st = next_ops.obj_ops->write_plus(hdl->next_handle,
                                                   next_offset, size_align,
                                                   pd_buf, write_amount,
-                                                  &data_plus,
-                                                  fsal_stable);
+                                                  fsal_stable,
+                                                  &info);
                 if (FSAL_IS_ERROR(st)) {
                         SECNFS_D("hdl = %x; write_plus still failed: %u",
                                  hdl, st.major);

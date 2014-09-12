@@ -17,6 +17,7 @@
 #include "nfsv41.h"
 #include "nfs_dix.h"
 
+/*
 struct data_plus {
         data_content4 content_type;
         union {
@@ -116,8 +117,10 @@ static inline char* data_plus_to_file_data(struct data_plus *dp) {
                 return 0;
         }
 }
+*/
 
 /* initialize data_plus whose content type is NFS4_CONTENT_PROTECTED_DATA */
+/*
 static inline void data_plus_type_protected_data_init(struct data_plus *dp,
                                                       uint64_t offset,
                                                       size_t pi_size,
@@ -135,6 +138,7 @@ static inline void data_plus_type_protected_data_init(struct data_plus *dp,
         dp->u.pdata.pd_data.pd_data_len = pd_size;
         dp->u.pdata.pd_data.pd_data_val = pd_buf;
 }
+*/
 
 static inline void dump_pi_buf(uint8_t *pi_buf, size_t pi_size)
 {

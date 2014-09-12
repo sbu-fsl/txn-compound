@@ -683,5 +683,6 @@ void create_pseudofs(void);
 void pseudo_unmount_export(struct gsh_export *exp);
 
 /* NFSv4 end-to-end integrity */
-void get_protection_type4(compound_data_t *compound, nfs_protection_info4 *pi);
+/* TODO to support get_protection_type in 2.1? */
+/* void get_protection_type4(compound_data_t *compound, nfs_protection_info4 *pi); */
 #endif	/* NFS_PROTO_FUNCTIONS_H */

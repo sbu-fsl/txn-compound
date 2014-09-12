@@ -211,11 +211,10 @@ fsal_status_t vfs_write(struct fsal_obj_handle *obj_hdl,
 }
 
 fsal_status_t vfs_read_plus(struct fsal_obj_handle *obj_hdl,
-			    const struct req_op_context *opctx,
 			    uint64_t offset, size_t buffer_size,
 			    void *buffer, size_t *read_amount,
-                            struct data_plus *data_plus,
-			    bool *end_of_file)
+			    bool *end_of_file,
+                            struct io_info *info)
 {
 	struct vfs_fsal_obj_handle *myself;
 	ssize_t nb_read;
@@ -227,9 +226,10 @@ fsal_status_t vfs_read_plus(struct fsal_obj_handle *obj_hdl,
 	assert(myself->u.file.fd >= 0
 	       && myself->u.file.openflags != FSAL_O_CLOSED);
 
+	// XXX PLUS
 	nb_read = dixio_pread(myself->u.file.fd,
-			      data_plus_to_file_data(data_plus),
-			      data_plus_to_pi_data(data_plus),
+			      NULL, //data_plus_to_file_data(data_plus),
+			      NULL, //data_plus_to_pi_data(data_plus),
 			      buffer_size, offset);
 
 	if (offset == -1 || nb_read == -1) {
@@ -251,11 +251,10 @@ fsal_status_t vfs_read_plus(struct fsal_obj_handle *obj_hdl,
 }
 
 fsal_status_t vfs_write_plus(struct fsal_obj_handle *obj_hdl,
-			     const struct req_op_context *opctx,
 			     uint64_t offset, size_t buffer_size,
 			     void *buffer, size_t *write_amount,
-                             struct data_plus *data_plus,
-			     bool *fsal_stable)
+			     bool *fsal_stable,
+                             struct io_info *info)
 {
 	struct vfs_fsal_obj_handle *myself;
 	ssize_t nb_written;
@@ -267,10 +266,11 @@ fsal_status_t vfs_write_plus(struct fsal_obj_handle *obj_hdl,
 	assert(myself->u.file.fd >= 0
 	       && myself->u.file.openflags != FSAL_O_CLOSED);
 
-	fsal_set_credentials(opctx->creds);
+	fsal_set_credentials(op_ctx->creds);
+	// XXX PLUS
 	nb_written = dixio_pwrite(myself->u.file.fd,
-				  data_plus_to_file_data(data_plus),
-				  data_plus_to_pi_data(data_plus),
+				  NULL,// data_plus_to_file_data(data_plus),
+				  NULL,// data_plus_to_pi_data(data_plus),
 				  buffer_size, offset);
 
 	if (offset == -1 || nb_written < 0) {

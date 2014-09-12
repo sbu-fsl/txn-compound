@@ -233,7 +233,8 @@ MODULE_INIT void secnfs_init(void)
 	}
 	myself->ops->create_export = secnfs_create_export;
 	myself->ops->init_config = init_config;
-	init_fsal_parameters(&SECNFS.fsal_info);
+        // TODO fsal_info removed in 2.1
+	// init_fsal_parameters(&SECNFS.fsal_info);
 	SECNFS_D("secnfs module initialized.");
 }
 

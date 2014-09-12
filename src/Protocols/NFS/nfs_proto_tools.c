@@ -2299,7 +2299,8 @@ static fattr_xdr_result encode_protection_types(XDR *xdr,
 {
 	fattr4_protection_types pt;
 
-	get_protection_type4(args->data, &pt);
+	/* TODO to support get_protection_type in 2.1? */
+	/* get_protection_type4(args->data, &pt); */
 
 	if (!xdr_fattr4_protection_types(xdr, &pt))
 		return FATTR_XDR_FAILED;
@@ -2970,6 +2971,8 @@ const struct fattr4_dent fattr4tab[FATTR4_MAX + 1] = {
 		.decode = decode_filesize,
 		.access = FATTR4_ATTR_READ_WRITE}
 	,
+	/* TODO to support get_protection_type in 2.1? */
+	/*
 	[FATTR4_PROTECTION_TYPES] = {
 		.name = "FATTR4_PROTECTION_TYPES",
 		.supported = 1,
@@ -2978,6 +2981,7 @@ const struct fattr4_dent fattr4tab[FATTR4_MAX + 1] = {
 		.decode = decode_protection_types,
 		.access = FATTR4_ATTR_READ}
 	,
+	*/
 };
 
 /* goes in a more global header?

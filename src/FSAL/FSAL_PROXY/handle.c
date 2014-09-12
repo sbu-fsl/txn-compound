@@ -1968,12 +1968,12 @@ static fsal_status_t pxy_write(struct fsal_obj_handle *obj_hdl,
 }
 
 fsal_status_t pxy_read_plus(struct fsal_obj_handle *obj_hdl,
-                            const struct req_op_context *opctx,
                             uint64_t offset, size_t buffer_size,
                             void *buffer, size_t *read_amount,
-                            struct data_plus *data_plus,
-                            bool *end_of_file)
+                            bool *end_of_file,
+                            struct io_info *info)
 {
+        /*
         int rc;
         int opcnt = 0;
         struct pxy_obj_handle *ph;
@@ -2008,7 +2008,8 @@ fsal_status_t pxy_read_plus(struct fsal_obj_handle *obj_hdl,
         rpr4 = &rp4res->READ_PLUS4res_u.rp_resok4;
         rpr4->rpr_contents.rpr_contents_len = 1;
         rpr4->rpr_contents.rpr_contents_val = &rpc4;
-        data_plus_to_read_plus_content(data_plus, &rpc4);
+        // XXX PLUS
+        // data_plus_to_read_plus_content(data_plus, &rpc4);
         COMPOUNDV4_ARG_ADD_OP_READ_PLUS(opcnt, argoparray, offset,
                                         buffer_size, data_plus->content_type);
 
@@ -2017,21 +2018,23 @@ fsal_status_t pxy_read_plus(struct fsal_obj_handle *obj_hdl,
         if (rc != NFS4_OK)
                 return nfsstat4_to_fsal(rc);
 
-        /* TODO: add sanity check of rpc4 against data_plus */
-        data_plus_from_read_plus_content(data_plus, &rpc4);
+        // TODO: add sanity check of rpc4 against data_plus
+        // XXX PLUS
+        // data_plus_from_read_plus_content(data_plus, &rpc4);
 
         *end_of_file = rpr4->rpr_eof;
         *read_amount = data_plus_to_file_dlen(data_plus);
         return nfsstat4_to_fsal(rp4res->rp_status);
+        */
 }
 
 fsal_status_t pxy_write_plus(struct fsal_obj_handle *obj_hdl,
-			     const struct req_op_context *opctx,
 			     uint64_t offset, size_t size,
 			     void *buffer, size_t *write_amount,
-                             struct data_plus *data_plus,
-			     bool *fsal_stable)
+			     bool *fsal_stable,
+                             struct io_info *info)
 {
+        /*
 	int rc;
 	int opcnt = 0;
 #define FSAL_WRITE_PLUS_NB_OP_ALLOC 2
@@ -2064,7 +2067,8 @@ fsal_status_t pxy_write_plus(struct fsal_obj_handle *obj_hdl,
 
         wp4res = &resoparray[opcnt].nfs_resop4_u.opwrite_plus;
         wpr4 = &wp4res->WRITE_PLUS4res_u.wp_resok4;
-        data_plus_to_write_plus_args(data_plus, &wpa4);
+        // XXX PLUS
+        // data_plus_to_write_plus_args(data_plus, &wpa4);
 	COMPOUNDV4_ARG_ADD_OP_WRITE_PLUS(opcnt, argoparray, (&wpa4));
 
 	rc = pxy_nfsv4_call(obj_hdl->export, opctx->creds, opcnt, argoparray,
@@ -2072,10 +2076,12 @@ fsal_status_t pxy_write_plus(struct fsal_obj_handle *obj_hdl,
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
 
-        data_plus_from_write_plus_args(data_plus, &wpa4);
+        // XXX PLUS
+        // data_plus_from_write_plus_args(data_plus, &wpa4);
 	*write_amount = wpr4->wr_count;
 	*fsal_stable = wpr4->wr_committed != UNSTABLE4;
 	return nfsstat4_to_fsal(wp4res->wp_status);
+        */
 }
 
 /* We send all out writes as DATA_SYNC, commit becomes a NO-OP */
