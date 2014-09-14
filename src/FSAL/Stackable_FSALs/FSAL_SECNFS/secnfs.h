@@ -53,13 +53,13 @@ typedef enum {
 /**
  * SECNFS context.
  */
-typedef struct {
+typedef struct secnfs_info {
         uint32_t context_size;          /*!< size of context */
         void *context;                  /*!< context data */
-        char context_cache_file[MAXPATHLEN + 1];
-        char secnfs_name[MAXPATHLEN + 1];       /*!< secnfs unique name */
-        char plist_file[MAXPATHLEN + 1];        /*!< list of secnfs proxies */
-        unsigned create_if_no_context : 1;
+        char *context_cache_file;
+        char *secnfs_name;       /*!< secnfs unique name */
+        char *plist_file;        /*!< list of secnfs proxies */
+        bool create_if_no_context;
 } secnfs_info_t;
 
 

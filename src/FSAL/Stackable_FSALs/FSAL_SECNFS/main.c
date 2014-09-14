@@ -96,34 +96,30 @@ struct fsal_staticfsinfo_t *secnfs_staticinfo(struct fsal_module *hdl)
 
 /************************ Module methods **************************/
 
-// XXX fsal_init_info_t is removed in a3595873380
-// TODO how to load in 2.1
-/*
-static int secnfs_init_params(const char *key, const char *val,
-			      fsal_init_info_t *info, const char *name)
-{
-        struct secnfs_fsal_module *secnfs = container_of(
-                        fsal, struct secnfs_fsal_module, fsal);
-        secnfs_info_t *secnfs_info = &secnfs->secnfs_info;
+static struct config_item secnfs_params[] = {
+	CONF_ITEM_STR("Name", 1, MAXNAMLEN, NULL,
+		      secnfs_info, secnfs_name),
+	CONF_ITEM_BOOL("Create_If_No_Context", true,
+		       secnfs_info, create_if_no_context),
+        CONF_ITEM_PATH("Context_Cache_File", 1, MAXPATHLEN,
+                       "/etc/ganesha/secnfs-context.conf",
+                       secnfs_info, context_cache_file),
+	CONF_ITEM_PATH("Proxy_Lists", 1, MAXPATHLEN,
+                       "/etc/ganesha/secnfs-proxy-list.conf",
+		       secnfs_info, plist_file),
+	CONFIG_EOL
+};
 
-        if (!strcasecmp(key, "Context_Cache_File")) {
-                strncpy(secnfs_info->context_cache_file, val, MAXPATHLEN);
-        } else if (!strcasecmp(key, "Create_If_No_Context")) {
-                secnfs_info->create_if_no_context = str_to_bool(val);
-        } else if (!strcasecmp(key, "Name")) {
-                strncpy(secnfs_info->secnfs_name, val, MAXPATHLEN);
-        } else if (!strcasecmp(key, "Proxy_Lists")) {
-                strncpy(secnfs_info->plist_file, val, MAXPATHLEN);
-        } else {
-		LogCrit(COMPONENT_CONFIG, "Unknown key: %s in %s", key, name);
-		return 1;
-        }
+struct config_block secnfs_param = {
+	.dbus_interface_name = "org.ganesha.nfsd.config.fsal.vfs",
+	.blk_desc.name = "SECNFS",
+	.blk_desc.type = CONFIG_BLOCK,
+	.blk_desc.u.blk.init = noop_conf_init,
+	.blk_desc.u.blk.params = secnfs_params,
+	.blk_desc.u.blk.commit = noop_conf_commit
+};
 
-        return 0;
-}
-*/
-
-
+/* can be removed if ganesha config_parsing checks for us */
 static int validate_conf_params(const secnfs_info_t *info)
 {
         if (!info->context_cache_file) {
@@ -141,7 +137,6 @@ static int validate_conf_params(const secnfs_info_t *info)
         return 1;
 }
 
-
 /*
  * must be called with a reference taken (via lookup_fsal)
  */
@@ -150,7 +145,7 @@ static fsal_status_t init_config(struct fsal_module *fsal_hdl,
 {
 	struct secnfs_fsal_module *secnfs_me = secnfs_module(fsal_hdl);
         secnfs_info_t *info = &secnfs_me->secnfs_info;
-	fsal_status_t st;
+	struct config_error_type err_type;
 
 	secnfs_me->fs_info = default_posix_info;	/* get a copy of the defaults */
 
@@ -158,16 +153,13 @@ static fsal_status_t init_config(struct fsal_module *fsal_hdl,
 	 * fsal_hdl->name is used to find the block containing the
 	 * params.
 	 */
-        // XXX fsal_load_config is removed git show 1b81f1e
-        /*
-        st = fsal_load_config(fsal_hdl->ops->get_name(fsal_hdl), config_struct,
-                              &secnfs_me->fsal_info, &secnfs_me->fs_info,
-                              secnfs_init_params);
-	if (FSAL_IS_ERROR(st)) {
-                LogCrit(COMPONENT_FSAL, "cannot load SECNFS config");
-		return st;
-        }
-        */
+	(void) load_config_from_parse(config_struct,
+				      &secnfs_param,
+				      &secnfs_me->fs_info,
+				      true,
+				      &err_type);
+	if (!config_error_is_harmless(&err_type))
+		return fsalstat(ERR_FSAL_INVAL, 0);
 
         SECNFS_F("Context_Cache_File = %s", info->context_cache_file);
         SECNFS_F("secnfs_name = %s", info->secnfs_name);
