@@ -2654,8 +2654,8 @@ enum nfs_opnum4 {
 %
 %/* new to NFS end-to-end integrity */
 %
- OP_WRITE_PLUS          = 59,
- OP_READ_PLUS           = 60,
+ OP_WRITE_PLUS          = 64,
+ OP_READ_PLUS           = 65,
  OP_ILLEGAL             = 10044
 };
 
@@ -3349,16 +3349,10 @@ struct data_protect_info4 {
     opaque                  pi_data<>;
 };
 
-enum space_info4 {
-    SPACE_RESERVED4             = 0,
-    SPACE_UNRESERVED4           = 1,
-    SPACE_UNKNOWN4              = 2
-};
-
 struct data_info4 {
     offset4                 di_offset;
     length4                 di_length;
-    space_info4             di_reserved;
+    bool_t                  di_allocated;
 };
 
 struct data4 {
@@ -3402,6 +3396,7 @@ struct READ_PLUS4args {
 
 struct read_plus_res4 {
     bool                    rpr_eof;
+    count4                  rpr_contents_count;
     read_plus_content4      rpr_contents<>;
 };
 
@@ -3412,17 +3407,17 @@ union READ_PLUS4res switch (nfsstat4 rp_status) {
         void;
 };
 
-union write_plus_arg4 switch (data_content4 wpa_content) {
+union write_plus_arg4 switch (data_content4 wp_what) {
     case NFS4_CONTENT_DATA:
-        data4               wpa_data;
+        data4               wp_data;
     case NFS4_CONTENT_APP_DATA_HOLE:
-        app_data_hole4      wpa_adh;
+        app_data_hole4      wp_adh;
     case NFS4_CONTENT_HOLE:
-        data_info4          wpa_hole;
+        data_info4          wp_hole;
     case NFS4_CONTENT_PROTECTED_DATA:
-        data_protected4     wpa_pdata;
+        data_protected4     wp_pdata;
     case NFS4_CONTENT_PROTECT_INFO:
-        data_protect_info4  wpa_pinfo;
+        data_protect_info4  wp_pinfo;
     default:
         void;
 };
@@ -3435,15 +3430,16 @@ struct WRITE_PLUS4args {
 };
 
 struct write_response4 {
+    count4                  wr_ids;
     stateid4                wr_callback_id;
-    count4                  wr_count;
+    length4                 wr_count;
     stable_how4             wr_committed;
     verifier4               wr_writeverf;
 };
 
-union WRITE_PLUS4res switch (nfsstat4 wp_status) {
+union WRITE_PLUS4res switch (nfsstat4 wpr_status) {
     case NFS4_OK:
-        write_response4     wp_resok4;
+        write_response4     wpr_resok4;
     default:
         void;
 };

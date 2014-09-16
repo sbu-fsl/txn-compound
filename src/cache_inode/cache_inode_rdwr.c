@@ -116,9 +116,18 @@ cache_inode_rdwr_plus(cache_entry_t *entry,
 		if (*sync)
 			openflags |= FSAL_O_SYNC;
 	}
+
+	/* READ_PLUS and WRITE_PLUS for SECNFS require direct-IO */
+	if (io_direction == CACHE_INODE_READ_PLUS ||
+	    io_direction == CACHE_INODE_WRITE_PLUS) {
+		openflags |= FSAL_O_DIRECT;
+		openflags |= FSAL_O_SYNC;
+	}
 	/* XXX WORKAROUND: write header via dixio (require O_DIRECT) */
+	/*
 	openflags |= FSAL_O_DIRECT;
 	openflags |= FSAL_O_SYNC;
+	*/
 
 	assert(obj_hdl != NULL);
 
@@ -136,6 +145,7 @@ cache_inode_rdwr_plus(cache_entry_t *entry,
 	PTHREAD_RWLOCK_rdlock(&entry->content_lock);
 	content_locked = true;
 	loflags = obj_hdl->ops->status(obj_hdl);
+	// TODO degrade DIRECT to normal IO for normal READ/WRITE
 	while (!is_open(entry) ||
 			(loflags && (loflags & openflags) != openflags)) {
 		PTHREAD_RWLOCK_unlock(&entry->content_lock);

@@ -148,8 +148,8 @@ static int op_dswrite_plus(struct nfs_argop4 *op, compound_data_t *data,
  */
 
 static int nfs4_write(struct nfs_argop4 *op, compound_data_t *data,
-		     struct nfs_resop4 *resp, cache_inode_io_direction_t io,
-		     struct io_info *info)
+		      struct nfs_resop4 *resp, cache_inode_io_direction_t io,
+		      struct io_info *info)
 {
 	WRITE4args * const arg_WRITE4 = &op->nfs_argop4_u.opwrite;
 	WRITE4res * const res_WRITE4 = &resp->nfs_resop4_u.opwrite;
@@ -489,6 +489,8 @@ void nfs4_op_write_Free(nfs_resop4 *resp)
  * @return per RFC5661, p. 376
  */
 
+#define wpau(wpa) wpa->wp_data.wp_data_val->write_plus_arg4_u
+
 int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *data,
 		  struct nfs_resop4 *resp)
 {
@@ -503,22 +505,30 @@ int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *data,
 
 	arg.nfs_argop4_u.opwrite.stateid = arg_WPLUS->wp_stateid;
 	arg.nfs_argop4_u.opwrite.stable = arg_WPLUS->wp_stable;
-	info.io_content.what = arg_WPLUS->wp_what;
+	info.io_content.what = arg_WPLUS->wp_data.wp_data_val->wp_what;
 
 	if (info.io_content.what == NFS4_CONTENT_DATA) {
-		info.io_content.data = arg_WPLUS->wp_data;
-		arg.nfs_argop4_u.opwrite.offset = arg_WPLUS->wp_data.d_offset;
+		info.io_content.data = wpau(arg_WPLUS).wp_data;
+		arg.nfs_argop4_u.opwrite.offset = wpau(arg_WPLUS).wp_data.d_offset;
 		arg.nfs_argop4_u.opwrite.data.data_len =
-					arg_WPLUS->wp_data.d_data.data_len;
+					wpau(arg_WPLUS).wp_data.d_data.data_len;
 		arg.nfs_argop4_u.opwrite.data.data_val =
-					arg_WPLUS->wp_data.d_data.data_val;
+					wpau(arg_WPLUS).wp_data.d_data.data_val;
 	} else if (info.io_content.what == NFS4_CONTENT_HOLE) {
-		info.io_content.hole = arg_WPLUS->wp_hole;
-		arg.nfs_argop4_u.opwrite.offset = arg_WPLUS->wp_hole.di_offset;
+		info.io_content.hole = wpau(arg_WPLUS).wp_hole;
+		arg.nfs_argop4_u.opwrite.offset = wpau(arg_WPLUS).wp_hole.di_offset;
 		arg.nfs_argop4_u.opwrite.data.data_len =
-					arg_WPLUS->wp_hole.di_length;
+					wpau(arg_WPLUS).wp_hole.di_length;
 		arg.nfs_argop4_u.opwrite.data.data_val = NULL;
+	} else if (info.io_content.what == NFS4_CONTENT_PROTECTED_DATA) {
+		info.io_content.pdata = wpau(arg_WPLUS).wp_pdata;
+		arg.nfs_argop4_u.opwrite.offset = wpau(arg_WPLUS).wp_pdata.pd_offset;
+		arg.nfs_argop4_u.opwrite.data.data_len =
+					wpau(arg_WPLUS).wp_pdata.pd_data.pd_data_len;
+		arg.nfs_argop4_u.opwrite.data.data_val =
+					wpau(arg_WPLUS).wp_pdata.pd_data.pd_data_val;
 	} else {
+		/* TODO to support NFS4_CONTENT_PROTECT_INFO? */
 		res_WPLUS->wpr_status = NFS4ERR_UNION_NOTSUPP;
 		return res_WPLUS->wpr_status;
 	}
@@ -526,13 +536,14 @@ int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *data,
 
 	res_WPLUS->wpr_status = nfs4_write(&arg, data, &res,
 					   CACHE_INODE_WRITE_PLUS, &info);
+	/* TODO PLUS where to free the io_info */
 	if (res_WPLUS->wpr_status == NFS4_OK) {
-		res_WPLUS->wpr_resok4.wr_ids = 0;
-		res_WPLUS->wpr_resok4.wr_committed =
+		res_WPLUS->WRITE_PLUS4res_u.wpr_resok4.wr_ids = 0;
+		res_WPLUS->WRITE_PLUS4res_u.wpr_resok4.wr_committed =
 			res.nfs_resop4_u.opwrite.WRITE4res_u.resok4.committed;
-		res_WPLUS->wpr_resok4.wr_count =
+		res_WPLUS->WRITE_PLUS4res_u.wpr_resok4.wr_count =
 			res.nfs_resop4_u.opwrite.WRITE4res_u.resok4.count;
-		memcpy(res_WPLUS->wpr_resok4.wr_writeverf,
+		memcpy(res_WPLUS->WRITE_PLUS4res_u.wpr_resok4.wr_writeverf,
 		       res.nfs_resop4_u.opwrite.WRITE4res_u.resok4.writeverf,
 		       sizeof(NFS4_VERIFIER_SIZE));
 	}

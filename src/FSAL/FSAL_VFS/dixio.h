@@ -12,7 +12,7 @@
 #include <sys/types.h>
 #include <arpa/inet.h>
 
-#include "nfs_integrity.h"
+#include "nfs_dix.h"
 
 ssize_t dixio_pread(int fd, void *buf, void *prot_buf,
                     size_t count, off_t offset);

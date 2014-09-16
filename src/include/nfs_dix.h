@@ -13,6 +13,7 @@
 
 #ifndef _NFS_DIX_H
 #define _NFS_DIX_H
+#include "string.h"
 
 struct sd_dif_tuple {
        uint16_t guard_tag;      /* Checksum */
@@ -71,7 +72,7 @@ static inline void extract_from_sd_dif(uint8_t *dif_buf, uint8_t *obj_buf,
                 memcpy(obj_buf + i * 6, dif_buf + i * 8 + 2, 6);
 }
 
-static inline bool is_pi_aligned(uint64_t data_len)
+static inline int is_pi_aligned(uint64_t data_len)
 {
         return (data_len & (PI_INTERVAL_SIZE - 1)) == 0;
 }

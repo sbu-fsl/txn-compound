@@ -16,7 +16,20 @@
 
 #include "nfsv41.h"
 #include "nfs_dix.h"
+#include "fsal_api.h"
 
+static inline char* io_info_to_pi_data(struct io_info *info) {
+        assert(info->io_content.what == NFS4_CONTENT_PROTECTED_DATA ||
+               info->io_content.what == NFS4_CONTENT_PROTECT_INFO);
+        switch (info->io_content.what) {
+        case NFS4_CONTENT_PROTECTED_DATA:
+                return info->io_content.pdata.pd_info.pd_info_val;
+        case NFS4_CONTENT_PROTECT_INFO:
+                return info->io_content.pinfo.pi_data.pi_data_val;
+        default:
+                return 0;
+        }
+}
 /*
 struct data_plus {
         data_content4 content_type;

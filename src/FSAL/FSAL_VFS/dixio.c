@@ -6,7 +6,7 @@
 #include <sys/types.h>
 
 #include "log.h"
-#include "nfs_integrity.h"
+#include "abstract_mem.h"
 
 #define GENERATE_GUARD	(1)
 #define GENERATE_REF	(2)
@@ -127,7 +127,7 @@ static ssize_t __do_dixio(int fd, void *buf, void *pbuf, size_t count,
 
 	if ((ret = (signed)events[0].res) < 0) {
 		errno = -ret;
-		fprintf(stderr, "do_dixio(%d) failed: %d\n", rw, errno);
+		fprintf(stderr, "do_dixio(%d) failed: %d %s\n", rw, errno, strerror(errno));
 		return ret;
 	}
 

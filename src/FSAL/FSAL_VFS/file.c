@@ -42,6 +42,7 @@
 #include "vfs_methods.h"
 
 #include "dixio.h"
+#include "nfs_integrity.h"
 
 /** vfs_open
  * called with appropriate locks taken at the cache inode level
@@ -125,11 +126,13 @@ fsal_status_t vfs_read(struct fsal_obj_handle *obj_hdl,
 	       && myself->u.file.openflags != FSAL_O_CLOSED);
 
 	/* XXX WORKAROUND: use dixio interface (DIRECT_IO) */
+	/*
 	if (obj_hdl->type == REGULAR_FILE)
 		nb_read = dixio_pread(myself->u.file.fd,
 				      buffer, NULL,
 				      buffer_size, offset);
 	else
+	*/
 		nb_read = pread(myself->u.file.fd, buffer, buffer_size, offset);
 
 	if (offset == -1 || nb_read == -1) {
@@ -179,11 +182,13 @@ fsal_status_t vfs_write(struct fsal_obj_handle *obj_hdl,
 
 	fsal_set_credentials(op_ctx->creds);
 	/* XXX WORKAROUND: use dixio interface (DIRECT_IO) */
+	/*
 	if (obj_hdl->type == REGULAR_FILE)
 		nb_written = dixio_pwrite(myself->u.file.fd,
 					  buffer, NULL,
 					  buffer_size, offset);
 	else
+	*/
 		nb_written = pwrite(myself->u.file.fd, buffer, buffer_size,
 				    offset);
 
@@ -267,10 +272,10 @@ fsal_status_t vfs_write_plus(struct fsal_obj_handle *obj_hdl,
 	       && myself->u.file.openflags != FSAL_O_CLOSED);
 
 	fsal_set_credentials(op_ctx->creds);
-	// XXX PLUS
+	// TODO PLUS where to check pi_data_len?
 	nb_written = dixio_pwrite(myself->u.file.fd,
-				  NULL,// data_plus_to_file_data(data_plus),
-				  NULL,// data_plus_to_pi_data(data_plus),
+				  buffer,// or data_plus_to_file_data(data_plus) ?
+				  io_info_to_pi_data(info),
 				  buffer_size, offset);
 
 	if (offset == -1 || nb_written < 0) {
