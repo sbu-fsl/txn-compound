@@ -103,7 +103,7 @@ NOTE: to build FSAL_SECNFS, make sure packages listed in
 
 2. Setup config file
 
-	# cp <fsl-nfs-ganesha>/nfs4int/vfs.ganesha.conf /etc/ganesha
+	# cp <fsl-nfs-ganesha>/secnfs/vfs.2.1.ganesha.conf /etc/ganesha
 	# cp run-vfs.sh mybuild
 	# ./run-vfs.sh &
 
@@ -111,7 +111,9 @@ NOTE: to build FSAL_SECNFS, make sure packages listed in
 
 3.1 Make sure a test file "test.txt" exists in the root of the exported FS
 
-	# dd if=/dev/urandom of=/vfs-ganesha/test.txt bs=4k count=2
+	# dd if=/dev/urandom of=/nfsdata/test.txt bs=4k count=2
+
+where /nfsdata is the directory exported by NFS.
 
 3.2 install packages
 

@@ -1,18 +1,18 @@
 #!/bin/bash -
-# Launch the secnfs proxy.
+# Launch the NFS server running VFS FSAL
 #
 # This script should be placed in the build directory.
 #
-#       cp run-secnfs.sh <root-to-nfs-ganesha>/<build-directory>
+#       cp run-vfs.sh <root-to-nfs-ganesha>/<build-directory>
 #
 # Usage 1 (executed in the directory):
 #
 #       cd <root-to-nfs-ganesha>/<build-directory>
-#       ./run-secnfs.sh
+#       ./run-vfs.sh
 #
 # Usage 2 (executed using full path):
 #
-#       <root-to-nfs-ganesha>/<build-directory>/run-secnfs.sh
+#       <root-to-nfs-ganesha>/<build-directory>/run-vfs.sh
 
 set -e
 
