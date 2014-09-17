@@ -1,0 +1,58 @@
+{
+  "fabric_modules": [], 
+  "storage_objects": [
+    {
+      "attributes": {
+        "block_size": 512, 
+        "emulate_3pc": 1, 
+        "emulate_caw": 1, 
+        "emulate_dpo": 0, 
+        "emulate_fua_read": 0, 
+        "emulate_fua_write": 1, 
+        "emulate_model_alias": 1, 
+        "emulate_rest_reord": 0, 
+        "emulate_tas": 1, 
+        "emulate_tpu": 0, 
+        "emulate_tpws": 0, 
+        "emulate_ua_intlck_ctrl": 0, 
+        "emulate_write_cache": 0, 
+        "enforce_pr_isids": 1, 
+        "fabric_max_sectors": 8192, 
+        "is_nonrot": 0, 
+        "max_unmap_block_desc_count": 0, 
+        "max_unmap_lba_count": 0, 
+        "max_write_same_len": 0, 
+        "optimal_sectors": 8192, 
+        "pi_prot_format": 0, 
+        "pi_prot_type": 3, 
+        "queue_depth": 128, 
+        "unmap_granularity": 0, 
+        "unmap_granularity_alignment": 0
+      }, 
+      "name": "rd1", 
+      "plugin": "ramdisk", 
+      "size": 10485760, 
+      "wwn": "aa4a38da-29c6-40c1-b1fd-5b0ec076a0b9"
+    }
+  ], 
+  "targets": [
+    {
+      "fabric": "loopback", 
+      "tpgs": [
+        {
+          "enable": true, 
+          "luns": [
+            {
+              "index": 0, 
+              "storage_object": "/backstores/ramdisk/rd1"
+            }
+          ], 
+          "node_acls": [], 
+          "portals": [], 
+          "tag": 1
+        }
+      ], 
+      "wwn": "naa.50014059b053820a"
+    }
+  ]
+}

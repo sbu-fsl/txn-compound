@@ -2,39 +2,44 @@ How to experiment NFS end-to-end integrity?
 
 Software
 ========
-1. OS: Fedora
+1. OS: Fedora20
 We use Fedora because it contains the latest version of most packages, some of
 which, such as Python2.7 and targetcli-fb, will be used.
 
 It is just too plainful to do it on CentOS.  Even its latest version contain
 very old packages.
 
-2. Kernel: 3.14.1
+2. Kernel: 3.14.17
 
-Apply patch from <fsl-nfs-ganesha>/nfs4int/pi-patchset-v0/0001-apply-patchset-of-enabling-user-land-DIX-data.patch
+Apply patches from <fsl-nfs-ganesha>/nfs4int/pi-patchset-v2/
 
 The patch is adopted (with bug fix) from kernel patches
-http://thread.gmane.org/gmane.linux.kernel.aio.general/3904
-
-There are newer version of the kernel patches.  They did not compile, so we
-don't use them:
 https://marc.info/?l=linux-mm&m=139567816228628&w=2
 
 
 Create a virtualized SCSI disk using LIO tcm_loop
 =================================================
-
 http://linux-iscsi.org/wiki/Tcm_loop
 
-Make sure you use the targetcli-fb from Andy Grover
-(https://github.com/agrover/targetcli-fb), instead of targetcli from
-www.linux-iscsi.org.  Andy even have some videos about how to use targetcli!
+We need "targetcli" to create a SCSI target (virtual disk). Make sure you use
+the targetcli-fb from Andy Grover (https://github.com/agrover/targetcli-fb),
+instead of targetcli from www.linux-iscsi.org.  Andy even have some videos
+about how to use targetcli!
+
+We can create a PI-enabled 10MB device with a simple command:
+
+	# targetcli restoreconfig pi-10MB-device-config.json
+
+where "pi-10MB-device-config.json" config file is in our repo.  To customize
+the settings, use the following three steps as an example:
+
+1. Create a 10MB ramdisk backstore:
 
 	# targetcli
 	> cd /backstores/ramdisk
 	ramdisk> create size=10MB rd1
 
-Then enable DIX support of the ramdisk:
+2. Then enable DIX support of the ramdisk:
 
 	echo 3 > /sys/kernel/config/target/core/rd_mcp_0/rd1/attrib/pi_prot_type
 
@@ -42,7 +47,7 @@ We choose to use type 3 of DIF, which only use the CRC guard tag (2 bytes).
 The application tag and the reference tag are left intact.  So be careful when
 using "dix -p g".
 
-Create a lun out of the ramdisk.
+3. Create a lun (disk) out of the ramdisk.
 
 	ramdisk> cd /loopback
 	loopback> create
@@ -52,23 +57,25 @@ Create a lun out of the ramdisk.
 After this, you should be able to see a new 10MB device in "fdisk -l" output,
 for example '/dev/sdb'.
 
-Verify integrity is enabled:
+Finally, let us verify that the integrity settings is correct:
 
 	$ cat /sys/block/sdb/integrity/read_verify
 	1
 	$ cat /sys/block/sdb/integrity/write_generate
 	1
 
-You may restore your previous config after reboot:
+After each reboot, you may restore your previous config:
+
 	# targetcli restoreconfig /etc/target/saveconfig.json
 
-Add support for passing DIX data from user application to kernel
-================================================================
 
-1. Apply the patch set, compile the kernel and reboot
-http://thread.gmane.org/gmane.linux.kernel.aio.general/3904
+Test passing DIX data from userspace to kernel
+==============================================
 
-2. Install libaio from https://git.fedorahosted.org/cgit/libaio.git/
+1. Make sure the PI patch set is applied to the kernel.
+
+2. Install libaio using "yum install libaio", or by compiling and installing
+from the source code https://git.fedorahosted.org/cgit/libaio.git/
 
 3. Compile and run
 
@@ -89,7 +96,7 @@ Manual install "google-test", and set env var:
 
 	$ export GOOGLE_TEST=/path/to/google/test
 
-1. Make sure this repo is built and installed:
+1. Make sure NFS-Ganesha is built and installed:
 
 	$ cd <fsl-nfs-ganesha>/src
 	$ mkdir mybuild
@@ -101,13 +108,13 @@ Manual install "google-test", and set env var:
 NOTE: to build FSAL_SECNFS, make sure packages listed in
 <fsl-nfs-ganesha>/src/FSAL/Stackable_FSALs/FSAL_SECNFS/README are installed.
 
-2. Setup config file
+2. Setup config file and launch NFS-Ganesha server
 
 	# cp <fsl-nfs-ganesha>/secnfs/vfs.2.1.ganesha.conf /etc/ganesha
 	# cp run-vfs.sh mybuild
 	# ./run-vfs.sh &
 
-3. Test from the clients (optionally using pynfs)
+3. Test from the clients using pynfs (optional)
 
 3.1 Make sure a test file "test.txt" exists in the root of the exported FS
 
