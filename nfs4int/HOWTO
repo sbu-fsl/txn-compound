@@ -57,7 +57,7 @@ using "dix -p g".
 After this, you should be able to see a new 10MB device in "fdisk -l" output,
 for example '/dev/sdb'.
 
-Finally, let us verify that the integrity settings is correct:
+Finally, let us verify that the integrity settings are correct:
 
 	$ cat /sys/block/sdb/integrity/read_verify
 	1
@@ -92,7 +92,7 @@ Launch NFS-Ganesha
 		jemalloc-devel krb5-devel cryptopp-devel libcap-devel \
 		libaio-devel
 
-Manual install "google-test", and set env var:
+Manually install "google-test", and set env var:
 
 	$ export GOOGLE_TEST=/path/to/google/test
 
@@ -108,25 +108,42 @@ Manual install "google-test", and set env var:
 NOTE: to build FSAL_SECNFS, make sure packages listed in
 <fsl-nfs-ganesha>/src/FSAL/Stackable_FSALs/FSAL_SECNFS/README are installed.
 
-2. Setup config file and launch NFS-Ganesha server
+2. Export the PI-enabled device
+
+	# mkfs.ext4 /dev/sdb
+	# mount /dev/sdb /nfsdata
+
+Note that "/nfsdata" is the directory exported in the "vfs.2.1.ganesha.conf"
+config file.
+
+Then, let us create a test file that will be used in the pynfs test:
+
+	# dd if=/dev/urandom of=/nfsdata/test.txt bs=4k count=2
+
+3. Setup config file and launch NFS-Ganesha server
 
 	# cp <fsl-nfs-ganesha>/secnfs/vfs.2.1.ganesha.conf /etc/ganesha
 	# cp run-vfs.sh mybuild
 	# ./run-vfs.sh &
 
-3. Test from the clients using pynfs (optional)
+4. Test from the clients using pynfs (optional)
 
-3.1 Make sure a test file "test.txt" exists in the root of the exported FS
+4.1 Make sure you can mount the server NFS and see the "test.txt" we created in
+Step 2.
 
-	# dd if=/dev/urandom of=/nfsdata/test.txt bs=4k count=2
+	# mount -t nfs 130.245.126.233:/vfs0 /mnt
+	# ls /mnt
+	test.txt
+	...
+	# umount /mnt
 
-where /nfsdata is the directory exported by NFS.
+where /vfs0 is the pseudo file system name in the "vfs.2.1.ganesha.conf" file.
 
-3.2 install packages
+4.2 install packages
 
 	# yum install python-devel krb5-devel
 
-3.3 Test
+4.3 Test
 
 	# git clone user@git.fsl.cs.sunysb.edu:/scm/fslgit/fsl-pynfs.git
 	# cd fsl-pynfs
@@ -153,7 +170,8 @@ Important functions:
 	sd_dif_type3_generate()
 
 
-# References
+References
+==========
 
 http://tools.ietf.org/html/draft-cel-nfsv4-end2end-data-protection-00
 
