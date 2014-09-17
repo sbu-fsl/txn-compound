@@ -2721,24 +2721,12 @@ extern "C" {
 	};
 	typedef struct OFFLOAD_STATUS4res OFFLOAD_STATUS4res;
 
-	struct write_plus_arg4 {
-		data_content4 wp_what;
-		union {
-			data4 wp_data;
-			app_data_hole4 wp_adh;
-			data_info4 wp_hole;
-			data_protected4 wp_pdata;
-			data_protect_info4 wp_pinfo;
-		} write_plus_arg4_u;
-	};
-	typedef struct write_plus_arg4 write_plus_arg4;
-
 	struct WRITE_PLUS4args {
 		stateid4        wp_stateid;
 		stable_how4     wp_stable;
 		struct {
 			u_int wp_data_len;
-			write_plus_arg4 *wp_data_val;
+			contents *wp_data_val;
 		} wp_data;
 	};
 	typedef struct WRITE_PLUS4args WRITE_PLUS4args;
@@ -2755,6 +2743,7 @@ extern "C" {
 		stateid4        rpa_stateid;
 		offset4         rpa_offset;
 		count4          rpa_count;
+		data_content4	rpa_content;
 	};
 	typedef struct READ_PLUS4args READ_PLUS4args;
 
@@ -7503,75 +7492,6 @@ extern "C" {
 	}
 
 	/* NFSv4.2 */
-	/*
-	static inline bool xdr_WRITE_PLUS4args(XDR * xdrs,
-						WRITE_PLUS4args *objp)
-	{
-		if (!xdr_stateid4(xdrs, &objp->wp_stateid))
-			return false;
-		if (!xdr_stable_how4(xdrs, &objp->wp_stable))
-			return false;
-		if (!inline_xdr_enum(xdrs, (enum_t *)&objp->wp_data.wp_what))
-			return false;
-		if (objp->wp_data.wp_what == NFS4_CONTENT_DATA) {
-			if (!xdr_offset4(xdrs,
-					&objp->wp_data.d_offset))
-				return false;
-			if (!inline_xdr_bool(xdrs,
-					&objp->wp_data.d_allocated))
-				return false;
-			if (!inline_xdr_bytes
-			    (xdrs,
-			      (char **)&objp->wp_data.d_data.data_val,
-			      (u_int *)&objp->wp_data.d_data.data_len,
-			       ~0))
-				return false;
-			return true;
-		}
-		if (objp->wp_data.wp_what == NFS4_CONTENT_APP_DATA_HOLE) {
-			if (!xdr_offset4(xdrs,
-					&objp->wp_adh.adh_offset))
-				return false;
-			if (!xdr_length4(xdrs,
-				  &objp->wp_adh.adh_block_size))
-				return false;
-			if (!xdr_length4(xdrs,
-				  &objp->wp_adh.adh_block_count))
-				return false;
-			if (!xdr_length4(xdrs,
-				  &objp->wp_adh.adh_reloff_blocknum))
-				return false;
-			if (!xdr_count4(xdrs,
-				  &objp->wp_adh.adh_block_num))
-				return false;
-			if (!xdr_length4(xdrs,
-				&objp->wp_adh.adh_reloff_pattern))
-				return false;
-			if (!inline_xdr_bytes
-			    (xdrs,
-			     (char **)&objp->wp_adh.adh_data.data_val,
-			     (u_int *)&objp->wp_adh.adh_data.data_len,
-			      ~0))
-				return false;
-			return true;
-		}
-		if (objp->wp_data.wp_what == NFS4_CONTENT_HOLE) {
-			if (!xdr_offset4(xdrs,
-					&objp->wp_hole.di_offset))
-				return false;
-			if (!xdr_length4(xdrs,
-				  &objp->wp_hole.di_length))
-				return false;
-			if (!inline_xdr_bool(xdrs,
-				  &objp->wp_hole.di_allocated))
-				return false;
-			return true;
-		} else
-			return false;
-
-		return true;
-	}
-	*/
 
 	static inline bool
 	xdr_data_content4(XDR *xdrs, data_content4 *objp)
@@ -7706,33 +7626,29 @@ extern "C" {
                 return true;
         }
 
-
-
-	static inline bool xdr_write_plus_arg4(XDR *xdrs, write_plus_arg4 *objp)
+	static inline bool xdr_contents(XDR *xdrs, contents *objp)
 	{
-		register int32_t *buf;
-
-		if (!xdr_data_content4(xdrs, &objp->wp_what))
+		if (!xdr_data_content4(xdrs, &objp->what))
 			return false;
-		switch (objp->wp_what) {
+		switch (objp->what) {
 		case NFS4_CONTENT_DATA:
-			if (!xdr_data4(xdrs, &objp->write_plus_arg4_u.wp_data))
-				return false;
-			break;
-		case NFS4_CONTENT_APP_DATA_HOLE:
-			if (!xdr_app_data_hole4(xdrs, &objp->write_plus_arg4_u.wp_adh))
+			if (!xdr_data4(xdrs, &objp->data))
 				return false;
 			break;
 		case NFS4_CONTENT_HOLE:
-			if (!xdr_data_info4(xdrs, &objp->write_plus_arg4_u.wp_hole))
+			if (!xdr_data_info4(xdrs, &objp->hole))
+				return false;
+			break;
+		case NFS4_CONTENT_APP_DATA_HOLE:
+			if (!xdr_app_data_hole4(xdrs, &objp->adh))
 				return false;
 			break;
 		case NFS4_CONTENT_PROTECTED_DATA:
-			if (!xdr_data_protected4(xdrs, &objp->write_plus_arg4_u.wp_pdata))
+			if (!xdr_data_protected4(xdrs, &objp->pdata))
 				return false;
 			break;
 		case NFS4_CONTENT_PROTECT_INFO:
-			if (!xdr_data_protect_info4(xdrs, &objp->write_plus_arg4_u.wp_pinfo))
+			if (!xdr_data_protect_info4(xdrs, &objp->pinfo))
 				return false;
 			break;
 		default:
@@ -7741,18 +7657,15 @@ extern "C" {
 		return true;
 	}
 
-	static inline bool xdr_WRITE_PLUS4args (XDR *xdrs, WRITE_PLUS4args *objp)
+	static inline bool xdr_WRITE_PLUS4args(XDR *xdrs, WRITE_PLUS4args *objp)
 	{
-		register int32_t *buf;
-
-		if (!xdr_stateid4 (xdrs, &objp->wp_stateid))
+		if (!xdr_stateid4(xdrs, &objp->wp_stateid))
 			return false;
-		if (!xdr_stable_how4 (xdrs, &objp->wp_stable))
+		if (!xdr_stable_how4(xdrs, &objp->wp_stable))
 			return false;
-		if (!xdr_array (xdrs, (char **)&objp->wp_data.wp_data_val,
-					(u_int *) &objp->wp_data.wp_data_len, ~0,
-					sizeof (write_plus_arg4),
-					(xdrproc_t) xdr_write_plus_arg4))
+		if (!xdr_array(xdrs, (char **)&objp->wp_data.wp_data_val,
+			       (u_int *)&objp->wp_data.wp_data_len, ~0,
+			       sizeof(contents), (xdrproc_t)xdr_contents))
 			return false;
 		return true;
 	}
@@ -7789,11 +7702,12 @@ extern "C" {
 			return false;
 		if (!xdr_count4(xdrs, &objp->rpa_count))
 			return false;
+		if (!xdr_data_content4(xdrs, &objp->rpa_content))
+			return false;
 		return true;
 	}
 
-	static inline bool xdr_READ_PLUS4resok(XDR * xdrs,
-						read_plus_res4 *objp)
+	static inline bool xdr_READ_PLUS4resok(XDR *xdrs, read_plus_res4 *objp)
 	{
 		if (!inline_xdr_bool(xdrs, &objp->rpr_eof))
 			return false;
@@ -7801,73 +7715,18 @@ extern "C" {
 			return false;
 		if (!xdr_count4(xdrs, &objp->rpr_contents_count))
 			return false;
-		if (!inline_xdr_enum(xdrs, (enum_t *)&objp->rpr_contents.what))
+		if (!xdr_contents(xdrs, &objp->rpr_contents))
 			return false;
-		if (objp->rpr_contents.what == NFS4_CONTENT_DATA) {
-			if (!xdr_offset4(xdrs,
-					&objp->rpr_contents.data.d_offset))
-				return false;
-			if (!inline_xdr_bool(xdrs,
-					&objp->rpr_contents.data.d_allocated))
-				return false;
-			if (!inline_xdr_bytes
-			    (xdrs,
-			      (char **)&objp->rpr_contents.data.d_data.data_val,
-			      (u_int *)&objp->rpr_contents.data.d_data.data_len,
-			       ~0))
-				return false;
-			return true;
-		}
-		if (objp->rpr_contents.what == NFS4_CONTENT_APP_DATA_HOLE) {
-			if (!xdr_offset4(xdrs,
-					&objp->rpr_contents.adh.adh_offset))
-				return false;
-			if (!xdr_length4(xdrs,
-				  &objp->rpr_contents.adh.adh_block_size))
-				return false;
-			if (!xdr_length4(xdrs,
-				  &objp->rpr_contents.adh.adh_block_count))
-				return false;
-			if (!xdr_length4(xdrs,
-				  &objp->rpr_contents.adh.adh_reloff_blocknum))
-				return false;
-			if (!xdr_count4(xdrs,
-				  &objp->rpr_contents.adh.adh_block_num))
-				return false;
-			if (!xdr_length4(xdrs,
-				&objp->rpr_contents.adh.adh_reloff_pattern))
-				return false;
-			if (!inline_xdr_bytes
-			    (xdrs,
-			     (char **)&objp->rpr_contents.adh.adh_data.data_val,
-			     (u_int *)&objp->rpr_contents.adh.adh_data.data_len,
-			      ~0))
-				return false;
-			return true;
-		}
-		if (objp->rpr_contents.what == NFS4_CONTENT_HOLE) {
-			if (!xdr_offset4(xdrs,
-					&objp->rpr_contents.hole.di_offset))
-				return false;
-			if (!xdr_length4(xdrs,
-				  &objp->rpr_contents.hole.di_length))
-				return false;
-			if (!inline_xdr_bool(xdrs,
-				  &objp->rpr_contents.hole.di_allocated))
-				return false;
-			return true;
-		} else
-			return false;
+		return true;
 	}
 
-	static inline bool xdr_READ_PLUS4res(XDR * xdrs, READ_PLUS4res *objp)
+	static inline bool xdr_READ_PLUS4res(XDR *xdrs, READ_PLUS4res *objp)
 	{
 		if (!xdr_nfsstat4(xdrs, &objp->rpr_status))
 			return false;
 		switch (objp->rpr_status) {
 		case NFS4_OK:
-			if (!xdr_READ_PLUS4resok(xdrs,
-					&objp->rpr_resok4))
+			if (!xdr_READ_PLUS4resok(xdrs, &objp->rpr_resok4))
 				return false;
 			break;
 		default:
