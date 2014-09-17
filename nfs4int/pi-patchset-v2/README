@@ -1,0 +1,10 @@
+This contains Darrick J. Wong's patches that allow PI be passed from userspace
+into kernel via AIO/DIO.
+
+[RFC PATCH DONOTMERGE v2 0/6] userspace PI passthrough via AIO/DIO
+https://marc.info/?l=linux-mm&m=139567816228628&w=2
+
+It is tested on 3.14.17.
+
+Apply Darrick's 7 patches and our fix-integrity-non-dio.patch, which fix minor
+issues in the scsi DIF handling and the direct IO routine.
