@@ -135,79 +135,6 @@ static int op_dsread(struct nfs_argop4 *op, compound_data_t *data,
  *
  */
 
-static int op_dsread_plus(struct nfs_argop4 *op, compound_data_t *data,
-			 struct nfs_resop4 *resp, struct io_info *info)
-{
-	READ4args * const arg_READ4 = &op->nfs_argop4_u.opread;
-	READ_PLUS4res * const res_RPLUS = &resp->nfs_resop4_u.opread_plus;
-	contents *contentp = &res_RPLUS->rpr_resok4.rpr_contents;
-	/* NFSv4 return code */
-	nfsstat4 nfs_status = 0;
-	/* Buffer into which data is to be read */
-	void *buffer = NULL;
-	/* End of file flag */
-	bool eof = false;
-
-	/* Don't bother calling the FSAL if the read length is 0. */
-
-	if (arg_READ4->count == 0) {
-		res_RPLUS->rpr_resok4.rpr_contents_count = 1;
-		res_RPLUS->rpr_resok4.rpr_eof = FALSE;
-		contentp->what = NFS4_CONTENT_DATA;
-		contentp->data.d_offset = arg_READ4->offset;
-		contentp->data.d_allocated = FALSE;
-		contentp->data.d_data.data_len =  0;
-		contentp->data.d_data.data_val = NULL;
-		res_RPLUS->rpr_status = NFS4_OK;
-		return res_RPLUS->rpr_status;
-	}
-
-	/* Construct the FSAL file handle */
-
-	buffer = gsh_malloc_aligned(4096, arg_READ4->count);
-	if (buffer == NULL) {
-		LogEvent(COMPONENT_NFS_V4, "FAILED to allocate read buffer");
-		res_RPLUS->rpr_status = NFS4ERR_SERVERFAULT;
-		return res_RPLUS->rpr_status;
-	}
-
-	nfs_status = data->current_ds->ops->read_plus(
-				data->current_ds,
-				op_ctx,
-				&arg_READ4->stateid,
-				arg_READ4->offset,
-				arg_READ4->count,
-				buffer,
-				arg_READ4->count,
-				&eof, info);
-
-	res_RPLUS->rpr_status = nfs_status;
-	if (nfs_status != NFS4_OK) {
-		gsh_free(buffer);
-		return res_RPLUS->rpr_status;
-	}
-
-	contentp->what = info->io_content.what;
-	res_RPLUS->rpr_resok4.rpr_contents_count = 1;
-	res_RPLUS->rpr_resok4.rpr_eof = eof;
-
-	if (info->io_content.what == NFS4_CONTENT_HOLE) {
-		contentp->hole.di_offset = info->io_content.hole.di_offset;
-		contentp->hole.di_length = info->io_content.hole.di_length;
-		contentp->hole.di_allocated =
-					info->io_content.hole.di_allocated;
-	}
-	if (info->io_content.what == NFS4_CONTENT_DATA) {
-		contentp->data.d_offset = info->io_content.data.d_offset;
-		contentp->data.d_allocated = info->io_content.data.d_allocated;
-		contentp->data.d_data.data_len =
-					info->io_content.data.d_data.data_len;
-		contentp->data.d_data.data_val =
-					info->io_content.data.d_data.data_val;
-	}
-	return res_RPLUS->rpr_status;
-}
-
 
 static int nfs4_read(struct nfs_argop4 *op, compound_data_t *data,
 		    struct nfs_resop4 *resp, cache_inode_io_direction_t io,
@@ -242,8 +169,6 @@ static int nfs4_read(struct nfs_argop4 *op, compound_data_t *data,
 	    && nfs4_Is_Fh_DSHandle(&data->currentFH)) {
 		if (io == CACHE_INODE_READ)
 			return op_dsread(op, data, resp);
-		else
-			return op_dsread_plus(op, data, resp, info);
 	}
 
 	res_READ4->status = nfs4_sanity_check_FH(data, REGULAR_FILE, true);
@@ -558,7 +483,6 @@ void nfs4_op_read_Free(nfs_resop4 *res)
  * @param[out]    resp  The nfs4_op results
  *
  * @return Errors as specified by RFC3550 RFC5661 p. 371.
- */
 
 int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *data,
 		      struct nfs_resop4 *resp)
@@ -612,7 +536,8 @@ void nfs4_op_read_plus_Free(nfs_resop4 *res)
 			gsh_free(conp->adh.adh_data.data_val);
 
 	return;
-}				/* nfs4_op_read_Free */
+}
+*/
 
 /**
  * @brief The NFS4_OP_IO_ADVISE operation

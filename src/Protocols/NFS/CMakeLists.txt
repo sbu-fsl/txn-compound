@@ -66,6 +66,7 @@ SET(nfsproto_STAT_SRCS
    nfs4_op_read.c
    nfs4_op_readdir.c
    nfs4_op_readlink.c
+   nfs4_op_read_plus.c
    nfs4_op_reclaim_complete.c
    nfs4_op_release_lockowner.c
    nfs4_op_remove.c
