@@ -3371,17 +3371,17 @@ struct app_data_hole4 {
     opaque                  adh_pattern<>;
 };
 
-union read_plus_content4 switch (data_content4 rpc_content) {
+union contents switch (data_content4 what) {
     case NFS4_CONTENT_DATA:
-        data4               rpc_data;
+        data4               data;
     case NFS4_CONTENT_HOLE:
-        data_info4          rpc_hole;
+        data_info4          hole;
     case NFS4_CONTENT_APP_DATA_HOLE:
-        app_data_hole4      rpc_adh;
+        app_data_hole4      adh;
     case NFS4_CONTENT_PROTECTED_DATA:
-        data_protected4     rpc_pdata;
+        data_protected4     pdata;
     case NFS4_CONTENT_PROTECT_INFO:
-        data_protect_info4  rpc_pinfo;
+        data_protect_info4  pinfo;
     default:
         void;
 };
@@ -3396,8 +3396,7 @@ struct READ_PLUS4args {
 
 struct read_plus_res4 {
     bool                    rpr_eof;
-    count4                  rpr_contents_count;
-    read_plus_content4      rpr_contents<>;
+    contents                rpr_contents<>;
 };
 
 union READ_PLUS4res switch (nfsstat4 rp_status) {
@@ -3407,26 +3406,11 @@ union READ_PLUS4res switch (nfsstat4 rp_status) {
         void;
 };
 
-union write_plus_arg4 switch (data_content4 wp_what) {
-    case NFS4_CONTENT_DATA:
-        data4               wp_data;
-    case NFS4_CONTENT_APP_DATA_HOLE:
-        app_data_hole4      wp_adh;
-    case NFS4_CONTENT_HOLE:
-        data_info4          wp_hole;
-    case NFS4_CONTENT_PROTECTED_DATA:
-        data_protected4     wp_pdata;
-    case NFS4_CONTENT_PROTECT_INFO:
-        data_protect_info4  wp_pinfo;
-    default:
-        void;
-};
-
 struct WRITE_PLUS4args {
     /* CURRENT_FH: file */
     stateid4                wp_stateid;
     stable_how4             wp_stable;
-    write_plus_arg4         wp_data<>;
+    contents                wp_data<>;
 };
 
 struct write_response4 {
