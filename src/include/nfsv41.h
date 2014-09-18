@@ -2622,8 +2622,10 @@ extern "C" {
 
 	typedef struct {
 		bool_t            rpr_eof;
-		count4            rpr_contents_count;
-		contents          rpr_contents;
+		struct {
+			u_int rpr_contents_len;
+			contents *rpr_contents_val;
+		};
 	} read_plus_res4;
 
 	typedef struct {
@@ -7711,11 +7713,10 @@ extern "C" {
 	{
 		if (!inline_xdr_bool(xdrs, &objp->rpr_eof))
 			return false;
-		if (objp->rpr_contents_count != 1)  /* an array of 1 for now */
-			return false;
-		if (!xdr_count4(xdrs, &objp->rpr_contents_count))
-			return false;
-		if (!xdr_contents(xdrs, &objp->rpr_contents))
+		if (!xdr_array(xdrs,
+			       (char **)&objp->rpr_contents_val,
+			       (u_int *)&objp->rpr_contents_len,
+			       ~0, sizeof(contents), (xdrproc_t)xdr_contents))
 			return false;
 		return true;
 	}
