@@ -228,17 +228,19 @@ fsal_status_t vfs_read_plus(struct fsal_obj_handle *obj_hdl,
 
 	myself = container_of(obj_hdl, struct vfs_fsal_obj_handle, obj_handle);
 
+	assert(offset >= 0);
 	assert(myself->u.file.fd >= 0
 	       && myself->u.file.openflags != FSAL_O_CLOSED);
 
-	// XXX PLUS
 	nb_read = dixio_pread(myself->u.file.fd,
-			      NULL, //data_plus_to_file_data(data_plus),
-			      NULL, //data_plus_to_pi_data(data_plus),
+			      io_info_to_file_data(info),
+			      io_info_to_pi_data(info),
 			      buffer_size, offset);
 
-	if (offset == -1 || nb_read == -1) {
+	if (nb_read < 0) {
 		retval = errno;
+		LogWarn(COMPONENT_FSAL, "dixio_pread failed: %s",
+			strerror(errno));
 		fsal_error = posix2fsal_error(retval);
 		goto out;
 	}
@@ -255,6 +257,7 @@ fsal_status_t vfs_read_plus(struct fsal_obj_handle *obj_hdl,
 	return fsalstat(fsal_error, retval);
 }
 
+/* XXX: Don't use @offset, @buffer_size, and @buffer_size, which are not set */
 fsal_status_t vfs_write_plus(struct fsal_obj_handle *obj_hdl,
 			     uint64_t offset, size_t buffer_size,
 			     void *buffer, size_t *write_amount,
@@ -274,11 +277,13 @@ fsal_status_t vfs_write_plus(struct fsal_obj_handle *obj_hdl,
 	fsal_set_credentials(op_ctx->creds);
 	// TODO PLUS where to check pi_data_len?
 	nb_written = dixio_pwrite(myself->u.file.fd,
-				  buffer,// or data_plus_to_file_data(data_plus) ?
+				  io_info_to_file_data(info),
 				  io_info_to_pi_data(info),
-				  buffer_size, offset);
+				  io_info_to_file_dlen(info),
+				  io_info_to_offset(info));
 
-	if (offset == -1 || nb_written < 0) {
+	if (nb_written < 0) {
+		retval = errno;
 		LogWarn(COMPONENT_FSAL, "dixio_pwrite failed: %s",
 			strerror(errno));
 		fsal_error = posix2fsal_error(errno);

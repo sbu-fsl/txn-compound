@@ -489,14 +489,12 @@ void nfs4_op_write_Free(nfs_resop4 *resp)
  * @return per RFC5661, p. 376
  */
 
-#define wpau(wpa) wpa->wp_data.wp_data_val->write_plus_arg4_u
-
 int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *data,
 		  struct nfs_resop4 *resp)
 {
 	struct nfs_resop4 res;
 	struct nfs_argop4 arg;
-	struct io_info info;
+	struct io_info info = {0};
 	WRITE_PLUS4args * const arg_WPLUS = &op->nfs_argop4_u.opwrite_plus;
 	WRITE_PLUS4res * const res_WPLUS = &resp->nfs_resop4_u.opwrite_plus;
 
@@ -505,34 +503,11 @@ int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *data,
 
 	arg.nfs_argop4_u.opwrite.stateid = arg_WPLUS->wp_stateid;
 	arg.nfs_argop4_u.opwrite.stable = arg_WPLUS->wp_stable;
-	info.io_content.what = arg_WPLUS->wp_data.wp_data_val->wp_what;
 
-	if (info.io_content.what == NFS4_CONTENT_DATA) {
-		info.io_content.data = wpau(arg_WPLUS).wp_data;
-		arg.nfs_argop4_u.opwrite.offset = wpau(arg_WPLUS).wp_data.d_offset;
-		arg.nfs_argop4_u.opwrite.data.data_len =
-					wpau(arg_WPLUS).wp_data.d_data.data_len;
-		arg.nfs_argop4_u.opwrite.data.data_val =
-					wpau(arg_WPLUS).wp_data.d_data.data_val;
-	} else if (info.io_content.what == NFS4_CONTENT_HOLE) {
-		info.io_content.hole = wpau(arg_WPLUS).wp_hole;
-		arg.nfs_argop4_u.opwrite.offset = wpau(arg_WPLUS).wp_hole.di_offset;
-		arg.nfs_argop4_u.opwrite.data.data_len =
-					wpau(arg_WPLUS).wp_hole.di_length;
-		arg.nfs_argop4_u.opwrite.data.data_val = NULL;
-	} else if (info.io_content.what == NFS4_CONTENT_PROTECTED_DATA) {
-		info.io_content.pdata = wpau(arg_WPLUS).wp_pdata;
-		arg.nfs_argop4_u.opwrite.offset = wpau(arg_WPLUS).wp_pdata.pd_offset;
-		arg.nfs_argop4_u.opwrite.data.data_len =
-					wpau(arg_WPLUS).wp_pdata.pd_data.pd_data_len;
-		arg.nfs_argop4_u.opwrite.data.data_val =
-					wpau(arg_WPLUS).wp_pdata.pd_data.pd_data_val;
-	} else {
-		/* TODO to support NFS4_CONTENT_PROTECT_INFO? */
-		res_WPLUS->wpr_status = NFS4ERR_UNION_NOTSUPP;
-		return res_WPLUS->wpr_status;
-	}
-	info.io_advise = 0;
+	/* Now, we only support one "contents" */
+	assert(arg_WPLUS->wp_data.wp_data_len == 1);
+	memcpy(&info.io_content, arg_WPLUS->wp_data.wp_data_val,
+	       sizeof(contents));
 
 	res_WPLUS->wpr_status = nfs4_write(&arg, data, &res,
 					   CACHE_INODE_WRITE_PLUS, &info);
