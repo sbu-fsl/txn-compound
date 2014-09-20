@@ -1,12 +1,12 @@
 /*
  * vim:noexpandtab:shiftwidth=8:tabstop=8:
  *
+ * Copyright Stony Brook University, 2014
+ * Ming Chen <mchen@cs.stonybrook.edu>
+ *
  * Copyright CEA/DAM/DIF  (2008)
  * contributeur : Philippe DENIEL   philippe.deniel@cea.fr
  *                Thomas LEIBOVICI  thomas.leibovici@cea.fr
- *
- * Copyright Stony Brook University, 2014
- * Ming Chen <mchen@cs.stonybrook.edu>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -59,8 +59,9 @@ void get_protection_type4(nfs_protection_info4 *pi)
 	memset(pi, 0, sizeof(*pi));
 
 	if (op_ctx->export != NULL) {
-		/*pi->pi_type = op_ctx->export->dix_protection_type;*/
-		pi->pi_type = 3;
+		/* TODO read from export configuration file:
+		 * pi->pi_type = op_ctx->export->dix_protection_type;*/
+		pi->pi_type = 5;
 		/*
 		 * This means 4K is our smallest I/O size.
 		 * TODO ideally we should read from config file
@@ -212,18 +213,55 @@ static void clean_contents(contents *io_content)
 	}
 }
 
-static int fill_read_plus_res(READ_PLUS4res *rp4res, size_t read_size,
-			      contents *io_content, bool eof)
+/* set how many bytes have been read correctly in "contents" */
+static void set_content_size(size_t bytes_read, contents* cont)
 {
-	read_plus_res4 *rpr4 = &rp4res->rpr_resok4;
+	switch (cont->what) {
+	case NFS4_CONTENT_DATA:
+		cont->data.d_data.data_len = bytes_read;
+		break;
+	case NFS4_CONTENT_PROTECTED_DATA:
+		cont->pdata.pd_data.pd_data_len = bytes_read;
+		cont->pdata.pd_info.pd_info_len = get_pi_size(bytes_read);
+		break;
+	case NFS4_CONTENT_PROTECT_INFO:
+		cont->pinfo.pi_data.pi_data_len = get_pi_size(bytes_read);
+		break;
+	default:
+		LogMajor(COMPONENT_NFS_V4, "BUG: operations not supported: %d",
+			 cont->what);
+	}
+}
 
-	rp4res->rpr_status = NFS4_OK;
+static int fill_read_plus_res(READ_PLUS4res *rp4res, size_t bytes_read,
+			      const contents *io_content, bool eof)
+{
+	contents* cont = NULL;
 
-	rpr4->rpr_eof = eof;
-	rpr4->rpr_contents_len = 1;
-	rpr4->rpr_contents_val = io_content;
+	rp4res->rpr_resok4.rpr_eof = eof;
+	rp4res->rpr_resok4.rpr_contents_len = (bytes_read > 0) ? 1 : 0;
 
-	return NFS4_OK;
+	if (bytes_read > 0) {
+		/* This newly allocated "contents" will be released at the last
+		 * step of nfs4_op_read_plus_Free(). */
+		cont = gsh_malloc(sizeof(contents));
+		if (cont == NULL) {
+			rp4res->rpr_status = NFS4ERR_SERVERFAULT;
+		} else {
+			/* ownership of data buffer(s) will be passed from
+			 * "io_content" to "cont' */
+			memcpy(cont, io_content, sizeof(contents));
+			set_content_size(bytes_read, cont);
+			rp4res->rpr_status = NFS4_OK;
+		}
+	} else {
+		assert(io_content == NULL);
+		rp4res->rpr_status = NFS4_OK;
+	}
+
+	rp4res->rpr_resok4.rpr_contents_val = cont;
+
+	return rp4res->rpr_status;
 }
 
 static int op_dsread_plus(struct nfs_argop4 *op, compound_data_t *data,
@@ -322,9 +360,9 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 	 */
 	bool anonymous = false;
 	struct io_info info = {0};
-	data_content4 content_type;
 	nfs_protection_info4 pi;
 
+	info.io_content.what = rp4args->rpa_content;
 	if (rp4args->rpa_content == NFS4_CONTENT_APP_DATA_HOLE ||
 	    rp4args->rpa_content == NFS4_CONTENT_HOLE) {
 		rp4res->rpr_status = NFS4ERR_NOTSUPP;
@@ -488,7 +526,6 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 
 	offset = rp4args->rpa_offset;
 	size = rp4args->rpa_count;
-	content_type = rp4args->rpa_content;
 
 	if (op_ctx->export->MaxOffsetRead < UINT64_MAX) {
 		LogFullDebug(COMPONENT_NFS_V4,
@@ -524,13 +561,13 @@ int nfs4_op_read_plus(struct nfs_argop4 *op, compound_data_t *compound,
 	/* If size == 0, no I/O is to be made and everything is alright */
 	if (size == 0) {
 		/* A size = 0 can not lead to EOF */
-		fill_read_plus_res(rp4res, 0, &info.io_content, false);
+		fill_read_plus_res(rp4res, 0, NULL, false);
 		goto done;
 	}
 
 	get_protection_type4(&pi);
-	rp4res->rpr_status =
-	    fill_contents(&info.io_content, offset, size, content_type, &pi);
+	rp4res->rpr_status = fill_contents(&info.io_content, offset, size,
+					   rp4args->rpa_content, &pi);
 	if (rp4res->rpr_status != NFS4_OK) {
 		goto done;
 	}
@@ -582,7 +619,7 @@ done:
 }				/* nfs4_op_read_plus */
 
 /**
- * @brief Free data allocated for READ result.
+ * @brief Free data allocated for READ_PLUS result.
  *
  * This function frees any data allocated for the result of the
  * NFS4_OP_READ_PLUS operation.
