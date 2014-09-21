@@ -116,7 +116,6 @@ enum fsal_id {
 	FSAL_ID_CEPH = 4,
 	FSAL_ID_LUSTRE = 5,
 	FSAL_ID_GLUSTER = 6,
-	FSAL_ID_SECNFS = 7,
 	FSAL_ID_COUNT
 };
 

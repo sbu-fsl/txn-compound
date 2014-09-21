@@ -111,7 +111,7 @@ static struct config_item secnfs_params[] = {
 };
 
 struct config_block secnfs_param = {
-	.dbus_interface_name = "org.ganesha.nfsd.config.fsal.vfs",
+	.dbus_interface_name = "org.ganesha.nfsd.config.fsal.secnfs",
 	.blk_desc.name = "SECNFS",
 	.blk_desc.type = CONFIG_BLOCK,
 	.blk_desc.u.blk.init = noop_conf_init,
@@ -155,7 +155,7 @@ static fsal_status_t init_config(struct fsal_module *fsal_hdl,
 	 */
 	(void) load_config_from_parse(config_struct,
 				      &secnfs_param,
-				      &secnfs_me->fs_info,
+				      &secnfs_me->secnfs_info,
 				      true,
 				      &err_type);
 	if (!config_error_is_harmless(&err_type))
@@ -218,15 +218,14 @@ MODULE_INIT void secnfs_init(void)
 	struct fsal_module *myself = &SECNFS.fsal;
 
 	retval = register_fsal(myself, myname, FSAL_MAJOR_VERSION,
-			       FSAL_MINOR_VERSION, FSAL_ID_SECNFS);
+			       FSAL_MINOR_VERSION, FSAL_ID_NO_PNFS);
 	if (retval != 0) {
 		fprintf(stderr, "SECNFS module failed to register");
 		return;
 	}
+
 	myself->ops->create_export = secnfs_create_export;
 	myself->ops->init_config = init_config;
-        // TODO fsal_info removed in 2.1
-	// init_fsal_parameters(&SECNFS.fsal_info);
 	SECNFS_D("secnfs module initialized.");
 }
 
