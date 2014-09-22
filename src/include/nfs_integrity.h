@@ -85,6 +85,21 @@ static inline char* io_info_to_file_data(struct io_info *info) {
 	}
 }
 
+/* initialize io_info for NFS4_CONTENT_PROTECTED_DATA */
+static inline void io_info_set_content(struct io_info *info, uint64_t offset,
+				       size_t pi_size, void *pi_buf,
+				       size_t pd_size, void *pd_buf) {
+        info->io_content.what = NFS4_CONTENT_PROTECTED_DATA;
+        info->io_content.pdata.pd_type.pi_type = NFS_PI_TYPE5;
+        info->io_content.pdata.pd_type.pi_other_data = 1;
+        info->io_content.pdata.pd_offset = offset;
+        info->io_content.pdata.pd_allocated = 1;
+        info->io_content.pdata.pd_info.pd_info_len = pi_size;
+        info->io_content.pdata.pd_info.pd_info_val = pi_buf;
+        info->io_content.pdata.pd_data.pd_data_len = pd_size;
+        info->io_content.pdata.pd_data.pd_data_val = pd_buf;
+}
+
 static inline void dump_pi_buf(uint8_t *pi_buf, size_t pi_size)
 {
 	char *pi_hex, *curr;

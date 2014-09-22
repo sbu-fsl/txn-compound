@@ -123,7 +123,7 @@ fsal_status_t do_aligned_read(struct secnfs_fsal_obj_handle *hdl,
 
         next_offset = offset_align + FILE_HEADER_SIZE;
 
-        /* To use read_plus, a struct data_plus need be prepared. */
+        /* To use read_plus, a struct io_info need be prepared. */
         pi_size = get_pi_size(size_align);
         pi_buf = gsh_malloc(pi_size);
         if (pi_buf == NULL) {
@@ -131,12 +131,9 @@ fsal_status_t do_aligned_read(struct secnfs_fsal_obj_handle *hdl,
                 goto out;
         }
 
-        // XXX PLUS
-        /*
-        data_plus_type_protected_data_init(&data_plus, next_offset,
-                                           pi_size, pi_buf,
-                                           size_align, buffer_align);
-                                           */
+        io_info_set_content(&info, next_offset,
+                            pi_size, pi_buf,
+                            size_align, buffer_align);
 
         st = next_ops.obj_ops->read_plus(hdl->next_handle,
                                          next_offset, size_align,
@@ -154,11 +151,9 @@ fsal_status_t do_aligned_read(struct secnfs_fsal_obj_handle *hdl,
                 end_of_file = 0;
         }
         SECNFS_D("hdl = %x; read_amount_align = %u", hdl, *read_amount);
-        // XXX PLUS
-        /*
         SECNFS_D("hdl = %x; pd_info_len = %u", hdl,
-                        data_plus_to_pi_dlen(&data_plus)); */
-        // dump_pi_buf(pi_buf, data_plus_to_pi_dlen(&data_plus));
+                 io_info_to_pi_dlen(&info));
+        // dump_pi_buf(pi_buf, io_info_to_pi_dlen(&info));
 
         secnfs_dif_buf = gsh_malloc(PI_SECNFS_DIF_SIZE);
         if (!pi_buf) {
@@ -296,13 +291,10 @@ fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
         }
         // dump_pi_buf(pi_buf, pi_size);
 
-        // XXX PLUS
-        /* prepare data_plus for write_plus */
-        /*
-        data_plus_type_protected_data_init(&data_plus, next_offset,
-                                           pi_size, pi_buf,
-                                           size_align, pd_buf);
-        */
+        /* prepare io_info for write_plus */
+        io_info_set_content(&info, next_offset,
+                            pi_size, pi_buf,
+                            size_align, pd_buf);
 
         st = next_ops.obj_ops->write_plus(hdl->next_handle,
                                           next_offset, size_align,
