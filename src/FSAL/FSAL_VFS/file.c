@@ -137,6 +137,8 @@ fsal_status_t vfs_read(struct fsal_obj_handle *obj_hdl,
 
 	if (offset == -1 || nb_read == -1) {
 		retval = errno;
+		LogWarn(COMPONENT_FSAL, "pread %u (%u) failed: %s",
+			offset, buffer_size, strerror(errno));
 		fsal_error = posix2fsal_error(retval);
 		goto out;
 	}
@@ -194,6 +196,8 @@ fsal_status_t vfs_write(struct fsal_obj_handle *obj_hdl,
 
 	if (offset == -1 || nb_written == -1) {
 		retval = errno;
+		LogWarn(COMPONENT_FSAL, "pwrite %u (%u) failed: %s",
+			offset, buffer_size, strerror(errno));
 		fsal_error = posix2fsal_error(retval);
 		goto out;
 	}
@@ -257,7 +261,6 @@ fsal_status_t vfs_read_plus(struct fsal_obj_handle *obj_hdl,
 	return fsalstat(fsal_error, retval);
 }
 
-/* XXX: Don't use @offset, @buffer_size, and @buffer_size, which are not set */
 fsal_status_t vfs_write_plus(struct fsal_obj_handle *obj_hdl,
 			     uint64_t offset, size_t buffer_size,
 			     void *buffer, size_t *write_amount,

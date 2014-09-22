@@ -509,6 +509,10 @@ int nfs4_op_write_plus(struct nfs_argop4 *op, compound_data_t *data,
 	memcpy(&info.io_content, arg_WPLUS->wp_data.wp_data_val,
 	       sizeof(contents));
 
+	arg.nfs_argop4_u.opwrite.offset = io_info_to_offset(&info);
+	arg.nfs_argop4_u.opwrite.data.data_len = io_info_to_file_dlen(&info);
+	arg.nfs_argop4_u.opwrite.data.data_val = io_info_to_file_data(&info);
+
 	res_WPLUS->wpr_status = nfs4_write(&arg, data, &res,
 					   CACHE_INODE_WRITE_PLUS, &info);
 	/* TODO PLUS where to free the io_info */
