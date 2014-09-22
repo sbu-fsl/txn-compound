@@ -1973,7 +1973,6 @@ fsal_status_t pxy_read_plus(struct fsal_obj_handle *obj_hdl,
                             bool *end_of_file,
                             struct io_info *info)
 {
-        /*
         int rc;
         int opcnt = 0;
         struct pxy_obj_handle *ph;
@@ -1982,15 +1981,11 @@ fsal_status_t pxy_read_plus(struct fsal_obj_handle *obj_hdl,
         nfs_resop4 resoparray[FSAL_READ_PLUS_NB_OP_ALLOC];
         READ_PLUS4res *rp4res;
         read_plus_res4 *rpr4;
-        read_plus_content4 rpc4;
         size_t pi_data_len = 0;
 
-        if (!obj_hdl || !read_amount || !end_of_file || !opctx)
-                return fsalstat(ERR_FSAL_FAULT, EINVAL);
-
-        offset = data_plus_to_offset(data_plus);
-        buffer_size = data_plus_to_file_dlen(data_plus);
-        pi_data_len = data_plus_to_pi_dlen(data_plus);
+        offset = io_info_to_offset(info);
+        buffer_size = io_info_to_file_dlen(info);
+        pi_data_len = io_info_to_pi_dlen(info);
 
         if (!buffer_size && !pi_data_len) {
                 *read_amount = 0;
@@ -2000,32 +1995,29 @@ fsal_status_t pxy_read_plus(struct fsal_obj_handle *obj_hdl,
 
         ph = container_of(obj_hdl, struct pxy_obj_handle, obj);
 
-        if (buffer_size > obj_hdl->export->ops->fs_maxread(obj_hdl->export))
-                buffer_size = obj_hdl->export->ops->fs_maxread(obj_hdl->export);
+        if (buffer_size >
+                op_ctx->fsal_export->ops->fs_maxread(op_ctx->fsal_export))
+                buffer_size =
+                      op_ctx->fsal_export->ops->fs_maxread(op_ctx->fsal_export);
 
         COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
         rp4res = &resoparray[opcnt].nfs_resop4_u.opread_plus;
-        rpr4 = &rp4res->READ_PLUS4res_u.rp_resok4;
-        rpr4->rpr_contents.rpr_contents_len = 1;
-        rpr4->rpr_contents.rpr_contents_val = &rpc4;
-        // XXX PLUS
-        // data_plus_to_read_plus_content(data_plus, &rpc4);
+        rpr4 = &rp4res->rpr_resok4;
+        rpr4->rpr_contents_len = 1;
+        rpr4->rpr_contents_val = &info->io_content;
         COMPOUNDV4_ARG_ADD_OP_READ_PLUS(opcnt, argoparray, offset,
-                                        buffer_size, data_plus->content_type);
+                                        buffer_size, info->io_content.what);
 
-        rc = pxy_nfsv4_call(obj_hdl->export, opctx->creds, opcnt, argoparray,
-                            resoparray);
+	rc = pxy_nfsv4_call(op_ctx->fsal_export, op_ctx->creds,
+			    opcnt, argoparray, resoparray);
         if (rc != NFS4_OK)
                 return nfsstat4_to_fsal(rc);
 
-        // TODO: add sanity check of rpc4 against data_plus
-        // XXX PLUS
-        // data_plus_from_read_plus_content(data_plus, &rpc4);
+        // TODO: add sanity check of returned io_info
 
         *end_of_file = rpr4->rpr_eof;
-        *read_amount = data_plus_to_file_dlen(data_plus);
-        return nfsstat4_to_fsal(rp4res->rp_status);
-        */
+        *read_amount = io_info_to_file_dlen(info);
+        return nfsstat4_to_fsal(rp4res->rpr_status);
 }
 
 fsal_status_t pxy_write_plus(struct fsal_obj_handle *obj_hdl,
@@ -2034,19 +2026,14 @@ fsal_status_t pxy_write_plus(struct fsal_obj_handle *obj_hdl,
 			     bool *fsal_stable,
                              struct io_info *info)
 {
-        /*
 	int rc;
 	int opcnt = 0;
 #define FSAL_WRITE_PLUS_NB_OP_ALLOC 2
 	nfs_argop4 argoparray[FSAL_WRITE_PLUS_NB_OP_ALLOC];
 	nfs_resop4 resoparray[FSAL_WRITE_PLUS_NB_OP_ALLOC];
 	struct pxy_obj_handle *ph;
-        write_plus_arg4 wpa4;
         WRITE_PLUS4res *wp4res;
         write_response4 *wpr4;
-
-	if (!obj_hdl || !write_amount || !opctx)
-		return fsalstat(ERR_FSAL_FAULT, EINVAL);
 
 	if (!size) {
 		*write_amount = 0;
@@ -2061,27 +2048,23 @@ fsal_status_t pxy_write_plus(struct fsal_obj_handle *obj_hdl,
 	}
 #endif
 
-	if (size > obj_hdl->export->ops->fs_maxwrite(obj_hdl->export))
-		size = obj_hdl->export->ops->fs_maxwrite(obj_hdl->export);
+	if (size > op_ctx->fsal_export->ops->fs_maxwrite(op_ctx->fsal_export))
+                size =
+                    op_ctx->fsal_export->ops->fs_maxwrite(op_ctx->fsal_export);
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
 
         wp4res = &resoparray[opcnt].nfs_resop4_u.opwrite_plus;
-        wpr4 = &wp4res->WRITE_PLUS4res_u.wp_resok4;
-        // XXX PLUS
-        // data_plus_to_write_plus_args(data_plus, &wpa4);
-	COMPOUNDV4_ARG_ADD_OP_WRITE_PLUS(opcnt, argoparray, (&wpa4));
+        wpr4 = &wp4res->WRITE_PLUS4res_u.wpr_resok4;
+        COMPOUNDV4_ARG_ADD_OP_WRITE_PLUS(opcnt, argoparray, (&info->io_content));
 
-	rc = pxy_nfsv4_call(obj_hdl->export, opctx->creds, opcnt, argoparray,
-			    resoparray);
+	rc = pxy_nfsv4_call(op_ctx->fsal_export, op_ctx->creds,
+			    opcnt, argoparray, resoparray);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
 
-        // XXX PLUS
-        // data_plus_from_write_plus_args(data_plus, &wpa4);
 	*write_amount = wpr4->wr_count;
 	*fsal_stable = wpr4->wr_committed != UNSTABLE4;
-	return nfsstat4_to_fsal(wp4res->wp_status);
-        */
+	return nfsstat4_to_fsal(wp4res->wpr_status);
 }
 
 /* We send all out writes as DATA_SYNC, commit becomes a NO-OP */

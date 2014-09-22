@@ -338,7 +338,7 @@ do { \
 } while (0)
 
 #define COMPOUNDV4_ARG_ADD_OP_READ_PLUS(opcnt, argarray, inoffset, incount, \
-                                        content)                            \
+                                        what)                               \
 do { \
         nfs_argop4 *op = argarray+opcnt; opcnt++;                           \
         READ_PLUS4args *rp4args = &op->nfs_argop4_u.opread_plus;            \
@@ -346,10 +346,10 @@ do { \
         memset(&rp4args->rpa_stateid, 0, sizeof(stateid4));                 \
         rp4args->rpa_offset = inoffset;                                     \
         rp4args->rpa_count = incount;                                       \
-        rp4args->rpa_content = content;                                     \
+        rp4args->rpa_content = what;                                        \
 } while (0)
 
-#define COMPOUNDV4_ARG_ADD_OP_WRITE_PLUS(opcnt, argarray, wpa4)             \
+#define COMPOUNDV4_ARG_ADD_OP_WRITE_PLUS(opcnt, argarray, cont)             \
 do { \
         nfs_argop4 *op = argarray+opcnt; opcnt++;                           \
         WRITE_PLUS4args *wp4args = &op->nfs_argop4_u.opwrite_plus;          \
@@ -357,7 +357,7 @@ do { \
         memset(&wp4args->wp_stateid, 0, sizeof(stateid4));                  \
         wp4args->wp_stable = DATA_SYNC4;                                    \
         wp4args->wp_data.wp_data_len = 1;                                   \
-        wp4args->wp_data.wp_data_val = wpa4;                                \
+        wp4args->wp_data.wp_data_val = cont;                                \
 } while (0)
 
 #define COMPOUNDV4_EXECUTE_SIMPLE(pcontext, argcompound, rescompound)   \

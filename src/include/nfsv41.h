@@ -2618,7 +2618,7 @@ extern "C" {
 			data_protected4 pdata;
 			data_protect_info4      pinfo;
 		};
-	} contents; // read_plus_content4 / write_plus_content4
+	} contents;
 
 	typedef struct {
 		bool_t            rpr_eof;
