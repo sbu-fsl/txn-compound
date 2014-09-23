@@ -166,8 +166,10 @@ cache_inode_open(cache_entry_t *entry,
 	current_flags = obj_hdl->ops->status(obj_hdl);
 	/* Open file need to be closed, unless it is already open as
 	 * read/write */
-	if ((current_flags & openflags) != openflags &&
-		(current_flags != FSAL_O_CLOSED)) {
+	/* Remove O_DIRECT flag if we do not need direct IO. */
+	if (((current_flags & openflags) != openflags ||
+             (current_flags & FSAL_O_DIRECT && !(openflags & FSAL_O_DIRECT))) &&
+	    current_flags != FSAL_O_CLOSED) {
 		/* If the FSAL has reopen method, we just use it instead
 		 * of closing and opening the file again. This avoids
 		 * losing any lock state due to closing the file!

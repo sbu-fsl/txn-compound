@@ -142,17 +142,19 @@ cache_inode_rdwr_plus(cache_entry_t *entry,
 
 	/* Write through the FSAL.  We need a write lock only if we need
 	   to open or close a file descriptor. */
+	/* Remove O_DIRECT flag if we do not need direct IO. */
 	PTHREAD_RWLOCK_rdlock(&entry->content_lock);
 	content_locked = true;
 	loflags = obj_hdl->ops->status(obj_hdl);
-	// TODO degrade DIRECT to normal IO for normal READ/WRITE
 	while (!is_open(entry) ||
-			(loflags && (loflags & openflags) != openflags)) {
+	       (loflags && (loflags & openflags) != openflags) ||
+	       (loflags & FSAL_O_DIRECT && !(openflags & FSAL_O_DIRECT))) {
 		PTHREAD_RWLOCK_unlock(&entry->content_lock);
 		PTHREAD_RWLOCK_wrlock(&entry->content_lock);
 		loflags = obj_hdl->ops->status(obj_hdl);
 		if (!is_open(entry) ||
-			(loflags && (loflags & openflags) != openflags)) {
+		    (loflags && (loflags & openflags) != openflags) ||
+	            (loflags & FSAL_O_DIRECT && !(openflags & FSAL_O_DIRECT))) {
 			status =
 			    cache_inode_open(entry, openflags,
 					     (CACHE_INODE_FLAG_CONTENT_HAVE |
