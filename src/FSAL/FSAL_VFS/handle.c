@@ -1679,7 +1679,7 @@ fsal_status_t vfs_check_handle(struct fsal_export *exp_hdl,
 			goto errout;
 		}
 
-		LogDebug(COMPONENT_FSAL,
+		LogFullDebug(COMPONENT_FSAL,
 			 "Found filesystem %s for handle for FSAL %s",
 			 (*fs)->path,
 			 (*fs)->fsal != NULL ? (*fs)->fsal->name : "(none)");

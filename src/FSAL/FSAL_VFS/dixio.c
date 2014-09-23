@@ -1,3 +1,5 @@
+/* vim:noexpandtab:shiftwidth=8:tabstop=8: */
+
 #include "dixio.h"
 #include <assert.h>
 #include <stdio.h>
@@ -171,22 +173,29 @@ static ssize_t do_dixio(int fd, void *buf, void *prot_buf, size_t count,
 			memcpy(buf_align, buf, count);
 	}
 
-	fprintf(stderr, "DIX %s %u (%u), %x, %x\n", rw == READ ? "READ" : "WRITE",
-		offset, count, buf_align, pbuf);
+	// fprintf(stderr, "DIX %s %u (%u), %x, %x\n", rw == READ ? "READ" : "WRITE",
+	// 	offset, count, buf_align, pbuf);
 
 	ret = __do_dixio(fd, buf_align, pbuf, count, offset, rw);
 
 	if (prot_buf && !page_aligned(prot_buf)) {
-		if (ret > 0 && (rw == READ))
+		if (ret > 0 && (rw == READ)) {
+			/* should not happen if called by nfs4_op_read_plus()
+			 * can happen from other caller (dixio_test.c) */
+			fprintf(stderr, "READ pbuf %x not aligned\n", prot_buf);
 			memcpy(prot_buf, pbuf, pi_size);
+		}
 
 		gsh_free(pbuf);
 	}
 
 	if (!page_aligned(buf)) {
-		if (ret > 0 && (rw == READ))
-			/* TODO to be examined and removed, if never reach here */
+		if (ret > 0 && (rw == READ)) {
+			/* should not happen if called by nfs4_op_read_plus()
+			 * can happen from other caller (dixio_test.c) */
+			fprintf(stderr, "READ buf %x not aligned\n", prot_buf);
 			memcpy(buf, buf_align, count);
+		}
 
 		gsh_free(buf_align);
 	}
