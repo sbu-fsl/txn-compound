@@ -619,7 +619,7 @@ typedef uint16_t fsal_openflags_t;
 #define FSAL_O_SYNC     0x0004	/* sync */
 #define FSAL_O_RECLAIM  0x0008	/* open reclaim */
 
-#define FSAL_O_DIRECT   0x0008  /* direct IO */
+#define FSAL_O_DIRECT   0x0010  /* direct IO */
 
 /** File system static info. */
 
