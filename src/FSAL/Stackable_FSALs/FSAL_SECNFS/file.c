@@ -156,7 +156,7 @@ fsal_status_t do_aligned_read(struct secnfs_fsal_obj_handle *hdl,
         // dump_pi_buf(pi_buf, io_info_to_pi_dlen(&info));
 
         secnfs_dif_buf = gsh_malloc(PI_SECNFS_DIF_SIZE);
-        if (!pi_buf) {
+        if (!secnfs_dif_buf) {
                 st = fsalstat(ERR_FSAL_NOMEM, 0);
                 goto out;
         }
@@ -252,7 +252,7 @@ fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
 
         /* allocate buffer for serialization of secnfs_dif_t */
         secnfs_dif_buf = gsh_malloc(PI_SECNFS_DIF_SIZE);
-        if (pi_buf == NULL) {
+        if (!secnfs_dif_buf) {
                 st = fsalstat(ERR_FSAL_NOMEM, 0);
                 goto out;
         }
