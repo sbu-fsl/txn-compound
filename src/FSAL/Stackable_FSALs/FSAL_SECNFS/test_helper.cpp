@@ -47,7 +47,7 @@ secnfs_info_t* NewSecnfsInfo(int nproxy) {
         secnfs_info_t* info = new secnfs_info_t();
         Context* context = NewContextWithProxies(nproxy);
 
-        strncpy(info->secnfs_name, context->name().c_str(), MAXPATHLEN);
+        info->secnfs_name = strdup(context->name().c_str());
 
         info->context_size = sizeof(*context);
         info->context = context;
