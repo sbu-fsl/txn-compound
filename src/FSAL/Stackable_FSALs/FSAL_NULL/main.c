@@ -59,7 +59,8 @@ struct nullfs_fsal_module {
 	/* nullfsfs_specific_initinfo_t specific_info;  placeholder */
 };
 
-const char myname[] = "NULLFS";
+/* FSAL name determines name of shared library: libfsal<name>.so */
+const char myname[] = "NULL";
 
 /* filesystem info for NULLFS */
 static struct fsal_staticfsinfo_t default_posix_info = {
@@ -159,6 +160,9 @@ fsal_status_t nullfs_create_export(struct fsal_module *fsal_hdl,
 
 static struct nullfs_fsal_module NULLFS;
 struct next_ops next_ops;
+struct export_ops next_exp_ops;
+struct fsal_obj_ops next_obj_ops;
+struct fsal_ds_ops next_ds_ops;
 
 /* linkage to the exports and handle ops initializers
  */

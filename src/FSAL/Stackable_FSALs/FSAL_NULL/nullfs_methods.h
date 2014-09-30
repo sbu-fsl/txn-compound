@@ -15,7 +15,13 @@ struct next_ops {
 };
 
 extern struct next_ops next_ops;
-extern struct fsal_up_vector fsal_up_top;
+/* The next_xxx_ops vectors may as well be embedded directly in
+ * struct next_ops but that would require substantial code changes to use '.'
+ * instead or '->'.
+ */
+extern struct export_ops next_exp_ops;
+extern struct fsal_obj_ops next_obj_ops;
+extern struct fsal_ds_ops next_ds_ops;
 void nullfs_handle_ops_init(struct fsal_obj_ops *ops);
 
 /*
