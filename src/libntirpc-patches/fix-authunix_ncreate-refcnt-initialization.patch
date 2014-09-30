@@ -1,0 +1,25 @@
+commit 5bb3f7cb6a06880ecc9a7f467910392af611d5cf
+Author: Kelong Wang <kelong.wang@stonybrook.edu>
+Date:   Tue Sep 30 00:51:44 2014 -0400
+
+    initialize the auth reference count to 0
+    
+    The count will be increased by auth_get() before returning auth. So this
+    initialization is redundant.
+    
+    this reverts
+    https://github.com/nfs-ganesha/ntirpc/commit/9d95322cfa99c02e566b9ebeebffe79e840fdb0e
+
+diff --git a/src/auth_unix.c b/src/auth_unix.c
+index 5366704..731261e 100644
+--- a/src/auth_unix.c
++++ b/src/auth_unix.c
+@@ -120,7 +120,7 @@ authunix_ncreate(char *machname, uid_t uid, gid_t gid, int len,
+ 	auth->ah_ops = authunix_ops();
+ 	auth->ah_private = (caddr_t) au;
+ 	auth->ah_verf = au->au_shcred = _null_auth;
+-	auth->ah_refcnt = 1;
++	auth->ah_refcnt = 0;
+ 	au->au_shfaults = 0;
+ 	au->au_origcred.oa_base = NULL;
+ 
