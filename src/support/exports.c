@@ -2310,7 +2310,7 @@ int fsal_load_init(void *node, const char *name,
 
 	if (fsal_hdl_p == NULL) {
 		LogCrit(COMPONENT_CONFIG, "FSAL handle is NULL");
-		err_type->internal = true;
+		err_type->fsal = true;
 		errcnt++;
 		goto err;
 	}
