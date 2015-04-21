@@ -216,24 +216,21 @@ void secnfs_handle_ops_init(struct fsal_obj_ops *ops);
 
 extern struct fsal_up_vector fsal_up_top;
 
-struct subfsal_args {
-	char *name;
-	void *fsal_node;
+struct secnfsfsal_args {
+        struct subfsal_args subfsal;
 };
 
 /* used by next_fsal to create its export */
 static struct config_item sub_fsal_params[] = {
-	CONF_ITEM_NOOP("name"),
+	CONF_ITEM_STR("name", 1, 10, NULL, subfsal_args, name),
 	CONFIG_EOL
 };
 
 static struct config_item export_params[] = {
 	CONF_ITEM_NOOP("name"),
-	CONF_ITEM_STR("subfsal", 1, 10, NULL,
-		      subfsal_args, name),
 	CONF_ITEM_BLOCK("FSAL", sub_fsal_params,
-			 noop_conf_init, noop_conf_commit,
-			 subfsal_args, fsal_node),
+			 noop_conf_init, subfsal_commit,
+			 secnfsfsal_args, subfsal),
 	CONFIG_EOL
 };
 
@@ -259,53 +256,42 @@ fsal_status_t secnfs_create_export(struct fsal_module *fsal_hdl,
         fsal_status_t st;
         struct secnfs_fsal_export *exp;
         struct fsal_module *next_fsal;
-	struct subfsal_args subfsal;
+	struct secnfsfsal_args secnfsfsal;
 	struct config_error_type err_type;
 	int retval;
 
 	retval = load_config_from_node(parse_node,
 				       &export_param,
-				       &subfsal,
+				       &secnfsfsal,
 				       true,
 				       &err_type);
 	if (retval != 0)
 		return fsalstat(ERR_FSAL_INVAL, 0);
 
-        next_fsal = lookup_fsal(subfsal.name);
+        next_fsal = lookup_fsal(secnfsfsal.subfsal.name);
         if (next_fsal == NULL) {
-                LogMajor(COMPONENT_FSAL, "manually loading SUBFSAL %s",
-                         subfsal.name);
-                if (load_fsal(subfsal.name, &next_fsal)) {
-                        LogMajor(COMPONENT_FSAL, "failed to load SUBFSAL %s",
-                                 subfsal.name);
-                        return fsalstat(ERR_FSAL_INVAL, EINVAL);
-                }
-                /* init subfsal before sub create_export */
-                st = next_fsal->ops->init_config(next_fsal,
-                                                 get_parse_root(parse_node));
-                if (FSAL_IS_ERROR(st)) {
-                        LogCrit(COMPONENT_CONFIG,
-                                "Failed to initialize FSAL (%s)", subfsal.name);
-                        fsal_put(next_fsal);
-                        return fsalstat(ERR_FSAL_INVAL, EINVAL);
-                }
-        }
-
-        st = next_fsal->ops->create_export(next_fsal,
-                                           subfsal.fsal_node,
-                                           up_ops);
-        fsal_put(next_fsal);
-        if (FSAL_IS_ERROR(st)) {
-                LogMajor(COMPONENT_FSAL,
-                         "Failed to call create_export on underlying FSAL %s",
-                          subfsal.name);
-                return st;
-        }
+		LogMajor(COMPONENT_FSAL,
+			 "secnfs_create_export: failed to lookup for FSAL %s",
+			 secnfsfsal.subfsal.name);
+		return fsalstat(ERR_FSAL_INVAL, EINVAL);
+	}
 
         exp = gsh_calloc(1, sizeof(*exp));
         if (!exp) {
                 LogMajor(COMPONENT_FSAL, "Out of Memory");
                 return fsalstat(ERR_FSAL_NOMEM, ENOMEM);
+        }
+
+        st = next_fsal->ops->create_export(next_fsal,
+                                           secnfsfsal.subfsal.fsal_node,
+                                           up_ops);
+        fsal_put(next_fsal);
+        if (FSAL_IS_ERROR(st)) {
+                LogMajor(COMPONENT_FSAL,
+                         "Failed to call create_export on underlying FSAL %s",
+                          secnfsfsal.subfsal.name);
+                gsh_free(exp);
+                return st;
         }
 
         /* op_ctx->fsal_export is set during next_fsal create_export */
