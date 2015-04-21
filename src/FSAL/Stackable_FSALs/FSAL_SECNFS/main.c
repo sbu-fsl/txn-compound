@@ -107,6 +107,8 @@ static struct config_item secnfs_params[] = {
 	CONF_ITEM_PATH("Proxy_Lists", 1, MAXPATHLEN,
                        "/etc/ganesha/secnfs-proxy-list.conf",
 		       secnfs_info, plist_file),
+	CONF_ITEM_BOOL("File_Encryption", false,
+		       secnfs_info, file_encryption),
 	CONFIG_EOL
 };
 
@@ -164,6 +166,7 @@ static fsal_status_t init_config(struct fsal_module *fsal_hdl,
         SECNFS_F("Context_Cache_File = %s", info->context_cache_file);
         SECNFS_F("secnfs_name = %s", info->secnfs_name);
         SECNFS_F("create_if_no_context = %d", info->create_if_no_context);
+        SECNFS_F("file_encryption = %d", info->file_encryption);
 
         if (!validate_conf_params(info)) {
                 SECNFS_ERR("invalid SECNFS config");

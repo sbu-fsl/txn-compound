@@ -60,6 +60,7 @@ typedef struct secnfs_info {
         char *secnfs_name;       /*!< secnfs unique name */
         char *plist_file;        /*!< list of secnfs proxies */
         bool create_if_no_context;
+        bool file_encryption;
 } secnfs_info_t;
 
 

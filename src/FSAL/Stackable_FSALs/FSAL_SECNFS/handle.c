@@ -303,8 +303,7 @@ static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
                 generate_key_and_iv(&new_hdl->fk, &new_hdl->iv);
                 new_hdl->key_initialized = 1;
                 new_hdl->has_dirty_meta = 0;
-                 /* TODO mechanism to enable / disable encryption */
-                new_hdl->encrypted = 0;
+                new_hdl->encrypted = new_hdl->info->file_encryption;
                 SECNFS_D("key in new handle (%x) initialized; encryption %s",
                          new_hdl, new_hdl->encrypted ? "enabled" : "disabled");
                 st = write_header(*handle);
