@@ -31,7 +31,7 @@
       }, 
       "name": "rd1", 
       "plugin": "ramdisk", 
-      "size": 10485760, 
+      "size": 10737418240, 
       "wwn": "aa4a38da-29c6-40c1-b1fd-5b0ec076a0b9"
     }
   ], 

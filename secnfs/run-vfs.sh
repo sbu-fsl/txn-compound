@@ -5,27 +5,34 @@
 #
 #       cp run-vfs.sh <root-to-nfs-ganesha>/<build-directory>
 #
-# Usage 1 (executed in the directory):
+# Usage:
 #
 #       cd <root-to-nfs-ganesha>/<build-directory>
-#       ./run-vfs.sh
-#
-# Usage 2 (executed using full path):
-#
-#       <root-to-nfs-ganesha>/<build-directory>/run-vfs.sh
+#       ./run-vfs.sh [debug|release]
 
 set -e
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-#PATHPROG=/usr/local/bin/ganesha.nfsd 
+running_mode="${1:-release}"
+
+if [[ ${running_mode} == 'debug' ]]; then
+  CONFFILE=/etc/ganesha/vfs.ganesha.conf
+  LOGLEVEL=DEBUG
+elif [[ ${running_mode} == 'release' ]]; then
+  CONFFILE=/etc/ganesha/vfs.release.ganesha.conf
+  LOGLEVEL=EVENT
+else
+  echo "usage: $0 [debug|release]"
+  exit 1
+fi
+
 PATHPROG=$DIR/MainNFSD/ganesha.nfsd
 
 LOGFILE=/var/log/vfs.ganesha.log
-CONFFILE=/etc/ganesha/vfs.ganesha.conf
 
 prog=ganesha.nfsd
 PID_FILE=${PID_FILE:=/var/run/${prog}.pid}
 LOCK_FILE=${LOCK_FILE:=/var/lock/subsys/${prog}}
 
-$PATHPROG -L $LOGFILE -f $CONFFILE -N NIV_INFO
+$PATHPROG -L ${LOGFILE} -f ${CONFFILE} -N ${LOGLEVEL}
