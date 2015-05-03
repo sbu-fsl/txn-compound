@@ -23,6 +23,8 @@ using namespace secnfs;
 namespace secnfs_test {
 
 const int MSG_SIZE = 40960;
+const int LARGE_MSG_SIZE = 4096 * 250 * 1; // 1M
+const int BENCH_TIMES = 1000;
 
 TEST(KeyBlockSizeTest, KeyBlockSize) {
         size_t blocksize = AES::BLOCKSIZE;
@@ -47,6 +49,9 @@ protected:
         secnfs_key_t iv_;
         byte plain_[MSG_SIZE];
         byte cipher_[MSG_SIZE];
+
+        byte large_plain_[LARGE_MSG_SIZE];
+        byte large_cipher_[LARGE_MSG_SIZE];
 };
 
 
@@ -189,7 +194,7 @@ TEST_F(EncryptTest, AuthEncryptVerify) {
                                         recovered, 0));
 }
 
-TEST_F(EncryptTest, AuthIntegrity) {
+TEST_F(EncryptTest, AuthIntegrity_GMAC) {
         std::string ptx(16, (char)0x01);
         std::string auth(VERSION_SIZE, (char)0x02);
         byte tag[16];
@@ -214,6 +219,72 @@ TEST_F(EncryptTest, AuthIntegrity) {
         EXPECT_EQ(SECNFS_NOT_VERIFIED,
                   secnfs_verify_decrypt(key_, iv_, 0, 16, ptx.c_str(),
                                         VERSION_SIZE, auth.c_str(), tag, NULL, 1));
+}
+
+TEST_F(EncryptTest, AuthIntegrity_VMAC) {
+        std::string ptx(16, (char)0x01);
+        byte tag[16];
+
+        memset(&key_, 0, sizeof(key_));
+        memset(&iv_, 0, sizeof(iv_));
+
+	EXPECT_OKAY(secnfs_mac_generate(key_, iv_, 0, 16, ptx.c_str(), tag));
+	// dumpbytes(tag, 16);
+
+	EXPECT_OKAY(secnfs_mac_verify(key_, iv_, 0, 16, ptx.c_str(), tag));
+
+	// tamper tag
+        tag[0] = tag[0] + 1;
+	EXPECT_EQ(SECNFS_NOT_VERIFIED,
+		  secnfs_mac_verify(key_, iv_, 0, 16, ptx.c_str(), tag));
+	tag[0] = tag[0] - 1;
+
+        // tamper plain
+        ptx[0] = ptx[0] + 1;
+	EXPECT_EQ(SECNFS_NOT_VERIFIED,
+		  secnfs_mac_verify(key_, iv_, 0, 16, ptx.c_str(), tag));
+}
+
+TEST_F(EncryptTest, BenchIntegrity_GMAC) {
+        std::string auth(VERSION_SIZE, (char)0x02);
+        byte tag[16];
+        for (int i = 0; i < BENCH_TIMES; i++)
+		EXPECT_OKAY(secnfs_auth_encrypt(key_, iv_, 0, LARGE_MSG_SIZE,
+						large_plain_, VERSION_SIZE,
+						auth.c_str(), NULL, tag, 1));
+}
+
+TEST_F(EncryptTest, BenchIntegrity_VMAC) {
+        byte tag[16];
+        for (int i = 0; i < BENCH_TIMES; i++)
+		EXPECT_OKAY(secnfs_mac_generate(key_, iv_, 0, LARGE_MSG_SIZE,
+						large_plain_, tag));
+}
+
+TEST_F(EncryptTest, BenchEncryption) {
+        std::string auth(VERSION_SIZE, (char)0x02);
+        byte tag[16];
+        for (int i = 0; i < BENCH_TIMES; i++)
+		EXPECT_OKAY(secnfs_auth_encrypt(
+		    key_, iv_, 0, LARGE_MSG_SIZE, large_plain_, VERSION_SIZE,
+		    auth.c_str(), large_cipher_, tag, 1));
+}
+
+// skipped test
+TEST_F(EncryptTest, DISABLED_BenchIntegrityWithoutVersion_GMAC) {
+        byte tag[16];
+        for (int i = 0; i < BENCH_TIMES; i++)
+		EXPECT_OKAY(secnfs_auth_encrypt(key_, iv_, 0, LARGE_MSG_SIZE,
+						large_plain_, 0,
+						NULL, NULL, tag, 1));
+}
+
+TEST_F(EncryptTest, DISABLED_BenchEncryptionWithoutVersion) {
+        byte tag[16];
+        for (int i = 0; i < BENCH_TIMES; i++)
+		EXPECT_OKAY(secnfs_auth_encrypt(
+		    key_, iv_, 0, LARGE_MSG_SIZE, large_plain_, 0,
+		    NULL, large_cipher_, tag, 1));
 }
 
 

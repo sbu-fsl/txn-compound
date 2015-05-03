@@ -37,6 +37,9 @@ using CryptoPP::RSA;
 using CryptoPP::GCM;
 using CryptoPP::GCM_64K_Tables;
 
+#include <cryptopp/vmac.h>
+using CryptoPP::VMAC;
+
 #include <cryptopp/osrng.h>
 using CryptoPP::AutoSeededRandomPool;
 
@@ -190,7 +193,7 @@ secnfs_s secnfs_auth_encrypt(secnfs_key_t key, secnfs_key_t iv,
 
                 if (auth_only) {
                         byte auth_pad[AES::BLOCKSIZE] = {0};
-                        if (auth_size < AES::BLOCKSIZE) {
+                        if (auth_size != 0 && auth_size < AES::BLOCKSIZE) {
                                 memcpy(auth_pad, auth_msg, auth_size);
                                 auth_msg = auth_pad;
                                 auth_size = AES::BLOCKSIZE;
@@ -252,7 +255,7 @@ secnfs_s secnfs_verify_decrypt(secnfs_key_t key, secnfs_key_t iv,
 
                 if (auth_only) {
                         byte auth_pad[AES::BLOCKSIZE] = {0};
-                        if (auth_size < AES::BLOCKSIZE) {
+                        if (auth_size != 0 && auth_size < AES::BLOCKSIZE) {
                                 memcpy(auth_pad, auth_msg, auth_size);
                                 auth_msg = auth_pad;
                                 auth_size = AES::BLOCKSIZE;
@@ -304,6 +307,59 @@ secnfs_s secnfs_verify_decrypt(secnfs_key_t key, secnfs_key_t iv,
         return SECNFS_OKAY;
 }
 
+secnfs_s secnfs_mac_generate(secnfs_key_t key, secnfs_key_t iv, uint64_t offset,
+                             uint64_t size, const void *plain, void *tag)
+{
+        if (round_up(offset, AES::BLOCKSIZE) != offset ||
+            round_up(size, AES::BLOCKSIZE) != size) {
+                // We require offset and size to be aligned, otherwise, the
+                // misaligned part will not be authenticated.
+                return SECNFS_NOT_ALIGNED;
+        }
+
+        incr_ctr(&iv, SECNFS_KEY_LENGTH, offset / AES::BLOCKSIZE);
+
+        try {
+                VMAC<AES> vmac;
+                vmac.SetKeyWithIV(key.bytes, SECNFS_KEY_LENGTH, iv.bytes,
+                                  SECNFS_KEY_LENGTH);
+                vmac.CalculateDigest((byte *)tag, (byte *)plain, size);
+        } catch (CryptoPP::Exception &e) {
+                std::cerr << e.what() << std::endl;
+                return SECNFS_CRYPTO_ERROR;
+        }
+
+        return SECNFS_OKAY;
+}
+
+secnfs_s secnfs_mac_verify(secnfs_key_t key, secnfs_key_t iv, uint64_t offset,
+                           uint64_t size, const void *plain, const void *tag)
+{
+        if (round_up(offset, AES::BLOCKSIZE) != offset ||
+            round_up(size, AES::BLOCKSIZE) != size) {
+                // We require offset and size to be aligned, otherwise, the
+                // misaligned part will not be authenticated.
+                return SECNFS_NOT_ALIGNED;
+        }
+
+        incr_ctr(&iv, SECNFS_KEY_LENGTH, offset / AES::BLOCKSIZE);
+        byte expected_tag[16];
+
+        try {
+                VMAC<AES> vmac;
+                vmac.SetKeyWithIV(key.bytes, SECNFS_KEY_LENGTH, iv.bytes,
+                                  SECNFS_KEY_LENGTH);
+                vmac.CalculateDigest(expected_tag, (byte *)plain, size);
+        } catch (CryptoPP::Exception &e) {
+                std::cerr << e.what() << std::endl;
+                return SECNFS_CRYPTO_ERROR;
+        }
+
+        if (memcmp(tag, expected_tag, TAG_SIZE) == 0)
+                return SECNFS_OKAY;
+        else
+                return SECNFS_NOT_VERIFIED;
+}
 
 secnfs_s secnfs_create_context(secnfs_info_t *info)
 {

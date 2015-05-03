@@ -173,6 +173,38 @@ secnfs_s secnfs_verify_decrypt(secnfs_key_t key, secnfs_key_t iv,
                                const void *auth_msg, const void *tag,
                                void *buffer, bool auth_only);
 
+/*
+ * @brief Generate message authentication code with VMAC
+ * VMAC is a message authentication code designed for high performance on 64-bit
+ * machines. VMAC uses a universal hash. See http://www.cryptopp.com/wiki/VMAC
+ *
+ * @param[in]   key     Decryption key
+ * @param[in]   iv      Initialization vector
+ * @param[in]   offset  Offset of data in file
+ * @param[in]   size    Size of buffer, also the amount of data to decrypt
+ * @param[in]   plain   Buffer containing plaintext
+ * @param[out]  tag     TAG, a.k.a. MAC
+ *
+ * REQUIRES:
+ *  1. offset and size is aligned to AES::BLOCKSIZE (128bit)
+ *
+ */
+secnfs_s secnfs_mac_generate(secnfs_key_t key, secnfs_key_t iv, uint64_t offset,
+			     uint64_t size, const void *plain, void *tag);
+
+/*
+ * @brief Perform verfication of VMAC
+ *
+ * @param[in]   key     Decryption key
+ * @param[in]   iv      Initialization vector
+ * @param[in]   offset  Offset of data in file
+ * @param[in]   size    Size of buffer, also the amount of data to decrypt
+ * @param[in]   plain   Buffer containing plaintext
+ * @param[in]  tag     TAG, a.k.a. MAC
+ *
+ */
+secnfs_s secnfs_mac_verify(secnfs_key_t key, secnfs_key_t iv, uint64_t offset,
+			   uint64_t size, const void *plain, const void *tag);
 
 secnfs_s secnfs_init_info(secnfs_info_t *info);
 
