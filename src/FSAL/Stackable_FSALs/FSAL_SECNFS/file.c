@@ -175,17 +175,26 @@ fsal_status_t do_aligned_read(struct secnfs_fsal_obj_handle *hdl,
                          secnfs_dif.tag[0], secnfs_dif.tag[15]);
 
                 /* may carefully decrypt to user buffer to save memcpy */
-                ret = secnfs_verify_decrypt(
-                                hdl->fk,
-                                hdl->iv,
-                                offset_align + i * PI_INTERVAL_SIZE,
-                                PI_INTERVAL_SIZE,
-                                buffer_align + i * PI_INTERVAL_SIZE,
-                                VERSION_SIZE,
-                                version_buf,
-                                secnfs_dif.tag,
-                                buffer_align + i * PI_INTERVAL_SIZE,
-                                !hdl->encrypted);
+                if (hdl->encrypted)
+                        ret = secnfs_verify_decrypt(
+                                        hdl->fk,
+                                        hdl->iv,
+                                        offset_align + i * PI_INTERVAL_SIZE,
+                                        PI_INTERVAL_SIZE,
+                                        buffer_align + i * PI_INTERVAL_SIZE,
+                                        VERSION_SIZE,
+                                        version_buf,
+                                        secnfs_dif.tag,
+                                        buffer_align + i * PI_INTERVAL_SIZE,
+                                        !hdl->encrypted);
+                else /* integrity only */
+                        ret = secnfs_mac_verify(
+                                        hdl->fk,
+                                        hdl->iv,
+                                        offset_align + i * PI_INTERVAL_SIZE,
+                                        PI_INTERVAL_SIZE,
+                                        buffer_align + i * PI_INTERVAL_SIZE,
+                                        secnfs_dif.tag);
 
                 /* or return partial buffer ? */
                 if (ret != SECNFS_OKAY) {
@@ -261,17 +270,26 @@ fsal_status_t do_aligned_write(struct secnfs_fsal_obj_handle *hdl,
         uint64_to_bytes(version_buf, secnfs_dif.version);
 
         for (i = 0; i < get_pi_count(size_align); i++) {
-                ret = secnfs_auth_encrypt(
-                                hdl->fk,
-                                hdl->iv,
-                                offset_align + i * PI_INTERVAL_SIZE,
-                                PI_INTERVAL_SIZE,
-                                plain_align + i * PI_INTERVAL_SIZE,
-                                VERSION_SIZE,
-                                version_buf,
-                                pd_buf + i * PI_INTERVAL_SIZE,
-                                secnfs_dif.tag,
-                                !hdl->encrypted);
+                if (hdl->encrypted)
+                        ret = secnfs_auth_encrypt(
+                                        hdl->fk,
+                                        hdl->iv,
+                                        offset_align + i * PI_INTERVAL_SIZE,
+                                        PI_INTERVAL_SIZE,
+                                        plain_align + i * PI_INTERVAL_SIZE,
+                                        VERSION_SIZE,
+                                        version_buf,
+                                        pd_buf + i * PI_INTERVAL_SIZE,
+                                        secnfs_dif.tag,
+                                        !hdl->encrypted);
+                else /* integrity only */
+                        ret = secnfs_mac_generate(
+                                        hdl->fk,
+                                        hdl->iv,
+                                        offset_align + i * PI_INTERVAL_SIZE,
+                                        PI_INTERVAL_SIZE,
+                                        plain_align + i * PI_INTERVAL_SIZE,
+                                        secnfs_dif.tag);
 
                 if (ret != SECNFS_OKAY) {
                         st = secnfs_to_fsal_status(ret);
