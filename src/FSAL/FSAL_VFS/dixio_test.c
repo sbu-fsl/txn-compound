@@ -247,8 +247,9 @@ int main(int argc, char *argv[])
 	off_t offset = 0;
 	char op = 'x';
 	int new = 0;
+	int iosize_page = 1;  // I/O size in unit of pages
 
-	while ((opt = getopt(argc, argv, "no:p:r:b:h")) != -1) {
+	while ((opt = getopt(argc, argv, "no:p:r:b:s:h")) != -1) {
 		switch(opt) {
 		case 'o':
 			offset = strtoull(optarg, NULL, 0);
@@ -264,6 +265,9 @@ int main(int argc, char *argv[])
 			break;
 		case 'b':
 			magic_byte = (uint8_t)strtoul(optarg, NULL, 16);
+			break;
+		case 's':
+			iosize_page = strtoull(optarg, NULL, 0);
 			break;
 		case 'h':
 			print_help(argv[0]);
@@ -290,23 +294,23 @@ int main(int argc, char *argv[])
 
 	switch (op) {
 	case 'd':
-		test_normal_dio(fd, offset, 1);
+		test_normal_dio(fd, offset, iosize_page);
 		break;
 	case 'x':
-		test_dixio(fd, offset, 1);
+		test_dixio(fd, offset, iosize_page);
 		break;
 	case 'r':
-		test_dixread(fd, offset, 1);
+		test_dixread(fd, offset, iosize_page);
 		break;
 	case 'w':
-		test_dixwrite(fd, offset, 1);
+		test_dixwrite(fd, offset, iosize_page);
 		break;
 	case 'c': // custom
-		test_normal_dio(fd, 0, 2);
+		test_normal_dio(fd, 0, iosize_page);
 		ftruncate(fd, 8192);
-		test_dixwrite(fd, 8192, 1);
-		test_normal_dio(fd, 0, 2);
-		test_dixread(fd, 8192, 1);
+		test_dixwrite(fd, 8192, iosize_page);
+		test_normal_dio(fd, 0, iosize_page);
+		test_dixread(fd, 8192, iosize_page);
 		break;
 	default:
 		error(1, EINVAL, "unknown opcode: %s", optarg);
