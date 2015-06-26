@@ -1,0 +1,25 @@
+From 58f9b6b5e7ed106731b5ca5b5062c570a1990b48 Mon Sep 17 00:00:00 2001
+From: Ming Chen <v.mingchen@gmail.com>
+Date: Fri, 26 Jun 2015 17:29:05 -0400
+Subject: [PATCH 2/2] fix wrong page mapping read/write flag
+
+---
+ fs/aio.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/fs/aio.c b/fs/aio.c
+index 2e80fbb..9593d37 100644
+--- a/fs/aio.c
++++ b/fs/aio.c
+@@ -1428,7 +1428,7 @@ static int setup_pi_ext(struct kiocb *req, int is_write)
+ 
+ 	retval = get_user_pages_fast((unsigned long)ext->ie_pi_buf,
+ 				     req->ki_ioext->ke_pi_iter.pi_nrpages,
+-				     is_write,
++				     !is_write,
+ 				     req->ki_ioext->ke_pi_iter.pi_userpages);
+ 	if (retval != req->ki_ioext->ke_pi_iter.pi_nrpages) {
+ 		pr_err("%s: couldn't map pages?\n", __func__);
+-- 
+1.9.3
+

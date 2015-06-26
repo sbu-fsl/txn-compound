@@ -1,0 +1,52 @@
+From d5cb25b72664d34a38d569576fe81fb57e5988cc Mon Sep 17 00:00:00 2001
+From: Ming Chen <v.mingchen@gmail.com>
+Date: Wed, 24 Jun 2015 20:45:34 -0400
+Subject: [PATCH 1/2] fix nesting of kmap_atomic()
+
+---
+ fs/bio-integrity.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/fs/bio-integrity.c b/fs/bio-integrity.c
+index 3ff1572..87cdaff 100644
+--- a/fs/bio-integrity.c
++++ b/fs/bio-integrity.c
+@@ -346,13 +346,13 @@ static int bio_integrity_walk_bufs(struct bio *bio, sector_t sector,
+ 	iv = bip->bip_vec;
+ 	prot_offset = iv->bv_offset;
+ 	prot_len = iv->bv_len;
+-	prot_buf = kmap_atomic(iv->bv_page);
+ 
+ 	bio_for_each_segment(bv, bio, iter) {
+ 		void *kaddr = kmap_atomic(bv.bv_page);
+ 		bv_len = bv.bv_len;
+ 		bv_offset = bv.bv_offset;
+ 
++		prot_buf = kmap_atomic(iv->bv_page);
+ 		while (bv_len > 0) {
+ 			if (prot_len < bi->tuple_size) {
+ 				kunmap_atomic(prot_buf);
+@@ -372,8 +372,8 @@ static int bio_integrity_walk_bufs(struct bio *bio, sector_t sector,
+ 			if (ret) {
+ 				if (ret == -ENOTTY)
+ 					ret = 0;
+-				kunmap_atomic(kaddr);
+ 				kunmap_atomic(prot_buf);
++				kunmap_atomic(kaddr);
+ 				return ret;
+ 			}
+ 
+@@ -386,9 +386,9 @@ static int bio_integrity_walk_bufs(struct bio *bio, sector_t sector,
+ 			total += sectors * bi->tuple_size;
+ 			BUG_ON(total > bio->bi_integrity->bip_iter.bi_size);
+ 		}
++		kunmap_atomic(prot_buf);
+ 		kunmap_atomic(kaddr);
+ 	}
+-	kunmap_atomic(prot_buf);
+ 	return ret;
+ }
+ 
+-- 
+1.9.3
+
