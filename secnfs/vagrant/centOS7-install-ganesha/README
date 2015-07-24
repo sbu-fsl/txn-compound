@@ -1,0 +1,70 @@
+This file is used to create virtual machines using vagrant and install nfs-ganesha as proxy on those VMs.
+
+The nfs-ganesha proxy's install script can be used with/without vagrant.
+
+SSH login without password
+==========================
+
+1. Create a key using ssh-key-gen on local-host. Press ENTER at every prompt.
+	# ssh-keygen
+
+2. Copy the public key to remote-host using ssh-copy-id. This will append the keys to the remote-host’s .ssh/authorized_key. Enter your git passphrase.
+	# ssh-copy-id -i ~/.ssh/id_rsa.pub git.fsl.cs.sunysb.edu
+
+3. If you don't have ssh-copy-id on your machine then manually copy the keys.
+	# cat ~/.ssh/id_rsa.pub | ssh <user>@git.fsl.cs.sunysb.edu 'cat >> ~/.ssh/authorized_keys'
+
+
+Vagrant
+=======
+
+Steps to follow to create a centOS7 virtual machine and install nfs-ganesha as proxy on it:
+
+1. Download and install VirtualBox on your host machine
+
+2. Install vagrant on your host machine
+
+3. Create a new project directory <proj-dir>. Run the below mentioned command in your project directory:
+	# vagrant init chef/centos-7.0
+
+We have used "chef" box here for centOS7, there are other boxes as well for centOS7, like "hfm4".
+
+4. With the above command a 'Vagrantfile' file will be created in your project directory. Replace this file with the Vagrant file in the repository or make the chnages to the original file accordingly. Please make sure you change the username in the Vagrantfile. To run the script from Vagrant you should have passwordless ssh enabled (execute the passwordless login steps).
+	# config.vm.provision :shell, path: "./install_ganesha.sh", args: "-u  <username>"
+
+5. Copy the "install_ganesha.sh" in your project directory.
+
+6. Run the below mentioned command to configure the Virtual machine.
+	# vagrant up
+
+7. The above command after configuring the VM will run the provisioner, in our case "shell"
+	==> default: Running provisioner: shell...
+
+Once this is done, your VM is ready to use.
+
+Log into the newly created VM with the command:
+	# vagrant ssh
+
+You will be logged in as "vagrant" user. If you want to log in as root user, use the deafult password "vagrant".
+
+TroubleShooting:
+================
+
+If somehow because of some host config issues, the shell provisioning fails. Log into the VM.
+	# vagrant ssh
+
+Copy the "install_ganesha.sh" script.
+
+Comment these lines:
+
+>>>>>>>>>
+	mkdir ~/.ssh
+	chmod 700 ~/.ssh
+	touch ~/.ssh/known_hosts
+	ssh-keyscan -H git.fsl.cs.sunysb.edu >> ~/.ssh/known_hosts
+>>>>>>>>>
+
+And run the script.
+	#./install_ganesha.sh -u <username>
+
+
