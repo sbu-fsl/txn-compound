@@ -13,7 +13,7 @@ ulimit -H -c 0 --                       # disable core dump
 hash -r                                 # clear the command path hash
 
 # common libraries required
-#sudo yum install -y gcc cmake git libtool wget bison flex
+sudo yum install -y gcc cmake git libtool wget bison flex
 
 # parse command line argument for username
 USR="";
@@ -46,8 +46,10 @@ fi
 
 
 # checkout the git repository
-sudo ssh-keygen -R git.fsl.cs.sunysb.edu
-sudo ssh-keyscan -H git.fsl.cs.sunysb.edu >> ~/.ssh/known_hosts
+mkdir ~/.ssh
+chmod 700 ~/.ssh
+touch ~/.ssh/known_hosts
+ssh-keyscan -H git.fsl.cs.sunysb.edu >> ~/.ssh/known_hosts
 git_repo="$USR@git.fsl.cs.sunysb.edu:/scm/fslgit/fsl-nfs-ganesha.git";
 if [ ! -d fsl-nfs-ganesha ]; then
   git clone -b sec_vs_cache $git_repo;
@@ -56,14 +58,14 @@ fi
 cd fsl-nfs-ganesha
 
 # NFS-ganesha specific
-#git submodule update --init --recursive
+git submodule update --init --recursive
 sudo wget -P /etc/yum.repos.d http://download.gluster.org/pub/gluster/glusterfs/LATEST/RHEL/glusterfs-epel.repo
-sudo rpm --import 'https://ceph.com/git/?p=ceph.git;a=blob_plain;f=keys/release.asc'
-#su -c 'rpm -Uvh http://dl.fedoraproject.org/pub/epel/6/x86_64/epel-release-6-8.noarch.rpm'
-#sudo yum install -y snappy leveldb gdisk gperftools-libs
-#su -c 'rpm -Uvh http://ceph.com/rpm-dumpling/el6/noarch/ceph-release-1-0.el6.noarch.rpm'
-#su -c 'rpm -Uvh http://li.nux.ro/download/nux/dextop/el7/x86_64/nux-dextop-release-0-5.el7.nux.noarch.rpm'
-#sudo yum -y update
+su -c 'rpm --import https://ceph.com/git/?p=ceph.git;a=blob_plain;f=keys/release.asc'
+sudo rpm -Uvh http://dl.fedoraproject.org/pub/epel/6/x86_64/epel-release-6-8.noarch.rpm
+sudo yum install -y snappy leveldb gdisk gperftools-libs
+sudo rpm -Uvh http://ceph.com/rpm-dumpling/el6/noarch/ceph-release-1-0.el6.noarch.rpm
+sudo rpm -Uvh http://li.nux.ro/download/nux/dextop/el7/x86_64/nux-dextop-release-0-5.el7.nux.noarch.rpm
+sudo yum -y update
 
 cd ..
 
@@ -71,16 +73,16 @@ cd ..
 # obsolete headers, if any
 sudo yum clean all
 
-#sudo yum install -y glog-devel gflags-devel libgssglue-devel
-#sudo yum install -y openssl-devel
-#sudo yum install -y libnfsidmap-devel
-#sudo yum install -y doxygen
-#sudo yum install -y protobuf-devel leveldb-devel snappy-devel opencv-devel boost-devel hdf5-devel
-#sudo yum install -y lmdb-devel jemalloc-devel tbb-devel libaio-devel cryptopp-devel
-#sudo yum -y groupinstall "Development Tools"
-#sudo yum install -y glibc-headers
-#sudo yum install -y gcc-c++
-#sudo yum install -y libcurl-devel
+sudo yum install -y glog-devel gflags-devel libgssglue-devel
+sudo yum install -y openssl-devel
+sudo yum install -y libnfsidmap-devel
+sudo yum install -y doxygen
+sudo yum install -y protobuf-devel leveldb-devel snappy-devel opencv-devel boost-devel hdf5-devel
+sudo yum install -y lmdb-devel jemalloc-devel tbb-devel libaio-devel cryptopp-devel
+sudo yum -y groupinstall "Development Tools"
+sudo yum install -y glibc-headers
+sudo yum install -y gcc-c++
+sudo yum install -y libcurl-devel
 
 # set the environment variables required for configuration
 # and add it to the .bashrc file as well
@@ -121,7 +123,7 @@ sudo mkdir -p build
 # Install Clamav
 echo "Running Clamav install script"
 cd ./secnfs/clamav/
-#yes | /bin/sh install_clamav.sh
+yes | /bin/sh install_clamav.sh
 cd -
 echo "Finished installing Clamav"
 
