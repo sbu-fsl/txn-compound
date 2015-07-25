@@ -5,13 +5,19 @@ The nfs-ganesha proxy's install script can be used with/without vagrant.
 SSH login without password
 ==========================
 
-1. Create a key using ssh-key-gen on local-host. Press ENTER at every prompt.
+1. Create a key using ssh-key-gen on local-host. Press ENTER when prompted for file in which key should be saved. Enter and renter a passphrase when prompted.
 	# ssh-keygen
 
-2. Copy the public key to remote-host using ssh-copy-id. This will append the keys to the remote-host’s .ssh/authorized_key. Enter your git passphrase.
+2. Add your key to the ssh-agent. Turn on the ssh-agent:
+	# eval `ssh-agent -s`
+
+3. Add your SSH key to the ssh-agent:
+	# ssh-add ~/.ssh/id_rsa
+
+3. Copy the public key to remote-host using ssh-copy-id. This will append the keys to the remote-host ".ssh/authorized_key". Enter your git passphrase.
 	# ssh-copy-id -i ~/.ssh/id_rsa.pub git.fsl.cs.sunysb.edu
 
-3. If you don't have ssh-copy-id on your machine then manually copy the keys.
+4. If you don't have ssh-copy-id on your machine then manually copy the keys.
 	# cat ~/.ssh/id_rsa.pub | ssh <user>@git.fsl.cs.sunysb.edu 'cat >> ~/.ssh/authorized_keys'
 
 
