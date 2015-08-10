@@ -40,8 +40,11 @@ We have used "chef" box here for centOS7, there are other boxes as well for cent
 	# config.vm.provision :shell, path: "./install_ganesha.sh", args: "-u  <username>"
 
 Also add these lines to the Vagrantfile, if Vagrantfile is not copied from the repo:
-	# config.vm.network "forwarded_port", guest: 80, host: 8080
-	# config.vm.network "forwarded_port", guest: 443, host: 8443
+	# config.vm.network "forwarded_port", guest: 80, host: 8080, auto_correct: "true"
+	# config.vm.network "forwarded_port", guest: 443, host: 8443, auto_correct: "true"
+
+Add this line to customize vm for specific memory (for e.g. this will give 2 GB memory to the VM):
+	# vb.customize ["modifyvm", :id, "--memory", "2048"]
 
 5. Copy the "install_ganesha.sh" in your project directory.
 
