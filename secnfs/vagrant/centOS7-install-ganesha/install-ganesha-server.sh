@@ -13,15 +13,15 @@ ulimit -H -c 0 --                       # disable core dump
 hash -r                                 # clear the command path hash
 
 HOME_DIR=`pwd`;
+USR="";
 
 # install targetcli
 sudo yum install -y targetcli
 
-# copy the config file from the fsl-ganesha repository
-sudo cp $HOME_DIR/master_repo/fsl-nfs-ganesha/secnfs/end-to-end-dix/pi-10MB-device-config.json $HOME_DIR/
-
-# create a PI-enabled 10MB device 
-sudo targetcli restoreconfig pi-10MB-device-config.json clear_existing=True
+git_repo="$USR@git.fsl.cs.sunysb.edu:/scm/fslgit/fsl-nfs-ganesha.git";
+if [ ! -d fsl-nfs-ganesha ]; then
+        git clone -b integrity-2.1 $git_repo;
+fi
 
 cd $HOME_DIR/fsl-nfs-ganesha
 
