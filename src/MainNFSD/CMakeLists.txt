@@ -79,6 +79,8 @@ set(fsal_CORE_SRCS
    ../FSAL_UP/fsal_up_top.c
    ../FSAL_UP/fsal_up_async.c
    ../FSAL_UP/fsal_up_utils.c
+   ../FSAL/FSAL_PROXY/handle.c
+   ../FSAL/FSAL_PROXY/personal.c
 )
 
 ########### next target ###############
@@ -107,6 +109,24 @@ endif(USE_9P AND USE_9P_RDMA)
 
 install(TARGETS ganesha.nfsd COMPONENT daemon DESTINATION bin)
 
+SET(personaltest_SRCS
+   personaltest.c
+)
+
+add_executable(personaltest
+  ${personaltest_SRCS}
+  ${fsal_CORE_SRCS}
+  ../include/personal.h
+)
+
+target_link_libraries(personaltest
+  MainServices
+  ${PROTOCOLS}
+  ${GANESHA_CORE}
+  config_parsing
+  ${LIBTIRPC_LIBRARIES}
+  ${SYSTEM_LIBRARIES}
+)
 
 ########### install files ###############
 
