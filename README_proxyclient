@@ -1,0 +1,9 @@
+Build the changes:-
+
+sudo -E cmake -DCMAKE_BUILD_TYPE=Debug ../src/ && sudo make && sudo make install && sudo make install_manifest.txt
+
+Running the file:-
+
+sudo MainNFSD/personaltest -f /home/ashok/work/fsl-nfs-ganesha/secnfs/config/vfs.proxy.conf -L /home/ashok/log_ganesha -N NIV_FULL_DEBUG -d
+
+
