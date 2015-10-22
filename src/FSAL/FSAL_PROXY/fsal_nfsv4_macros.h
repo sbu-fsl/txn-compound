@@ -69,40 +69,24 @@ do { \
 	argcompound.argarray.argarray_len += 1;			\
 } while (0)
 
-#define COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(argcompound, __seqid, inclientid, \
+#define COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(opcnt, args, __seqid, inclientid, \
 					    inaccess, inname, __owner_val, \
 					    __owner_len)		\
 do {  \
-	argcompound.argarray.argarray_val[\
-		argcompound.argarray.argarray_len].argop = NFS4_OP_OPEN; \
-	argcompound.argarray.argarray_val[\
-		argcompound.argarray.argarray_len].nfs_argop4_u.opopen.\
-		seqid = __seqid;				       \
-	argcompound.argarray.argarray_val[\
-		argcompound.argarray.argarray_len].nfs_argop4_u.opopen.\
-		share_access = OPEN4_SHARE_ACCESS_BOTH;		       \
-	argcompound.argarray.argarray_val[\
-		argcompound.argarray.argarray_len].nfs_argop4_u.opopen.\
-		share_deny = OPEN4_SHARE_DENY_NONE;		       \
-	argcompound.argarray.argarray_val[\
-		argcompound.argarray.argarray_len].nfs_argop4_u.opopen.\
-		owner.clientid = inclientid;			       \
-	argcompound.argarray.argarray_val[\
-		argcompound.argarray.argarray_len].nfs_argop4_u.opopen.\
-		owner.owner.owner_len =  __owner_len;		       \
-	argcompound.argarray.argarray_val[\
-		argcompound.argarray.argarray_len].nfs_argop4_u.opopen.\
-		owner.owner.owner_val = __owner_val;		       \
-	argcompound.argarray.argarray_val[\
-		argcompound.argarray.argarray_len].nfs_argop4_u.opopen.\
-		openhow.opentype = OPEN4_NOCREATE;		       \
-	argcompound.argarray.argarray_val[\
-		argcompound.argarray.argarray_len].nfs_argop4_u.opopen.\
-		claim.claim = CLAIM_NULL;			       \
-	argcompound.argarray.argarray_val[\
-		argcompound.argarray.argarray_len].nfs_argop4_u.opopen.\
-		claim.open_claim4_u.file = inname;		       \
-	argcompound.argarray.argarray_len += 1;			\
+	nfs_argop4 *op = args + opcnt; opcnt++;                           \
+	op->argop = NFS4_OP_OPEN;                                         \
+	op->nfs_argop4_u.opopen.seqid = __seqid;                          \
+	op->nfs_argop4_u.opopen.share_access = OPEN4_SHARE_ACCESS_BOTH;   \
+	op->nfs_argop4_u.opopen.share_deny = OPEN4_SHARE_DENY_NONE;       \
+	op->nfs_argop4_u.opopen.owner.clientid = inclientid;              \
+	op->nfs_argop4_u.opopen.owner.owner.owner_len =  __owner_len;     \
+	op->nfs_argop4_u.opopen.owner.owner.owner_val = __owner_val;      \
+	op->nfs_argop4_u.opopen.openhow.opentype = OPEN4_NOCREATE;        \
+	op->nfs_argop4_u.opopen.claim.claim = CLAIM_NULL;                 \
+	op->nfs_argop4_u.opopen.claim.open_claim4_u.file.utf8string_val   \
+                = inname;                                                 \
+        op->nfs_argop4_u.opopen.claim.open_claim4_u.file.utf8string_len = \
+                strlen(inname);                                           \
 } while (0)
 
 #define COMPOUNDV4_ARG_ADD_OP_CLOSE(opcnt, argarray, __stateid)	\
@@ -324,6 +308,18 @@ do { \
 	memset(&op->nfs_argop4_u.opread.stateid, 0, sizeof(stateid4));	\
 	op->nfs_argop4_u.opread.offset = inoffset;			\
 	op->nfs_argop4_u.opread.count  = incount;			\
+} while (0)
+
+#define COMPOUNDV4_ARG_ADD_OP_READ_STATE(opcnt, argarray, inoffset, incount, __stateid) \
+do { \
+        nfs_argop4 *op = argarray+opcnt; opcnt++;                       \
+        op->argop = NFS4_OP_READ;                                       \
+        op->nfs_argop4_u.opread.stateid.seqid                           \
+                = __stateid->seqid;                                     \
+        memcpy(op->nfs_argop4_u.opread.stateid.other,                   \
+               __stateid->other, 12);                                   \
+        op->nfs_argop4_u.opread.offset = inoffset;                      \
+        op->nfs_argop4_u.opread.count  = incount;                       \
 } while (0)
 
 #define COMPOUNDV4_ARG_ADD_OP_WRITE(opcnt, argarray, inoffset, inbuf, inlen) \

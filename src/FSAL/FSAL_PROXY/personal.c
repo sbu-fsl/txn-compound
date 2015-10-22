@@ -7,9 +7,9 @@
 #include <arpa/inet.h>
 #include "fsal_types.h"
 #include "fsal.h"
-#include "fsal_api.h"
 #include "FSAL/fsal_init.h"
 #include "pxy_fsal_methods.h"
+#include "fsal_api.h"
 #include "personal.h"
 
 bool
@@ -30,6 +30,7 @@ int personal_init() {
 	char *data_buf = NULL;
 	size_t read_amount = 0;
 	bool eof = false;
+	struct attrlist abcd_attr;
 	struct req_op_context req_ctx;
 
 	LogDebug(COMPONENT_FSAL, "personal_init() called\n");
@@ -117,13 +118,22 @@ int personal_init() {
         LogDebug(COMPONENT_FSAL, "readdir() for vfs0 succeeded\n");
 
 	read_amount = 0;
-	fsal_status = export->fsal_export->obj_ops->write(abcd_handle, 0, 20, "check write", &read_amount, &eof);
+	fsal_status = export->fsal_export->obj_ops->write(abcd_handle, 0, 12, "check write", &read_amount, &eof);
         if (FSAL_IS_ERROR(fsal_status)) {
                 LogDebug(COMPONENT_FSAL, "write() for abcd failed\n");
                 return -1;
         }
 
 	LogDebug(COMPONENT_FSAL, "write() for abcd succeeded, %u written\n", read_amount);
+
+	abcd_handle = NULL;
+	fsal_status = export->fsal_export->obj_ops->openread(vfs0_handle, "abcd", &abcd_attr, &abcd_handle);
+	if (FSAL_IS_ERROR(fsal_status)) {
+                LogDebug(COMPONENT_FSAL, "openread() for abcd failed\n");
+                return -1;
+        }
+
+	LogDebug(COMPONENT_FSAL, "openread() for abcd succeeded\n");
 
 	return 0;
 }
