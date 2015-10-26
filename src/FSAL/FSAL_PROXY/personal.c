@@ -25,12 +25,14 @@ int personal_init() {
 	struct gsh_export *export = NULL;
 	struct fsal_obj_handle *vfs0_handle = NULL;
 	struct fsal_obj_handle *abcd_handle = NULL;
+	struct fsal_obj_handle *abcd1_handle = NULL;
 	fsal_status_t fsal_status = { 0, 0 };
 	cache_entry_t *entry = NULL;
 	char *data_buf = NULL;
 	size_t read_amount = 0;
 	bool eof = false;
 	struct attrlist abcd_attr;
+	struct attrlist abcd1_attr;
 	struct req_op_context req_ctx;
 
 	LogDebug(COMPONENT_FSAL, "personal_init() called\n");
@@ -127,7 +129,9 @@ int personal_init() {
 	LogDebug(COMPONENT_FSAL, "write() for abcd succeeded, %u written\n", read_amount);
 
 	abcd_handle = NULL;
-	fsal_status = export->fsal_export->obj_ops->openread(vfs0_handle, "abcd", &abcd_attr, &abcd_handle);
+	fsal_status = export->fsal_export->obj_ops->openread(vfs0_handle, "abcd", "abcd1",
+								&abcd_attr, &abcd1_attr,
+								&abcd_handle, &abcd1_handle);
 	if (FSAL_IS_ERROR(fsal_status)) {
                 LogDebug(COMPONENT_FSAL, "openread() for abcd failed\n");
                 return -1;

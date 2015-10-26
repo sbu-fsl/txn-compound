@@ -1309,8 +1309,9 @@ struct fsal_obj_ops {
 
 /* For opening a file followed by reading and closing it */
 	fsal_status_t(*openread) (struct fsal_obj_handle *dir_hdl,
-                                 const char *name, struct attrlist *attrib,
-                                 struct fsal_obj_handle **new_obj);
+                                 const char *name, const char *name1,
+				 struct attrlist *attrib, struct attrlist *attribi1,
+                                 struct fsal_obj_handle **new_obj, struct fsal_obj_handle **new_obj1);
 
 /**
  * @brief Create a directory
