@@ -1294,7 +1294,8 @@ static fsal_status_t pxy_read_state(const nfs_fh4 *fh4, const nfs_fh4 *fh4_1,
         rok = &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
         rok->data.data_val = buffer;
         rok->data.data_len = buffer_size;
-        COMPOUNDV4_ARG_ADD_OP_READ_STATE(opcnt, argoparray, offset, buffer_size, sid);
+        /*COMPOUNDV4_ARG_ADD_OP_READ_STATE(opcnt, argoparray, offset, buffer_size, sid);*/
+	COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argoparray, offset, buffer_size);
 	rok = &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
 	rok->data.data_val = buffer;
 	rok->data.data_len = buffer_size;
@@ -1308,7 +1309,8 @@ static fsal_status_t pxy_read_state(const nfs_fh4 *fh4, const nfs_fh4 *fh4_1,
         rok = &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
         rok->data.data_val = buffer;
         rok->data.data_len = buffer_size;
-        COMPOUNDV4_ARG_ADD_OP_READ_STATE(opcnt, argoparray, offset + buffer_size, buffer_size, sid1);
+        /*COMPOUNDV4_ARG_ADD_OP_READ_STATE(opcnt, argoparray, offset + buffer_size, buffer_size, sid1);*/
+	COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argoparray, offset + buffer_size, buffer_size);
 
         rc = pxy_nfsv4_call(op_ctx->fsal_export, op_ctx->creds,
                             opcnt, argoparray, resoparray);
