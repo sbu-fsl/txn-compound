@@ -418,7 +418,8 @@ nfsstat4 nfs4_Check_Stateid(stateid4 *stateid, cache_entry_t *entry,
 			/** @todo FSF: eventually this may want to return an
 			 * actual state for use in temporary locks for I/O.
 			 */
-			data->current_stateid_valid = false;
+			//Bharat: special stateid read should not touch current compound's stateID
+			//data->current_stateid_valid = false;
 			goto success;
 		}
 		if (stateid->seqid == 1
