@@ -20,14 +20,15 @@ readdir_reply(const char *name, void *dir_state,
 	return true;
 }
 
-int personal_init() {
+int personal_init()
+{
 	struct pxy_fsal_module *new_module = NULL;
 	struct gsh_export *export = NULL;
+	struct fsal_obj_handle *root_handle = NULL;
 	struct fsal_obj_handle *vfs0_handle = NULL;
 	struct fsal_obj_handle *abcd_handle = NULL;
 	struct fsal_obj_handle *abcd1_handle = NULL;
 	fsal_status_t fsal_status = { 0, 0 };
-	cache_entry_t *entry = NULL;
 	char *data_buf = NULL;
 	size_t read_amount = 0;
 	bool eof = false;
@@ -52,20 +53,31 @@ int personal_init() {
                  "Export %d at pseudo (%s) with path (%s) and tag (%s) \n",
                  export->export_id, export->pseudopath,
                  export->fullpath, export->FS_tag);
+
 	
-	if(nfs_export_get_root_entry(export, &entry)
-                    != CACHE_INODE_SUCCESS){
-		LogDebug(COMPONENT_FSAL, "get root() failed\n");
-	}
-	LogDebug(COMPONENT_FSAL, "get root() success\n");
+	sleep(1);
 
 	memset(&req_ctx, 0, sizeof(struct req_op_context));
 	op_ctx = &req_ctx;
 	op_ctx->creds = NULL;
 	op_ctx->fsal_export = export->fsal_export;
 
+	fsal_status = export->fsal_export->obj_ops->root_lookup(NULL, "vfs0", &root_handle);
+        //fsal_status = export->fsal_export->obj_ops->lookup(NULL, "home", &vfs0_handle);
+	if (FSAL_IS_ERROR(fsal_status)) {
+		LogDebug(COMPONENT_FSAL, "lookup() for root failed\n");
+	}
+
+	LogDebug(COMPONENT_FSAL, "lookup() for root succeeded\n");
+
+	if (root_handle == NULL) {
+                LogDebug(COMPONENT_FSAL, "root_handle is NULL\n");
+                return -1;
+        }
+
 	//fsal_status = pxy_lookup(NULL, "vfs0", &vfs0_handle);
-	fsal_status = export->fsal_export->obj_ops->lookup(NULL, "vfs0", &vfs0_handle);
+	fsal_status = export->fsal_export->obj_ops->lookup(root_handle, "vfs0", &vfs0_handle);
+	//fsal_status = export->fsal_export->obj_ops->lookup(NULL, "home", &vfs0_handle);
 	if (FSAL_IS_ERROR(fsal_status)) {
 		LogDebug(COMPONENT_FSAL, "lookup() for vfs0 failed\n");
 		return -1;
@@ -129,6 +141,7 @@ int personal_init() {
 	LogDebug(COMPONENT_FSAL, "write() for abcd succeeded, %u written\n", read_amount);
 
 	abcd_handle = NULL;
+/*
 	fsal_status = export->fsal_export->obj_ops->openread(vfs0_handle, "abcd", "abcd1",
 								&abcd_attr, &abcd1_attr,
 								&abcd_handle, &abcd1_handle);
@@ -137,7 +150,19 @@ int personal_init() {
                 return -1;
         }
 
+
 	LogDebug(COMPONENT_FSAL, "openread() for abcd succeeded\n");
+*/
+	fsal_status = export->fsal_export->obj_ops->tc_read(vfs0_handle, "abcd", "abcd1",
+								&abcd_attr, &abcd1_attr,
+								&abcd_handle, &abcd1_handle);
+
+	if (FSAL_IS_ERROR(fsal_status)) {
+                LogDebug(COMPONENT_FSAL, "tc_read() for abcd failed\n");
+                return -1;
+        }
+
+	LogDebug(COMPONENT_FSAL, "tc_read() for abcd succeeded\n");
 
 	return 0;
 }

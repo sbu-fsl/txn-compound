@@ -840,8 +840,6 @@ void nfs_start(nfs_start_info_t *p_start_info)
 	/* Wait for dispatcher to exit */
 	LogDebug(COMPONENT_THREAD, "Wait for admin thread to exit");
 
-	sleep(5);
-	personal_init();
 	pthread_join(admin_thrid, NULL);
 
 	/* Regular exit */

@@ -424,7 +424,8 @@ int main(int argc, char *argv[])
 	config_Free(config_struct);
 
 	/* Everything seems to be OK! We can now start service threads */
-	nfs_start(&my_nfs_start_info);
+	//nfs_start(&my_nfs_start_info);
+	personal_init();
 
 	return 0;
 

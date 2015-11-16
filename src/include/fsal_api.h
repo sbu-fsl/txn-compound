@@ -1313,6 +1313,15 @@ struct fsal_obj_ops {
 				 struct attrlist *attrib, struct attrlist *attribi1,
                                  struct fsal_obj_handle **new_obj, struct fsal_obj_handle **new_obj1);
 
+/* Multiple open..read..close in a single compound */
+        fsal_status_t(*tc_read) (struct fsal_obj_handle *dir_hdl,
+                                 const char *name, const char *name1,
+                                 struct attrlist *attrib, struct attrlist *attribi1,
+                                 struct fsal_obj_handle **new_obj, struct fsal_obj_handle **new_obj1);
+
+	fsal_status_t(*root_lookup) (struct fsal_obj_handle *dir_hdl,
+                                 const char *path,
+                                 struct fsal_obj_handle **handle);
 /**
  * @brief Create a directory
  *
