@@ -44,6 +44,7 @@
 #include "nfs_proto_functions.h"
 #include "nfs_proto_tools.h"
 #include "export_mgr.h"
+#include "personal.h"
 
 #define FSAL_PROXY_NFS_V4 4
 
@@ -1557,17 +1558,17 @@ static fsal_status_t pxy_openread(struct fsal_obj_handle *dir_hdl,
 }
 
 static fsal_status_t do_pxy_tcread(struct fsal_obj_handle *dir_hdl,
-                                const char *name,
-				struct attrlist *attrib,
-                                struct fsal_obj_handle **handle,
-				struct GETFH4resok *fhok_handle,
-        			struct OPEN4resok *opok_handle,
-				struct GETATTR4resok *atok_handle,
-				struct READ4resok *rok_handle,
-				void *buffer, size_t *read_amount,
-				uint64_t offset, size_t buffer_size,
-				nfs_argop4 *argoparray, nfs_resop4 *resoparray,
-				int *opcnt_temp)
+		const char *name,
+		struct attrlist *attrib,
+		struct fsal_obj_handle **handle,
+		struct pxy_read_args *read_list,
+		struct GETFH4resok *fhok_handle,
+		struct OPEN4resok *opok_handle,
+		struct GETATTR4resok *atok_handle,
+		struct READ4resok *rok_handle,
+		size_t *read_amount,
+		nfs_argop4 *argoparray, nfs_resop4 *resoparray,
+		int *opcnt_temp)
 {
 	int rc;
 	int opcnt = *opcnt_temp;
@@ -1587,6 +1588,7 @@ static fsal_status_t do_pxy_tcread(struct fsal_obj_handle *dir_hdl,
 	clientid4 cid;
 	char *data_buf = NULL;
 	bool eof = false;
+	struct glist_head *temp_read;
 
 	LogDebug(COMPONENT_FSAL, "do_pxy_tcread() called: %d\n", opcnt);
 
@@ -1615,16 +1617,20 @@ static fsal_status_t do_pxy_tcread(struct fsal_obj_handle *dir_hdl,
 			owner_val, owner_len);
 
 	rok = &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
-        rok->data.data_val = buffer;
-        rok->data.data_len = buffer_size;
-	COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argoparray, offset, buffer_size);
+	rok->data.data_val = read_list->read_buf;
+	rok->data.data_len = read_list->read_len;
+	COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argoparray, read_list->read_offset, read_list->read_len);
 
-	rok = &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
-        rok->data.data_val = buffer;
-        rok->data.data_len = buffer_size;
-        COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argoparray, 1, buffer_size);
+	glist_for_each(temp_read, &(read_list->read_list)) {
+		struct pxy_read_args *read_arg_temp =
+			container_of(temp_read, struct pxy_read_args, read_list);
+		rok = &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
+		rok->data.data_val = read_arg_temp->read_buf;
+		rok->data.data_len = read_arg_temp->read_len;
+		COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argoparray, read_arg_temp->read_offset, read_arg_temp->read_len);
+	}
 
-        COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
+	COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
 
 /*
 	fhok = &resoparray[opcnt].nfs_resop4_u.opgetfh.GETFH4res_u.resok4;
@@ -1655,10 +1661,7 @@ static fsal_status_t do_pxy_tcread(struct fsal_obj_handle *dir_hdl,
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
-static fsal_status_t pxy_tcread(struct fsal_obj_handle *dir_hdl,
-		const char *name, const char *name1,
-		struct attrlist *attrib, struct attrlist *attrib1,
-		struct fsal_obj_handle **handle, struct fsal_obj_handle **handle1)
+static fsal_status_t pxy_tcread(struct pxy_tcread_args *pxy_arg, int arg_count, int read_count)
 {
 	int rc;
 	GETFH4resok fhok; 
@@ -1670,7 +1673,8 @@ static fsal_status_t pxy_tcread(struct fsal_obj_handle *dir_hdl,
 	GETATTR4resok atok1;
 	READ4resok rok1;
 	fsal_status_t st;
-	#define FSAL_TCREAD_NB_OP_ALLOC 10
+	struct pxy_tcread_args *cur_arg = NULL;
+	#define FSAL_TCREAD_NB_OP_ALLOC ((3+read_count) * arg_count)
 	nfs_argop4 argoparray[FSAL_TCREAD_NB_OP_ALLOC];
 	nfs_resop4 resoparray[FSAL_TCREAD_NB_OP_ALLOC];
 	int opcnt = 0;
@@ -1679,72 +1683,39 @@ static fsal_status_t pxy_tcread(struct fsal_obj_handle *dir_hdl,
 	size_t read_amount = 0;
 	size_t read_amount1 = 0;
 	bool eof = false;
+	int i = 0;
 
 	LogDebug(COMPONENT_FSAL, "pxy_tcread() called\n");
 
-	st = do_pxy_tcread(dir_hdl, name, attrib, handle,
+	while (i < arg_count) {
+		cur_arg = pxy_arg + i;
+		st = do_pxy_tcread(cur_arg->dir_fh, cur_arg->name, &(cur_arg->file_attr), &(cur_arg->file_handle),
+					cur_arg->read_args,
 					&fhok, &opok, &atok, &rok,
-					data_buf, &read_amount, 0, 1024,
+					&read_amount,
 					argoparray, resoparray, &opcnt);
-	if (FSAL_IS_ERROR(st))
-		return st;
+		if (FSAL_IS_ERROR(st))
+			return st;
 
-	st = do_pxy_tcread(dir_hdl, name1, attrib1, handle1,
-				&fhok1, &opok1, &atok1, &rok1,
-				data_buf1, &read_amount1, 0, 1024,
-				argoparray, resoparray, &opcnt);
-	if (FSAL_IS_ERROR(st))
-		return st;
+		i++;
+	}
 
 	rc = pxy_nfsv4_call(op_ctx->fsal_export, op_ctx->creds,
                         opcnt, argoparray, resoparray);
-	
-/* See if a OPEN_CONFIRM is required */
-/*	if (opok.rflags & OPEN4_RESULT_CONFIRM) {
-		st = pxy_open_confirm(op_ctx->creds, &fhok.object,
-				&opok.stateid,
-				op_ctx->fsal_export);
-		if (FSAL_IS_ERROR(st)) {
-			LogDebug(COMPONENT_FSAL,
-					"pxy_open_confirm failed: status %d", st);
-			return st;
-		}
-	}*/
 
-	/* See if a OPEN_CONFIRM is required */
-/*	if (opok1.rflags & OPEN4_RESULT_CONFIRM) {
-		st = pxy_open_confirm(op_ctx->creds, &fhok1.object,
-				&opok1.stateid,
-				op_ctx->fsal_export);
-		if (FSAL_IS_ERROR(st)) {
-			LogDebug(COMPONENT_FSAL,
-					"pxy_open_confirm failed: status %d", st);
-			return st;
-		}
-	}*/
-
-	//pxy_read_state(&fhok.object, &fhok1.object, 0, 1024, data_buf, &read_amount, &eof, &opok.stateid, &opok1.stateid);
-
-	/* The created file is still opened, to preserve the correct
-	 *          * seqid for later use, we close it */
-	st = pxy_do_close(op_ctx->creds, &fhok.object, &opok.stateid,
-			op_ctx->fsal_export);
-	if (FSAL_IS_ERROR(st))
-		return st;
-
-	st = pxy_do_close(op_ctx->creds, &fhok1.object, &opok1.stateid,
-			op_ctx->fsal_export);
-	if (FSAL_IS_ERROR(st))
-		return st;
-
-	st = pxy_make_object(op_ctx->fsal_export,
+	/*
+ 	 * st = pxy_make_object(op_ctx->fsal_export,
 			&atok.obj_attributes,
 			&fhok.object, handle);
-	free(fhok.object.nfs_fh4_val);
-	free(fhok1.object.nfs_fh4_val);
-	if (FSAL_IS_ERROR(st))
+	*/
+
+	//free(fhok.object.nfs_fh4_val);
+	//free(fhok1.object.nfs_fh4_val);
+	if (FSAL_IS_ERROR(st)) {
+		LogDebug(COMPONENT_FSAL, "pxy_make_object() returned error\n");
 		return st;
-	*attrib = (*handle)->attributes;
+	}
+	//*attrib = (*handle)->attributes;
 	return st;
 }
 

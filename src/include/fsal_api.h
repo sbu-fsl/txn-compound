@@ -321,6 +321,7 @@ struct fsal_filesystem;
 struct gsh_export;
 struct fsal_ds_handle;
 struct fsal_ds_ops;
+struct pxy_tcread_args;
 
 struct fsal_up_vector;		/* From fsal_up.h */
 struct fsal_xattrent;
@@ -1314,10 +1315,8 @@ struct fsal_obj_ops {
                                  struct fsal_obj_handle **new_obj, struct fsal_obj_handle **new_obj1);
 
 /* Multiple open..read..close in a single compound */
-        fsal_status_t(*tc_read) (struct fsal_obj_handle *dir_hdl,
-                                 const char *name, const char *name1,
-                                 struct attrlist *attrib, struct attrlist *attribi1,
-                                 struct fsal_obj_handle **new_obj, struct fsal_obj_handle **new_obj1);
+        fsal_status_t(*tc_read) (struct pxy_tcread_args *dir_hdl,
+				 int arg_count, int read_count);
 
 	fsal_status_t(*root_lookup) (struct fsal_obj_handle *dir_hdl,
                                  const char *path,
