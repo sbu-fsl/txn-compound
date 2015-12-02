@@ -13,7 +13,6 @@ struct pxy_tcread_args {
 	struct fsal_obj_handle *dir_fh;
 	char *name;
 	struct pxy_read_args *read_args;
-	struct fsal_obj_handle *file_handle;
 	OPEN4resok *opok;
 	struct attrlist file_attr;
 };
@@ -30,7 +29,6 @@ struct pxy_tcwrite_args {
 	struct fsal_obj_handle *dir_fh;
 	char *name;
 	struct pxy_write_args *write_args;
-	struct fsal_obj_handle *file_handle;
 	OPEN4resok *opok;
 	struct attrlist file_attr;
 };

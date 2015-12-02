@@ -6,15 +6,15 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include "fsal_types.h"
+#include "fsal_api.h"
 #include "fsal.h"
 #include "FSAL/fsal_init.h"
 #include "pxy_fsal_methods.h"
-#include "fsal_api.h"
 #include "personal.h"
 
 int personal1_init()
 {
-	struct pxy_fsal_module *new_module = NULL;
+	struct fsal_module *new_module = NULL;
 	struct pxy_tcread_args tcread_arg[2];
 	struct pxy_tcread_args tcread_arg_single;
 	struct pxy_tcwrite_args tcwrite_arg_single;
@@ -68,7 +68,6 @@ int personal1_init()
 	op_ctx->fsal_export = export->fsal_export;
 
 	fsal_status = export->fsal_export->obj_ops->root_lookup(&root_handle);
-        //fsal_status = export->fsal_export->obj_ops->lookup(NULL, "home", &vfs0_handle);
 	if (FSAL_IS_ERROR(fsal_status)) {
 		LogDebug(COMPONENT_FSAL, "lookup() for root failed\n");
 	}
@@ -109,6 +108,9 @@ int personal1_init()
 
 	i = 1;
 
+	struct timeval start_time, end_time;
+	gettimeofday(&start_time, NULL);
+
 	while(i < 100) {
 
 		tcread_arg_single.dir_fh = cur_handle;
@@ -117,8 +119,8 @@ int personal1_init()
 		tcread_arg_single.name = name;
 		temp_read_head = malloc(sizeof(struct pxy_read_args));
 		temp_read_head->read_offset = 0;
-		temp_read_head->read_len = 256;
-		data_buf = malloc(256);
+		temp_read_head->read_len = 4096;
+		data_buf = malloc(4096);
 		temp_read_head->read_buf = data_buf;
 		tcread_arg_single.read_args = temp_read_head;
 		glist_init(&(tcread_arg_single.read_args->read_list));
@@ -130,7 +132,11 @@ int personal1_init()
 
 		i++;
 	}
+	gettimeofday(&end_time, NULL);
+	//printf("Bharat time: %ld", (end_time.tv_sec * 1000000 + end_time.tv_usec) - (start_time.tv_sec * 1000000 + start_time.tv_usec));
+	LogDebug(COMPONENT_FSAL, "Total time: %ld\n", (end_time.tv_sec * 1000000 + end_time.tv_usec) - (start_time.tv_sec * 1000000 + start_time.tv_usec));
 
+/*
 	i = 1;
 
 	while(i < 100) {
@@ -157,5 +163,6 @@ int personal1_init()
 		i++;
 	}
 
+*/
 	return 0;
 }
