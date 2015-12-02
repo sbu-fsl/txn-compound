@@ -1323,9 +1323,8 @@ struct fsal_obj_ops {
 	fsal_status_t(*tc_write) (struct pxy_tcwrite_args *dir_hdl,
 				int arg_count, int read_count);
 
-	fsal_status_t(*root_lookup) (struct fsal_obj_handle *dir_hdl,
-                                 const char *path,
-                                 struct fsal_obj_handle **handle);
+	fsal_status_t(*root_lookup) (struct fsal_obj_handle **handle);
+
 /**
  * @brief Create a directory
  *

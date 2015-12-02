@@ -1036,58 +1036,42 @@ static fsal_status_t pxy_make_object(struct fsal_export *export,
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
-static fsal_status_t pxy_root_lookup_impl(struct fsal_obj_handle *parent,
-                                     struct fsal_export *export,
-                                     const struct user_cred *cred,
-                                     const char *path,
-                                     struct fsal_obj_handle **handle)
+static fsal_status_t pxy_root_lookup_impl(struct fsal_export *export,
+		const struct user_cred *cred,
+		struct fsal_obj_handle **handle)
 {
-        int rc;
-        uint32_t opcnt = 0;
-        GETATTR4resok *atok;
-        GETFH4resok *fhok;
+	int rc;
+	uint32_t opcnt = 0;
+	GETATTR4resok *atok;
+	GETFH4resok *fhok;
 #define FSAL_ROOTLOOKUP_NB_OP_ALLOC 3
-        nfs_argop4 argoparray[FSAL_ROOTLOOKUP_NB_OP_ALLOC];
-        nfs_resop4 resoparray[FSAL_ROOTLOOKUP_NB_OP_ALLOC];
-        char fattr_blob[FATTR_BLOB_SZ];
-        char padfilehandle[NFS4_FHSIZE];
+	nfs_argop4 argoparray[FSAL_ROOTLOOKUP_NB_OP_ALLOC];
+	nfs_resop4 resoparray[FSAL_ROOTLOOKUP_NB_OP_ALLOC];
+	char fattr_blob[FATTR_BLOB_SZ];
+	char padfilehandle[NFS4_FHSIZE];
 
-        if (!handle)
-                return fsalstat(ERR_FSAL_INVAL, 0);
+	if (!handle)
+		return fsalstat(ERR_FSAL_INVAL, 0);
 
-        if (!parent) {
-                COMPOUNDV4_ARG_ADD_OP_PUTROOTFH(opcnt, argoparray);
-        } else {
-                struct pxy_obj_handle *pxy_obj =
-                    container_of(parent, struct pxy_obj_handle, obj);
-                switch (parent->type) {
-                case DIRECTORY:
-                        break;
+	COMPOUNDV4_ARG_ADD_OP_PUTROOTFH(opcnt, argoparray);
 
-                default:
-                        return fsalstat(ERR_FSAL_NOTDIR, 0);
-                }
-
-                COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, pxy_obj->fh4);
-        }
-
-        fhok = &resoparray[opcnt].nfs_resop4_u.opgetfh.GETFH4res_u.resok4;
-        COMPOUNDV4_ARG_ADD_OP_GETFH(opcnt, argoparray);
+	fhok = &resoparray[opcnt].nfs_resop4_u.opgetfh.GETFH4res_u.resok4;
+	COMPOUNDV4_ARG_ADD_OP_GETFH(opcnt, argoparray);
 
 	atok =
-            pxy_fill_getattr_reply(resoparray + opcnt, fattr_blob,
-                                   sizeof(fattr_blob));
+		pxy_fill_getattr_reply(resoparray + opcnt, fattr_blob,
+			    sizeof(fattr_blob));
 
-        COMPOUNDV4_ARG_ADD_OP_GETATTR(opcnt, argoparray, pxy_bitmap_getattr);
+	COMPOUNDV4_ARG_ADD_OP_GETATTR(opcnt, argoparray, pxy_bitmap_getattr);
 
-        fhok->object.nfs_fh4_val = (char *)padfilehandle;
-        fhok->object.nfs_fh4_len = sizeof(padfilehandle);
+	fhok->object.nfs_fh4_val = (char *)padfilehandle;
+	fhok->object.nfs_fh4_len = sizeof(padfilehandle);
 
-        rc = pxy_nfsv4_call(export, cred, opcnt, argoparray, resoparray);
-        if (rc != NFS4_OK)
-                return nfsstat4_to_fsal(rc);
+	rc = pxy_nfsv4_call(export, cred, opcnt, argoparray, resoparray);
+	if (rc != NFS4_OK)
+		return nfsstat4_to_fsal(rc);
 
-        return pxy_make_object(export, &atok->obj_attributes, &fhok->object,
+	return pxy_make_object(export, &atok->obj_attributes, &fhok->object,
                                handle);
 }
 
@@ -1176,12 +1160,10 @@ static fsal_status_t pxy_lookup(struct fsal_obj_handle *parent,
 			       op_ctx->creds, path, handle);
 }
 
-static fsal_status_t pxy_root_lookup(struct fsal_obj_handle *parent,
-                                const char *path,
-                                struct fsal_obj_handle **handle)
+static fsal_status_t pxy_root_lookup(struct fsal_obj_handle **handle)
 {
-        return pxy_root_lookup_impl(parent, op_ctx->fsal_export,
-                               op_ctx->creds, path, handle);
+        return pxy_root_lookup_impl(op_ctx->fsal_export,
+                               op_ctx->creds, handle);
 }
 
 static fsal_status_t pxy_do_close(const struct user_cred *creds,

@@ -81,6 +81,7 @@ set(fsal_CORE_SRCS
    ../FSAL_UP/fsal_up_utils.c
    ../FSAL/FSAL_PROXY/handle.c
    ../FSAL/FSAL_PROXY/personal.c
+   ../FSAL/FSAL_PROXY/personal1.c
 )
 
 ########### next target ###############
@@ -120,6 +121,25 @@ add_executable(personaltest
 )
 
 target_link_libraries(personaltest
+  MainServices
+  ${PROTOCOLS}
+  ${GANESHA_CORE}
+  config_parsing
+  ${LIBTIRPC_LIBRARIES}
+  ${SYSTEM_LIBRARIES}
+)
+
+SET(personaltest1_SRCS
+   personaltest1.c
+)
+
+add_executable(personaltest1
+  ${personaltest1_SRCS}
+  ${fsal_CORE_SRCS}
+  ../include/personal.h
+)
+
+target_link_libraries(personaltest1
   MainServices
   ${PROTOCOLS}
   ${GANESHA_CORE}

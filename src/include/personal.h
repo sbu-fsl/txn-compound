@@ -36,6 +36,7 @@ struct pxy_tcwrite_args {
 };
 
 int personal_init();
+int personal1_init();
 bool
 readdir_reply(const char *name, void *dir_state,
                 fsal_cookie_t cookie);

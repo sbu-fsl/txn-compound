@@ -73,7 +73,7 @@ int personal_init()
 	op_ctx->creds = NULL;
 	op_ctx->fsal_export = export->fsal_export;
 
-	fsal_status = export->fsal_export->obj_ops->root_lookup(NULL, "vfs0", &root_handle);
+	fsal_status = export->fsal_export->obj_ops->root_lookup(&root_handle);
         //fsal_status = export->fsal_export->obj_ops->lookup(NULL, "home", &vfs0_handle);
 	if (FSAL_IS_ERROR(fsal_status)) {
 		LogDebug(COMPONENT_FSAL, "lookup() for root failed\n");
