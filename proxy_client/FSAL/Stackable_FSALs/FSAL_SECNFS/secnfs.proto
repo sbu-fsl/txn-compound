@@ -1,0 +1,46 @@
+package secnfs;
+
+message FileHeader {
+  required KeyFile keyfile = 1;
+  optional bytes meta = 2;	// encrypted meta
+  optional bytes version = 3;	// version of header
+}
+
+message FileMeta {
+  optional uint64 filesize = 1;
+  optional bool encrypted = 2;
+  repeated Range holes = 3;
+}
+
+message Range {
+  required uint64 offset = 1; // 4K aligned
+  required uint64 length = 2; // 4K aligned
+}
+
+message KeyFile {
+  required string creator = 1;
+  required bytes iv = 2;
+  repeated KeyBlock key_blocks = 3;
+  optional bytes signature = 4;
+}
+
+message KeyBlock {
+  required string proxy_name = 1;
+  required bytes encrypted_key = 2;
+}
+
+message SecureContextConfig {
+  required string name = 1;
+  required bytes pub_key = 2;
+  required bytes pri_key = 3;
+  // repeated KeyBlock proxies = 4;
+}
+
+message ProxyList {
+  repeated ProxyEntry proxies = 1;
+}
+
+message ProxyEntry {
+  required string name = 1;
+  required bytes key = 2;   // public key
+}

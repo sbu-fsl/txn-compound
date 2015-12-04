@@ -1,0 +1,18 @@
+Required packages
+=================
+1. crypto++ 5.6.2
+
+2. googletest
+Set GOOGLE_TEST env variable to googletest directory, or change GTEST in
+CMakeLists.txt accordingly.
+
+3. google protocol buffer 2.5.0 (or up)
+
+4. intel tbb
+
+    a) download intel tbb source code
+    b) make
+    c) cp ../build/linux_intel64_gcc_cc4.4.7_libc2.12_kernel3.8.4_release/*.so.2 /usr/local/lib64/tbb
+    d) cp -r include/tbb /usr/include
+
+5. google-glog

@@ -1,0 +1,94 @@
+add_definitions(
+  -D__USE_GNU
+  -D_GNU_SOURCE
+)
+
+include_directories(
+  ${LIBTIRPC_INCLUDE_DIR}
+)
+
+if(USE_DBUS)
+  include_directories(
+    ${DBUS_INCLUDE_DIRS}
+    )
+endif(USE_DBUS)
+
+########### next target ###############
+
+SET(MainServices_STAT_SRCS
+   nfs_admin_thread.c
+   nfs_rpc_callback.c
+   personal_nfs_worker_thread.c
+   nfs_rpc_dispatcher_thread.c
+   personal_nfs_init.c
+   ../support/client_mgr.c
+)
+
+add_library(MainServices STATIC ${MainServices_STAT_SRCS})
+
+# FSAL core sources
+# fsal_manager and fsal_destroyer are the only objects referenced by the
+# core server all the rest are for the common support of fsal plugins.
+# we put them here in the core rather than in a lib so that they are always
+# present and available for runtime linkage.
+
+set(fsal_CORE_SRCS
+   ../FSAL/fsal_convert.c
+   ../FSAL/commonlib.c
+   ../FSAL/fsal_manager.c
+   ../FSAL/access_check.c
+   ../FSAL/fsal_config.c
+   ../FSAL/default_methods.c
+   ../FSAL/common_pnfs.c
+   ../FSAL/fsal_destroyer.c
+   ../FSAL_UP/fsal_up_top.c
+   ../FSAL_UP/fsal_up_async.c
+   ../FSAL_UP/fsal_up_utils.c
+   ../FSAL/FSAL_PROXY/handle.c
+   ../FSAL/FSAL_PROXY/personal.c
+   ../FSAL/FSAL_PROXY/personal1.c
+)
+
+########### next target ###############
+
+SET(personaltest_SRCS
+   personaltest.c
+)
+
+add_executable(personaltest
+  ${personaltest_SRCS}
+  ${fsal_CORE_SRCS}
+  ../include/personal.h
+)
+
+target_link_libraries(personaltest
+  MainServices
+  ${PROTOCOLS}
+  ${GANESHA_CORE}
+  config_parsing
+  ${LIBTIRPC_LIBRARIES}
+  ${SYSTEM_LIBRARIES}
+)
+
+SET(personaltest1_SRCS
+   personaltest1.c
+)
+
+add_executable(personaltest1
+  ${personaltest1_SRCS}
+  ${fsal_CORE_SRCS}
+  ../include/personal.h
+)
+
+target_link_libraries(personaltest1
+  MainServices
+  ${PROTOCOLS}
+  ${GANESHA_CORE}
+  config_parsing
+  ${LIBTIRPC_LIBRARIES}
+  ${SYSTEM_LIBRARIES}
+)
+
+########### install files ###############
+
+# We are still missing the install of docs and stuff
