@@ -44,7 +44,7 @@
 #include "nfs_proto_functions.h"
 #include "nfs_proto_tools.h"
 #include "export_mgr.h"
-#include "personal.h"
+#include "tc_utils.h"
 
 #define FSAL_PROXY_NFS_V4 4
 
@@ -1546,7 +1546,7 @@ static fsal_status_t pxy_openread(struct fsal_obj_handle *dir_hdl,
 }
 
 static fsal_status_t
-do_pxy_tcread(struct fsal_obj_handle *dir_hdl, const char *name,
+do_kernel_tcread(struct fsal_obj_handle *dir_hdl, const char *name,
 	      struct attrlist *attrib, struct pxy_read_args *read_list,
 	      struct OPEN4resok *opok_handle, struct GETATTR4resok *atok_handle,
 	      nfs_argop4 *argoparray, nfs_resop4 *resoparray, int *opcnt_temp)
@@ -1608,7 +1608,7 @@ do_pxy_tcread(struct fsal_obj_handle *dir_hdl, const char *name,
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
-static fsal_status_t pxy_tcread(struct pxy_tcread_args *pxy_arg, int arg_count,
+static fsal_status_t kernel_tcread(struct kernel_tcread_args *pxy_arg, int arg_count,
 				int read_count)
 {
 	int rc;
@@ -1645,7 +1645,7 @@ static fsal_status_t pxy_tcread(struct pxy_tcread_args *pxy_arg, int arg_count,
 	return st;
 }
 
-static fsal_status_t do_pxy_tcwrite(struct fsal_obj_handle *dir_hdl,
+static fsal_status_t do_kernel_tcwrite(struct fsal_obj_handle *dir_hdl,
 				    const char *name, struct attrlist *attrib,
 				    struct pxy_write_args *write_list,
 				    struct OPEN4resok *opok_handle,
@@ -1707,7 +1707,7 @@ static fsal_status_t do_pxy_tcwrite(struct fsal_obj_handle *dir_hdl,
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
-static fsal_status_t pxy_tcwrite(struct pxy_tcwrite_args *pxy_arg,
+static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *pxy_arg,
 				 int arg_count, int read_count)
 {
 	int rc;
@@ -2602,8 +2602,8 @@ void pxy_handle_ops_init(struct fsal_obj_ops *ops)
 	ops->handle_to_key = pxy_handle_to_key;
 	ops->status = pxy_status;
 	ops->openread = pxy_openread;
-	ops->tc_read = pxy_tcread;
-	ops->tc_write = pxy_tcwrite;
+	ops->tc_read = kernel_tcread;
+	ops->tc_write = kernel_tcwrite;
 	ops->root_lookup = pxy_root_lookup;
 }
 
