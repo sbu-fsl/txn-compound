@@ -18,9 +18,9 @@ endif(USE_DBUS)
 SET(MainServices_STAT_SRCS
    nfs_admin_thread.c
    nfs_rpc_callback.c
-   personal_nfs_worker_thread.c
+   nfs_worker_thread.c
    nfs_rpc_dispatcher_thread.c
-   personal_nfs_init.c
+   nfs_init.c
    ../support/client_mgr.c
 )
 
@@ -45,23 +45,23 @@ set(fsal_CORE_SRCS
    ../FSAL_UP/fsal_up_async.c
    ../FSAL_UP/fsal_up_utils.c
    ../FSAL/FSAL_PROXY/handle.c
-   ../FSAL/FSAL_PROXY/personal.c
-   ../FSAL/FSAL_PROXY/personal1.c
+   ../FSAL/FSAL_PROXY/test1.c
+   ../FSAL/FSAL_PROXY/test2.c
 )
 
 ########### next target ###############
 
-SET(personaltest_SRCS
-   personaltest.c
+SET(test1_SRCS
+   test1.c
 )
 
-add_executable(personaltest
+add_executable(test1
   ${personaltest_SRCS}
   ${fsal_CORE_SRCS}
-  ../include/personal.h
+  ../include/tc_utils.h
 )
 
-target_link_libraries(personaltest
+target_link_libraries(test1
   MainServices
   ${PROTOCOLS}
   ${GANESHA_CORE}
@@ -70,17 +70,17 @@ target_link_libraries(personaltest
   ${SYSTEM_LIBRARIES}
 )
 
-SET(personaltest1_SRCS
-   personaltest1.c
+SET(test2_SRCS
+   test2.c
 )
 
-add_executable(personaltest1
-  ${personaltest1_SRCS}
+add_executable(test2
+  ${test2_SRCS}
   ${fsal_CORE_SRCS}
-  ../include/personal.h
+  ../include/tcutils.h
 )
 
-target_link_libraries(personaltest1
+target_link_libraries(test2
   MainServices
   ${PROTOCOLS}
   ${GANESHA_CORE}

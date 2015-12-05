@@ -10,9 +10,9 @@
 #include "fsal.h"
 #include "FSAL/fsal_init.h"
 #include "pxy_fsal_methods.h"
-#include "personal.h"
+#include "tc_utils.h"
 
-int personal1_init()
+int test2()
 {
 	struct fsal_module *new_module = NULL;
 	struct pxy_tcread_args tcread_arg[2];
@@ -41,7 +41,7 @@ int personal1_init()
 	struct req_op_context req_ctx;
 	int i = 0;
 
-	LogDebug(COMPONENT_FSAL, "personal_init() called\n");
+	LogDebug(COMPONENT_FSAL, "test2() called\n");
 	new_module = lookup_fsal("PROXY");
 	if (new_module == NULL) {
 		LogDebug(COMPONENT_FSAL, "Proxy Module Not found\n");

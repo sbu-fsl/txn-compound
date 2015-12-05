@@ -10,7 +10,7 @@
 #include "fsal.h"
 #include "FSAL/fsal_init.h"
 #include "pxy_fsal_methods.h"
-#include "personal.h"
+#include "tc_utils.h"
 
 bool
 readdir_reply(const char *name, void *dir_state,
@@ -20,15 +20,15 @@ readdir_reply(const char *name, void *dir_state,
 	return true;
 }
 
-int personal_init()
+int test1()
 {
 	struct fsal_module *new_module = NULL;
-	struct pxy_tcread_args tcread_arg[2];
-	struct pxy_tcwrite_args tcwrite_arg[2];
-	struct pxy_read_args *temp_read_head = NULL;
-	struct pxy_read_args *temp_read_arg = NULL;
-	struct pxy_write_args *temp_write_head = NULL;
-	struct pxy_write_args *temp_write_arg = NULL;
+	struct kernel_tcread_args tcread_arg[2];
+	struct kernel_tcwrite_args tcwrite_arg[2];
+	struct read_args *temp_read_head = NULL;
+	struct read_args *temp_read_arg = NULL;
+	struct write_args *temp_write_head = NULL;
+	struct write_args *temp_write_arg = NULL;
 	char *name = NULL;
 	char *name1 = NULL;
 	struct gsh_export *export = NULL;
@@ -47,7 +47,7 @@ int personal_init()
 	struct attrlist abcd1_attr;
 	struct req_op_context req_ctx;
 
-	LogDebug(COMPONENT_FSAL, "personal_init() called\n");
+	LogDebug(COMPONENT_FSAL, "test1() called\n");
 	new_module = lookup_fsal("PROXY");
 	if (new_module == NULL) {
 		LogDebug(COMPONENT_FSAL, "Proxy Module Not found\n");

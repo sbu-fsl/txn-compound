@@ -10,8 +10,8 @@ SET(fsalproxy_LIB_SRCS
    proxy.c
    export.c
    xattrs.c
-   personal.c
-   personal1.c
+   test1.c
+   test2.c
 )
 
 if(PROXY_HANDLE_MAPPING)
