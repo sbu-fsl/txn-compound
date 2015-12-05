@@ -125,10 +125,10 @@ struct tc_attrs {
  * @n: the length of the tc_attrs array
  * @attrs: array of attributes to get.
  */
-tc_res tc_getattrs(int n, struct tc_attrs* attrs, is_transaction);
+tc_res tc_getattrsv(int n, struct tc_attrs* attrs, bool is_transaction);
 
-static inline bool tx_getattrs(int n, struct tc_attrs* attrs) {
-	tc_res res = tc_getattrs(n, attrs);
+static inline bool tx_getattrsv(int n, struct tc_attrs* attrs) {
+	tc_res res = tc_getattrsv(n, attrs, true);
 	return res.okay;
 }
 
@@ -138,12 +138,64 @@ static inline bool tx_getattrs(int n, struct tc_attrs* attrs) {
  * @n: the length of the tc_attrs array
  * @attrs: array of attributes to set.
  */
-int tc_setattrs(int n, struct tc_attrs* attrs);
+tc_res tc_setattrsv(int n, struct tc_attrs* attrs, bool is_transaction);
 
-static inline bool tx_setattrs(int n, struct tc_attrs* attrs) {
-	tc_res res = tc_setattrs(n, attrs);
+static inline bool tx_setattrsv(int n, struct tc_attrs* attrs) {
+	tc_res res = tc_setattrsv(n, attrs, true);
 	return res.okay;
 }
+
+struct tc_file_pair {
+	const char *src_path;
+	const char *dst_path;
+};
+
+/**
+ * Rename the file from "src_path" to "dst_path" for each of "pairs".
+ */
+tc_res tc_renamev(int n, struct tc_file_pair* pairs, bool is_transaction);
+
+static inline bool tx_renamev(int n, struct tc_file_pair* pairs) {
+	tc_res res = tc_renamev(n, pairs, true);
+	return res.okay;
+}
+
+/**
+ * Copy the file from "src_path" to "dst_path" for each of "pairs".
+ */
+tc_res tc_copyv(int n, struct tc_file_pair* pairs, bool is_transaction);
+
+static inline bool tx_copyv(int n, struct tc_file_pair* pairs) {
+	tc_res res = tc_copyv(n, pairs, true);
+	return res.okay;
+}
+
+struct tc_file_pattern {
+	const char *path;
+	size_t offset;
+
+	/**
+	 * pattern block width
+	 */
+	size_t pattern_distance;
+
+	/**
+	 * IN: requested number of patterns to write
+	 * OUT: number of patterns written.
+	 */
+	size_t pattern_count;
+
+	size_t pattern_size;
+	void *pattern_data;
+};
+
+tc_res tc_write_same(int n, struct tc_file_pattern *patterns,
+		     bool is_transaction);
+
+static inline bool tx_write_same(int n, struct tc_file_pattern *patterns) {
+	tc_res res = tc_write_same(n, patterns, true);
+	return res.okay;
+};
 
 #ifdef __cplusplus
 #undef CONST
