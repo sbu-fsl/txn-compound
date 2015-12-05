@@ -2,3 +2,6 @@
 	path = src/libntirpc
 	url = https://github.com/nfs-ganesha/ntirpc.git
 
+[submodule "proxy_client/libntirpc"]
+	path = proxy_client/libntirpc
+	url = https://github.com/nfs-ganesha/ntirpc.git

@@ -56,7 +56,7 @@ SET(test1_SRCS
 )
 
 add_executable(test1
-  ${personaltest_SRCS}
+  ${test1_SRCS}
   ${fsal_CORE_SRCS}
   ../include/tc_utils.h
 )
@@ -77,7 +77,7 @@ SET(test2_SRCS
 add_executable(test2
   ${test2_SRCS}
   ${fsal_CORE_SRCS}
-  ../include/tcutils.h
+  ../include/tc_utils.h
 )
 
 target_link_libraries(test2

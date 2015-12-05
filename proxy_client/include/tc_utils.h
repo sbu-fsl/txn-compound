@@ -53,7 +53,7 @@ struct kernel_tcwrite_args
 {
 	struct fsal_obj_handle *dir_fh;
 	char *name;
-	struct write_args *write_args;
+	struct write_arg *write_args;
 	OPEN4resok *opok;
 	struct attrlist file_attr;
 };

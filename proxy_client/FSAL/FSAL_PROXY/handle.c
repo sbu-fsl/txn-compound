@@ -1547,7 +1547,7 @@ static fsal_status_t pxy_openread(struct fsal_obj_handle *dir_hdl,
 
 static fsal_status_t
 do_kernel_tcread(struct fsal_obj_handle *dir_hdl, const char *name,
-	      struct attrlist *attrib, struct pxy_read_args *read_list,
+	      struct attrlist *attrib, struct read_arg *read_list,
 	      struct OPEN4resok *opok_handle, struct GETATTR4resok *atok_handle,
 	      nfs_argop4 *argoparray, nfs_resop4 *resoparray, int *opcnt_temp)
 {
@@ -1560,7 +1560,7 @@ do_kernel_tcread(struct fsal_obj_handle *dir_hdl, const char *name,
 	bool eof = false;
 	struct glist_head *temp_read;
 
-	LogDebug(COMPONENT_FSAL, "do_pxy_tcread() called: %d\n", opcnt);
+	LogDebug(COMPONENT_FSAL, "do_kernel_tcread() called: %d\n", opcnt);
 
 	/* Create the owner */
 	snprintf(owner_val, sizeof(owner_val), "GANESHA/PROXY: pid=%u %" PRIu64,
@@ -1591,8 +1591,8 @@ do_kernel_tcread(struct fsal_obj_handle *dir_hdl, const char *name,
 
 	glist_for_each(temp_read, &(read_list->read_list))
 	{
-		struct pxy_read_args *read_arg_temp =
-		    container_of(temp_read, struct pxy_read_args, read_list);
+		struct read_arg *read_arg_temp =
+		    container_of(temp_read, struct read_arg, read_list);
 		read_arg_temp->rok =
 		    &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
 		read_arg_temp->rok->data.data_val = read_arg_temp->read_buf;
@@ -1614,7 +1614,7 @@ static fsal_status_t kernel_tcread(struct kernel_tcread_args *pxy_arg, int arg_c
 	int rc;
 	GETATTR4resok atok;
 	fsal_status_t st;
-	struct pxy_tcread_args *cur_arg = NULL;
+	struct kernel_tcread_args *cur_arg = NULL;
 #define FSAL_TCREAD_NB_OP_ALLOC ((3 + read_count) * arg_count)
 	nfs_argop4 argoparray[FSAL_TCREAD_NB_OP_ALLOC];
 	nfs_resop4 resoparray[FSAL_TCREAD_NB_OP_ALLOC];
@@ -1622,11 +1622,11 @@ static fsal_status_t kernel_tcread(struct kernel_tcread_args *pxy_arg, int arg_c
 	bool eof = false;
 	int i = 0;
 
-	LogDebug(COMPONENT_FSAL, "pxy_tcread() called\n");
+	LogDebug(COMPONENT_FSAL, "kernel_tcread() called\n");
 
 	while (i < arg_count) {
 		cur_arg = pxy_arg + i;
-		st = do_pxy_tcread(cur_arg->dir_fh, cur_arg->name,
+		st = do_kernel_tcread(cur_arg->dir_fh, cur_arg->name,
 				   &(cur_arg->file_attr), cur_arg->read_args,
 				   cur_arg->opok, &atok, argoparray, resoparray,
 				   &opcnt);
@@ -1647,7 +1647,7 @@ static fsal_status_t kernel_tcread(struct kernel_tcread_args *pxy_arg, int arg_c
 
 static fsal_status_t do_kernel_tcwrite(struct fsal_obj_handle *dir_hdl,
 				    const char *name, struct attrlist *attrib,
-				    struct pxy_write_args *write_list,
+				    struct write_arg *write_list,
 				    struct OPEN4resok *opok_handle,
 				    struct GETATTR4resok *atok_handle,
 				    nfs_argop4 *argoparray,
@@ -1662,7 +1662,7 @@ static fsal_status_t do_kernel_tcwrite(struct fsal_obj_handle *dir_hdl,
 	bool eof = false;
 	struct glist_head *temp_write;
 
-	LogDebug(COMPONENT_FSAL, "do_pxy_tcwrite() called: %d\n", opcnt);
+	LogDebug(COMPONENT_FSAL, "do_kernel_tcwrite() called: %d\n", opcnt);
 	/* Create the owner */
 	snprintf(owner_val, sizeof(owner_val), "GANESHA/PROXY: pid=%u %" PRIu64,
 		 getpid(), atomic_inc_uint64_t(&fcnt));
@@ -1691,8 +1691,8 @@ static fsal_status_t do_kernel_tcwrite(struct fsal_obj_handle *dir_hdl,
 
 	glist_for_each(temp_write, &(write_list->write_list))
 	{
-		struct pxy_write_args *write_arg_temp =
-		    container_of(temp_write, struct pxy_write_args, write_list);
+		struct write_arg *write_arg_temp =
+		    container_of(temp_write, struct write_arg, write_list);
 
 		write_arg_temp->wok =
 		    &resoparray[opcnt].nfs_resop4_u.opwrite.WRITE4res_u.resok4;
@@ -1713,7 +1713,7 @@ static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *pxy_arg,
 	int rc;
 	GETATTR4resok atok;
 	fsal_status_t st;
-	struct pxy_tcwrite_args *cur_arg = NULL;
+	struct kernel_tcwrite_args *cur_arg = NULL;
 #define FSAL_TCWRITE_NB_OP_ALLOC ((3 + read_count) * arg_count)
 	nfs_argop4 argoparray[FSAL_TCWRITE_NB_OP_ALLOC];
 	nfs_resop4 resoparray[FSAL_TCWRITE_NB_OP_ALLOC];
@@ -1721,11 +1721,11 @@ static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *pxy_arg,
 	bool eof = false;
 	int i = 0;
 
-	LogDebug(COMPONENT_FSAL, "pxy_tcwrite() called\n");
+	LogDebug(COMPONENT_FSAL, "kernel_tcwrite() called\n");
 
 	while (i < arg_count) {
 		cur_arg = pxy_arg + i;
-		st = do_pxy_tcwrite(cur_arg->dir_fh, cur_arg->name,
+		st = do_kernel_tcwrite(cur_arg->dir_fh, cur_arg->name,
 				    &(cur_arg->file_attr), cur_arg->write_args,
 				    cur_arg->opok, &atok, argoparray,
 				    resoparray, &opcnt);

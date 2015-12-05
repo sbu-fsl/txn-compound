@@ -15,14 +15,14 @@
 int test2()
 {
 	struct fsal_module *new_module = NULL;
-	struct pxy_tcread_args tcread_arg[2];
-	struct pxy_tcread_args tcread_arg_single;
-	struct pxy_tcwrite_args tcwrite_arg_single;
-	struct pxy_tcwrite_args tcwrite_arg[2];
-	struct pxy_read_args *temp_read_head = NULL;
-	struct pxy_read_args *temp_read_arg = NULL;
-	struct pxy_write_args *temp_write_head = NULL;
-	struct pxy_write_args *temp_write_arg = NULL;
+	struct kernel_tcread_args tcread_arg[2];
+	struct kernel_tcread_args tcread_arg_single;
+	struct kernel_tcwrite_args tcwrite_arg_single;
+	struct kernel_tcwrite_args tcwrite_arg[2];
+	struct read_arg *temp_read_head = NULL;
+	struct read_arg *temp_read_arg = NULL;
+	struct write_arg *temp_write_head = NULL;
+	struct write_arg *temp_write_arg = NULL;
 	char *name = NULL;
 	char *name1 = NULL;
 	struct gsh_export *export = NULL;
@@ -117,7 +117,7 @@ int test2()
 		name = malloc(strlen("file") + 5);
 		snprintf(name, strlen("file") + 5, "file-%d", i);
 		tcread_arg_single.name = name;
-		temp_read_head = malloc(sizeof(struct pxy_read_args));
+		temp_read_head = malloc(sizeof(struct read_arg));
 		temp_read_head->read_offset = 0;
 		temp_read_head->read_len = 4096;
 		data_buf = malloc(4096);
@@ -145,7 +145,7 @@ int test2()
 		name = malloc(strlen("file") + 5);
 		snprintf(name, strlen("file") + 5, "file-%d", i);
 		tcwrite_arg_single.name = name;
-		temp_write_head = malloc(sizeof(struct pxy_write_args));
+		temp_write_head = malloc(sizeof(struct write_arg));
 		temp_write_head->write_offset = 0;
 		temp_write_head->write_len = 8;
 		data_buf = malloc(sizeof("12345678")+1);
