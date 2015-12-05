@@ -178,30 +178,61 @@ static inline bool tx_copyv(int n, struct tc_extent_pair* pairs) {
 	return res.okay;
 }
 
-struct tc_file_pattern {
+/**
+ * Application data blocks (ADB).
+ *
+ * See https://tools.ietf.org/html/draft-ietf-nfsv4-minorversion2-39#page-60
+ */
+struct tc_adb {
 	const char *path;
-	size_t offset;
 
 	/**
-	 * pattern block width
+	 * The offset within the file the ADB blocks should start.
 	 */
-	size_t pattern_distance;
+	size_t adb_offset;
 
 	/**
-	 * IN: requested number of patterns to write
-	 * OUT: number of patterns written.
+	 * size (in bytes) of an ADB block
 	 */
-	size_t pattern_count;
+	size_t adb_block_size;
 
-	size_t pattern_size;
-	void *pattern_data;
+	/**
+	 * IN: requested number of ADB blocks to write
+	 * OUT: number of ADB blocks successfully written.
+	 */
+	size_t adb_block_count;
+
+	/**
+	 * Relative offset within an ADB block to write then Application Data
+	 * Block Number (ADBN).
+	 *
+	 * A value of UINT64_MAX means no ADBN to write.
+	 */
+	size_t adb_reloff_blocknum;
+
+	/**
+	 * The Application Data Block Number (ADBN) of the first ADB.
+	 */
+	size_t adb_block_num;
+
+	/**
+	 * Relative offset of the pattern within an ADB block.
+	 *
+	 * A value of UINT64_MAX means no pattern to write.
+	 */
+	size_t adb_reloff_pattern;
+
+	/**
+	 * Size and value of the ADB pattern.
+	 */
+	size_t adb_pattern_size;
+	void *adb_pattern_data;
 };
 
-tc_res tc_write_same(int n, struct tc_file_pattern *patterns,
-		     bool is_transaction);
+tc_res tc_write_adb(int n, struct tc_adb *patterns, bool is_transaction);
 
-static inline bool tx_write_same(int n, struct tc_file_pattern *patterns) {
-	tc_res res = tc_write_same(n, patterns, true);
+static inline bool tx_write_adb(int n, struct tc_adb *patterns) {
+	tc_res res = tc_write_adb(n, patterns, true);
 	return res.okay;
 };
 
