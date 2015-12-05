@@ -160,12 +160,20 @@ static inline bool tx_renamev(int n, struct tc_file_pair* pairs) {
 	return res.okay;
 }
 
+struct tc_extent_pair {
+	const char *src_path;
+	const char *dst_path;
+	size_t src_offset;
+	size_t dst_offset;
+	size_t length;
+};
+
 /**
  * Copy the file from "src_path" to "dst_path" for each of "pairs".
  */
-tc_res tc_copyv(int n, struct tc_file_pair* pairs, bool is_transaction);
+tc_res tc_copyv(int n, struct tc_extent_pair* pairs, bool is_transaction);
 
-static inline bool tx_copyv(int n, struct tc_file_pair* pairs) {
+static inline bool tx_copyv(int n, struct tc_extent_pair* pairs) {
 	tc_res res = tc_copyv(n, pairs, true);
 	return res.okay;
 }
