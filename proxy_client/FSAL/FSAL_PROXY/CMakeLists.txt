@@ -10,7 +10,7 @@ SET(fsalproxy_LIB_SRCS
    proxy.c
    export.c
    xattrs.c
-   user.c
+   tc_utils.c
    test1.c
    test2.c
 )

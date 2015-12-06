@@ -45,7 +45,7 @@ set(fsal_CORE_SRCS
    ../FSAL_UP/fsal_up_async.c
    ../FSAL_UP/fsal_up_utils.c
    ../FSAL/FSAL_PROXY/handle.c
-   ../FSAL/FSAL_PROXY/user.c
+   ../FSAL/FSAL_PROXY/tc_utils.c
    ../FSAL/FSAL_PROXY/test1.c
    ../FSAL/FSAL_PROXY/test2.c
 )
