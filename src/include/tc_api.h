@@ -153,6 +153,29 @@ static inline bool tx_setattrsv(struct tc_attrs *attrs, int count)
 	return res.okay;
 }
 
+/**
+ * List the content of a directory.
+ *
+ * @dir [IN]: the path of the directory to list
+ * @masks [IN]: masks of attributes to get for listed objects
+ * @max_count [IN]: the maximum number of count to list
+ * @contents [OUT]: the pointer to the array of files/directories in the
+ * directory.  The array and the paths in the array will be allocated
+ * internally by this function; the caller is responsible for releasing the
+ * memory, probably by using tc_free_attrs().
+ */
+tc_res tc_listdir(const char *dir, struct tc_attrs_masks masks, int max_count,
+		  struct tc_attrs **contents, int *count);
+
+/**
+ * Free an array of "tc_attrs".
+ *
+ * @attrs [IN]: the array to be freed
+ * @count [IN]: the length of the array
+ * @free_path [IN]: whether to free the paths in "tc_attrs" as well.
+ */
+void tc_free_attrs(struct tc_attrs *attrs, int count, bool free_path);
+
 struct tc_file_pair {
 	const char *src_path;
 	const char *dst_path;
