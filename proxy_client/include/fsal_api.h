@@ -1321,7 +1321,7 @@ struct fsal_obj_ops {
 
 /* Multiple open..write..close in a single compound */
 	fsal_status_t(*tc_write) (struct kernel_tcwrite_args *dir_hdl,
-				int arg_count, int read_count);
+				int arg_count, int write_count);
 
 	fsal_status_t(*root_lookup) (struct fsal_obj_handle **handle);
 

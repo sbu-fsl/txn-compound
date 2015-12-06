@@ -1575,6 +1575,7 @@ do_kernel_tcread(struct fsal_obj_handle *dir_hdl, const char *name,
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
 
 	opok_handle = &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
+
 	opok_handle->attrset = empty_bitmap;
 	pxy_get_clientid(&cid);
 
@@ -1584,6 +1585,7 @@ do_kernel_tcread(struct fsal_obj_handle *dir_hdl, const char *name,
 
 	read_list->rok =
 	    &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
+
 	read_list->rok->data.data_val = read_list->read_buf;
 	read_list->rok->data.data_len = read_list->read_len;
 	COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argoparray, read_list->read_offset,
@@ -1616,13 +1618,16 @@ static fsal_status_t kernel_tcread(struct kernel_tcread_args *pxy_arg, int arg_c
 	fsal_status_t st;
 	struct kernel_tcread_args *cur_arg = NULL;
 #define FSAL_TCREAD_NB_OP_ALLOC ((3 + read_count) * arg_count)
-	nfs_argop4 argoparray[FSAL_TCREAD_NB_OP_ALLOC];
-	nfs_resop4 resoparray[FSAL_TCREAD_NB_OP_ALLOC];
+	nfs_argop4 *argoparray = NULL;
+	nfs_resop4 *resoparray = NULL;
 	int opcnt = 0;
 	bool eof = false;
 	int i = 0;
 
 	LogDebug(COMPONENT_FSAL, "kernel_tcread() called\n");
+
+	argoparray = malloc(FSAL_TCREAD_NB_OP_ALLOC * sizeof(struct nfs_argop4));
+	resoparray = malloc(FSAL_TCREAD_NB_OP_ALLOC * sizeof(struct nfs_resop4));
 
 	while (i < arg_count) {
 		cur_arg = pxy_arg + i;
@@ -1630,8 +1635,9 @@ static fsal_status_t kernel_tcread(struct kernel_tcread_args *pxy_arg, int arg_c
 				   &(cur_arg->file_attr), cur_arg->read_args,
 				   cur_arg->opok, &atok, argoparray, resoparray,
 				   &opcnt);
-		if (FSAL_IS_ERROR(st))
-			return st;
+		if (FSAL_IS_ERROR(st)) {
+			goto exit;
+		}
 
 		i++;
 	}
@@ -1642,6 +1648,10 @@ static fsal_status_t kernel_tcread(struct kernel_tcread_args *pxy_arg, int arg_c
 	if (FSAL_IS_ERROR(st)) {
 		LogDebug(COMPONENT_FSAL, "pxy_nfsv4_call() returned error\n");
 	}
+
+exit:
+	free(argoparray);
+	free(resoparray);
 	return st;
 }
 
@@ -1708,20 +1718,23 @@ static fsal_status_t do_kernel_tcwrite(struct fsal_obj_handle *dir_hdl,
 }
 
 static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *pxy_arg,
-				 int arg_count, int read_count)
+				 int arg_count, int write_count)
 {
 	int rc;
 	GETATTR4resok atok;
 	fsal_status_t st;
 	struct kernel_tcwrite_args *cur_arg = NULL;
-#define FSAL_TCWRITE_NB_OP_ALLOC ((3 + read_count) * arg_count)
-	nfs_argop4 argoparray[FSAL_TCWRITE_NB_OP_ALLOC];
-	nfs_resop4 resoparray[FSAL_TCWRITE_NB_OP_ALLOC];
+#define FSAL_TCWRITE_NB_OP_ALLOC ((3 + write_count) * arg_count)
+	nfs_argop4 *argoparray = NULL;
+	nfs_resop4 *resoparray = NULL;
 	int opcnt = 0;
 	bool eof = false;
 	int i = 0;
 
 	LogDebug(COMPONENT_FSAL, "kernel_tcwrite() called\n");
+
+	argoparray = malloc(FSAL_TCWRITE_NB_OP_ALLOC * sizeof(struct nfs_argop4));
+	resoparray = malloc(FSAL_TCWRITE_NB_OP_ALLOC * sizeof(struct nfs_resop4));
 
 	while (i < arg_count) {
 		cur_arg = pxy_arg + i;
@@ -1729,8 +1742,9 @@ static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *pxy_arg,
 				    &(cur_arg->file_attr), cur_arg->write_args,
 				    cur_arg->opok, &atok, argoparray,
 				    resoparray, &opcnt);
-		if (FSAL_IS_ERROR(st))
-			return st;
+		if (FSAL_IS_ERROR(st)) {
+			goto exit;
+		}
 
 		i++;
 	}
@@ -1742,6 +1756,9 @@ static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *pxy_arg,
 		LogDebug(COMPONENT_FSAL, "pxy_nfsv4_call() returned error\n");
 	}
 
+exit:
+	free(argoparray);
+	free(resoparray);
 	return st;
 }
 
