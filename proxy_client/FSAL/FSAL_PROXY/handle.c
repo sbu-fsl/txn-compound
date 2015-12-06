@@ -1617,10 +1617,10 @@ static fsal_status_t do_kernel_tcread(struct fsal_obj_handle *dir_hdl,
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
-/* 
+/*
  * Send multiple reads for multiple files
  *  kern_arg - an arry of tcread args with size "arg_count"
- *             each with a linked list of "read_count" reads 
+ *             each with a linked list of "read_count" reads
  *  Caller has to make sure kern_arg and fields inside are allocated
  *  and freed
  */
@@ -1735,10 +1735,10 @@ do_kernel_tcwrite(struct fsal_obj_handle *dir_hdl, const char *name,
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
-/* 
+/*
  *  Send multiple writes for multiple files
  *  kern_arg - an arry of tcwrite args with size "arg_count"
- *             each with a linked list of "write_count" writes 
+ *             each with a linked list of "write_count" writes
  *  Caller has to make sure kern_arg and fields inside are allocated
  *  and freed
  */
