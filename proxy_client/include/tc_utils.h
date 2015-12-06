@@ -1,5 +1,8 @@
+/* Header file for implementing tc features */
+
 #include "export_mgr.h"
 #include "ganesha_list.h"
+#include "tc_user.h"
 
 /*
  * Contents of an individual read
@@ -7,23 +10,22 @@
  */
 struct read_arg
 {
-	size_t read_offset;
-	size_t read_len;
-        char *read_buf;
-	READ4resok *rok;
+	struct user_read_arg *user_arg;
+	union
+	{
+		READ4resok *v4_rok;
+	} read_ok;
 	struct glist_head read_list;
 };
 
 /*
  * Contents of a kernel tcread request
- * dir_fh - Parent directory of the file
- * name - Name of the file that has to be opened
+ * user_arg - Contains dir_fh, name, etc which are passed by the application
  * read_args - Pointer to the list of reads between open and close
  */
 struct kernel_tcread_args
 {
-	struct fsal_obj_handle *dir_fh;
-	char *name;
+	struct user_tcread_args *user_arg;
 	struct read_arg *read_args;
 	OPEN4resok *opok;
 	struct attrlist file_attr;
@@ -35,28 +37,30 @@ struct kernel_tcread_args
  */
 struct write_arg
 {
-	size_t write_offset;
-	size_t write_len;
-	char *write_buf;
-	WRITE4resok *wok;
+	struct user_write_arg *user_arg;
+	union
+	{
+		WRITE4resok *v4_wok;
+	} write_ok;
 	struct glist_head write_list;
 };
 
 /*
  * Contents of a kernel tcwrite request
- * dir_fh - Parent directory of the file
- * name - Name of the file that has to be opened
- * write_args - Pointer to the list of reads between open and close
+ * user_arg - Contains dir_fh, name etc which are passed by the application
+ * write_args - Pointer to the list of writes between open and close
  */
 
 struct kernel_tcwrite_args
 {
-	struct fsal_obj_handle *dir_fh;
-	char *name;
+	struct user_tcwrite_args *user_arg;
 	struct write_arg *write_args;
 	OPEN4resok *opok;
 	struct attrlist file_attr;
 };
+
+#define MAX_READ_COUNT 10
+#define MAX_WRITE_COUNT 10
 
 int test1();
 int test2();

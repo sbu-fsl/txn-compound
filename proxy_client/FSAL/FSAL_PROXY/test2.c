@@ -15,14 +15,14 @@
 int test2()
 {
 	struct fsal_module *new_module = NULL;
-	struct kernel_tcread_args tcread_arg[2];
-	struct kernel_tcread_args tcread_arg_single;
-	struct kernel_tcwrite_args tcwrite_arg_single;
-	struct kernel_tcwrite_args tcwrite_arg[2];
-	struct read_arg *temp_read_head = NULL;
-	struct read_arg *temp_read_arg = NULL;
-	struct write_arg *temp_write_head = NULL;
-	struct write_arg *temp_write_arg = NULL;
+	struct user_tcread_args tcread_arg[2];
+	struct user_tcread_args tcread_arg_single;
+	struct user_tcwrite_args tcwrite_arg_single;
+	struct user_tcwrite_args tcwrite_arg[2];
+	struct user_read_arg *temp_read_head = NULL;
+	struct user_read_arg *temp_read_arg = NULL;
+	struct user_write_arg *temp_write_head = NULL;
+	struct iser_write_arg *temp_write_arg = NULL;
 	char *name = NULL;
 	char *name1 = NULL;
 	struct gsh_export *export = NULL;
@@ -125,7 +125,7 @@ int test2()
 		tcread_arg_single.read_args = temp_read_head;
 		glist_init(&(tcread_arg_single.read_args->read_list));
 
-		fsal_status = export->fsal_export->obj_ops->tc_read(&tcread_arg_single, 1, 1);
+		//fsal_status = export->fsal_export->obj_ops->tc_read(&tcread_arg_single, 1, 1);
 
 		free(data_buf);
 		free(name);

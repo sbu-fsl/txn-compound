@@ -1545,11 +1545,13 @@ static fsal_status_t pxy_openread(struct fsal_obj_handle *dir_hdl,
 	return st;
 }
 
-static fsal_status_t
-do_kernel_tcread(struct fsal_obj_handle *dir_hdl, const char *name,
-	      struct attrlist *attrib, struct read_arg *read_list,
-	      struct OPEN4resok *opok_handle, struct GETATTR4resok *atok_handle,
-	      nfs_argop4 *argoparray, nfs_resop4 *resoparray, int *opcnt_temp)
+static fsal_status_t do_kernel_tcread(struct fsal_obj_handle *dir_hdl,
+				      const char *name, struct attrlist *attrib,
+				      struct read_arg *read_list,
+				      struct OPEN4resok *opok_handle,
+				      struct GETATTR4resok *atok_handle,
+				      nfs_argop4 *argoparray,
+				      nfs_resop4 *resoparray, int *opcnt_temp)
 {
 	int opcnt = *opcnt_temp;
 	fattr4 input_attr;
@@ -1583,25 +1585,30 @@ do_kernel_tcread(struct fsal_obj_handle *dir_hdl, const char *name,
 					    cid, input_attr, (char *)name,
 					    owner_val, owner_len);
 
-	read_list->rok =
+	read_list->read_ok.v4_rok =
 	    &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
 
-	read_list->rok->data.data_val = read_list->read_buf;
-	read_list->rok->data.data_len = read_list->read_len;
-	COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argoparray, read_list->read_offset,
-				   read_list->read_len);
+	read_list->read_ok.v4_rok->data.data_val =
+	    read_list->user_arg->read_buf;
+	read_list->read_ok.v4_rok->data.data_len =
+	    read_list->user_arg->read_len;
+	COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argoparray,
+				   read_list->user_arg->read_offset,
+				   read_list->user_arg->read_len);
 
 	glist_for_each(temp_read, &(read_list->read_list))
 	{
 		struct read_arg *read_arg_temp =
 		    container_of(temp_read, struct read_arg, read_list);
-		read_arg_temp->rok =
+		read_arg_temp->read_ok.v4_rok =
 		    &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
-		read_arg_temp->rok->data.data_val = read_arg_temp->read_buf;
-		read_arg_temp->rok->data.data_len = read_arg_temp->read_len;
+		read_arg_temp->read_ok.v4_rok->data.data_val =
+		    read_arg_temp->user_arg->read_buf;
+		read_arg_temp->read_ok.v4_rok->data.data_len =
+		    read_arg_temp->user_arg->read_len;
 		COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argoparray,
-					   read_arg_temp->read_offset,
-					   read_arg_temp->read_len);
+					   read_arg_temp->user_arg->read_offset,
+					   read_arg_temp->user_arg->read_len);
 	}
 
 	COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
@@ -1610,8 +1617,8 @@ do_kernel_tcread(struct fsal_obj_handle *dir_hdl, const char *name,
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
-static fsal_status_t kernel_tcread(struct kernel_tcread_args *pxy_arg, int arg_count,
-				int read_count)
+static fsal_status_t kernel_tcread(struct kernel_tcread_args *pxy_arg,
+				   int arg_count, int read_count)
 {
 	int rc;
 	GETATTR4resok atok;
@@ -1626,15 +1633,18 @@ static fsal_status_t kernel_tcread(struct kernel_tcread_args *pxy_arg, int arg_c
 
 	LogDebug(COMPONENT_FSAL, "kernel_tcread() called\n");
 
-	argoparray = malloc(FSAL_TCREAD_NB_OP_ALLOC * sizeof(struct nfs_argop4));
-	resoparray = malloc(FSAL_TCREAD_NB_OP_ALLOC * sizeof(struct nfs_resop4));
+	argoparray =
+	    malloc(FSAL_TCREAD_NB_OP_ALLOC * sizeof(struct nfs_argop4));
+	resoparray =
+	    malloc(FSAL_TCREAD_NB_OP_ALLOC * sizeof(struct nfs_resop4));
 
 	while (i < arg_count) {
 		cur_arg = pxy_arg + i;
-		st = do_kernel_tcread(cur_arg->dir_fh, cur_arg->name,
-				   &(cur_arg->file_attr), cur_arg->read_args,
-				   cur_arg->opok, &atok, argoparray, resoparray,
-				   &opcnt);
+		st = do_kernel_tcread(
+		    cur_arg->user_arg->dir_fh, cur_arg->user_arg->name,
+		    &(cur_arg->file_attr), cur_arg->read_args, cur_arg->opok,
+		    &atok, argoparray, resoparray, &opcnt);
+
 		if (FSAL_IS_ERROR(st)) {
 			goto exit;
 		}
@@ -1655,13 +1665,12 @@ exit:
 	return st;
 }
 
-static fsal_status_t do_kernel_tcwrite(struct fsal_obj_handle *dir_hdl,
-				    const char *name, struct attrlist *attrib,
-				    struct write_arg *write_list,
-				    struct OPEN4resok *opok_handle,
-				    struct GETATTR4resok *atok_handle,
-				    nfs_argop4 *argoparray,
-				    nfs_resop4 *resoparray, int *opcnt_temp)
+static fsal_status_t
+do_kernel_tcwrite(struct fsal_obj_handle *dir_hdl, const char *name,
+		  struct attrlist *attrib, struct write_arg *write_list,
+		  struct OPEN4resok *opok_handle,
+		  struct GETATTR4resok *atok_handle, nfs_argop4 *argoparray,
+		  nfs_resop4 *resoparray, int *opcnt_temp)
 {
 	int opcnt = *opcnt_temp;
 	fattr4 input_attr;
@@ -1693,22 +1702,23 @@ static fsal_status_t do_kernel_tcwrite(struct fsal_obj_handle *dir_hdl,
 					    cid, input_attr, (char *)name,
 					    owner_val, owner_len);
 
-	write_list->wok =
+	write_list->write_ok.v4_wok =
 	    &resoparray[opcnt].nfs_resop4_u.opwrite.WRITE4res_u.resok4;
-	COMPOUNDV4_ARG_ADD_OP_WRITE(opcnt, argoparray, write_list->write_offset,
-				    write_list->write_buf,
-				    write_list->write_len);
+	COMPOUNDV4_ARG_ADD_OP_WRITE(
+	    opcnt, argoparray, write_list->user_arg->write_offset,
+	    write_list->user_arg->write_buf, write_list->user_arg->write_len);
 
 	glist_for_each(temp_write, &(write_list->write_list))
 	{
 		struct write_arg *write_arg_temp =
 		    container_of(temp_write, struct write_arg, write_list);
 
-		write_arg_temp->wok =
+		write_arg_temp->write_ok.v4_wok =
 		    &resoparray[opcnt].nfs_resop4_u.opwrite.WRITE4res_u.resok4;
 		COMPOUNDV4_ARG_ADD_OP_WRITE(
-		    opcnt, argoparray, write_arg_temp->write_offset,
-		    write_arg_temp->write_buf, write_arg_temp->write_len);
+		    opcnt, argoparray, write_arg_temp->user_arg->write_offset,
+		    write_arg_temp->user_arg->write_buf,
+		    write_arg_temp->user_arg->write_len);
 	}
 
 	COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
@@ -1718,7 +1728,7 @@ static fsal_status_t do_kernel_tcwrite(struct fsal_obj_handle *dir_hdl,
 }
 
 static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *pxy_arg,
-				 int arg_count, int write_count)
+				    int arg_count, int write_count)
 {
 	int rc;
 	GETATTR4resok atok;
@@ -1733,15 +1743,17 @@ static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *pxy_arg,
 
 	LogDebug(COMPONENT_FSAL, "kernel_tcwrite() called\n");
 
-	argoparray = malloc(FSAL_TCWRITE_NB_OP_ALLOC * sizeof(struct nfs_argop4));
-	resoparray = malloc(FSAL_TCWRITE_NB_OP_ALLOC * sizeof(struct nfs_resop4));
+	argoparray =
+	    malloc(FSAL_TCWRITE_NB_OP_ALLOC * sizeof(struct nfs_argop4));
+	resoparray =
+	    malloc(FSAL_TCWRITE_NB_OP_ALLOC * sizeof(struct nfs_resop4));
 
 	while (i < arg_count) {
 		cur_arg = pxy_arg + i;
-		st = do_kernel_tcwrite(cur_arg->dir_fh, cur_arg->name,
-				    &(cur_arg->file_attr), cur_arg->write_args,
-				    cur_arg->opok, &atok, argoparray,
-				    resoparray, &opcnt);
+		st = do_kernel_tcwrite(
+		    cur_arg->user_arg->dir_fh, cur_arg->user_arg->name,
+		    &(cur_arg->file_attr), cur_arg->write_args, cur_arg->opok,
+		    &atok, argoparray, resoparray, &opcnt);
 		if (FSAL_IS_ERROR(st)) {
 			goto exit;
 		}

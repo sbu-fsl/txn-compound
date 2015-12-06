@@ -23,12 +23,12 @@ readdir_reply(const char *name, void *dir_state,
 int test1()
 {
 	struct fsal_module *new_module = NULL;
-	struct kernel_tcread_args tcread_arg[2];
-	struct kernel_tcwrite_args tcwrite_arg[2];
-	struct read_arg *temp_read_head = NULL;
-	struct read_arg *temp_read_arg = NULL;
-	struct write_arg *temp_write_head = NULL;
-	struct write_arg *temp_write_arg = NULL;
+	struct user_tcread_args tcread_arg[2];
+	struct user_tcwrite_args tcwrite_arg[2];
+	struct user_read_arg *temp_read_head = NULL;
+	struct user_read_arg *temp_read_arg = NULL;
+	struct user_write_arg *temp_write_head = NULL;
+	struct user_write_arg *temp_write_arg = NULL;
 	char *name = NULL;
 	char *name1 = NULL;
 	struct gsh_export *export = NULL;
@@ -163,10 +163,11 @@ int test1()
 */
 
 	tcread_arg[0].dir_fh = vfs0_handle;
+	tcread_arg[0].open_mode = USE_SPECIAL_STATE;
 	name = malloc(strlen("abcd")+1);
 	strncpy(name,"abcd",strlen("abcd")+1);
 	tcread_arg[0].name = name;
-	temp_read_head = malloc(sizeof(struct read_arg));
+	temp_read_head = malloc(sizeof(struct user_read_arg));
 	temp_read_head->read_offset = 0;
 	temp_read_head->read_len = 256;
 	data_buf = malloc(256);
@@ -174,13 +175,13 @@ int test1()
 	tcread_arg[0].read_args = temp_read_head;
 	glist_init(&(tcread_arg[0].read_args->read_list));
 
-	temp_read_arg = malloc(sizeof(struct read_arg));
+	temp_read_arg = malloc(sizeof(struct user_read_arg));
 	temp_read_arg->read_offset = 256;
 	temp_read_arg->read_len = 256;
 	temp_read_arg->read_buf = data_buf1;
 	glist_add_tail(&(tcread_arg[0].read_args->read_list), &(temp_read_arg->read_list));
 
-	temp_read_arg = malloc(sizeof(struct read_arg));
+	temp_read_arg = malloc(sizeof(struct user_read_arg));
 	temp_read_arg->read_offset = 512;
 	temp_read_arg->read_len = 256;
 	temp_read_arg->read_buf = data_buf1;
@@ -188,36 +189,40 @@ int test1()
 
 
 	tcread_arg[1].dir_fh = vfs0_handle;
+	tcread_arg[1].open_mode = USE_SPECIAL_STATE;
 	name1 = malloc(strlen("abcd1")+1);
 	strncpy(name1,"abcd1",strlen("abcd1")+1);
 	tcread_arg[1].name = name1;
-	temp_read_head = malloc(sizeof(struct read_arg));
+	temp_read_head = malloc(sizeof(struct user_read_arg));
 	temp_read_head->read_offset = 0;
 	temp_read_head->read_len = 512;
 	temp_read_head->read_buf = data_buf1;
 	tcread_arg[1].read_args = temp_read_head;
 	glist_init(&(tcread_arg[1].read_args->read_list));
 
-	temp_read_arg = malloc(sizeof(struct read_arg));
+	temp_read_arg = malloc(sizeof(struct user_read_arg));
 	temp_read_arg->read_offset = 512;
 	temp_read_arg->read_len = 512;
 	temp_read_arg->read_buf = data_buf1;
 	glist_add_tail(&(tcread_arg[1].read_args->read_list), &(temp_read_arg->read_list));
 
-	temp_read_arg = malloc(sizeof(struct read_arg));
+	temp_read_arg = malloc(sizeof(struct user_read_arg));
 	temp_read_arg->read_offset = 1024;
 	temp_read_arg->read_len = 512;
 	temp_read_arg->read_buf = data_buf1;
 	glist_add_tail(&(tcread_arg[1].read_args->read_list), &(temp_read_arg->read_list));
 
+	LogDebug(COMPONENT_FSAL, "Test1 calling tcread_s \n");
 
-	fsal_status = export->fsal_export->obj_ops->tc_read(tcread_arg, 2, 3);
+	//fsal_status = export->fsal_export->obj_ops->tc_read(tcread_arg, 2, 3);
+	//tcread_s(export, tcread_arg, 3);
+	tcread_m(export, tcread_arg, 2);
 
 	free(tcread_arg[0].name);
 	free(tcread_arg[1].name);
 	glist_for_each_safe(temp_read, temp_read1, &(tcread_arg[0].read_args->read_list)) {
-		struct read_arg *read_arg_temp =
-			container_of(temp_read, struct read_arg, read_list);
+		struct user_read_arg *read_arg_temp =
+			container_of(temp_read, struct user_read_arg, read_list);
 		LogDebug(COMPONENT_FSAL, "freed0\n");
 		glist_del(temp_read);
 		free(read_arg_temp);
@@ -229,8 +234,8 @@ int test1()
 	free(tcread_arg[0].read_args);
 
 	glist_for_each_safe(temp_read, temp_read1, &(tcread_arg[1].read_args->read_list)) {
-		struct read_arg *read_arg_temp =
-			container_of(temp_read, struct read_arg, read_list);
+		struct user_read_arg *read_arg_temp =
+			container_of(temp_read, struct user_read_arg, read_list);
 		LogDebug(COMPONENT_FSAL, "freed1\n");
 		glist_del(temp_read);
 		free(read_arg_temp);
@@ -246,10 +251,11 @@ int test1()
 	LogDebug(COMPONENT_FSAL, "tc_read() for abcd succeeded\n");
 
 	tcwrite_arg[0].dir_fh = vfs0_handle;
+	tcwrite_arg[0].open_mode = USE_SPECIAL_STATE;
 	name = malloc(strlen("abcd")+1);
 	strncpy(name,"abcd",strlen("abcd")+1);
 	tcwrite_arg[0].name = name;
-	temp_write_head = malloc(sizeof(struct write_arg));
+	temp_write_head = malloc(sizeof(struct user_write_arg));
 	temp_write_head->write_offset = 0;
 	temp_write_head->write_len = 8;
 	data_buf = malloc(sizeof("12345678")+1);
@@ -259,7 +265,7 @@ int test1()
 	tcwrite_arg[0].write_args = temp_write_head;
 	glist_init(&(tcwrite_arg[0].write_args->write_list));
 
-	temp_write_arg = malloc(sizeof(struct write_arg));
+	temp_write_arg = malloc(sizeof(struct user_write_arg));
 	temp_write_arg->write_offset = 8;
 	temp_write_arg->write_len = 8;
 	data_buf1 = malloc(sizeof("9ABCDEF0")+1);
@@ -268,7 +274,7 @@ int test1()
 	temp_write_arg->write_buf = data_buf1;
 	glist_add_tail(&(tcwrite_arg[0].write_args->write_list), &(temp_write_arg->write_list));
 
-	temp_write_arg = malloc(sizeof(struct write_arg));
+	temp_write_arg = malloc(sizeof(struct user_write_arg));
 	temp_write_arg->write_offset = 16;
 	temp_write_arg->write_len = 8;
 	data_buf1 = malloc(sizeof("98765432")+1);
@@ -278,10 +284,11 @@ int test1()
 	glist_add_tail(&(tcwrite_arg[0].write_args->write_list), &(temp_write_arg->write_list));
 
 	tcwrite_arg[1].dir_fh = vfs0_handle;
+	tcwrite_arg[1].open_mode = USE_SPECIAL_STATE;
 	name1 = malloc(strlen("abcd1")+1);
 	strncpy(name1,"abcd1",strlen("abcd1")+1);
 	tcwrite_arg[1].name = name1;
-	temp_write_head = malloc(sizeof(struct write_arg));
+	temp_write_head = malloc(sizeof(struct user_write_arg));
 	temp_write_head->write_offset = 0;
 	temp_write_head->write_len = 4;
 	data_buf1 = malloc(sizeof("9876")+1);
@@ -291,7 +298,7 @@ int test1()
 	tcwrite_arg[1].write_args = temp_write_head;
 	glist_init(&(tcwrite_arg[1].write_args->write_list));
 
-	temp_write_arg = malloc(sizeof(struct write_arg));
+	temp_write_arg = malloc(sizeof(struct user_write_arg));
 	temp_write_arg->write_offset = 4;
 	temp_write_arg->write_len = 4;
 	data_buf1 = malloc(sizeof("1234")+1);
@@ -300,7 +307,7 @@ int test1()
 	temp_write_arg->write_buf = data_buf1;
 	glist_add_tail(&(tcwrite_arg[1].write_args->write_list), &(temp_write_arg->write_list));
 
-	temp_write_arg = malloc(sizeof(struct write_arg));
+	temp_write_arg = malloc(sizeof(struct user_write_arg));
 	temp_write_arg->write_offset = 8;
 	temp_write_arg->write_len = 4;
 	data_buf1 = malloc(sizeof("5677")+1);
@@ -309,14 +316,15 @@ int test1()
 	temp_write_arg->write_buf = data_buf1;
 	glist_add_tail(&(tcwrite_arg[1].write_args->write_list), &(temp_write_arg->write_list));
 
-	fsal_status = export->fsal_export->obj_ops->tc_write(tcwrite_arg, 2, 3);
+	//fsal_status = export->fsal_export->obj_ops->tc_write(tcwrite_arg, 2, 3);
+	//tcwrite_s(export, tcwrite_arg, 3);
+	tcwrite_m(export, tcwrite_arg, 2);
 
 	free(tcwrite_arg[0].name);
 	free(tcwrite_arg[1].name);
 	glist_for_each_safe(temp_write, temp_write1, &(tcwrite_arg[0].write_args->write_list)) {
-		struct write_arg *write_arg_temp =
-			container_of(temp_write, struct write_arg, write_list);
-		LogDebug(COMPONENT_FSAL, "freed0, write_len: %d \n", write_arg_temp->wok->count);
+		struct user_write_arg *write_arg_temp =
+			container_of(temp_write, struct user_write_arg, write_list);
 		glist_del(temp_write);
 		free(write_arg_temp->write_buf);
 		free(write_arg_temp);
@@ -326,8 +334,8 @@ int test1()
 	free(tcwrite_arg[0].write_args);
 
 	glist_for_each_safe(temp_write, temp_write1, &(tcwrite_arg[1].write_args->write_list)) {
-		struct write_arg *write_arg_temp =
-			container_of(temp_write, struct write_arg, write_list);
+		struct user_write_arg *write_arg_temp =
+			container_of(temp_write, struct user_write_arg, write_list);
 		LogDebug(COMPONENT_FSAL, "freed1\n");
 		glist_del(temp_write);
 		free(write_arg_temp->write_buf);
