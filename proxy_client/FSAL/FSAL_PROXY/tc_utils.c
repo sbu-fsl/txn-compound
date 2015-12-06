@@ -229,6 +229,8 @@ struct kernel_tcread_args *construct_ktcread(struct user_tcread_args *arg,
 /*
  *  Send multiple reads for a single file
  *  arg - should contain the list of reads in a linked list
+ *        Caller has to make sure all the fields inside arg are allocated
+ *        and freed
  *  open_mode
  *      USE_SPECIAL_STATE - The reads can be packed in a single compound
  *                          with special stateid
@@ -281,6 +283,8 @@ fsal_status_t tcread_s(struct gsh_export *export, struct user_tcread_args *arg,
  * Send single read for multiple files
  * arg - assumed to be an array of user_tcread_args
  *       with file_count entries
+ *       Caller has to make sure all the fields inside arg are allocated
+ *       and freed
  * open_mode
  *    USE_SPECIAL_STATE - The read can be packed in a single compound
  *                        with special stateid
@@ -327,6 +331,8 @@ fsal_status_t tcread_m(struct gsh_export *export, struct user_tcread_args *arg,
 /*
  *  Send multiple writes for a single file
  *  arg - should contain the list of writes in a linked list
+ *  	  Caller has to make sure all the fields inside arg are allocated
+ *        and freed
  *  open_mode
  *      USE_SPECIAL_STATE - The writes can be packed in a single compound
  *                          with special stateid
@@ -380,6 +386,8 @@ fsal_status_t tcwrite_s(struct gsh_export *export,
  * Send single write for multiple files
  * arg - assumed to be an array of user_tcwrite_args
  *       with file_count entries
+ *       Caller has to make sure all the fields inside arg are allocated
+ *       and freed
  * open_mode
  *    USE_SPECIAL_STATE - The writes can be packed in a single compound
  *                        with special stateid

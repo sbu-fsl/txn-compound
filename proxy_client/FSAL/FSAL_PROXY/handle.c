@@ -1617,7 +1617,15 @@ static fsal_status_t do_kernel_tcread(struct fsal_obj_handle *dir_hdl,
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
-static fsal_status_t kernel_tcread(struct kernel_tcread_args *pxy_arg,
+/* 
+ * Send multiple reads for multiple files
+ *  kern_arg - an arry of tcread args with size "arg_count"
+ *             each with a linked list of "read_count" reads 
+ *  Caller has to make sure kern_arg and fields inside are allocated
+ *  and freed
+ */
+
+static fsal_status_t kernel_tcread(struct kernel_tcread_args *kern_arg,
 				   int arg_count, int read_count)
 {
 	int rc;
@@ -1639,7 +1647,7 @@ static fsal_status_t kernel_tcread(struct kernel_tcread_args *pxy_arg,
 	    malloc(FSAL_TCREAD_NB_OP_ALLOC * sizeof(struct nfs_resop4));
 
 	while (i < arg_count) {
-		cur_arg = pxy_arg + i;
+		cur_arg = kern_arg + i;
 		st = do_kernel_tcread(
 		    cur_arg->user_arg->dir_fh, cur_arg->user_arg->name,
 		    &(cur_arg->file_attr), cur_arg->read_args, cur_arg->opok,
@@ -1727,7 +1735,15 @@ do_kernel_tcwrite(struct fsal_obj_handle *dir_hdl, const char *name,
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
-static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *pxy_arg,
+/* 
+ *  Send multiple writes for multiple files
+ *  kern_arg - an arry of tcwrite args with size "arg_count"
+ *             each with a linked list of "write_count" writes 
+ *  Caller has to make sure kern_arg and fields inside are allocated
+ *  and freed
+ */
+
+static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *kern_arg,
 				    int arg_count, int write_count)
 {
 	int rc;
@@ -1749,7 +1765,7 @@ static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *pxy_arg,
 	    malloc(FSAL_TCWRITE_NB_OP_ALLOC * sizeof(struct nfs_resop4));
 
 	while (i < arg_count) {
-		cur_arg = pxy_arg + i;
+		cur_arg = kern_arg + i;
 		st = do_kernel_tcwrite(
 		    cur_arg->user_arg->dir_fh, cur_arg->user_arg->name,
 		    &(cur_arg->file_attr), cur_arg->write_args, cur_arg->opok,
