@@ -16,12 +16,12 @@ extern "C" {
 /**
  * Represents an I/O vector of a file.
  *
- * The fileds have different meaning depending the operation is read or write.
+ * The fields have different meaning depending the operation is read or write.
  * Most often, clients allocate an array of this struct.
  */
 struct tc_iovec {
-	const char *CONST path;    /* IN: the file path */
-	CONST size_t offset;       /* IN: read/write offset */
+	const char *CONST path;		/* IN: the file path */
+	CONST size_t offset;		/* IN: read/write offset */
 
 	/**
 	 * IN:  # of bytes of requested read/write
@@ -32,7 +32,7 @@ struct tc_iovec {
 	/**
 	 * This data buffer should always be allocated by caller for either
 	 * read or write, and the length of the buffer should be indicated by
-	 * "length".
+	 * the "length" field above.
 	 *
 	 * IN:  data requested to be written
 	 * OUT: data successfully read
@@ -59,30 +59,34 @@ struct tc_res {
 /**
  * Read from one or more files.
  *
- * @n: the length of the iovec array
- * @reads: the iovec array.  "path" of the first array element must not be
- * NULL; a NULL "path" of any other array element means using the same "path"
- * of the preceding array element.
+ * @reads: the tc_iovec array of read operations.  "path" of the first array
+ * element must not be NULL; a NULL "path" of any other array element means
+ * using the same "path" of the preceding array element.
+ * @count: the count of reads in the preceding array
+ * @is_transaction: whether to execute the compound as a transaction
  */
-tc_res tc_readv(int n, struct tc_iovec *reads, bool is_transaction);
+tc_res tc_readv(struct tc_iovec *reads, int count, bool is_transaction);
 
-static inline bool tx_readv(int n, struct tc_iovec *reads) {
-	tc_res res = tc_readv(n, reads, true);
+static inline bool tx_readv(struct tc_iovec *reads, int count)
+{
+	tc_res res = tc_readv(reads, count, true);
 	return res.okay;
 }
 
 /**
  * Write to one or more files.
  *
- * @n: the length of the iovec array
- * @reads: the iovec array.  "path" of the first array element must not be
- * NULL; a NULL "path" of any other array element means using the same "path"
- * of the preceding array element.
+ * @writes: the tc_iovec array of write operations.  "path" of the first array
+ * element must not be NULL; a NULL "path" of any other array element means
+ * using the same "path"
+ * @count: the count of writes in the preceding array
+ * @is_transaction: whether to execute the compound as a transaction
  */
-tc_res tc_writev(int n, struct tc_iovec *writes, bool is_transaction);
+tc_res tc_writev(struct tc_iovec *writes, int count, bool is_transaction);
 
-static inline bool tx_writev(int n, struct tc_iovec *writes) {
-	tc_res res = tc_writev(n, writes, true);
+static inline bool tx_writev(struct tc_iovec *writes, int count)
+{
+	tc_res res = tc_writev(writes, count, true);
 	return res.okay;
 }
 
@@ -122,26 +126,30 @@ struct tc_attrs {
 /**
  * Get attributes of file objects.
  *
- * @n: the length of the tc_attrs array
- * @attrs: array of attributes to get.
+ * @attrs: array of attributes to get
+ * @count: the count of tc_attrs in the preceding array
+ * @is_transaction: whether to execute the compound as a transaction
  */
-tc_res tc_getattrsv(int n, struct tc_attrs* attrs, bool is_transaction);
+tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction);
 
-static inline bool tx_getattrsv(int n, struct tc_attrs* attrs) {
-	tc_res res = tc_getattrsv(n, attrs, true);
+static inline bool tx_getattrsv(struct tc_attrs *attrs, int count)
+{
+	tc_res res = tc_getattrsv(attrs, count, true);
 	return res.okay;
 }
 
 /**
  * Set attributes of file objects.
  *
- * @n: the length of the tc_attrs array
- * @attrs: array of attributes to set.
+ * @attrs: array of attributes to set
+ * @count: the count of tc_attrs in the preceding array
+ * @is_transaction: whether to execute the compound as a transaction
  */
-tc_res tc_setattrsv(int n, struct tc_attrs* attrs, bool is_transaction);
+tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction);
 
-static inline bool tx_setattrsv(int n, struct tc_attrs* attrs) {
-	tc_res res = tc_setattrsv(n, attrs, true);
+static inline bool tx_setattrsv(struct tc_attrs *attrs, int count)
+{
+	tc_res res = tc_setattrsv(attrs, count, true);
 	return res.okay;
 }
 
@@ -152,11 +160,16 @@ struct tc_file_pair {
 
 /**
  * Rename the file from "src_path" to "dst_path" for each of "pairs".
+ *
+ * @pairs: the array of file pairs to be renamed
+ * @count: the count of the preceding "tc_file_pair" array
+ * @is_transaction: whether to execute the compound as a transaction
  */
-tc_res tc_renamev(int n, struct tc_file_pair* pairs, bool is_transaction);
+tc_res tc_renamev(struct tc_file_pair *pairs, int count, bool is_transaction);
 
-static inline bool tx_renamev(int n, struct tc_file_pair* pairs) {
-	tc_res res = tc_renamev(n, pairs, true);
+static inline bool tx_renamev(struct tc_file_pair *pairs, int count)
+{
+	tc_res res = tc_renamev(pairs, count, true);
 	return res.okay;
 }
 
@@ -170,11 +183,16 @@ struct tc_extent_pair {
 
 /**
  * Copy the file from "src_path" to "dst_path" for each of "pairs".
+ *
+ * @pairs: the array of file extent pairs to copy
+ * @count: the count of the preceding "tc_extent_pair" array
+ * @is_transaction: whether to execute the compound as a transaction
  */
-tc_res tc_copyv(int n, struct tc_extent_pair* pairs, bool is_transaction);
+tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction);
 
-static inline bool tx_copyv(int n, struct tc_extent_pair* pairs) {
-	tc_res res = tc_copyv(n, pairs, true);
+static inline bool tx_copyv(struct tc_extent_pair *pairs, int count)
+{
+	tc_res res = tc_copyv(pairs, count, true);
 	return res.okay;
 }
 
@@ -229,10 +247,19 @@ struct tc_adb {
 	void *adb_pattern_data;
 };
 
-tc_res tc_write_adb(int n, struct tc_adb *patterns, bool is_transaction);
 
-static inline bool tx_write_adb(int n, struct tc_adb *patterns) {
-	tc_res res = tc_write_adb(n, patterns, true);
+/**
+ * Write Application Data Blocks (ADB) to one or more files.
+ *
+ * @patterns: the array of ADB patterns to write
+ * @count: the count of the preceding pattern array
+ * @is_transaction: whether to execute the compound as a transaction
+ */
+tc_res tc_write_adb(struct tc_adb *patterns, int count, bool is_transaction);
+
+static inline bool tx_write_adb(struct tc_adb *patterns, int count)
+{
+	tc_res res = tc_write_adb(patterns, count, true);
 	return res.okay;
 };
 
