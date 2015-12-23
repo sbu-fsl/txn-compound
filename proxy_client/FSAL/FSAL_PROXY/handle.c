@@ -2624,6 +2624,7 @@ void pxy_handle_ops_init(struct fsal_obj_ops *ops)
 {
 	ops->release = pxy_hdl_release;
 	ops->lookup = pxy_lookup;
+	ops->lookup_plus = kernel_lookupplus;
 	ops->readdir = pxy_readdir;
 	ops->create = pxy_create;
 	ops->mkdir = pxy_mkdir;
@@ -2768,6 +2769,88 @@ fsal_status_t pxy_lookup_path(struct fsal_export *exp_hdl,
 
 	gsh_free(pcopy);
 	*handle = next;
+	return fsalstat(ERR_FSAL_NO_ERROR, 0);
+}
+
+fsal_status_t kernel_lookupplus(const char *path, struct fsal_obj_handle **handle)
+{
+	// struct fsal_obj_handle *parent = NULL;
+	char *saved;
+	char *pcopy;
+	char *p;
+	int rc;
+	nfs_argop4 *argoparray = NULL;
+	nfs_resop4 *resoparray = NULL;
+	GETFH4resok *fhok;
+	struct attrlist attributes = {0};
+        struct pxy_obj_handle *pxy_hdl;
+	int opcnt = 0;
+	int i = 0;
+	int slash_cnt = 0;
+
+	memset(&attributes, 0, sizeof(struct attrlist));
+	if (!path || path[0] != '/')
+		return fsalstat(ERR_FSAL_INVAL, EINVAL);
+
+	while (path[i] != '\0') {
+		if (path[i] == '/') {
+			slash_cnt++;
+		}
+		i++;
+	}
+
+	pcopy = gsh_strdup(path);
+	if (!pcopy)
+		return fsalstat(ERR_FSAL_NOMEM, ENOMEM);
+
+	argoparray = malloc((slash_cnt + 2) * sizeof(struct nfs_argop4));
+	resoparray = malloc((slash_cnt + 2) * sizeof(struct nfs_resop4));
+
+	COMPOUNDV4_ARG_ADD_OP_PUTROOTFH(opcnt, argoparray);
+
+	p = strtok_r(pcopy, "/", &saved);
+	while (p) {
+		if (strcmp(p, "..") == 0) {
+			/* Don't allow lookup of ".." */
+			LogInfo(COMPONENT_FSAL,
+				"Attempt to use \"..\" element in path %s",
+				path);
+			gsh_free(pcopy);
+			free(resoparray);
+			free(argoparray);
+			return fsalstat(ERR_FSAL_ACCESS, EACCES);
+		}
+		/* Note that if any element is a symlink, the following will
+		 * fail, thus no security exposure.
+		 */
+		COMPOUNDV4_ARG_ADD_OP_LOOKUP(opcnt, argoparray, p);
+		p = strtok_r(NULL, "/", &saved);
+	}
+	/* The final element could be a symlink, but either way we are called
+	 * will not work with a symlink, so no security exposure there.
+	 */
+
+	fhok = &resoparray[opcnt].nfs_resop4_u.opgetfh.GETFH4res_u.resok4;
+	COMPOUNDV4_ARG_ADD_OP_GETFH(opcnt, argoparray);
+
+	gsh_free(pcopy);
+
+	rc = pxy_nfsv4_call(op_ctx->fsal_export, op_ctx->creds, opcnt,
+			    argoparray, resoparray);
+	if (rc != NFS4_OK)
+		return nfsstat4_to_fsal(rc);
+
+	pxy_hdl =
+	    pxy_alloc_handle(op_ctx->fsal_export, &fhok->object, &attributes);
+	if (pxy_hdl == NULL) {
+		free(resoparray);
+		free(argoparray);
+		return fsalstat(ERR_FSAL_FAULT, 0);
+	}
+	*handle = &pxy_hdl->obj;
+
+	free(resoparray);
+	free(argoparray);
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 

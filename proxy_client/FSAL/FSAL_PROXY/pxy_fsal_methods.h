@@ -94,6 +94,9 @@ fsal_status_t pxy_lookup_path(struct fsal_export *exp_hdl,
 			      const char *path,
 			      struct fsal_obj_handle **handle);
 
+fsal_status_t kernel_lookupplus(const char *path,
+				struct fsal_obj_handle **handle);
+
 fsal_status_t pxy_create_handle(struct fsal_export *exp_hdl,
 				struct gsh_buffdesc *hdl_desc,
 				struct fsal_obj_handle **handle);

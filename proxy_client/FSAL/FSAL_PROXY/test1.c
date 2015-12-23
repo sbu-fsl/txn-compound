@@ -72,7 +72,6 @@ int test1()
 	op_ctx = &req_ctx;
 	op_ctx->creds = NULL;
 	op_ctx->fsal_export = export->fsal_export;
-
 	fsal_status = export->fsal_export->obj_ops->root_lookup(&root_handle);
 	if (FSAL_IS_ERROR(fsal_status)) {
 		LogDebug(COMPONENT_FSAL, "lookup() for root failed\n");
@@ -85,7 +84,20 @@ int test1()
 		return -1;
 	}
 
-	fsal_status = export->fsal_export->obj_ops->lookup(root_handle, "vfs0", &vfs0_handle);
+	fsal_status = export->fsal_export->obj_ops->lookup_plus("/vfs0/abcd",
+								&abcd_handle);
+	if (FSAL_IS_ERROR(fsal_status)) {
+		LogDebug(COMPONENT_FSAL, "multi lookup() for vfs0 failed\n");
+		return -1;
+	}
+
+	if (abcd_handle != NULL) {
+		LogDebug(COMPONENT_FSAL, "abcd_handle is NULL\n");
+		return -1;
+	}
+
+	fsal_status = export->fsal_export->obj_ops->lookup(root_handle, "vfs0",
+							   &vfs0_handle);
 	if (FSAL_IS_ERROR(fsal_status)) {
 		LogDebug(COMPONENT_FSAL, "lookup() for vfs0 failed\n");
 		return -1;
