@@ -146,6 +146,16 @@ do { \
 	op->nfs_argop4_u.oplookup.objname.utf8string_len = strlen(name); \
 } while (0)
 
+#define COMPOUNDV4_ARG_ADD_OP_LOOKUPNAME(opcnt, argarray, name, len)           \
+	do {                                                                   \
+		nfs_argop4 *op = argarray + opcnt;                             \
+		opcnt++;                                                       \
+		op->argop = NFS4_OP_LOOKUP;                                    \
+		op->nfs_argop4_u.oplookup.objname.utf8string_val =             \
+		    (char *)name;                                              \
+		op->nfs_argop4_u.oplookup.objname.utf8string_len = len;        \
+	} while (0)
+
 #define COMPOUNDV4_ARG_ADD_OP_LOOKUPP(opcnt, argarray) \
 do { \
 	argarray[opcnt].argop = NFS4_OP_LOOKUPP;     \

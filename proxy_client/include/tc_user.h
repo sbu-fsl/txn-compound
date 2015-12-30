@@ -2,75 +2,49 @@
 
 #include "export_mgr.h"
 #include "ganesha_list.h"
+#include <stdlib.h>
 
-#define USE_SPECIAL_STATE 1
-#define USE_NORMAL_STATE 2
+#ifdef __cplusplus
+#define CONST const
+extern "C" {
+#else
+#define CONST
+#endif
 
-/*
- * Contents of an individual read
- * Several of these can be combined to form a list of reads
- */
-struct user_read_arg
+struct tc_iovec
 {
-	size_t read_offset;
-	size_t read_len;
-	char *read_buf;
-	struct glist_head read_list;
-};
+	const char *CONST path;		/* IN: the file path */
+	CONST size_t offset;		/* IN: read/write offset */
 
-/*
- * Contents of a kernel tcread request
- * dir_fh - Parent directory of the file
- * name - Name of the file that has to be opened
- * read_args - Pointer to the list of reads between open and close
- * open_mode - Whether to use stateid sent by open or special stateid
- */
-struct user_tcread_args
-{
-	struct fsal_obj_handle *dir_fh;
-	char *name;
-	struct user_read_arg *read_args;
-	int open_mode;
-};
+	/**
+	 * IN:  # of bytes of requested read/write
+	 * OUT: # of bytes successfully read/written
+	 */
+	size_t length;
 
-/*
- * Contents of an individual write
- * Several of these can be combined to form a list of write
- */
-struct user_write_arg
-{
-	size_t write_offset;
-	size_t write_len;
-	char *write_buf;
-	struct glist_head write_list;
-};
+	/**
+	 * This data buffer should always be allocated by caller for either
+	 * read or write, and the length of the buffer should be indicated by
+	 * the "length" field above.
+	 *
+	 * IN:  data requested to be written
+	 * OUT: data successfully read
+	 */
+	void *CONST data;
 
-/*
- * Contents of a kernel tcwrite request
- * dir_fh - Parent directory of the file
- * name - Name of the file that has to be opened
- * write_args - Pointer to the list of writes between open and close
- * open_mode - Whether to use stateid sent by open or special stateid
- */
-
-struct user_tcwrite_args
-{
-	struct fsal_obj_handle *dir_fh;
-	char *name;
-	struct user_write_arg *write_args;
-	int open_mode;
+	unsigned int is_creation : 1;  /* IN: create file if not exist? */
+	unsigned int is_failure : 1;   /* OUT: is this I/O a failure? */
+	unsigned int is_eof : 1;       /* OUT: does this I/O reach EOF? */
 };
 
 /* Multiple reads for single file */
-fsal_status_t tcread_s(struct gsh_export *export, struct user_tcread_args *arg,
-		       int read_count);
-/* Single read for multiple files */
-fsal_status_t tcread_m(struct gsh_export *export, struct user_tcread_args *arg,
-		       int file_count);
-/* Multiple writes for single file */
+fsal_status_t tcread_v(struct gsh_export *export, struct tc_iovec *arg,
+		       int read_count, bool isTransaction);
+/* Multiple writes for single file
 fsal_status_t tcwrite_s(struct gsh_export *export,
 			struct user_tcwrite_args *arg, int write_count);
-/* Single write for multiple files */
+*/
+/* Single write for multiple files
 fsal_status_t tcwrite_m(struct gsh_export *export,
 			struct user_tcwrite_args *arg, int file_count);
-
+*/

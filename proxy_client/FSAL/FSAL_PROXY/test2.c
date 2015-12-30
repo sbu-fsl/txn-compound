@@ -15,14 +15,6 @@
 int test2()
 {
 	struct fsal_module *new_module = NULL;
-	struct user_tcread_args tcread_arg[2];
-	struct user_tcread_args tcread_arg_single;
-	struct user_tcwrite_args tcwrite_arg_single;
-	struct user_tcwrite_args tcwrite_arg[2];
-	struct user_read_arg *temp_read_head = NULL;
-	struct user_read_arg *temp_read_arg = NULL;
-	struct user_write_arg *temp_write_head = NULL;
-	struct iser_write_arg *temp_write_arg = NULL;
 	char *name = NULL;
 	char *name1 = NULL;
 	struct gsh_export *export = NULL;
@@ -108,61 +100,5 @@ int test2()
 
 	i = 1;
 
-	struct timeval start_time, end_time;
-	gettimeofday(&start_time, NULL);
-
-	while(i < 100) {
-
-		tcread_arg_single.dir_fh = cur_handle;
-		name = malloc(strlen("file") + 5);
-		snprintf(name, strlen("file") + 5, "file-%d", i);
-		tcread_arg_single.name = name;
-		temp_read_head = malloc(sizeof(struct read_arg));
-		temp_read_head->read_offset = 0;
-		temp_read_head->read_len = 4096;
-		data_buf = malloc(4096);
-		temp_read_head->read_buf = data_buf;
-		tcread_arg_single.read_args = temp_read_head;
-		glist_init(&(tcread_arg_single.read_args->read_list));
-
-		//fsal_status = export->fsal_export->obj_ops->tc_read(&tcread_arg_single, 1, 1);
-
-		free(data_buf);
-		free(name);
-
-		i++;
-	}
-	gettimeofday(&end_time, NULL);
-	//printf("Bharat time: %ld", (end_time.tv_sec * 1000000 + end_time.tv_usec) - (start_time.tv_sec * 1000000 + start_time.tv_usec));
-	LogDebug(COMPONENT_FSAL, "Total time: %ld\n", (end_time.tv_sec * 1000000 + end_time.tv_usec) - (start_time.tv_sec * 1000000 + start_time.tv_usec));
-
-/*
-	i = 1;
-
-	while(i < 100) {
-
-		tcwrite_arg_single.dir_fh = cur_handle;
-		name = malloc(strlen("file") + 5);
-		snprintf(name, strlen("file") + 5, "file-%d", i);
-		tcwrite_arg_single.name = name;
-		temp_write_head = malloc(sizeof(struct write_arg));
-		temp_write_head->write_offset = 0;
-		temp_write_head->write_len = 8;
-		data_buf = malloc(sizeof("12345678")+1);
-		strncpy(data_buf,"12345678",8);
-		data_buf[8]='\0';
-		temp_write_head->write_buf = data_buf;
-		tcwrite_arg_single.write_args = temp_write_head;
-		glist_init(&(tcwrite_arg_single.write_args->write_list));
-
-		fsal_status = export->fsal_export->obj_ops->tc_write(&tcwrite_arg_single, 1, 1);
-
-		free(data_buf);
-		free(name);
-
-		i++;
-	}
-
-*/
 	return 0;
 }

@@ -46,6 +46,14 @@
 #include "export_mgr.h"
 #include "tc_utils.h"
 
+#include <stdlib.h>
+
+#ifdef __cplusplus
+#define CONST const
+extern "C" {
+#else
+#define CONST
+#endif
 #define FSAL_PROXY_NFS_V4 4
 
 static clientid4 pxy_clientid;
@@ -1545,11 +1553,55 @@ static fsal_status_t pxy_openread(struct fsal_obj_handle *dir_hdl,
 	return st;
 }
 
-static fsal_status_t do_kernel_tcread(struct fsal_obj_handle *dir_hdl,
-				      const char *name, struct attrlist *attrib,
-				      struct read_arg *read_list,
-				      struct OPEN4resok *opok_handle,
-				      struct GETATTR4resok *atok_handle,
+static int construct_lookup(const char *CONST path, nfs_argop4 *argoparray,
+		     int *opcnt_temp, int *marker)
+{
+	int opcnt = *opcnt_temp;
+	char *saved;
+	char *pcopy;
+	char *p;
+	char *temp;
+	*marker = 1;
+
+	pcopy = gsh_strdup(path);
+	temp = malloc(MAX_FILENAME_LENGTH);
+	if (temp == NULL) {
+		goto error_after_gsh;
+	}
+	COMPOUNDV4_ARG_ADD_OP_PUTROOTFH(opcnt, argoparray);
+
+	p = strtok_r(pcopy, "/", &saved);
+	while (p) {
+		if (strcmp(p, "..") == 0) {
+			/* Don't allow lookup of ".." */
+			LogInfo(COMPONENT_FSAL,
+				"Attempt to use \"..\" element in path %s",
+				path);
+			goto error_after_temp;
+		}
+		strncpy(temp, p, MAX_FILENAME_LENGTH);
+		p = strtok_r(NULL, "/", &saved);
+		if (p) {
+			COMPOUNDV4_ARG_ADD_OP_LOOKUPNAME(
+			    opcnt, argoparray, (path + *marker), strlen(temp));
+			*marker += (strlen(temp) + 1);
+		}
+	}
+
+	gsh_free(pcopy);
+	free(temp); // Caller has to do this
+	*opcnt_temp = opcnt;
+
+	return 0;
+
+error_after_temp:
+	free(temp);
+error_after_gsh:
+	gsh_free(pcopy);
+	return -1;
+}
+
+static fsal_status_t do_kernel_tcread(struct kernel_tcread_args *kern_arg,
 				      nfs_argop4 *argoparray,
 				      nfs_resop4 *resoparray, int *opcnt_temp)
 {
@@ -1559,6 +1611,7 @@ static fsal_status_t do_kernel_tcread(struct fsal_obj_handle *dir_hdl,
 	unsigned int owner_len = 0;
 	struct pxy_obj_handle *ph;
 	clientid4 cid;
+	int marker = 0;
 	bool eof = false;
 	struct glist_head *temp_read;
 
@@ -1569,49 +1622,54 @@ static fsal_status_t do_kernel_tcread(struct fsal_obj_handle *dir_hdl,
 		 getpid(), atomic_inc_uint64_t(&fcnt));
 	owner_len = strnlen(owner_val, sizeof(owner_val));
 
-	attrib->mask &= ATTR_MODE | ATTR_OWNER | ATTR_GROUP;
-	if (pxy_fsalattr_to_fattr4(attrib, &input_attr) == -1)
+	kern_arg->attrib.mask &= ATTR_MODE | ATTR_OWNER | ATTR_GROUP;
+	if (pxy_fsalattr_to_fattr4(&kern_arg->attrib, &input_attr) == -1)
 		return fsalstat(ERR_FSAL_INVAL, -1);
 
-	ph = container_of(dir_hdl, struct pxy_obj_handle, obj);
-	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
+	if (kern_arg->user_arg->path == NULL) {
+		if (opcnt == 0) {
+			return fsalstat(ERR_FSAL_INVAL, -1);
+		}
 
-	opok_handle = &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
-
-	opok_handle->attrset = empty_bitmap;
-	pxy_get_clientid(&cid);
-
-	COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(opcnt, argoparray, 0 /*seq id*/,
-					    cid, input_attr, (char *)name,
-					    owner_val, owner_len);
-
-	read_list->read_ok.v4_rok =
-	    &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
-
-	read_list->read_ok.v4_rok->data.data_val =
-	    read_list->user_arg->read_buf;
-	read_list->read_ok.v4_rok->data.data_len =
-	    read_list->user_arg->read_len;
-	COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argoparray,
-				   read_list->user_arg->read_offset,
-				   read_list->user_arg->read_len);
-
-	glist_for_each(temp_read, &(read_list->read_list))
-	{
-		struct read_arg *read_arg_temp =
-		    container_of(temp_read, struct read_arg, read_list);
-		read_arg_temp->read_ok.v4_rok =
+		kern_arg->read_ok.v4_rok =
 		    &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
-		read_arg_temp->read_ok.v4_rok->data.data_val =
-		    read_arg_temp->user_arg->read_buf;
-		read_arg_temp->read_ok.v4_rok->data.data_len =
-		    read_arg_temp->user_arg->read_len;
-		COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argoparray,
-					   read_arg_temp->user_arg->read_offset,
-					   read_arg_temp->user_arg->read_len);
-	}
 
-	COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
+		kern_arg->read_ok.v4_rok->data.data_val =
+		    kern_arg->user_arg->data;
+		kern_arg->read_ok.v4_rok->data.data_len =
+		    kern_arg->user_arg->length;
+		COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argoparray,
+					   kern_arg->user_arg->offset,
+					   kern_arg->user_arg->length);
+	} else {
+		if (opcnt != 0) {
+			COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
+		}
+
+		construct_lookup(kern_arg->user_arg->path, argoparray, &opcnt,
+				 &marker);
+
+		kern_arg->opok_handle =
+		    &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
+
+		kern_arg->opok_handle->attrset = empty_bitmap;
+		pxy_get_clientid(&cid);
+
+		COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(
+		    opcnt, argoparray, 0 /*seq id*/, cid, input_attr,
+		    (kern_arg->user_arg->path + marker), owner_val, owner_len);
+
+		kern_arg->read_ok.v4_rok =
+		    &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
+
+		kern_arg->read_ok.v4_rok->data.data_val =
+		    kern_arg->user_arg->data;
+		kern_arg->read_ok.v4_rok->data.data_len =
+		    kern_arg->user_arg->length;
+		COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argoparray,
+					   kern_arg->user_arg->offset,
+					   kern_arg->user_arg->length);
+	}
 
 	*opcnt_temp = opcnt;
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
@@ -1626,13 +1684,12 @@ static fsal_status_t do_kernel_tcread(struct fsal_obj_handle *dir_hdl,
  */
 
 static fsal_status_t kernel_tcread(struct kernel_tcread_args *kern_arg,
-				   int arg_count, int read_count)
+				   int arg_count)
 {
 	int rc;
-	GETATTR4resok atok;
 	fsal_status_t st;
 	struct kernel_tcread_args *cur_arg = NULL;
-#define FSAL_TCREAD_NB_OP_ALLOC ((3 + read_count) * arg_count)
+#define FSAL_TCREAD_NB_OP_ALLOC ((MAX_DIR_DEPTH + 3) * arg_count)
 	nfs_argop4 *argoparray = NULL;
 	nfs_resop4 *resoparray = NULL;
 	int opcnt = 0;
@@ -1648,10 +1705,7 @@ static fsal_status_t kernel_tcread(struct kernel_tcread_args *kern_arg,
 
 	while (i < arg_count) {
 		cur_arg = kern_arg + i;
-		st = do_kernel_tcread(
-		    cur_arg->user_arg->dir_fh, cur_arg->user_arg->name,
-		    &(cur_arg->file_attr), cur_arg->read_args, cur_arg->opok,
-		    &atok, argoparray, resoparray, &opcnt);
+		st = do_kernel_tcread(cur_arg, argoparray, resoparray, &opcnt);
 
 		if (FSAL_IS_ERROR(st)) {
 			goto exit;
@@ -1659,6 +1713,8 @@ static fsal_status_t kernel_tcread(struct kernel_tcread_args *kern_arg,
 
 		i++;
 	}
+
+	COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
 
 	rc = pxy_nfsv4_call(op_ctx->fsal_export, op_ctx->creds, opcnt,
 			    argoparray, resoparray);
@@ -1673,6 +1729,7 @@ exit:
 	return st;
 }
 
+/*
 static fsal_status_t
 do_kernel_tcwrite(struct fsal_obj_handle *dir_hdl, const char *name,
 		  struct attrlist *attrib, struct write_arg *write_list,
@@ -1690,7 +1747,7 @@ do_kernel_tcwrite(struct fsal_obj_handle *dir_hdl, const char *name,
 	struct glist_head *temp_write;
 
 	LogDebug(COMPONENT_FSAL, "do_kernel_tcwrite() called: %d\n", opcnt);
-	/* Create the owner */
+	// Create the owner
 	snprintf(owner_val, sizeof(owner_val), "GANESHA/PROXY: pid=%u %" PRIu64,
 		 getpid(), atomic_inc_uint64_t(&fcnt));
 	owner_len = strnlen(owner_val, sizeof(owner_val));
@@ -1706,7 +1763,7 @@ do_kernel_tcwrite(struct fsal_obj_handle *dir_hdl, const char *name,
 	opok_handle->attrset = empty_bitmap;
 	pxy_get_clientid(&cid);
 
-	COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(opcnt, argoparray, 0 /*seq id*/,
+	COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(opcnt, argoparray, 0,//seqid
 					    cid, input_attr, (char *)name,
 					    owner_val, owner_len);
 
@@ -1734,6 +1791,7 @@ do_kernel_tcwrite(struct fsal_obj_handle *dir_hdl, const char *name,
 	*opcnt_temp = opcnt;
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
+*/
 
 /*
  *  Send multiple writes for multiple files
@@ -1742,7 +1800,7 @@ do_kernel_tcwrite(struct fsal_obj_handle *dir_hdl, const char *name,
  *  Caller has to make sure kern_arg and fields inside are allocated
  *  and freed
  */
-
+/*
 static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *kern_arg,
 				    int arg_count, int write_count)
 {
@@ -1789,6 +1847,7 @@ exit:
 	free(resoparray);
 	return st;
 }
+*/
 
 static fsal_status_t pxy_mkdir(struct fsal_obj_handle *dir_hdl,
 			       const char *name, struct attrlist *attrib,
@@ -2649,7 +2708,7 @@ void pxy_handle_ops_init(struct fsal_obj_ops *ops)
 	ops->status = pxy_status;
 	ops->openread = pxy_openread;
 	ops->tc_read = kernel_tcread;
-	ops->tc_write = kernel_tcwrite;
+	//ops->tc_write = kernel_tcwrite;
 	ops->root_lookup = pxy_root_lookup;
 }
 
