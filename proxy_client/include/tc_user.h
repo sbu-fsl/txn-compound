@@ -37,14 +37,24 @@ struct tc_iovec
 	unsigned int is_eof : 1;       /* OUT: does this I/O reach EOF? */
 };
 
-/* Multiple reads for single file */
-fsal_status_t tcread_v(struct gsh_export *export, struct tc_iovec *arg,
-		       int read_count, bool isTransaction);
-/* Multiple writes for single file
-fsal_status_t tcwrite_s(struct gsh_export *export,
-			struct user_tcwrite_args *arg, int write_count);
-*/
-/* Single write for multiple files
-fsal_status_t tcwrite_m(struct gsh_export *export,
-			struct user_tcwrite_args *arg, int file_count);
-*/
+/*
+ * Result of a TC operation.
+ *
+ * When transaction is not enabled, compound processing stops upon the first
+ * failure.
+ */
+typedef struct tc_res
+{
+	bool okay;   /* no error */
+	int index;   /* index of the first failed operation */
+	int err_no;  /* error number of the failed operation */
+} tc_res;
+
+/* User has to set op_ctx->export to the right export for this to work */
+struct tc_res tcread_v(struct tc_iovec *arg, int read_count,
+		       bool isTransaction);
+
+/* User has to set op_ctx->export to the right export for this to work */
+struct tc_res tcwrite_v(struct tc_iovec *arg, int write_count,
+			bool isTransaction);
+

@@ -12,6 +12,7 @@
 struct kernel_tcread_args
 {
 	struct tc_iovec *user_arg;
+	char *path;
 	union
 	{
 		READ4resok *v4_rok;
@@ -29,11 +30,12 @@ struct kernel_tcread_args
 struct kernel_tcwrite_args
 {
 	struct tc_iovec *user_arg;
+	char *path;
 	union
 	{
 		WRITE4resok *v4_wok;
 	} write_ok;
-	OPEN4resok *opok;
+	OPEN4resok *opok_handle;
 	struct attrlist attrib;
 };
 

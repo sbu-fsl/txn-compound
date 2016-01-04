@@ -64,6 +64,7 @@ int test1()
 	memset(&req_ctx, 0, sizeof(struct req_op_context));
 	op_ctx = &req_ctx;
 	op_ctx->creds = NULL;
+	op_ctx->export = export;
 	op_ctx->fsal_export = export->fsal_export;
 	fsal_status = export->fsal_export->obj_ops->root_lookup(&root_handle);
 	if (FSAL_IS_ERROR(fsal_status)) {
@@ -179,7 +180,7 @@ int test1()
 
 	LogDebug(COMPONENT_FSAL, "tcread_v() for abcd called\n");
 
-	tcread_v(export, user_arg, 4, FALSE);
+	tcread_v(user_arg, 4, FALSE);
 
 	LogDebug(COMPONENT_FSAL, "tcread_v() for abcd failed\n");
 
@@ -213,11 +214,84 @@ int test1()
         cur_arg->length = 256;
         cur_arg->data = malloc(256);
 
-	LogDebug(COMPONENT_FSAL, "tcread_v() for abcd called\n");
+	LogDebug(COMPONENT_FSAL, "tcread_v() for abcd, abcd1 called\n");
 
-	tcread_v(export, user_arg, 4, FALSE);
+	tcread_v(user_arg, 4, FALSE);
 
-	LogDebug(COMPONENT_FSAL, "tcread_v() for abcd failed\n");
+	LogDebug(COMPONENT_FSAL, "tcread_v() for abcd, abcd1 failed\n");
+
+	i = 0;
+	while (i < 4) {
+		cur_arg = user_arg + i;
+		free(cur_arg->data);
+		i++;
+	}
+
+	free(user_arg);
+
+	user_arg = malloc(4 * (sizeof(struct tc_iovec)));
+	user_arg->path = "/vfs0/abcd";
+	user_arg->offset = 0;
+	user_arg->length = 8;
+	user_arg->data = malloc(9);
+	strcpy(user_arg->data, "abcd1234");
+
+	i = 1;
+	while (i < 4) {
+		cur_arg = user_arg + i;
+		cur_arg->path = NULL;
+		cur_arg->offset = i * 8;
+		cur_arg->length = 8;
+		cur_arg->data = malloc(8);
+		strcpy(user_arg->data, "abcd1234");
+		i++;
+	}
+
+	LogDebug(COMPONENT_FSAL, "tcwrite_v() for abcd called\n");
+
+	tcwrite_v(user_arg, 4, FALSE);
+
+	LogDebug(COMPONENT_FSAL, "tcwrite_v() for abcd failed\n");
+
+	i = 0;
+	while (i < 4) {
+		cur_arg = user_arg + i;
+		free(cur_arg->data);
+		i++;
+	}
+	
+	free(user_arg);
+
+	user_arg = malloc(4 * (sizeof(struct tc_iovec)));
+	user_arg->path = "/vfs0/abcd";
+	user_arg->offset = 0;
+	user_arg->length = 8;
+	user_arg->data = malloc(9);
+	strcpy(user_arg->data, "abcd1234");
+	cur_arg = user_arg + 1;
+	cur_arg->path = NULL;
+	cur_arg->offset = 8;
+	user_arg->length = 8;
+	user_arg->data = malloc(9);
+	strcpy(user_arg->data, "abcd1234");
+	cur_arg = user_arg + 2;
+	cur_arg->path = "/vfs0/abcd1";
+	cur_arg->offset = 0;
+	user_arg->length = 8;
+	user_arg->data = malloc(9);
+	strcpy(user_arg->data, "abcd1234");
+	cur_arg = user_arg + 3;
+	cur_arg->path = NULL;
+	cur_arg->offset = 8;
+	user_arg->length = 8;
+	user_arg->data = malloc(9);
+	strcpy(user_arg->data, "abcd1234");
+
+	LogDebug(COMPONENT_FSAL, "tcwrite_v() for abcd, abcd1 called\n");
+
+	tcwrite_v(user_arg, 4, FALSE);
+
+	LogDebug(COMPONENT_FSAL, "tcwrite_v() for abcd, abcd1 failed\n");
 
 	i = 0;
 	while (i < 4) {

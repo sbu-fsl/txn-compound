@@ -1553,7 +1553,7 @@ static fsal_status_t pxy_openread(struct fsal_obj_handle *dir_hdl,
 	return st;
 }
 
-static int construct_lookup(const char *CONST path, nfs_argop4 *argoparray,
+static int construct_lookup(char *path, nfs_argop4 *argoparray,
 		     int *opcnt_temp, int *marker)
 {
 	int opcnt = *opcnt_temp;
@@ -1626,7 +1626,7 @@ static fsal_status_t do_kernel_tcread(struct kernel_tcread_args *kern_arg,
 	if (pxy_fsalattr_to_fattr4(&kern_arg->attrib, &input_attr) == -1)
 		return fsalstat(ERR_FSAL_INVAL, -1);
 
-	if (kern_arg->user_arg->path == NULL) {
+	if (kern_arg->path == NULL) {
 		if (opcnt == 0) {
 			return fsalstat(ERR_FSAL_INVAL, -1);
 		}
@@ -1646,7 +1646,7 @@ static fsal_status_t do_kernel_tcread(struct kernel_tcread_args *kern_arg,
 			COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
 		}
 
-		construct_lookup(kern_arg->user_arg->path, argoparray, &opcnt,
+		construct_lookup(kern_arg->path, argoparray, &opcnt,
 				 &marker);
 
 		kern_arg->opok_handle =
@@ -1655,9 +1655,15 @@ static fsal_status_t do_kernel_tcread(struct kernel_tcread_args *kern_arg,
 		kern_arg->opok_handle->attrset = empty_bitmap;
 		pxy_get_clientid(&cid);
 
-		COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(
-		    opcnt, argoparray, 0 /*seq id*/, cid, input_attr,
-		    (kern_arg->user_arg->path + marker), owner_val, owner_len);
+		if (kern_arg->user_arg->is_creation == 0) {
+			COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(
+			    opcnt, argoparray, 0 /*seq id*/, cid, input_attr,
+			    (kern_arg->path + marker), owner_val, owner_len);
+		} else {
+			COMPOUNDV4_ARG_ADD_OP_TCOPEN_CREATE(
+			    opcnt, argoparray, 0 /*seq id*/, cid, input_attr,
+			    (kern_arg->path + marker), owner_val, owner_len);
+		}
 
 		kern_arg->read_ok.v4_rok =
 		    &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
@@ -1719,9 +1725,141 @@ static fsal_status_t kernel_tcread(struct kernel_tcread_args *kern_arg,
 	rc = pxy_nfsv4_call(op_ctx->fsal_export, op_ctx->creds, opcnt,
 			    argoparray, resoparray);
 
-	if (FSAL_IS_ERROR(st)) {
+	if (rc != NFS4_OK) {
 		LogDebug(COMPONENT_FSAL, "pxy_nfsv4_call() returned error\n");
+		st = nfsstat4_to_fsal(rc);
 	}
+
+	st = fsalstat(ERR_FSAL_NO_ERROR, 0);
+
+exit:
+	free(argoparray);
+	free(resoparray);
+	return st;
+}
+
+static fsal_status_t do_kernel_tcwrite(struct kernel_tcwrite_args *kern_arg,
+				      nfs_argop4 *argoparray,
+				      nfs_resop4 *resoparray, int *opcnt_temp)
+{
+	int opcnt = *opcnt_temp;
+	fattr4 input_attr;
+	char owner_val[128];
+	unsigned int owner_len = 0;
+	struct pxy_obj_handle *ph;
+	clientid4 cid;
+	int marker = 0;
+	bool eof = false;
+
+	LogDebug(COMPONENT_FSAL, "do_kernel_tcwrite() called: %d\n", opcnt);
+
+	/* Create the owner */
+	snprintf(owner_val, sizeof(owner_val), "GANESHA/PROXY: pid=%u %" PRIu64,
+		 getpid(), atomic_inc_uint64_t(&fcnt));
+	owner_len = strnlen(owner_val, sizeof(owner_val));
+
+	kern_arg->attrib.mask &= ATTR_MODE | ATTR_OWNER | ATTR_GROUP;
+	if (pxy_fsalattr_to_fattr4(&kern_arg->attrib, &input_attr) == -1)
+		return fsalstat(ERR_FSAL_INVAL, -1);
+
+	if (kern_arg->path == NULL) {
+		if (opcnt == 0) {
+			return fsalstat(ERR_FSAL_INVAL, -1);
+		}
+
+		kern_arg->write_ok.v4_wok =
+		    &resoparray[opcnt].nfs_resop4_u.opwrite.WRITE4res_u.resok4;
+
+		COMPOUNDV4_ARG_ADD_OP_WRITE(
+		    opcnt, argoparray, kern_arg->user_arg->offset,
+		    kern_arg->user_arg->data, kern_arg->user_arg->length);
+
+	} else {
+		if (opcnt != 0) {
+			COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
+		}
+
+		construct_lookup(kern_arg->path, argoparray, &opcnt,
+				 &marker);
+
+		kern_arg->opok_handle =
+		    &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
+
+		kern_arg->opok_handle->attrset = empty_bitmap;
+		pxy_get_clientid(&cid);
+
+		if (kern_arg->user_arg->is_creation == 0) {
+			COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(
+			    opcnt, argoparray, 0 /*seq id*/, cid, input_attr,
+			    (kern_arg->path + marker), owner_val, owner_len);
+		} else {
+			COMPOUNDV4_ARG_ADD_OP_TCOPEN_CREATE(
+			    opcnt, argoparray, 0 /*seq id*/, cid, input_attr,
+			    (kern_arg->path + marker), owner_val, owner_len);
+		}
+
+		kern_arg->write_ok.v4_wok =
+		    &resoparray[opcnt].nfs_resop4_u.opwrite.WRITE4res_u.resok4;
+
+		COMPOUNDV4_ARG_ADD_OP_WRITE(
+		    opcnt, argoparray, kern_arg->user_arg->offset,
+		    kern_arg->user_arg->data, kern_arg->user_arg->length);
+	}
+
+	*opcnt_temp = opcnt;
+	return fsalstat(ERR_FSAL_NO_ERROR, 0);
+}
+
+/*
+ * Send multiple writes for multiple files
+ *  kern_arg - an array of tcwrite args with size "arg_count"
+ *             each with a linked list of "write_count" writes
+ *  Caller has to make sure kern_arg and fields inside are allocated
+ *  and freed
+ */
+
+static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *kern_arg,
+				   int arg_count)
+{
+	int rc;
+	fsal_status_t st;
+	struct kernel_tcwrite_args *cur_arg = NULL;
+#define FSAL_TCWRITE_NB_OP_ALLOC ((MAX_DIR_DEPTH + 3) * arg_count)
+	nfs_argop4 *argoparray = NULL;
+	nfs_resop4 *resoparray = NULL;
+	int opcnt = 0;
+	bool eof = false;
+	int i = 0;
+
+	LogDebug(COMPONENT_FSAL, "kernel_tcwrite() called\n");
+
+	argoparray =
+	    malloc(FSAL_TCWRITE_NB_OP_ALLOC * sizeof(struct nfs_argop4));
+	resoparray =
+	    malloc(FSAL_TCWRITE_NB_OP_ALLOC * sizeof(struct nfs_resop4));
+
+	while (i < arg_count) {
+		cur_arg = kern_arg + i;
+		st = do_kernel_tcwrite(cur_arg, argoparray, resoparray, &opcnt);
+
+		if (FSAL_IS_ERROR(st)) {
+			goto exit;
+		}
+
+		i++;
+	}
+
+	COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
+
+	rc = pxy_nfsv4_call(op_ctx->fsal_export, op_ctx->creds, opcnt,
+			    argoparray, resoparray);
+
+	if (rc != NFS4_OK) {
+		LogDebug(COMPONENT_FSAL, "pxy_nfsv4_call() returned error\n");
+		st = nfsstat4_to_fsal(rc);
+	}
+
+	st = fsalstat(ERR_FSAL_NO_ERROR, 0);
 
 exit:
 	free(argoparray);
@@ -2708,7 +2846,7 @@ void pxy_handle_ops_init(struct fsal_obj_ops *ops)
 	ops->status = pxy_status;
 	ops->openread = pxy_openread;
 	ops->tc_read = kernel_tcread;
-	//ops->tc_write = kernel_tcwrite;
+	ops->tc_write = kernel_tcwrite;
 	ops->root_lookup = pxy_root_lookup;
 }
 
