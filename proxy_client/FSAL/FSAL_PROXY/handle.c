@@ -1622,6 +1622,9 @@ static fsal_status_t do_kernel_tcread(struct kernel_tcread_args *kern_arg,
 		 getpid(), atomic_inc_uint64_t(&fcnt));
 	owner_len = strnlen(owner_val, sizeof(owner_val));
 
+	kern_arg->user_arg->is_failure = 0;
+	kern_arg->user_arg->is_eof = 0;
+
 	kern_arg->attrib.mask &= ATTR_MODE | ATTR_OWNER | ATTR_GROUP;
 	if (pxy_fsalattr_to_fattr4(&kern_arg->attrib, &input_attr) == -1)
 		return fsalstat(ERR_FSAL_INVAL, -1);
@@ -1734,11 +1737,18 @@ static fsal_status_t kernel_tcread(struct kernel_tcread_args *kern_arg,
 		i = 0;
 		j = 0;
 		while (i < arg_count) {
+			cur_arg = kern_arg + i;
 			temp_res = resoparray + j;
 			switch (temp_res->resop) {
 			case NFS4_OP_READ:
 				temp_status =
 				    temp_res->nfs_resop4_u.opread.status;
+
+				if (temp_res->nfs_resop4_u.opread.READ4res_u
+					.resok4.eof == true) {
+					cur_arg->user_arg->is_eof = 1;
+				}
+
 				i++;
 				break;
 			case NFS4_OP_LOOKUP:
@@ -1761,6 +1771,7 @@ static fsal_status_t kernel_tcread(struct kernel_tcread_args *kern_arg,
 				break;
 			}
 			if (temp_status != NFS4_OK) {
+				cur_arg->user_arg->is_failure = 1;
 				*fail_index = i;
 				break;
 			}
@@ -1796,6 +1807,9 @@ static fsal_status_t do_kernel_tcwrite(struct kernel_tcwrite_args *kern_arg,
 	snprintf(owner_val, sizeof(owner_val), "GANESHA/PROXY: pid=%u %" PRIu64,
 		 getpid(), atomic_inc_uint64_t(&fcnt));
 	owner_len = strnlen(owner_val, sizeof(owner_val));
+
+	kern_arg->user_arg->is_failure = 0;
+	kern_arg->user_arg->is_eof = 0;
 
 	kern_arg->attrib.mask &= ATTR_MODE | ATTR_OWNER | ATTR_GROUP;
 	if (pxy_fsalattr_to_fattr4(&kern_arg->attrib, &input_attr) == -1)
@@ -1907,6 +1921,11 @@ static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *kern_arg,
 			case NFS4_OP_WRITE:
 				temp_status =
 				    temp_res->nfs_resop4_u.opwrite.status;
+
+				cur_arg->user_arg->length =
+				    temp_res->nfs_resop4_u.opwrite.WRITE4res_u
+					.resok4.count;
+
 				i++;
 				break;
 			case NFS4_OP_LOOKUP:
@@ -1930,6 +1949,7 @@ static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *kern_arg,
 			}
 			if (temp_status != NFS4_OK) {
 				*fail_index = i;
+				cur_arg->user_arg->is_failure = 1;
 				break;
 			}
 			j++;
