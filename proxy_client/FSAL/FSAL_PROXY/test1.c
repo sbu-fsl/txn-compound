@@ -163,7 +163,7 @@ int test1()
 	   LogDebug(COMPONENT_FSAL, "openread() for abcd succeeded\n");
 */
 	user_arg = malloc(4 * (sizeof(struct tc_iovec)));
-	user_arg->path = "/vfs0/abcd";
+	user_arg->path = "/vfs0/abcd7";
 	user_arg->offset = 0;
 	user_arg->length = 256;
 	user_arg->data = malloc(256);
@@ -204,7 +204,7 @@ int test1()
         cur_arg->length = 256;
         cur_arg->data = malloc(256);
 	cur_arg = user_arg + 2;
-	cur_arg->path = "/vfs0/abcd1";
+	cur_arg->path = "/vfs0/abcd7";
         cur_arg->offset = 0;
         cur_arg->length = 256;
         cur_arg->data = malloc(256);

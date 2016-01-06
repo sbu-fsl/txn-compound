@@ -64,7 +64,7 @@ tc_res tcread_v(struct tc_iovec *arg, int read_count, bool is_transaction)
 	}
 
 	fsal_status =
-	    export->fsal_export->obj_ops->tc_read(kern_arg, read_count);
+	    export->fsal_export->obj_ops->tc_read(kern_arg, read_count, &result.index);
 
 	i = 0;
 	while (i < read_count && i < MAX_READ_COUNT) {
@@ -78,8 +78,8 @@ tc_res tcread_v(struct tc_iovec *arg, int read_count, bool is_transaction)
 	free(kern_arg);
 
 	if (FSAL_IS_ERROR(fsal_status)) {
-		result.index = 0; // get this to the right index
 		result.err_no = (int)fsal_status.major;
+		LogDebug(COMPONENT_FSAL, "tcread failed at index: %d\n", result.index);
 		return result;
 	}
 
@@ -135,7 +135,7 @@ tc_res tcwrite_v(struct tc_iovec *arg, int write_count, bool is_transaction)
 	}
 
 	fsal_status =
-	    export->fsal_export->obj_ops->tc_write(kern_arg, write_count);
+	    export->fsal_export->obj_ops->tc_write(kern_arg, write_count, &result.index);
 
 	i = 0;
 	while (i < write_count && i < MAX_WRITE_COUNT) {
@@ -149,8 +149,9 @@ tc_res tcwrite_v(struct tc_iovec *arg, int write_count, bool is_transaction)
 	free(kern_arg);
 
 	if (FSAL_IS_ERROR(fsal_status)) {
-		result.index = 0; // get this to the right index
 		result.err_no = (int)fsal_status.major;
+		LogDebug(COMPONENT_FSAL, "tcwrite failed at index: %d\n",
+			 result.index);
 		return result;
 	}
 

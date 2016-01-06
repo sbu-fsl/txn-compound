@@ -1690,17 +1690,20 @@ static fsal_status_t do_kernel_tcread(struct kernel_tcread_args *kern_arg,
  */
 
 static fsal_status_t kernel_tcread(struct kernel_tcread_args *kern_arg,
-				   int arg_count)
+				   int arg_count, int *fail_index)
 {
 	int rc;
 	fsal_status_t st;
+	nfsstat4 temp_status;
 	struct kernel_tcread_args *cur_arg = NULL;
 #define FSAL_TCREAD_NB_OP_ALLOC ((MAX_DIR_DEPTH + 3) * arg_count)
 	nfs_argop4 *argoparray = NULL;
 	nfs_resop4 *resoparray = NULL;
+	nfs_resop4 *temp_res = NULL;
 	int opcnt = 0;
 	bool eof = false;
 	int i = 0;
+	int j = 0;
 
 	LogDebug(COMPONENT_FSAL, "kernel_tcread() called\n");
 
@@ -1728,6 +1731,42 @@ static fsal_status_t kernel_tcread(struct kernel_tcread_args *kern_arg,
 	if (rc != NFS4_OK) {
 		LogDebug(COMPONENT_FSAL, "pxy_nfsv4_call() returned error\n");
 		st = nfsstat4_to_fsal(rc);
+		i = 0;
+		j = 0;
+		while (i < arg_count) {
+			temp_res = resoparray + j;
+			switch (temp_res->resop) {
+			case NFS4_OP_READ:
+				temp_status =
+				    temp_res->nfs_resop4_u.opread.status;
+				i++;
+				break;
+			case NFS4_OP_LOOKUP:
+				temp_status =
+				    temp_res->nfs_resop4_u.oplookup.status;
+				break;
+			case NFS4_OP_OPEN:
+				temp_status =
+				    temp_res->nfs_resop4_u.opopen.status;
+				break;
+			case NFS4_OP_PUTROOTFH:
+				temp_status =
+				    temp_res->nfs_resop4_u.opputrootfh.status;
+				break;
+			case NFS4_OP_CLOSE:
+				temp_status =
+				    temp_res->nfs_resop4_u.opclose.status;
+				break;
+			default:
+				break;
+			}
+			if (temp_status != NFS4_OK) {
+				*fail_index = i;
+				break;
+			}
+			j++;
+		}
+		goto exit;
 	}
 
 	st = fsalstat(ERR_FSAL_NO_ERROR, 0);
@@ -1819,17 +1858,20 @@ static fsal_status_t do_kernel_tcwrite(struct kernel_tcwrite_args *kern_arg,
  */
 
 static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *kern_arg,
-				   int arg_count)
+				    int arg_count, int *fail_index)
 {
 	int rc;
 	fsal_status_t st;
+	nfsstat4 temp_status;
 	struct kernel_tcwrite_args *cur_arg = NULL;
 #define FSAL_TCWRITE_NB_OP_ALLOC ((MAX_DIR_DEPTH + 3) * arg_count)
 	nfs_argop4 *argoparray = NULL;
 	nfs_resop4 *resoparray = NULL;
+	nfs_resop4 *temp_res = NULL;
 	int opcnt = 0;
 	bool eof = false;
 	int i = 0;
+	int j = 0;
 
 	LogDebug(COMPONENT_FSAL, "kernel_tcwrite() called\n");
 
@@ -1857,6 +1899,42 @@ static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *kern_arg,
 	if (rc != NFS4_OK) {
 		LogDebug(COMPONENT_FSAL, "pxy_nfsv4_call() returned error\n");
 		st = nfsstat4_to_fsal(rc);
+		i = 0;
+		j = 0;
+		while (i < arg_count) {
+			temp_res = resoparray + j;
+			switch (temp_res->resop) {
+			case NFS4_OP_WRITE:
+				temp_status =
+				    temp_res->nfs_resop4_u.opwrite.status;
+				i++;
+				break;
+			case NFS4_OP_LOOKUP:
+				temp_status =
+				    temp_res->nfs_resop4_u.oplookup.status;
+				break;
+			case NFS4_OP_OPEN:
+				temp_status =
+				    temp_res->nfs_resop4_u.opopen.status;
+				break;
+			case NFS4_OP_PUTROOTFH:
+				temp_status =
+				    temp_res->nfs_resop4_u.opputrootfh.status;
+				break;
+			case NFS4_OP_CLOSE:
+				temp_status =
+				    temp_res->nfs_resop4_u.opclose.status;
+				break;
+			default:
+				break;
+			}
+			if (temp_status != NFS4_OK) {
+				*fail_index = i;
+				break;
+			}
+			j++;
+		}
+		goto exit;
 	}
 
 	st = fsalstat(ERR_FSAL_NO_ERROR, 0);
