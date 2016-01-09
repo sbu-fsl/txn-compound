@@ -1558,6 +1558,8 @@ static fsal_status_t pxy_openread(struct fsal_obj_handle *dir_hdl,
  * to the last directory.
  * Lookup is not sent for the file becase open is send with the filename
  * Marker variable is updated to the location of the "filename" in path
+ *
+ * Returns -1 in the case of invalid paths, 0 otherwise
  */
 static int construct_lookup(char *path, nfs_argop4 *argoparray, int *opcnt_temp,
 			    int *marker)
@@ -1679,7 +1681,10 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
  		 * Parse the file-path and send lookups to set the current
 		 * file-handle
 		 */
-		construct_lookup(kern_arg->path, argoparray, &opcnt, &marker);
+		if (construct_lookup(kern_arg->path, argoparray, &opcnt,
+				     &marker) == -1) {
+			goto exit_pathinval;
+		}
 
 		kern_arg->opok_handle =
 		    &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
@@ -1711,6 +1716,9 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 
 	*opcnt_temp = opcnt;
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
+
+exit_pathinval:
+	return fsalstat(ERR_FSAL_INVAL, 0);
 }
 
 /*
@@ -1832,8 +1840,8 @@ exit:
  * Adds operations to argoparray, also updates the opcnt_temp
  */
 static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
-				      nfs_argop4 *argoparray,
-				      nfs_resop4 *resoparray, int *opcnt_temp)
+				 nfs_argop4 *argoparray, nfs_resop4 *resoparray,
+				 int *opcnt_temp)
 {
 	int opcnt = *opcnt_temp;
 	fattr4 input_attr;
@@ -1895,8 +1903,10 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
                  * Parse the file-path and send lookups to set the current
                  * file-handle
                  */
-		construct_lookup(kern_arg->path, argoparray, &opcnt,
-				 &marker);
+		if (construct_lookup(kern_arg->path, argoparray, &opcnt,
+				     &marker) == -1) {
+			goto error_pathinval;
+		}
 
 		kern_arg->opok_handle =
 		    &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
@@ -1924,6 +1934,9 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 
 	*opcnt_temp = opcnt;
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
+
+error_pathinval:
+	return fsalstat(ERR_FSAL_INVAL, 0);
 }
 
 /*
