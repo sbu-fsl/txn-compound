@@ -321,8 +321,8 @@ struct fsal_filesystem;
 struct gsh_export;
 struct fsal_ds_handle;
 struct fsal_ds_ops;
-struct kernel_tcread_args;
-struct kernel_tcwrite_args;
+struct tcread_kargs;
+struct tcwrite_kargs;
 
 struct fsal_up_vector;		/* From fsal_up.h */
 struct fsal_xattrent;
@@ -1316,12 +1316,12 @@ struct fsal_obj_ops {
                                  struct fsal_obj_handle **new_obj, struct fsal_obj_handle **new_obj1);
 
 /* Multiple open..read..close in a single compound */
-	fsal_status_t (*tc_read)(struct kernel_tcread_args *arg, int arg_count,
+	fsal_status_t (*tc_read)(struct tcread_kargs *arg, int arg_count,
 				 int *fail_index);
 
 /* Multiple open..write..close in a single compound */
-	fsal_status_t (*tc_write)(struct kernel_tcwrite_args *arg,
-				  int arg_count, int *fail_index);
+	fsal_status_t (*tc_write)(struct tcwrite_kargs *arg, int arg_count,
+				  int *fail_index);
 
 	fsal_status_t(*root_lookup) (struct fsal_obj_handle **handle);
 

@@ -1553,8 +1553,14 @@ static fsal_status_t pxy_openread(struct fsal_obj_handle *dir_hdl,
 	return st;
 }
 
-static int construct_lookup(char *path, nfs_argop4 *argoparray,
-		     int *opcnt_temp, int *marker)
+/*
+ * Parse path, start from putrootfh and send multiple lookups till we get
+ * to the last directory.
+ * Lookup is not sent for the file becase open is send with the filename
+ * Marker variable is updated to the location of the "filename" in path
+ */
+static int construct_lookup(char *path, nfs_argop4 *argoparray, int *opcnt_temp,
+			    int *marker)
 {
 	int opcnt = *opcnt_temp;
 	char *saved;
@@ -1601,9 +1607,13 @@ error_after_gsh:
 	return -1;
 }
 
-static fsal_status_t do_kernel_tcread(struct kernel_tcread_args *kern_arg,
-				      nfs_argop4 *argoparray,
-				      nfs_resop4 *resoparray, int *opcnt_temp)
+/*
+ * Called for each tcread element in the tcread_kargs array
+ * Adds operations to argoparray, also updates the opcnt_temp
+ */
+static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
+				nfs_argop4 *argoparray, nfs_resop4 *resoparray,
+				int *opcnt_temp)
 {
 	int opcnt = *opcnt_temp;
 	fattr4 input_attr;
@@ -1615,7 +1625,7 @@ static fsal_status_t do_kernel_tcread(struct kernel_tcread_args *kern_arg,
 	bool eof = false;
 	struct glist_head *temp_read;
 
-	LogDebug(COMPONENT_FSAL, "do_kernel_tcread() called: %d\n", opcnt);
+	LogDebug(COMPONENT_FSAL, "do_ktcread() called: %d\n", opcnt);
 
 	/* Create the owner */
 	snprintf(owner_val, sizeof(owner_val), "GANESHA/PROXY: pid=%u %" PRIu64,
@@ -1630,7 +1640,12 @@ static fsal_status_t do_kernel_tcread(struct kernel_tcread_args *kern_arg,
 		return fsalstat(ERR_FSAL_INVAL, -1);
 
 	if (kern_arg->path == NULL) {
+		/*
+		 * file path is empty, so no need to send lookups,
+		 * just send read as the current filehandle has the file
+		 */
 		if (opcnt == 0) {
+			/* filepath for the first element should not be empty */
 			return fsalstat(ERR_FSAL_INVAL, -1);
 		}
 
@@ -1645,12 +1660,26 @@ static fsal_status_t do_kernel_tcread(struct kernel_tcread_args *kern_arg,
 					   kern_arg->user_arg->offset,
 					   kern_arg->user_arg->length);
 	} else {
+		/*
+		 * File path is not empty, so
+		 *  1) Close the already opened file
+		 *  2) Parse the file-path,
+		 *  3) Start from putrootfh and keeping adding lookups,
+		 *  4) Followed by open and read
+		 */
+
 		if (opcnt != 0) {
+			/* 
+ 			 * No need to send close if its the first read request
+			 */
 			COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
 		}
 
-		construct_lookup(kern_arg->path, argoparray, &opcnt,
-				 &marker);
+		/* 
+ 		 * Parse the file-path and send lookups to set the current
+		 * file-handle
+		 */
+		construct_lookup(kern_arg->path, argoparray, &opcnt, &marker);
 
 		kern_arg->opok_handle =
 		    &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
@@ -1685,20 +1714,23 @@ static fsal_status_t do_kernel_tcread(struct kernel_tcread_args *kern_arg,
 }
 
 /*
- * Send multiple reads for multiple files
- *  kern_arg - an arry of tcread args with size "arg_count"
- *             each with a linked list of "read_count" reads
- *  Caller has to make sure kern_arg and fields inside are allocated
- *  and freed
+ * Send multiple reads for one or more files
+ * kern_arg - an array of tcread args with size "arg_count"
+ * fail_index - Returns the position (read) inside the array that failed
+ *  (in case of failure)
+ *  The failure could be in putrootfh, lookup, open, read or close,
+ *  fail_index would only point to the read call because it is unaware
+ *  of the putrootfh, lookup, open or close
+ * Caller has to make sure kern_arg and fields inside are allocated
+ * and freed
  */
-
-static fsal_status_t kernel_tcread(struct kernel_tcread_args *kern_arg,
-				   int arg_count, int *fail_index)
+static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
+			     int *fail_index)
 {
 	int rc;
 	fsal_status_t st;
 	nfsstat4 temp_status;
-	struct kernel_tcread_args *cur_arg = NULL;
+	struct tcread_kargs *cur_arg = NULL;
 #define FSAL_TCREAD_NB_OP_ALLOC ((MAX_DIR_DEPTH + 3) * arg_count)
 	nfs_argop4 *argoparray = NULL;
 	nfs_resop4 *resoparray = NULL;
@@ -1708,7 +1740,7 @@ static fsal_status_t kernel_tcread(struct kernel_tcread_args *kern_arg,
 	int i = 0;
 	int j = 0;
 
-	LogDebug(COMPONENT_FSAL, "kernel_tcread() called\n");
+	LogDebug(COMPONENT_FSAL, "ktcread() called\n");
 
 	argoparray =
 	    malloc(FSAL_TCREAD_NB_OP_ALLOC * sizeof(struct nfs_argop4));
@@ -1717,7 +1749,7 @@ static fsal_status_t kernel_tcread(struct kernel_tcread_args *kern_arg,
 
 	while (i < arg_count) {
 		cur_arg = kern_arg + i;
-		st = do_kernel_tcread(cur_arg, argoparray, resoparray, &opcnt);
+		st = do_ktcread(cur_arg, argoparray, resoparray, &opcnt);
 
 		if (FSAL_IS_ERROR(st)) {
 			goto exit;
@@ -1734,8 +1766,15 @@ static fsal_status_t kernel_tcread(struct kernel_tcread_args *kern_arg,
 	if (rc != NFS4_OK) {
 		LogDebug(COMPONENT_FSAL, "pxy_nfsv4_call() returned error\n");
 		st = nfsstat4_to_fsal(rc);
+	
+		/*
+ 		 * We know one of the calls failed in the compound,
+ 		 * now let us proceed identifying which read failed.
+ 		 * Also populate the user arg with the right error
+ 		 */ 
 		i = 0;
 		j = 0;
+
 		while (i < arg_count) {
 			cur_arg = kern_arg + i;
 			temp_res = resoparray + j;
@@ -1788,7 +1827,11 @@ exit:
 	return st;
 }
 
-static fsal_status_t do_kernel_tcwrite(struct kernel_tcwrite_args *kern_arg,
+/*
+ * Called for each tcwrite element in the tcwrite_kargs array
+ * Adds operations to argoparray, also updates the opcnt_temp
+ */
+static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 				      nfs_argop4 *argoparray,
 				      nfs_resop4 *resoparray, int *opcnt_temp)
 {
@@ -1801,7 +1844,7 @@ static fsal_status_t do_kernel_tcwrite(struct kernel_tcwrite_args *kern_arg,
 	int marker = 0;
 	bool eof = false;
 
-	LogDebug(COMPONENT_FSAL, "do_kernel_tcwrite() called: %d\n", opcnt);
+	LogDebug(COMPONENT_FSAL, "do_ktcwrite() called: %d\n", opcnt);
 
 	/* Create the owner */
 	snprintf(owner_val, sizeof(owner_val), "GANESHA/PROXY: pid=%u %" PRIu64,
@@ -1816,7 +1859,12 @@ static fsal_status_t do_kernel_tcwrite(struct kernel_tcwrite_args *kern_arg,
 		return fsalstat(ERR_FSAL_INVAL, -1);
 
 	if (kern_arg->path == NULL) {
+		/*
+		 * file path is empty, so no need to send lookups,
+		 * just send write as the current filehandle has the file
+		 */
 		if (opcnt == 0) {
+			/* filepath for the first element should not be empty */
 			return fsalstat(ERR_FSAL_INVAL, -1);
 		}
 
@@ -1828,10 +1876,25 @@ static fsal_status_t do_kernel_tcwrite(struct kernel_tcwrite_args *kern_arg,
 		    kern_arg->user_arg->data, kern_arg->user_arg->length);
 
 	} else {
+		/*
+                 * File path is not empty, so
+                 *  1) Close the already opened file
+                 *  2) Parse the file-path,
+                 *  3) Start from putrootfh and keeping adding lookups,
+                 *  4) Followed by open and write
+                 */
+		
 		if (opcnt != 0) {
+			/* 
+                         * No need to send close if its the first write request
+                         */
 			COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
 		}
 
+		/* 
+                 * Parse the file-path and send lookups to set the current
+                 * file-handle
+                 */
 		construct_lookup(kern_arg->path, argoparray, &opcnt,
 				 &marker);
 
@@ -1864,20 +1927,23 @@ static fsal_status_t do_kernel_tcwrite(struct kernel_tcwrite_args *kern_arg,
 }
 
 /*
- * Send multiple writes for multiple files
- *  kern_arg - an array of tcwrite args with size "arg_count"
- *             each with a linked list of "write_count" writes
- *  Caller has to make sure kern_arg and fields inside are allocated
- *  and freed
+ * Send multiple writes for one or more files
+ * kern_arg - an array of tcread args with size "arg_count"
+ * fail_index - Returns the position (read) inside the array that failed
+ *  (in case of failure)
+ *  The failure could be in putrootfh, lookup, open, read or close,
+ *  fail_index would only point to the read call because it is unaware
+ *  of the putrootfh, lookup, open or close
+ * Caller has to make sure kern_arg and fields inside are allocated
+ * and freed
  */
-
-static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *kern_arg,
-				    int arg_count, int *fail_index)
+static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
+			      int *fail_index)
 {
 	int rc;
 	fsal_status_t st;
 	nfsstat4 temp_status;
-	struct kernel_tcwrite_args *cur_arg = NULL;
+	struct tcwrite_kargs *cur_arg = NULL;
 #define FSAL_TCWRITE_NB_OP_ALLOC ((MAX_DIR_DEPTH + 3) * arg_count)
 	nfs_argop4 *argoparray = NULL;
 	nfs_resop4 *resoparray = NULL;
@@ -1887,7 +1953,7 @@ static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *kern_arg,
 	int i = 0;
 	int j = 0;
 
-	LogDebug(COMPONENT_FSAL, "kernel_tcwrite() called\n");
+	LogDebug(COMPONENT_FSAL, "ktcwrite() called\n");
 
 	argoparray =
 	    malloc(FSAL_TCWRITE_NB_OP_ALLOC * sizeof(struct nfs_argop4));
@@ -1896,7 +1962,7 @@ static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *kern_arg,
 
 	while (i < arg_count) {
 		cur_arg = kern_arg + i;
-		st = do_kernel_tcwrite(cur_arg, argoparray, resoparray, &opcnt);
+		st = do_ktcwrite(cur_arg, argoparray, resoparray, &opcnt);
 
 		if (FSAL_IS_ERROR(st)) {
 			goto exit;
@@ -1913,6 +1979,12 @@ static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *kern_arg,
 	if (rc != NFS4_OK) {
 		LogDebug(COMPONENT_FSAL, "pxy_nfsv4_call() returned error\n");
 		st = nfsstat4_to_fsal(rc);
+
+		/*
+                 * We know one of the calls failed in the compound,
+                 * now let us proceed identifying which read failed.
+                 * Also populate the user arg with the right error
+                 */
 		i = 0;
 		j = 0;
 		while (i < arg_count) {
@@ -1964,126 +2036,6 @@ exit:
 	free(resoparray);
 	return st;
 }
-
-/*
-static fsal_status_t
-do_kernel_tcwrite(struct fsal_obj_handle *dir_hdl, const char *name,
-		  struct attrlist *attrib, struct write_arg *write_list,
-		  struct OPEN4resok *opok_handle,
-		  struct GETATTR4resok *atok_handle, nfs_argop4 *argoparray,
-		  nfs_resop4 *resoparray, int *opcnt_temp)
-{
-	int opcnt = *opcnt_temp;
-	fattr4 input_attr;
-	char owner_val[128];
-	unsigned int owner_len = 0;
-	struct pxy_obj_handle *ph;
-	clientid4 cid;
-	bool eof = false;
-	struct glist_head *temp_write;
-
-	LogDebug(COMPONENT_FSAL, "do_kernel_tcwrite() called: %d\n", opcnt);
-	// Create the owner
-	snprintf(owner_val, sizeof(owner_val), "GANESHA/PROXY: pid=%u %" PRIu64,
-		 getpid(), atomic_inc_uint64_t(&fcnt));
-	owner_len = strnlen(owner_val, sizeof(owner_val));
-
-	attrib->mask &= ATTR_MODE | ATTR_OWNER | ATTR_GROUP;
-	if (pxy_fsalattr_to_fattr4(attrib, &input_attr) == -1)
-		return fsalstat(ERR_FSAL_INVAL, -1);
-
-	ph = container_of(dir_hdl, struct pxy_obj_handle, obj);
-	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
-
-	opok_handle = &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
-	opok_handle->attrset = empty_bitmap;
-	pxy_get_clientid(&cid);
-
-	COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(opcnt, argoparray, 0,//seqid
-					    cid, input_attr, (char *)name,
-					    owner_val, owner_len);
-
-	write_list->write_ok.v4_wok =
-	    &resoparray[opcnt].nfs_resop4_u.opwrite.WRITE4res_u.resok4;
-	COMPOUNDV4_ARG_ADD_OP_WRITE(
-	    opcnt, argoparray, write_list->user_arg->write_offset,
-	    write_list->user_arg->write_buf, write_list->user_arg->write_len);
-
-	glist_for_each(temp_write, &(write_list->write_list))
-	{
-		struct write_arg *write_arg_temp =
-		    container_of(temp_write, struct write_arg, write_list);
-
-		write_arg_temp->write_ok.v4_wok =
-		    &resoparray[opcnt].nfs_resop4_u.opwrite.WRITE4res_u.resok4;
-		COMPOUNDV4_ARG_ADD_OP_WRITE(
-		    opcnt, argoparray, write_arg_temp->user_arg->write_offset,
-		    write_arg_temp->user_arg->write_buf,
-		    write_arg_temp->user_arg->write_len);
-	}
-
-	COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
-
-	*opcnt_temp = opcnt;
-	return fsalstat(ERR_FSAL_NO_ERROR, 0);
-}
-*/
-
-/*
- *  Send multiple writes for multiple files
- *  kern_arg - an arry of tcwrite args with size "arg_count"
- *             each with a linked list of "write_count" writes
- *  Caller has to make sure kern_arg and fields inside are allocated
- *  and freed
- */
-/*
-static fsal_status_t kernel_tcwrite(struct kernel_tcwrite_args *kern_arg,
-				    int arg_count, int write_count)
-{
-	int rc;
-	GETATTR4resok atok;
-	fsal_status_t st;
-	struct kernel_tcwrite_args *cur_arg = NULL;
-#define FSAL_TCWRITE_NB_OP_ALLOC ((3 + write_count) * arg_count)
-	nfs_argop4 *argoparray = NULL;
-	nfs_resop4 *resoparray = NULL;
-	int opcnt = 0;
-	bool eof = false;
-	int i = 0;
-
-	LogDebug(COMPONENT_FSAL, "kernel_tcwrite() called\n");
-
-	argoparray =
-	    malloc(FSAL_TCWRITE_NB_OP_ALLOC * sizeof(struct nfs_argop4));
-	resoparray =
-	    malloc(FSAL_TCWRITE_NB_OP_ALLOC * sizeof(struct nfs_resop4));
-
-	while (i < arg_count) {
-		cur_arg = kern_arg + i;
-		st = do_kernel_tcwrite(
-		    cur_arg->user_arg->dir_fh, cur_arg->user_arg->name,
-		    &(cur_arg->file_attr), cur_arg->write_args, cur_arg->opok,
-		    &atok, argoparray, resoparray, &opcnt);
-		if (FSAL_IS_ERROR(st)) {
-			goto exit;
-		}
-
-		i++;
-	}
-
-	rc = pxy_nfsv4_call(op_ctx->fsal_export, op_ctx->creds, opcnt,
-			    argoparray, resoparray);
-
-	if (FSAL_IS_ERROR(st)) {
-		LogDebug(COMPONENT_FSAL, "pxy_nfsv4_call() returned error\n");
-	}
-
-exit:
-	free(argoparray);
-	free(resoparray);
-	return st;
-}
-*/
 
 static fsal_status_t pxy_mkdir(struct fsal_obj_handle *dir_hdl,
 			       const char *name, struct attrlist *attrib,
@@ -2943,8 +2895,8 @@ void pxy_handle_ops_init(struct fsal_obj_ops *ops)
 	ops->handle_to_key = pxy_handle_to_key;
 	ops->status = pxy_status;
 	ops->openread = pxy_openread;
-	ops->tc_read = kernel_tcread;
-	ops->tc_write = kernel_tcwrite;
+	ops->tc_read = ktcread;
+	ops->tc_write = ktcwrite;
 	ops->root_lookup = pxy_root_lookup;
 }
 

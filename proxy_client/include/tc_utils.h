@@ -5,11 +5,11 @@
 #include "tc_user.h"
 
 /*
- * Contents of a kernel tcread request
- * user_arg - Contains dir_fh, name, etc which are passed by the application
- * read_args - Pointer to the list of reads between open and close
+ * Structure to be passed to ktcread
+ * user_arg - Contains file-path, user buffer, read length, offset, etc
+ * which are passed by the user
  */
-struct kernel_tcread_args
+struct tcread_kargs
 {
 	struct tc_iovec *user_arg;
 	char *path;
@@ -22,12 +22,11 @@ struct kernel_tcread_args
 };
 
 /*
- * Contents of a kernel tcwrite request
- * user_arg - Contains dir_fh, name etc which are passed by the application
- * write_args - Pointer to the list of writes between open and close
+ * Structure to be passed to ktcwrite
+ * user_arg - Contains file-path, user buffer, write length, offset, etc
+ * which are passed by the user
  */
-
-struct kernel_tcwrite_args
+struct tcwrite_kargs
 {
 	struct tc_iovec *user_arg;
 	char *path;
