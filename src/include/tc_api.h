@@ -13,9 +13,6 @@ extern "C" {
 #define CONST
 #endif
 
-#define POSIX_TEST_MASK(_attrib_mask_)   \
-        (((_attrib_mask_)) & 1)
-
 /**
  * Represents an I/O vector of a file.
  *
