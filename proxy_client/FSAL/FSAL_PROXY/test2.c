@@ -9,7 +9,7 @@
 #include "fsal_api.h"
 #include "fsal.h"
 #include "FSAL/fsal_init.h"
-#include "pxy_fsal_methods.h"
+#include "fs_fsal_methods.h"
 #include "tc_utils.h"
 
 int test2()

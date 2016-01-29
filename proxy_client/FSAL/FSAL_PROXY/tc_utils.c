@@ -9,7 +9,7 @@
 #include "abstract_atomic.h"
 #include "fsal_types.h"
 #include "FSAL/fsal_commonlib.h"
-#include "pxy_fsal_methods.h"
+#include "fs_fsal_methods.h"
 #include "fsal_nfsv4_macros.h"
 #include "nfs_proto_functions.h"
 #include "nfs_proto_tools.h"
