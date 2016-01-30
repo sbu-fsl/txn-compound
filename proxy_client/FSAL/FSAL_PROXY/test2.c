@@ -11,27 +11,26 @@
 #include "FSAL/fsal_init.h"
 #include "fs_fsal_methods.h"
 #include "tc_utils.h"
+#include <time.h>
 
-int test2()
+int test2(char *input_path, int block_size, int num_files, int num_ops,
+	  int ops_per_comp, int rw)
 {
 	struct fsal_module *new_module = NULL;
-	char *name = NULL;
-	char *name1 = NULL;
 	struct gsh_export *export = NULL;
-	struct fsal_obj_handle *cur_handle = NULL;
-	struct fsal_obj_handle *root_handle = NULL;
 	struct fsal_obj_handle *vfs0_handle = NULL;
 	fsal_status_t fsal_status = { 0, 0 };
-	char *data_buf = NULL;
-	char *data_buf1 = NULL;
-	size_t read_amount = 0;
-	bool eof = false;
-	struct glist_head *temp_read, *temp_read1;
-	struct glist_head *temp_write, *temp_write1;
-	struct attrlist abcd_attr;
-	struct attrlist abcd1_attr;
 	struct req_op_context req_ctx;
+	struct tc_iovec *user_arg = NULL;
+	struct tc_iovec *cur_arg = NULL;
+	char *temp_path = NULL;
+	char *data_buf = NULL;
+	int  input_len = 0;
 	int i = 0;
+	int j = 0;
+	int k = 0;
+	clock_t t;
+	double time_taken;
 
 	LogDebug(COMPONENT_FSAL, "test2() called\n");
 	new_module = lookup_fsal("PROXY");
@@ -57,48 +56,65 @@ int test2()
 	memset(&req_ctx, 0, sizeof(struct req_op_context));
 	op_ctx = &req_ctx;
 	op_ctx->creds = NULL;
+	op_ctx->export = export;
 	op_ctx->fsal_export = export->fsal_export;
 
-	fsal_status = export->fsal_export->obj_ops->root_lookup(&root_handle);
-	if (FSAL_IS_ERROR(fsal_status)) {
-		LogDebug(COMPONENT_FSAL, "lookup() for root failed\n");
+	input_len = strlen(input_path);
+	temp_path = malloc(input_len + 4);
+
+	user_arg = malloc(ops_per_comp * (sizeof(struct tc_iovec)));
+	k = 0;
+	while (k < ops_per_comp) {
+		cur_arg = user_arg + k;
+		cur_arg->data = malloc(block_size);
+		k++;
 	}
 
-	LogDebug(COMPONENT_FSAL, "lookup() for root succeeded\n");
+	t = clock();
 
-	if (root_handle == NULL) {
-                LogDebug(COMPONENT_FSAL, "root_handle is NULL\n");
-                return -1;
-        }
+	while (j < num_files) {
 
-	fsal_status = export->fsal_export->obj_ops->lookup(root_handle, "vfs0", &cur_handle);
-	if (FSAL_IS_ERROR(fsal_status)) {
-		LogDebug(COMPONENT_FSAL, "lookup() for vfs0 failed\n");
-		return -1;
+		i = 0;
+		while (i < num_ops / ops_per_comp) {
+
+			k = 0;
+			while (k < ops_per_comp) {
+				cur_arg = user_arg + k;
+				cur_arg->path = NULL;
+				cur_arg->offset =
+				    (i * ops_per_comp * block_size) +
+				    (k * block_size);
+				cur_arg->length = block_size;
+				k++;
+			}
+
+			snprintf(temp_path, input_len + 4, "%s%d", input_path,
+				 j);
+			user_arg->path = temp_path;
+
+			if (rw == 0) {
+				tcread_v(user_arg, ops_per_comp, FALSE);
+			} else {
+				tcwrite_v(user_arg, ops_per_comp, FALSE);
+			}
+			i++;
+		}
+
+		j++;
 	}
 
-	LogDebug(COMPONENT_FSAL, "lookup() for vfs0 succeeded\n");
-	if (cur_handle == NULL) {
-		LogDebug(COMPONENT_FSAL, "curr_handle is NULL\n");
-		return -1;
+	t = clock() - t;
+	time_taken = ((double)t)/CLOCKS_PER_SEC;
+	LogDebug(COMPONENT_FSAL, "tcreads done - %f seconds\n", time_taken);
+
+	i = 0;
+	while (i < 100) {
+		cur_arg = user_arg + i;
+		free(cur_arg->data);
+		i++;
 	}
 
-	root_handle = cur_handle;
-	cur_handle = NULL;
-
-	fsal_status = export->fsal_export->obj_ops->lookup(root_handle, "test", &cur_handle);
-	if (FSAL_IS_ERROR(fsal_status)) {
-		LogDebug(COMPONENT_FSAL, "lookup() for test failed\n");
-		return -1;
-	}
-
-	LogDebug(COMPONENT_FSAL, "lookup() for test succeeded\n");
-	if (cur_handle == NULL) {
-		LogDebug(COMPONENT_FSAL, "curr_handle is NULL\n");
-		return -1;
-	}
-
-	i = 1;
-
+	free(user_arg);
+	free(temp_path);
 	return 0;
 }

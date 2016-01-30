@@ -9,7 +9,7 @@ char usage[] = "tc_test Help\n"
 	       "Usage example:\n"
 	       "./tc_test -b 2048 -n 50 -m 20 -c 5 -p \"/mnt/test/abcd\" -r \n"
 	       "-b <Block_size per read/write>\n"
-	       "-p <Path of the input files>\n"
+	       "-l <Path of the input files>\n"
 	       "-n <Num of files of the form path0, path1, path2, ....>\n"
 	       "-m <Num of reads/writes per file>\n"
 	       "-c <Num of reads/writes per compound>\n"
@@ -95,7 +95,7 @@ int main(int argc, char *argv[])
 			}
 
 			break;
-		case 'p':
+		case 'l':
 			/*
 			 * Path of the files
 			 *

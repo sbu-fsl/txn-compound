@@ -58,7 +58,7 @@ int detach_flag = false;
 
 /* command line syntax */
 
-char options[] = "h@RTdS:F:S:P:f:L:N:E:p:";
+char options[] = "h@RTdS:F:S:P:f:L:N:E:p:b:n:m:c:l:rw";
 char usage[] =
 	"Usage: %s [-hd][-L <logfile>][-N <dbg_lvl>][-f <config_file>]\n"
 	"\t[-h]                display this help\n"
@@ -94,6 +94,13 @@ int main(int argc, char *argv[])
 {
 	char *tempo_exec_name = NULL;
 	char localmachine[MAXHOSTNAMELEN + 1];
+	int block_size = 0;
+	char *input_path = NULL;
+	int input_len = 0;
+	int num_files = 0;
+	int ops_per_comp = 0;
+	int num_ops = 0;
+	int rw = 0;
 	int c, rc;
 	int pidfile;
 #ifndef HAVE_DAEMON
@@ -215,6 +222,97 @@ int main(int argc, char *argv[])
 
 		case 'E':
 			ServerEpoch = (time_t) atoll(optarg);
+			break;
+
+		case 'b':
+			/* Block size per read/write */
+
+			block_size = atoi((char *)optarg);
+
+			if (block_size <= 0 || block_size > 20 * 1024) {
+				printf(
+				    "Invalid block size or it exceeds 20k\n");
+				exit(-1);
+			}
+
+			break;
+		case 'n':
+			/*
+			 * Total number of files, each file of the form
+			 * /mnt/test/abcd0, /mnt/test/abcd1, .....
+			 * if the path is specified as "/mnt/test/abcd"
+			 */
+
+			num_files = atoi((char *)optarg);
+
+			if (num_files <= 0 || num_files > 200) {
+				printf(
+				    "Number of files exceeds 200 or invalid\n");
+				exit(-1);
+			}
+
+			break;
+
+		case 'm':
+			/*
+			 * Total number of reads/writes per file, an alternative
+			 * to file size
+			 */
+
+			num_ops = atoi((char *)optarg);
+
+			if (num_ops <= 0 || num_ops > 30) {
+				printf("Invalid total number of reads/writes "
+				       "or it exceeds 30\n");
+				exit(-1);
+			}
+
+			break;
+		case 'c':
+			/*
+			 * Number of operations in a single compound, should not
+			 * matter in normal reads
+			 */
+
+			ops_per_comp = atoi((char *)optarg);
+
+			if (ops_per_comp <= 0 || ops_per_comp > 10) {
+				printf(
+				    "Invalid ops per comp or it exceeds 10\n");
+				exit(-1);
+			}
+
+			break;
+
+		case 'l':
+			/*
+			 * Path of the files
+			 *
+			 * If the files are of the form -
+			 * /mnt/test/abcd0, /mnt/test/abcd1, ......
+			 * Path should be "/mnt/test/abcd"
+			 */
+
+			input_path = (char *)optarg;
+			input_len = strlen(input_path);
+			if (input_len <= 0 || input_len > 50) {
+				printf("Name is invalid or is too long, max 50 "
+				       "chars \n");
+				exit(-1);
+			}
+
+			break;
+		case 'r':
+			/* Read */
+
+			rw = 0;
+
+			break;
+		case 'w':
+			/* Write */
+
+			rw = 1;
+
 			break;
 
 		case '?':
@@ -425,7 +523,7 @@ int main(int argc, char *argv[])
 
 	/* Everything seems to be OK! We can now start service threads */
 	//nfs_start(&my_nfs_start_info);
-	test2();
+	test2(input_path, block_size, num_files, num_ops, ops_per_comp, rw);
 
 	return 0;
 
