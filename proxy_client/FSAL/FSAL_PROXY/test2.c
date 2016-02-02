@@ -30,7 +30,8 @@ int test2(char *input_path, int block_size, int num_files, int num_ops,
 	int j = 0;
 	int k = 0;
 	clock_t t;
-	double time_taken;
+	float time_taken;
+	struct timeval tv1, tv2;
 
 	LogDebug(COMPONENT_FSAL, "test2() called\n");
 	new_module = lookup_fsal("PROXY");
@@ -70,7 +71,8 @@ int test2(char *input_path, int block_size, int num_files, int num_ops,
 		k++;
 	}
 
-	t = clock();
+	//t = clock();
+	gettimeofday(&tv1, NULL);
 
 	while (j < num_files) {
 
@@ -103,9 +105,13 @@ int test2(char *input_path, int block_size, int num_files, int num_ops,
 		j++;
 	}
 
-	t = clock() - t;
-	time_taken = ((double)t)/CLOCKS_PER_SEC;
-	LogDebug(COMPONENT_FSAL, "tcreads done - %f seconds\n", time_taken);
+	//t = clock() - t;
+	//time_taken = ((double)t)/CLOCKS_PER_SEC;
+	//time_taken = (float) t;
+	gettimeofday(&tv2, NULL);
+	time_taken = ((double)(tv2.tv_usec - tv1.tv_usec) / 1000000) +
+		     (double)(tv2.tv_sec - tv1.tv_sec);
+	LogFatal(COMPONENT_FSAL, "tcreads done - %f seconds\n", time_taken);
 
 	i = 0;
 	while (i < 100) {

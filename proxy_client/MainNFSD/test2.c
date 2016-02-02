@@ -229,9 +229,9 @@ int main(int argc, char *argv[])
 
 			block_size = atoi((char *)optarg);
 
-			if (block_size <= 0 || block_size > 20 * 1024) {
+			if (block_size <= 0 || block_size > 32 * 1024) {
 				printf(
-				    "Invalid block size or it exceeds 20k\n");
+				    "Invalid block size or it exceeds 32k\n");
 				exit(-1);
 			}
 
@@ -261,9 +261,9 @@ int main(int argc, char *argv[])
 
 			num_ops = atoi((char *)optarg);
 
-			if (num_ops <= 0 || num_ops > 30) {
+			if (num_ops <= 0 || num_ops > 100) {
 				printf("Invalid total number of reads/writes "
-				       "or it exceeds 30\n");
+				       "or it exceeds 100\n");
 				exit(-1);
 			}
 

@@ -33,18 +33,19 @@ int main(int argc, char *argv[])
 	int j = 0;
 	int opt;
 	clock_t t;
+	struct timeval tv1, tv2;
 	double time_taken;
 
-	while ((opt = getopt(argc, argv, "b:n:m:c:p:hrw")) != -1) {
+	while ((opt = getopt(argc, argv, "b:n:m:c:l:hrw")) != -1) {
 		switch (opt) {
 		case 'b':
 			/* Block size per read/write */
 
 			block_size = atoi((char *)optarg);
 
-			if (block_size <= 0 || block_size > 20 * 1024) {
+			if (block_size <= 0 || block_size > 32 * 1024) {
 				printf(
-				    "Invalid block size or it exceeds 20k\n");
+				    "Invalid block size or it exceeds 32k\n");
 				exit(-1);
 			}
 
@@ -73,9 +74,9 @@ int main(int argc, char *argv[])
 
 			num_ops = atoi((char *)optarg);
 
-			if (num_ops <= 0 || num_ops > 30) {
+			if (num_ops <= 0 || num_ops > 64) {
 				printf("Invalid total number of reads/writes "
-				       "or it exceeds 30\n");
+				       "or it exceeds 64\n");
 				exit(-1);
 			}
 
@@ -150,7 +151,8 @@ int main(int argc, char *argv[])
 	temp_path = malloc(input_len + 4); /* 4 because the num_files <= 200 */
 	data_buf = malloc(block_size);
 	j = 0;
-	t = clock();
+	// t = clock();
+	gettimeofday(&tv1, NULL);
 	while (j < num_files) {
 
 		snprintf(temp_path, input_len + 4, "%s%d", input_path, j);
@@ -180,9 +182,11 @@ int main(int argc, char *argv[])
                 j++;
         }
 
-	t = clock() - t;
+	//t = clock() - t;
+	gettimeofday(&tv2, NULL);
 	// time_taken = ((double)t) / CLOCKS_PER_SEC;
-	time_taken = ((double)t);
+	time_taken = ((double)(tv2.tv_usec - tv1.tv_usec) / 1000000) +
+		     (double)(tv2.tv_sec - tv1.tv_sec);
 
 	printf("Took %f seconds to execute \n", time_taken);
 
