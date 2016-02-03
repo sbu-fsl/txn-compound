@@ -1,62 +1,47 @@
+/* Header file for implementing tc features */
+
 #include "export_mgr.h"
 #include "ganesha_list.h"
+#include "tc_user.h"
 
 /*
- * Contents of an individual read
- * Several of these can be combined to form a list of reads
+ * Structure to be passed to ktcread
+ * user_arg - Contains file-path, user buffer, read length, offset, etc
+ * which are passed by the user
  */
-struct read_arg
+struct tcread_kargs
 {
-	size_t read_offset;
-	size_t read_len;
-        char *read_buf;
-	READ4resok *rok;
-	struct glist_head read_list;
+	struct tc_iovec *user_arg;
+	char *path;
+	union
+	{
+		READ4resok *v4_rok;
+	} read_ok;
+	OPEN4resok *opok_handle;
+	struct attrlist attrib;
 };
 
 /*
- * Contents of a kernel tcread request
- * dir_fh - Parent directory of the file
- * name - Name of the file that has to be opened
- * read_args - Pointer to the list of reads between open and close
+ * Structure to be passed to ktcwrite
+ * user_arg - Contains file-path, user buffer, write length, offset, etc
+ * which are passed by the user
  */
-struct kernel_tcread_args
+struct tcwrite_kargs
 {
-	struct fsal_obj_handle *dir_fh;
-	char *name;
-	struct read_arg *read_args;
-	OPEN4resok *opok;
-	struct attrlist file_attr;
+	struct tc_iovec *user_arg;
+	char *path;
+	union
+	{
+		WRITE4resok *v4_wok;
+	} write_ok;
+	OPEN4resok *opok_handle;
+	struct attrlist attrib;
 };
 
-/*
- * Contents of an individual write
- * Several of these can be combined to form a list of write
- */
-struct write_arg
-{
-	size_t write_offset;
-	size_t write_len;
-	char *write_buf;
-	WRITE4resok *wok;
-	struct glist_head write_list;
-};
-
-/*
- * Contents of a kernel tcwrite request
- * dir_fh - Parent directory of the file
- * name - Name of the file that has to be opened
- * write_args - Pointer to the list of reads between open and close
- */
-
-struct kernel_tcwrite_args
-{
-	struct fsal_obj_handle *dir_fh;
-	char *name;
-	struct write_arg *write_args;
-	OPEN4resok *opok;
-	struct attrlist file_attr;
-};
+#define MAX_READ_COUNT      10
+#define MAX_WRITE_COUNT     10
+#define MAX_DIR_DEPTH       10
+#define MAX_FILENAME_LENGTH 256
 
 int test1();
 int test2();

@@ -45,6 +45,7 @@ set(fsal_CORE_SRCS
    ../FSAL_UP/fsal_up_async.c
    ../FSAL_UP/fsal_up_utils.c
    ../FSAL/FSAL_PROXY/handle.c
+   ../FSAL/FSAL_PROXY/tc_utils.c
    ../FSAL/FSAL_PROXY/test1.c
    ../FSAL/FSAL_PROXY/test2.c
 )
@@ -58,7 +59,7 @@ SET(test1_SRCS
 add_executable(test1
   ${test1_SRCS}
   ${fsal_CORE_SRCS}
-  ../include/tc_utils.h
+  ../include/tc_user.h
 )
 
 target_link_libraries(test1
