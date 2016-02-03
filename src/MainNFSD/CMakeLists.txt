@@ -82,6 +82,7 @@ set(fsal_CORE_SRCS
    ../FSAL/FSAL_PROXY/handle.c
    ../FSAL/FSAL_PROXY/personal.c
    ../FSAL/FSAL_PROXY/personal1.c
+   ../posix/tc_impl_posix.c
 )
 
 ########### next target ###############

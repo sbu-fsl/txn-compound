@@ -53,11 +53,11 @@ struct tc_iovec {
  * When transaction is not enabled, compound processing stops upon the first
  * failure.
  */
-struct tc_res {
+typedef struct tc_res {
 	bool okay;  /* no error */
 	int index;  /* index of the first failed operation */
-	int errno;  /* error number of the failed operation */
-};
+	int err_no;  /* error number of the failed operation */
+}tc_res;
 
 /**
  * Read from one or more files.
