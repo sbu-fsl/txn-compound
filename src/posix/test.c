@@ -11,180 +11,398 @@
 #include "FSAL/fsal_init.h"
 #include "tc_api.h"
 
-char* formattime(char* str, time_t val)
+/*
+ * Free the tc_iovec
+ */
+
+void clear_iovec(tc_iovec *user_arg, int count)
 {
-        strftime(str, 36, "%d.%m.%Y %H:%M:%S", localtime(&val));
-        return str;
+	int i=0;
+
+	while(i < count) {
+		free((user_arg+i)->data);
+		i++;
+	}
+
+	free(user_arg);
 }
+
+/*
+ * Helper function to populate tc_iovec for read/write
+ */
+
+tc_iovec* set_iovec(char **path, int count, int is_write)
+{
+	int i = 0;
+	struct tc_iovec *user_arg = NULL;
+
+	user_arg = calloc(count, sizeof(struct tc_iovec));
+
+	while(i<count) {
+		if(path[i] == NULL) {
+			LogDebug(COMPONENT_FSAL, "set_iovec() failed for file : %s\n",
+						  path[i]);
+
+			int indx = 0;
+			while(indx < i) {
+				free((user_arg + indx)->data);
+				indx++;
+			}
+			free(user_arg);
+
+			return NULL;
+		}
+
+        	(user_arg + i)->path = path[i];
+        	(user_arg + i)->offset = i * 7;
+        	(user_arg + i)->length = 7;
+        	(user_arg + i)->data = calloc(1, 8);
+
+		if(is_write)
+			strncpy((user_arg + i)->data, "abcd123", 7);
+		
+        	i++;
+	}
+
+	return user_arg;
+}
+
+/*
+ * Test reads
+ * @IN(path): array of files to be read
+ * @IN(count): count of entries in the tc_iovec
+ */
+
+bool test_readv(char **path, int count, tc_iovec *check_arg)
+{
+	bool res = false;
+	int i = 0;
+        /*
+         * posix_readv read the specified files
+         */
+
+	struct tc_iovec *user_arg = set_iovec(path, count, 0);
+	if(user_arg == NULL)
+		return res;
+	
+	res = tx_readv(user_arg, count);
+
+	if(res && check_arg) {
+		while(i <  count) {
+			res = memcmp((void *)(user_arg + i)->data, (void *)(check_arg + i)->data, user_arg->length);
+
+			if(res) {
+				LogDebug(COMPONENT_FSAL, "Write failed\n");	
+				break;
+			}
+			i++;
+		}
+	}
+
+	i = 0;
+	while(i < count) {
+		free((user_arg + i)->data);
+		i++;
+	}
+
+	free(user_arg);
+
+	return res; 
+}
+
+/*
+ * Test Writes
+ * @IN(path): array of file to be written
+ * @IN(count): count of entries in the tc_iovec
+ */
+
+bool test_writev(char **path, int count)
+{
+	bool res = false;
+
+        /*
+         * tx_writev write to the specified files
+         */
+       
+	struct tc_iovec *user_arg = set_iovec(path, count, 1);
+	if(user_arg == NULL)
+		return res;
+	
+        res = tx_writev(user_arg, count);
+
+	test_readv(path, count, user_arg); 
+
+	clear_iovec(user_arg, count);
+
+	return res;
+}
+
+/*
+ * Compare the attributes once set, to check if set properly
+ */
+
+int compare(tc_attrs *usr, tc_attrs *check, int count)
+{
+	int i=0;
+	while(i <  count) {
+
+		LogDebug(COMPONENT_FSAL, "file name : %s", (usr + i)->path);
+
+		if((usr + i)->masks.has_mode) {
+			if(!((usr + i)->mode & (check + i)->mode)) {
+				LogDebug(COMPONENT_FSAL, "Mode set op failed\n");
+				LogDebug(COMPONENT_FSAL, " %d %d\n", (usr+i)->mode, (check + i)->mode);
+				return -1;
+			}
+		}
+
+		if((usr + i)->masks.has_rdev) {
+			if(memcmp((void *)&((usr + i)->rdev), (void *)&((check + i)->rdev), sizeof((check + i)->rdev))) {
+				LogDebug(COMPONENT_FSAL, "rdev set op failed\n");
+				LogDebug(COMPONENT_FSAL, " %d %d\n", (usr+i)->rdev, (check + i)->rdev);
+				return -1;
+			}
+		}
+
+		if((usr + i)->masks.has_nlink) {
+			if((usr + i)->nlink == (check + i)->nlink) {
+				LogDebug(COMPONENT_FSAL, "nlink set op failed");
+				LogDebug(COMPONENT_FSAL, " %d %d\n", (usr+i)->nlink, (check + i)->nlink);
+				return -1;
+			}
+		}
+
+		if((usr + i)->masks.has_uid) {
+			if(memcmp((void *)&((usr + i)->uid),(void *) &((check + i)->uid), sizeof((check + i)->uid))) {
+				LogDebug(COMPONENT_FSAL, "uid set op failed\n");
+				LogDebug(COMPONENT_FSAL, " %d %d\n", (usr+i)->uid, (check + i)->uid);
+				return -1;
+			}
+		}
+
+		if((usr + i)->masks.has_gid) {
+			if(memcmp((void *)&((usr + i)->gid), (void *)&((check + i)->gid), sizeof((check + i)->gid))) {
+				LogDebug(COMPONENT_FSAL, "gid set op failed\n");
+				LogDebug(COMPONENT_FSAL, " %d %d\n", (usr+i)->gid, (check + i)->gid);
+				return -1;
+			}
+		}
+
+		if((usr + i)->masks.has_atime) {
+			if(memcmp((void *)&((usr + i)->atime), (void *)&((check + i)->atime), sizeof((check + i)->atime))) {
+				LogDebug(COMPONENT_FSAL, "atime set op failed\n");
+				LogDebug(COMPONENT_FSAL, " %d %d\n", (usr+i)->atime, (check + i)->atime);
+				return -1;
+			}
+		}
+
+		if((usr + i)->masks.has_mtime) {
+			if(memcmp((void *)&((usr + i)->mtime), (void *)&((check + i)->mtime), sizeof((check + i)->mtime))) {
+				LogDebug(COMPONENT_FSAL, "mtime failed\n");
+				LogDebug(COMPONENT_FSAL, " %d %d\n", (usr+i)->mtime, (check + i)->mtime);
+				return -1;
+			}
+		}
+
+		i++;
+	}
+	return 0;
+}
+
+/*
+ * Free the memory allocated to tc_attrs
+ */
+
+void clear_tc_attrsv(tc_attrs *attrs)
+{
+	free(attrs);
+}
+
+/*
+ * Test the get attributes functionality
+ */
+
+bool test_getattrsv(char **path, int count, tc_attrs *check_attrs)
+{
+	tc_attrs *user_attr = calloc(count, sizeof(tc_attrs));
+	tc_attrs_masks masks[3] = {0};	
+        bool res = false;
+	int err = 0, i = 0;
+
+	while(i < count) {
+
+		if(path[i] == NULL) {
+
+			LogDebug(COMPONENT_FSAL, "test_getattrsv() failed for file : %s\n", path[i]);
+
+			free(user_attr);
+			return res;
+		}
+
+		masks[i].has_mode = 1;
+                masks[i].has_size = 1;
+                masks[i].has_atime = 1;
+                masks[i].has_mtime = 1;
+                masks[i].has_uid = 1;
+                masks[i].has_gid = 1;
+                masks[i].has_rdev = 0;
+                masks[i].has_nlink = 0;
+                masks[i].has_ctime = 0;
+
+		(user_attr + i)->path = path[i];
+		(user_attr + i)->masks = masks[i];
+
+		i++;
+	}
+
+        res = tx_getattrsv(user_attr, count);
+
+	if(check_attrs  && res) {
+		err = compare(user_attr, check_attrs, count);
+
+		if(err) {
+			res = false;
+			LogDebug(COMPONENT_FSAL, "Attributes did not set successfully\n");
+		}
+	}
+			
+        clear_tc_attrsv(user_attr);
+
+	return res;
+}
+
+/*
+ * Test set attribute functionality
+ * @IN(path): array of files whose attributes are to be set
+ * @IN(count): count of entries in the tc_attrs
+ * @IN(masks): bit fields indicating which field needs modification
+ */
+
+bool test_setattrsv(char **path, tc_attrs *change_attr, int count)
+{
+	tc_attrs *user_attr = change_attr;
+	bool res = false;
+
+	res = tx_setattrsv(user_attr, count);
+	
+	if(res) {
+		res = test_getattrsv(path, count, user_attr);
+		if(!res)
+			LogDebug(COMPONENT_FSAL, "tc_getattr() failed \n");	
+			
+	}
+
+	return res;
+}
+
+/*
+ * helper function to populate tc_attrs struct
+ * @IN(path): array of files whose attributes are to be set
+ * @IN(count): count of entries in the tc_attrs
+ */
+tc_attrs* set_tc_attrs(char **path, int count)
+{
+	tc_attrs *change_attr = calloc(count, sizeof(tc_attrs));
+	tc_attrs_masks masks[3] = {0};
+	int i = 0;
+
+	uid_t uid[] = {2711, 456, 789};
+	gid_t gid[] = {87, 4566, 2311};
+	mode_t mode[] = {S_IRUSR|S_IRGRP|S_IROTH, S_IRWXU|S_IRGRP|S_IXGRP|S_IROTH, S_IRWXU};
+	size_t size[] = {256, 56, 125};
+	time_t atime[] = {time(NULL), 1234, 567};
+	
+
+	while(i < count) {
+
+		if(path[i] == NULL) {
+
+                        LogDebug(COMPONENT_FSAL, "set_tc_attrs() failed for file : %s\n", path[i]);
+
+                        free(change_attr);
+                        return NULL;
+                }
+
+		(change_attr + i)->path = path[i];	
+		(change_attr + i)->mode = mode[i];
+		(change_attr + i)->size = size[i];
+		(change_attr + i)->uid = uid[i];
+		(change_attr + i)->gid = gid[i];
+		(change_attr + i)->atime = atime[i];
+		(change_attr + i)->mtime = time(NULL);
+	
+		masks[i].has_mode = 1;
+		masks[i].has_size = 1;
+		masks[i].has_atime = 1;
+		masks[i].has_mtime = 1;
+		masks[i].has_uid = 1;
+		masks[i].has_gid = 1;
+		masks[i].has_rdev = 0;
+		masks[i].has_nlink = 0;
+		masks[i].has_ctime = 0;
+
+		change_attr[i].masks = masks[i];
+
+		i++;
+	}
+
+	return change_attr;
+}
+
+/*
+ * Test cases for read/write and getattr/setattr methods
+ * All the test cases are placed in this function
+ */
 
 int test()
 {
-	struct tc_attrs *usr_attr = NULL;
-	struct tc_attrs *cur_attr = NULL;
+	
+	bool res = true;
+	tc_attrs *change_attr = NULL;
+
+	char *file_name[] = {"/home/garima/test/abcd", "/home/garima/test/abcd", "/home/garima/test/abcd1", NULL};
 
 	/*************************************************************
-	 ***************** Reads/Writes ******************************
-	 *************************************************************
-	 */
+         ***************** Read Test cases ***************************
+         *************************************************************
+         */
+        
+	res = test_readv(file_name, 3, NULL);
 
-	struct tc_iovec *user_arg = NULL;
-        struct tc_iovec *cur_arg = NULL;
+	if(res)
+		LogDebug(COMPONENT_FSAL, "tc_readv() successful\n");
 
-	/*
-	 * posix_readv read the specified files
-	 */
-
-	user_arg = malloc(4 * (sizeof(struct tc_iovec)));
-        user_arg->path = "/home/garima/test/abcd";
-        user_arg->offset = 0;
-        user_arg->length = 256;
-        user_arg->data = malloc(256);
-
-        int i = 1;
-        while (i < 4) {
-                cur_arg = user_arg + i;
-                cur_arg->path = "/home/garima/test/abcd";
-                cur_arg->offset = i * 256;
-                cur_arg->length = 256;
-                cur_arg->data = malloc(256);
-                i++;
-        }
-
-        LogDebug(COMPONENT_FSAL, "posix_readv() for abcd called\n");
-
-        posix_readv(user_arg, 4, FALSE);
-
-        LogDebug(COMPONENT_FSAL, "posix_readv() for abcd succesful\n");
-
-        i = 0;
-        while (i < 4) {
-                cur_arg = user_arg + i;
-                free(cur_arg->data);
-                i++;
-        }
-
-        free(user_arg);
 
 	/*
 	 * posix_readv should fail with file not found error
 	 */
+        res = test_readv(file_name, 4, NULL);
 
-	user_arg = malloc(4 * (sizeof(struct tc_iovec)));
-        user_arg->path = "abcd1";
-        user_arg->offset = 0;
-        user_arg->length = 256;
-        user_arg->data = malloc(256);
-        cur_arg = user_arg + 1;
-        cur_arg->path = "/home/garima/test/abcd";
-        cur_arg->offset = 256;
-        cur_arg->length = 256;
-        cur_arg->data = malloc(256);
-        cur_arg = user_arg + 2;
-        cur_arg->path = NULL;
-        cur_arg->offset = 0;
-        cur_arg->length = 256;
-        cur_arg->data = malloc(256);
-        cur_arg = user_arg + 3;
-        cur_arg->path = "/home/garima/test/abcd1";
-        cur_arg->offset = 256;
-        cur_arg->length = 256;
-        cur_arg->data = malloc(256);
+	if(res)
+                LogDebug(COMPONENT_FSAL, "tc_readv() successful\n");	
 
-	LogDebug(COMPONENT_FSAL, "posix_readv() for abcd, abcd1 called\n");
-
-        posix_readv(user_arg, 4, FALSE);
 	
-        LogDebug(COMPONENT_FSAL, "posix_readv() for abcd, abcd1 failed\n");
-
-        i = 0;
-        while (i < 4) {
-                cur_arg = user_arg + i;
-                free(cur_arg->data);
-                i++;
-        }
-
-        free(user_arg);
+	/*************************************************************
+         ***************** Write Test cases ***************************
+         *************************************************************
+         */
 
 	/*
 	 * Test Sequential writes to the same file
 	 */
+        res = test_writev(file_name, 3);
 
-        user_arg = malloc(4 * (sizeof(struct tc_iovec)));
-        user_arg->path = "/home/garima/test/abcd";
-        user_arg->offset = 0;
-        user_arg->length = 5;
-        user_arg->data = malloc(6);
-        strcpy(user_arg->data, "a2345");
-	
-	i = 1;
-        while (i < 4) {
-                cur_arg = user_arg + i;
-                cur_arg->path = "/home/garima/test/abcd";
-                cur_arg->offset = i * 5;
-                cur_arg->length = 5;
-                cur_arg->data = malloc(6);
-                strcpy(cur_arg->data, "a2345");
-                i++;
-        }
-
-        LogDebug(COMPONENT_FSAL, "posix_writev() for abcd called\n");
-
-        posix_writev(user_arg, 4, FALSE);
-
-        LogDebug(COMPONENT_FSAL, "posix_writev() for abcd successful\n");
-
-        i = 0;
-        while (i < 4) {
-                cur_arg = user_arg + i;
-                free(cur_arg->data);
-                i++;
-        }
-
-        free(user_arg);
+	if(res)
+        	LogDebug(COMPONENT_FSAL, "tc_writev() successful\n");
 
 	/*
-	 * posix_writev failed, File not found error
+	 * tc_writev failed, File not found error
 	 */
 
-	user_arg = malloc(4 * (sizeof(struct tc_iovec)));
-        user_arg->path = "/home/garima/test/abcd1";
-        user_arg->offset = 0;
-        user_arg->length = 8;
-        user_arg->data = malloc(9);
-        strcpy(user_arg->data, "abcd1234");
-        cur_arg = user_arg + 1;
-        cur_arg->path = NULL;
-        cur_arg->offset = 8;
-        user_arg->length = 8;
-        user_arg->data = malloc(9);
-        strcpy(user_arg->data, "abcd1234");
-        cur_arg = user_arg + 2;
-        cur_arg->path = "abcd1";
-        cur_arg->offset = 0;
-        user_arg->length = 8;
-        user_arg->data = malloc(9);
-        strcpy(user_arg->data, "abcd1234");
-        cur_arg = user_arg + 3;
-        cur_arg->path = NULL;
-        cur_arg->offset = 8;
-        user_arg->length = 8;
-        user_arg->data = malloc(9);
-        strcpy(user_arg->data, "abcd1234");
+        res = test_writev(file_name, 4);
 
-        LogDebug(COMPONENT_FSAL, "posix_writev() for abcd, abcd1 called\n");
-
-        posix_writev(user_arg, 4, FALSE);
-
-        LogDebug(COMPONENT_FSAL, "posix_writev() for abcd, abcd1 failed\n");
-
-        i = 0;
-        while (i < 4) {
-                cur_arg = user_arg + i;
-                free(cur_arg->data);
-                i++;
-        }
-
-	free(user_arg);
+	if(res)
+                LogDebug(COMPONENT_FSAL, "tc_writev() successful\n");
 
 
 	/*************************************************************
@@ -192,196 +410,35 @@ int test()
 	 *************************************************************
 	 */
 
-	usr_attr = malloc(4 * sizeof(tc_attrs));
-	usr_attr->path = "/home/garima/test/abcd";
-	usr_attr->mode = 0777;
-	usr_attr->size = 256;
-	usr_attr->uid = 11;
-	usr_attr->gid = 270;
-	usr_attr->atime = 0;
-	usr_attr->mtime = time(NULL);
+	/* Set the masks which will be needed for multiple test cases */
+	char *attr_files[] = {"/home/garima/test/abcd2", "/home/garima/test/abcd1", "/home/garima/test/abcd"};
+	change_attr = set_tc_attrs(attr_files, 3);
 
-	usr_attr->masks.has_mode = 1;
-        usr_attr->masks.has_size = 1;
-        usr_attr->masks.has_atime = 1;
-        usr_attr->masks.has_mtime = 1;
-        usr_attr->masks.has_uid = 1;
-        usr_attr->masks.has_gid = 1;
-	usr_attr->masks.has_rdev = 0;
-	usr_attr->masks.has_nlink = 0;
-	usr_attr->masks.has_ctime = 0;
 
-	i=1;
-	while(i<4) {
-		
-		cur_attr = usr_attr + i;
-		cur_attr->path = NULL;
-        	cur_attr->mode = S_IRUSR|S_IRGRP|S_IROTH;
-        	cur_attr->size = 256;
-        	cur_attr->uid = 4711;
-        	cur_attr->gid = 2070;
-        	cur_attr->atime = 1234;
-        	cur_attr->mtime = time(NULL);
+	/*
+	 * SetAttributes test should pass
+	 * (all the fields are properly set)
+         */
+	if(change_attr) {
+        	res = test_setattrsv(attr_files, change_attr, 3);
 
-		i++;
+		if(res)
+        		LogDebug(COMPONENT_FSAL, "tc_setattrsv() successful\n");
 	}
-
-        LogDebug(COMPONENT_FSAL, "posix_setattrsv() for abcd called\n");
-
-        posix_setattrsv(usr_attr, 4, FALSE);
-
-        LogDebug(COMPONENT_FSAL, "posix_setattrsv() for abcd successful\n");
-
-        free(usr_attr);
+		
 
 	/*
-	 * Set Attributes fail, rdev bit should not be set
+	 * Set Attributes fail, since rdev is set 
 	 */
 
-	usr_attr = malloc(4 * sizeof(tc_attrs));
-        usr_attr->path = "/home/garima/test/abcd1";
-	usr_attr->mode = 0777;
-        usr_attr->size = 256;
-        usr_attr->uid = 11;
-        usr_attr->gid = 270;
-        usr_attr->atime = 0;
-        usr_attr->mtime = time(NULL);
+	(change_attr + 1)->masks.has_rdev = 1;
+        res = test_setattrsv(attr_files, change_attr, 3);
 
-	usr_attr->masks.has_mode = 1;
-        usr_attr->masks.has_size = 1;
-        usr_attr->masks.has_rdev = 1;
-        usr_attr->masks.has_nlink = 0;
-        usr_attr->masks.has_atime = 1;
-        usr_attr->masks.has_mtime = 1;
-        usr_attr->masks.has_uid = 1;
-        usr_attr->masks.has_gid = 1;
-        usr_attr->masks.has_ctime = 0;
-
-        i=1;
-        while(i<4) {
-
-                cur_attr = usr_attr + i;
-                cur_attr->path = NULL;
-                cur_attr->mode = S_IRUSR|S_IRGRP|S_IROTH;
-                cur_attr->size = 256;
-                cur_attr->uid = 4711;
-                cur_attr->gid = 2070;
-                cur_attr->atime = 1234;
-                cur_attr->mtime = time(NULL);
-
-                i++;
-        }
-
-        LogDebug(COMPONENT_FSAL, "posix_setattrsv() for abcd1 called\n");
-
-        posix_setattrsv(usr_attr, 4, FALSE);
-
-        LogDebug(COMPONENT_FSAL, "posix_setattrsv() for abcd1 failed\n");
-
-	free(usr_attr);
+	if(res)
+        	LogDebug(COMPONENT_FSAL, "tc_setattrsv() successful\n");
 
 
-	/*
-	 * get Attributes, ouput attributes in 'stat' format
-	 */
-
-	usr_attr = malloc(4 * sizeof(tc_attrs));
-	memset(usr_attr, 0, sizeof(tc_attrs));
-        usr_attr->path = "/home/garima/test/abcd";
-
-        usr_attr->masks.has_mode = 1;
-        usr_attr->masks.has_size = 1;
-        usr_attr->masks.has_rdev = 1;
-        usr_attr->masks.has_nlink = 1;
-        usr_attr->masks.has_atime = 1;
-        usr_attr->masks.has_mtime = 1;
-        usr_attr->masks.has_uid = 1;
-        usr_attr->masks.has_gid = 1;
-        usr_attr->masks.has_ctime = 1;
-
-	cur_attr = usr_attr + 1;
-        cur_attr->path = "/home/garima/test/abcd1";
-        cur_attr->masks.has_mode = 1;
-        cur_attr->masks.has_size = 1;
-        cur_attr->masks.has_rdev = 1;
-        cur_attr->masks.has_nlink = 1;
-        cur_attr->masks.has_atime = 1;
-        cur_attr->masks.has_mtime = 1;
-        cur_attr->masks.has_uid = 1;
-        cur_attr->masks.has_gid = 1;
-        cur_attr->masks.has_ctime = 1;
-
-        i=2;
-        while(i<4) {
-
-                cur_attr = usr_attr + i;
-                cur_attr->path = NULL;
-                cur_attr->mode = S_IRUSR|S_IRGRP|S_IROTH;
-                cur_attr->size = 256;
-                cur_attr->uid = 4711;
-                cur_attr->gid = 2070;
-                cur_attr->atime = 1234;
-                cur_attr->mtime = time(NULL);
-
-                i++;
-        }
-
-        LogDebug(COMPONENT_FSAL, "posix_getattrsv() for abcd, abcd1 called\n");
-
-        posix_getattrsv(usr_attr, 4, FALSE);
-
-	char time[36];	
-	LogDebug(COMPONENT_FSAL, " abcd : size %ld", usr_attr->size);
-	LogDebug(COMPONENT_FSAL, " abcd : uid %d", usr_attr->uid);
-	LogDebug(COMPONENT_FSAL, " abcd : gid %d", usr_attr->gid);
-	LogDebug(COMPONENT_FSAL, " abcd : nlink %d", usr_attr->nlink);
-	LogDebug(COMPONENT_FSAL, " abcd : rdev %ld", usr_attr->rdev);
-	LogDebug(COMPONENT_FSAL, " abcd : atime %s", formattime(time, usr_attr->atime));
-	LogDebug(COMPONENT_FSAL, " abcd : mtime %s", formattime(time, usr_attr->mtime));
-	LogDebug(COMPONENT_FSAL, " abcd : ctime %s", formattime(time, usr_attr->ctime));
-
-	char mode[11];
-	memset(mode, '\0', 11);
-	mode[0] = (S_ISDIR(usr_attr->mode)) ? 'd' : '-';
-	mode[1] = (usr_attr->mode & S_IRUSR) ? 'r' : '-';
-	mode[2] = (usr_attr->mode & S_IWUSR) ? 'w' : '-';
-	mode[3] = (usr_attr->mode & S_IXUSR) ? 'x' : '-';
-	mode[4] = (usr_attr->mode & S_IRGRP) ? 'r' : '-';
-	mode[5] = (usr_attr->mode & S_IWGRP) ? 'w' : '-';
-	mode[6] = (usr_attr->mode & S_IXGRP) ? 'x' : '-';
-	mode[7] = (usr_attr->mode & S_IROTH) ? 'r' : '-';
-	mode[8] = (usr_attr->mode & S_IWOTH) ? 'w' : '-';
-	mode[9] = (usr_attr->mode & S_IXOTH) ? 'x' : '-';
-
-	LogDebug(COMPONENT_FSAL, " abcd : mode %s\n", mode);
-	
-	cur_attr = usr_attr + 1;
-
-	LogDebug(COMPONENT_FSAL, " abcd1 : size %ld", cur_attr->size);
-	LogDebug(COMPONENT_FSAL, " abcd1 : uid %d", cur_attr->uid);
-	LogDebug(COMPONENT_FSAL, " abcd1 : gid %d", cur_attr->gid);
-	LogDebug(COMPONENT_FSAL, " abcd1 : nlink %d", cur_attr->nlink);
-	LogDebug(COMPONENT_FSAL, " abcd1 : rdev %ld", cur_attr->rdev);
-	LogDebug(COMPONENT_FSAL, " abcd1 : atime %s", formattime(time, cur_attr->atime));
-	LogDebug(COMPONENT_FSAL, " abcd1 : mtime %s", formattime(time, cur_attr->mtime));
-	LogDebug(COMPONENT_FSAL, " abcd1 : ctime %s", formattime(time, cur_attr->ctime));
-
-	mode[0] = (S_ISDIR(cur_attr->mode)) ? 'd' : '-';
-	mode[1] = (cur_attr->mode & S_IRUSR) ? 'r' : '-';
-	mode[2] = (cur_attr->mode & S_IWUSR) ? 'w' : '-';
-	mode[3] = (cur_attr->mode & S_IXUSR) ? 'x' : '-';
-	mode[4] = (cur_attr->mode & S_IRGRP) ? 'r' : '-';
-	mode[5] = (cur_attr->mode & S_IWGRP) ? 'w' : '-';
-	mode[6] = (cur_attr->mode & S_IXGRP) ? 'x' : '-';
-	mode[7] = (cur_attr->mode & S_IROTH) ? 'r' : '-';
-	mode[8] = (cur_attr->mode & S_IWOTH) ? 'w' : '-';
-	mode[9] = (cur_attr->mode & S_IXOTH) ? 'x' : '-';
-
-	LogDebug(COMPONENT_FSAL, " abcd1 : mode %s\n", mode);
-	
-        LogDebug(COMPONENT_FSAL, "posix_getattrsv() for abcd, abcd1 successful\n");
-
-	free(usr_attr);
+	clear_tc_attrsv(change_attr);
 
         return 0;
 }
