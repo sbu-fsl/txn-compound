@@ -40,7 +40,7 @@ tc_res tcread_v(struct tc_iovec *arg, int read_count, bool is_transaction)
 		return result;
 	}
 
-	LogDebug(COMPONENT_FSAL, "tcread_v() called \n");
+	LogDebug(COMPONENT_FSAL, "tcread_v() called\n");
 
 	kern_arg = malloc(read_count * (sizeof(struct tcread_kargs)));
 

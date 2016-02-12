@@ -49,6 +49,7 @@ set(fsal_CORE_SRCS
    ../FSAL/FSAL_PROXY/test1.c
    ../FSAL/FSAL_PROXY/test2.c
    ../FSAL/FSAL_PROXY/tc_test.c
+   ../FSAL/FSAL_PROXY/tc_dist.c
 )
 
 ########### next target ###############
@@ -71,6 +72,7 @@ target_link_libraries(test1
   ${LIBTIRPC_LIBRARIES}
   ${SYSTEM_LIBRARIES}
   m
+  tc_util
 )
 
 SET(test2_SRCS
@@ -91,6 +93,7 @@ target_link_libraries(test2
   ${LIBTIRPC_LIBRARIES}
   ${SYSTEM_LIBRARIES}
   m
+  tc_util
 )
 
 SET(tctest_SRCS
@@ -111,6 +114,28 @@ target_link_libraries(tc_test
   ${LIBTIRPC_LIBRARIES}
   ${SYSTEM_LIBRARIES}
   m
+  tc_util
+)
+
+SET(tcfiledist_SRCS
+   tc_filedist.c
+)
+
+add_executable(tc_filedist
+  ${tcfiledist_SRCS}
+  ${fsal_CORE_SRCS}
+  ../include/tc_utils.h
+)
+
+target_link_libraries(tc_filedist
+  MainServices
+  ${PROTOCOLS}
+  ${GANESHA_CORE}
+  config_parsing
+  ${LIBTIRPC_LIBRARIES}
+  ${SYSTEM_LIBRARIES}
+  m
+  tc_util
 )
 
 ########### install files ###############

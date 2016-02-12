@@ -14,6 +14,7 @@ SET(fsalproxy_LIB_SRCS
    test1.c
    test2.c
    tc_test.c
+   tc_dist.c
 )
 
 if(PROXY_HANDLE_MAPPING)
@@ -28,7 +29,9 @@ add_library(fsalproxy SHARED ${fsalproxy_LIB_SRCS})
 
 target_link_libraries(fsalproxy
 		      ${SYSTEM_LIBRARIES}
-                      ${LIBTIRPC_LIBRARIES})
+                      ${LIBTIRPC_LIBRARIES}
+                      tc_util
+                      m)
 
 if(PROXY_HANDLE_MAPPING)
   target_link_libraries(fsalproxy sqlite3)

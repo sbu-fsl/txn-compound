@@ -1686,18 +1686,20 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 			goto exit_pathinval;
 		}
 
+		LogDebug(COMPONENT_FSAL, "ktcread name: %s\n", kern_arg->path + marker);
+
 		kern_arg->opok_handle =
 		    &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
 
 		kern_arg->opok_handle->attrset = empty_bitmap;
 		fs_get_clientid(&cid);
 
-		if (kern_arg->user_arg->is_creation == 0) {
-			COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(
+		if (kern_arg->user_arg->is_creation & 1) {
+			COMPOUNDV4_ARG_ADD_OP_TCOPEN_CREATE(
 			    opcnt, argoparray, 0 /*seq id*/, cid, input_attr,
 			    (kern_arg->path + marker), owner_val, owner_len);
 		} else {
-			COMPOUNDV4_ARG_ADD_OP_TCOPEN_CREATE(
+			COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(
 			    opcnt, argoparray, 0 /*seq id*/, cid, input_attr,
 			    (kern_arg->path + marker), owner_val, owner_len);
 		}
@@ -1908,18 +1910,20 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 			goto error_pathinval;
 		}
 
+		LogDebug(COMPONENT_FSAL, "ktcwrite name: %s\n", kern_arg->path + marker);
+
 		kern_arg->opok_handle =
 		    &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
 
 		kern_arg->opok_handle->attrset = empty_bitmap;
 		fs_get_clientid(&cid);
 
-		if (kern_arg->user_arg->is_creation == 0) {
-			COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(
+		if (kern_arg->user_arg->is_creation & 1) {
+			COMPOUNDV4_ARG_ADD_OP_TCOPEN_CREATE(
 			    opcnt, argoparray, 0 /*seq id*/, cid, input_attr,
 			    (kern_arg->path + marker), owner_val, owner_len);
 		} else {
-			COMPOUNDV4_ARG_ADD_OP_TCOPEN_CREATE(
+			COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(
 			    opcnt, argoparray, 0 /*seq id*/, cid, input_attr,
 			    (kern_arg->path + marker), owner_val, owner_len);
 		}
