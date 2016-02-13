@@ -4,9 +4,10 @@
  * Functions with "tc_" are general API, whereas functions with "tx_" are API
  * with transaction support.
  */
-#ifdef __TC_API_H__
+#ifndef __TC_API_H__
 #define __TC_API_H__
 
+#include <stdbool.h>
 #include <stdlib.h>
 
 #ifdef __cplusplus
@@ -15,6 +16,19 @@ extern "C" {
 #else
 #define CONST
 #endif
+
+enum TC_FILETYPE {
+	FILE_DESCRIPTOR = 1,
+	FILE_PATH,
+};
+
+struct tc_file {
+	int type;
+	union {
+		int fd;
+		const char *path;
+	};
+};
 
 /**
  * Represents an I/O vector of a file.
@@ -53,11 +67,11 @@ struct tc_iovec {
  * When transaction is not enabled, compound processing stops upon the first
  * failure.
  */
-struct tc_res {
+typedef struct _tc_res {
 	bool okay;  /* no error */
 	int index;  /* index of the first failed operation */
 	int errno;  /* error number of the failed operation */
-};
+} tc_res;
 
 /**
  * Read from one or more files.
