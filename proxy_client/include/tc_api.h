@@ -4,6 +4,9 @@
  * Functions with "tc_" are general API, whereas functions with "tx_" are API
  * with transaction support.
  */
+#ifdef __TC_API_H__
+#define __TC_API_H__
+
 #include <stdlib.h>
 
 #ifdef __cplusplus
@@ -292,3 +295,5 @@ static inline bool tx_write_adb(struct tc_adb *patterns, int count)
 #else
 #undef CONST
 #endif
+
+#endif // __TC_API_H__
