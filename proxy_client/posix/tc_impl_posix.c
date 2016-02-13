@@ -15,7 +15,7 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 {
 	int fd, amount_read, i=0;
 	struct tc_iovec *cur_arg = NULL;
-	tc_res result = { .okay = true, .index = -1, .errno = 0 };
+	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
 
 	LogWarn(COMPONENT_FSAL, "posix_readv() called \n");
 
@@ -43,7 +43,7 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 			if(close(fd) < 0) {
 				result.okay = false;
 				result.index = i;
-				result.errno = errno;
+				result.err_no = errno;
 
 				LogWarn(COMPONENT_FSAL, "posix_readv() failed at index : %d\n", result.index);
 
@@ -67,7 +67,7 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 {
 	int fd, amount_written, i=0;
         struct tc_iovec *cur_arg = NULL;
-	tc_res result = { .okay = true, .index = -1, .errno = 0 };
+	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
 
         LogWarn(COMPONENT_FSAL, "posix_writev() called \n");
 
@@ -96,7 +96,7 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 
                 	if(close(fd) < 0) {
 				result.okay = false;
-				result.errno = errno;
+				result.err_no = errno;
 				result.index = i;
 
 				LogWarn(COMPONENT_FSAL, "posix_writev() failed at index : %d\n", result.index);
@@ -161,7 +161,7 @@ tc_res posix_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	int fd = -1, i = 0;
 	struct tc_attrs *cur_attr = attrs;
-	tc_res result = { .okay = true, .index = -1, .errno = 0 };
+	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
 	struct stat st;
 
 	LogWarn(COMPONENT_FSAL, "posix_getattrsv() called \n");
@@ -172,7 +172,7 @@ tc_res posix_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 			/* get attributes */
 			if(stat(cur_attr->path, &st)<0) {
 				result.okay = false;
-				result.errno = errno;
+				result.err_no = errno;
         			result.index = i;
         			LogWarn(COMPONENT_FSAL, "posix_getattrsv() failed at index : %d\n", result.index);
 				break;
@@ -284,7 +284,7 @@ tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	int fd = -1, i = 0;
 	struct tc_attrs *cur_attr = attrs;
-	tc_res result = { .okay = true, .index = -1, .errno = 0 };
+	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
 
 	LogWarn(COMPONENT_FSAL, "posix_setattrsv() called \n");
 
@@ -294,7 +294,7 @@ tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 			/* Set the attributes if corrseponding mask bit is set */
 			if(helper_set_attrs(cur_attr) < 0) {
 				result.okay = false;
-				result.errno = errno;
+				result.err_no = errno;
         			result.index = i;
         			LogWarn(COMPONENT_FSAL, "posix_setattrsv() failed at index : %d\n",
 										result.index);

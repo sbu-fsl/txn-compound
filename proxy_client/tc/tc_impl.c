@@ -7,7 +7,7 @@
 static tc_res TC_OKAY = {
 	.okay = true,
 	.index = -1,
-	.errno = 0,
+	.err_no = 0,
 };
 
 tc_res tc_readv(struct tc_iovec *reads, int count, bool is_transaction) {

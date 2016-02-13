@@ -70,7 +70,7 @@ struct tc_iovec {
 typedef struct _tc_res {
 	bool okay;  /* no error */
 	int index;  /* index of the first failed operation */
-	int errno;  /* error number of the failed operation */
+	int err_no;  /* error number of the failed operation */
 } tc_res;
 
 /**

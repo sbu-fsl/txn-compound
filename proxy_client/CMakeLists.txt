@@ -785,6 +785,7 @@ endif(USE_DBUS)
 add_subdirectory(scripts)
 
 add_subdirectory(tc)
+add_subdirectory(posix)
 add_subdirectory(util)
 
 # display configuration vars
