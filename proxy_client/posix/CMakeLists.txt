@@ -5,7 +5,7 @@ add_definitions(
 
 #add_definitions(-std=c++11)
 
-set(tc_SRC
+set(tc_posix_SRC
   tc_impl_posix.c
 )
 
@@ -38,4 +38,4 @@ function (add_unittest TestName LibName)
   add_test(NAME ${TestName} COMMAND ${TestName})
 endfunction (add_unittest)
 
-add_library(tc_impl_posix STATIC ${tc_SRC})
+add_library(tc_impl_posix STATIC ${tc_posix_SRC})

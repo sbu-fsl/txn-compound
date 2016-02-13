@@ -3,7 +3,7 @@
 #include <fcntl.h>
 #include <sys/time.h>
 #include <assert.h>
-#include "tc_api.h"
+#include "tc_impl_posix.h"
 
 /*
  * arg - Array of reads for one or more files
