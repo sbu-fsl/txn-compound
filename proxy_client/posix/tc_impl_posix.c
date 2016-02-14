@@ -68,6 +68,7 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 	int fd, amount_written, i=0;
         struct tc_iovec *cur_arg = NULL;
 	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
+	int flags;
 
         LogWarn(COMPONENT_FSAL, "posix_writev() called \n");
 
@@ -76,7 +77,11 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 
 		if(cur_arg->path != NULL) {
 			/* open the requested file */
-                	fd = open(cur_arg->path, O_WRONLY);
+			flags = O_WRONLY;
+			if (cur_arg->is_creation) {
+				flags |= O_CREAT;
+			}
+			fd = open(cur_arg->path, flags);
                 	if(fd < 0) {
 				result.okay = false;
                 		break;
@@ -190,7 +195,7 @@ tc_res posix_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 }
 
 
-int helper_set_attrs(struct tc_attrs *attrs)
+static int helper_set_attrs(struct tc_attrs *attrs)
 {
 	int res = 0;
 	struct stat s;
@@ -280,7 +285,7 @@ exit:
  * @count: the count of tc_attrs in the preceding array
  * @is_transaction: whether to execute the compound as a transaction
  */
-tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
+tc_res posix_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	int fd = -1, i = 0;
 	struct tc_attrs *cur_attr = attrs;

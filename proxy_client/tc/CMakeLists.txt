@@ -39,4 +39,6 @@ function (add_unittest TestName LibName)
 endfunction (add_unittest)
 
 add_library(tc_impl STATIC ${tc_SRC})
-target_link_libraries(tc_impl tc_impl_posix)
+target_link_libraries(tc_impl tc_impl_posix log config_parsing)
+
+add_unittest(tc_test tc_impl)
