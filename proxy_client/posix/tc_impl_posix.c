@@ -1,9 +1,13 @@
-#include "fsal.h"
+#include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/time.h>
 #include <assert.h>
+#include <stdio.h>
+
 #include "tc_impl_posix.h"
+
+#define POSIX_WARN(fmt, args...) fprintf(stderr, "==posix-WARN==" fmt, ## args)
 
 /*
  * arg - Array of reads for one or more files
@@ -17,7 +21,7 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 	struct tc_iovec *cur_arg = NULL;
 	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
 
-	LogWarn(COMPONENT_FSAL, "posix_readv() called \n");
+	POSIX_WARN("posix_readv() called \n");
 
 	while (i < read_count) {
 		cur_arg = arg+i;
@@ -45,7 +49,7 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 				result.index = i;
 				result.err_no = errno;
 
-				LogWarn(COMPONENT_FSAL, "posix_readv() failed at index : %d\n", result.index);
+				POSIX_WARN("posix_readv() failed at index : %d\n", result.index);
 
 				break;
 			}
@@ -70,7 +74,7 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
 	int flags;
 
-        LogWarn(COMPONENT_FSAL, "posix_writev() called \n");
+        POSIX_WARN("posix_writev() called \n");
 
         while (i < write_count) {
                 cur_arg = arg+i;
@@ -104,7 +108,7 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 				result.err_no = errno;
 				result.index = i;
 
-				LogWarn(COMPONENT_FSAL, "posix_writev() failed at index : %d\n", result.index);
+				POSIX_WARN("posix_writev() failed at index : %d\n", result.index);
 
 				break;
 			}
@@ -169,7 +173,7 @@ tc_res posix_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
 	struct stat st;
 
-	LogWarn(COMPONENT_FSAL, "posix_getattrsv() called \n");
+	POSIX_WARN("posix_getattrsv() called \n");
 
 	while(i<count) {
 		if(cur_attr->path != NULL) {
@@ -179,7 +183,9 @@ tc_res posix_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 				result.okay = false;
 				result.err_no = errno;
         			result.index = i;
-        			LogWarn(COMPONENT_FSAL, "posix_getattrsv() failed at index : %d\n", result.index);
+				POSIX_WARN(
+				    "posix_getattrsv() failed at index : %d\n",
+				    result.index);
 				break;
 			}
 
@@ -204,15 +210,15 @@ static int helper_set_attrs(struct tc_attrs *attrs)
 
 	/* check if nlink bit is set, if set return with error */
 	if(attrs->masks.has_nlink) {
-		LogWarn(COMPONENT_FSAL, "set_attrs() failed : nlink attribute bit"
-			 		" should not be set \n");
+		POSIX_WARN("set_attrs() failed : nlink attribute bit"
+			   " should not be set \n");
 		return -1;
 	}
 
 	/* check if rdev bit is set, if set return with error */
 	if(attrs->masks.has_rdev) {
-                LogWarn(COMPONENT_FSAL, "set_attrs() failed : rdev attribute bit"
-                         		" should not be set \n");
+		POSIX_WARN("set_attrs() failed : rdev attribute bit"
+			   " should not be set \n");
 		return -1;
 	}
 
@@ -221,9 +227,9 @@ static int helper_set_attrs(struct tc_attrs *attrs)
 	if(attrs->masks.has_mode) {
 		res = chmod(attrs->path, attrs->mode);
 		if(res < 0) {
-			LogWarn(COMPONENT_FSAL, "helper_set_attrs() failed in setting"
-				 "attribute 'permissions'  of file %s\n",
-					attrs->path);
+			POSIX_WARN("helper_set_attrs() failed in setting"
+				   "attribute 'permissions'  of file %s\n",
+				   attrs->path);
 			goto exit;
 		}
 	}
@@ -232,9 +238,10 @@ static int helper_set_attrs(struct tc_attrs *attrs)
 	if(attrs->masks.has_size){
 		res = truncate(attrs->path, attrs->size);
                 if(res < 0) {
-			LogWarn(COMPONENT_FSAL, "helper_set_attrs() failed in setting"
-				" attribute size of the file %s \n", attrs->path);
-                        goto exit;
+			POSIX_WARN("helper_set_attrs() failed in setting"
+				   " attribute size of the file %s \n",
+				   attrs->path);
+			goto exit;
 		}
 	}
 
@@ -243,8 +250,9 @@ static int helper_set_attrs(struct tc_attrs *attrs)
 		res = chown(attrs->path, attrs->uid, attrs->gid);
 
 		if(res < 0) {
-			LogWarn(COMPONENT_FSAL, "helper_set_attrs() failed in setting "
-				 "attributes 'UID and GID' of the file %s\n", attrs->path);
+			POSIX_WARN("helper_set_attrs() failed in setting "
+				   "attributes 'UID and GID' of the file %s\n",
+				   attrs->path);
 			goto exit;
 		}
 	}
@@ -266,8 +274,10 @@ static int helper_set_attrs(struct tc_attrs *attrs)
         	res = utimes(attrs->path, times);
 
 		if(res < 0) {
-			LogWarn(COMPONENT_FSAL, "helper_set_attrs() failed in setting the "
-				 "attributes 'atime and mtime' of the file %s\n", attrs->path);
+			POSIX_WARN(
+			    "helper_set_attrs() failed in setting the "
+			    "attributes 'atime and mtime' of the file %s\n",
+			    attrs->path);
 
 			goto exit;
 		}
@@ -291,7 +301,7 @@ tc_res posix_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	struct tc_attrs *cur_attr = attrs;
 	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
 
-	LogWarn(COMPONENT_FSAL, "posix_setattrsv() called \n");
+	POSIX_WARN("posix_setattrsv() called \n");
 
 	while(i<count) {
 		if(cur_attr->path != NULL) {
@@ -301,8 +311,9 @@ tc_res posix_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 				result.okay = false;
 				result.err_no = errno;
         			result.index = i;
-        			LogWarn(COMPONENT_FSAL, "posix_setattrsv() failed at index : %d\n",
-										result.index);
+				POSIX_WARN(
+				    "posix_setattrsv() failed at index : %d\n",
+				    result.index);
 				break;
 			}
 		}
