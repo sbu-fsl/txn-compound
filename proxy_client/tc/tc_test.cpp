@@ -1,6 +1,15 @@
+#include <errno.h>
+#include <unistd.h>
+
 #include <gtest/gtest.h>
 
 #include "tc_api.h"
+
+// Ensure the file does not exist before test.
+static void RemoveFile(const char *path) {
+	int r = unlink(path);
+	EXPECT_TRUE(r == 0 || r == ENOENT);
+}
 
 TEST(tc_test, WritevCanCreateFiles) {
 	const char* PATH = "/tmp/WritevCanCreateFiles.txt";
@@ -14,6 +23,8 @@ TEST(tc_test, WritevCanCreateFiles) {
 		.data = data,
 		.is_creation = 1,
 	};
+
+	RemoveFile(PATH);
 
 	res = tc_writev(&write, 1, false);
 	EXPECT_TRUE(res.okay);
