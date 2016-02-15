@@ -1868,6 +1868,8 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 	if (fs_fsalattr_to_fattr4(&kern_arg->attrib, &input_attr) == -1)
 		return fsalstat(ERR_FSAL_INVAL, -1);
 
+	input_attr.attrmask = empty_bitmap;
+
 	if (kern_arg->path == NULL) {
 		/*
 		 * file path is empty, so no need to send lookups,

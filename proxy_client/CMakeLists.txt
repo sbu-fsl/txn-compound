@@ -772,7 +772,7 @@ add_subdirectory(RPCAL)
 add_subdirectory(Protocols)
 add_subdirectory(support)
 add_subdirectory(os)
-
+add_subdirectory(util)
 add_subdirectory(FSAL)
 add_subdirectory(idmapper)
 

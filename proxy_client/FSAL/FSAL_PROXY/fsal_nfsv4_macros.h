@@ -106,7 +106,7 @@ do { \
 		op->nfs_argop4_u.opopen.owner.owner.owner_len = __owner_len;   \
 		op->nfs_argop4_u.opopen.owner.owner.owner_val = __owner_val;   \
 		op->nfs_argop4_u.opopen.openhow.opentype = OPEN4_CREATE;       \
-		op->nfs_argop4_u.opopen.openhow.openflag4_u.how.mode = GUARDED4; \
+		op->nfs_argop4_u.opopen.openhow.openflag4_u.how.mode = UNCHECKED4; \
 		op->nfs_argop4_u.opopen.openhow.openflag4_u.how.createhow4_u.createattrs = inattrs; \
 		op->nfs_argop4_u.opopen.claim.claim = CLAIM_NULL; \
 		op->nfs_argop4_u.opopen.claim.open_claim4_u.file.utf8string_val = inname; \
