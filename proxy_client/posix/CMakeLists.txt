@@ -3,10 +3,10 @@ add_definitions(
   -D_GNU_SOURCE
 )
 
-add_definitions(-std=c++11)
+#add_definitions(-std=c++11)
 
-set(util_SRC
-  bench.cpp
+set(tc_posix_SRC
+  tc_impl_posix.c
 )
 
 set(GTEST "$ENV{GOOGLE_TEST}")
@@ -21,8 +21,6 @@ include_directories(
   "${GMOCK}"
   "${GMOCK}/include"
 )
-
-set(CMAKE_LIBRARY_PATH ${CMAKE_LIBRARY_PATH} ${GTEST}/lib ${GMOCK}/lib)
 
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
@@ -40,7 +38,4 @@ function (add_unittest TestName LibName)
   add_test(NAME ${TestName} COMMAND ${TestName})
 endfunction (add_unittest)
 
-add_library(tc_util SHARED ${util_SRC})
-
-add_unittest(bench_test tc_util)
-
+add_library(tc_impl_posix STATIC ${tc_posix_SRC})

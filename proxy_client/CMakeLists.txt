@@ -772,7 +772,6 @@ add_subdirectory(RPCAL)
 add_subdirectory(Protocols)
 add_subdirectory(support)
 add_subdirectory(os)
-add_subdirectory(util)
 add_subdirectory(FSAL)
 add_subdirectory(idmapper)
 
@@ -783,6 +782,10 @@ if(USE_DBUS)
   add_subdirectory(dbus)
 endif(USE_DBUS)
 add_subdirectory(scripts)
+
+add_subdirectory(tc)
+add_subdirectory(posix)
+add_subdirectory(util)
 
 # display configuration vars
 

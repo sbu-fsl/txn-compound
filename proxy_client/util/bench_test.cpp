@@ -1,6 +1,6 @@
 /**
- *  * Unittest for bench.
- *   */
+ * Unittest for bench.
+ */
 
 #include <gtest/gtest.h>
 
@@ -33,4 +33,3 @@ TEST(FileDist, LessLocalityMoreFiles) {
 }
 
 // vim:sw=2:ts=2:tw=80:expandtab:cinoptions=>2,(0\:0:
-

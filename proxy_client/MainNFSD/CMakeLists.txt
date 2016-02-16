@@ -100,13 +100,13 @@ SET(tctest_SRCS
    tc_test.c
 )
 
-add_executable(tc_test
+add_executable(cache_test
   ${tctest_SRCS}
   ${fsal_CORE_SRCS}
   ../include/tc_utils.h
 )
 
-target_link_libraries(tc_test
+target_link_libraries(cache_test
   MainServices
   ${PROTOCOLS}
   ${GANESHA_CORE}
