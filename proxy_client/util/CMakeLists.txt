@@ -46,3 +46,4 @@ endfunction (add_unittest)
 add_library(tc_util STATIC ${util_SRC})
 
 add_unittest(bench_test tc_util)
+add_unittest(zipf_test tc_util)
