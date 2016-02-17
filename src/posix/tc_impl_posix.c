@@ -42,17 +42,22 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 
 			if(close(fd) < 0) {
 				result.okay = false;
-				result.index = i;
-				result.err_no = errno;
-
-				LogWarn(COMPONENT_FSAL, "posix_readv() failed at index : %d\n", result.index);
-
 				break;
 			}
 		}
 
 		i++;
 	}
+
+	if(result.okay)
+		goto exit;
+
+	result.index = i;
+	result.err_no = errno;
+
+	LogWarn(COMPONENT_FSAL, "posix_readv() failed at index : %d\n", result.index);
+	
+exit:
 
 	return result;
 }
@@ -96,11 +101,6 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 
                 	if(close(fd) < 0) {
 				result.okay = false;
-				result.err_no = errno;
-				result.index = i;
-
-				LogWarn(COMPONENT_FSAL, "posix_writev() failed at index : %d\n", result.index);
-
 				break;
 			}
 		}
@@ -108,6 +108,15 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
                 i++;
         }
 
+	if(result.okay)
+		goto exit;
+
+	result.err_no = errno;
+	result.index = i;
+
+	LogWarn(COMPONENT_FSAL, "posix_writev() failed at index : %d\n", result.index);
+	
+exit:
 	return result;
 }
 
@@ -167,6 +176,8 @@ tc_res posix_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	LogWarn(COMPONENT_FSAL, "posix_getattrsv() called \n");
 
 	while(i<count) {
+		cur_attr = attrs+i;
+
 		if(cur_attr->path != NULL) {
 
 			/* get attributes */
@@ -280,7 +291,7 @@ exit:
  * @count: the count of tc_attrs in the preceding array
  * @is_transaction: whether to execute the compound as a transaction
  */
-tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
+tc_res posix_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	int fd = -1, i = 0;
 	struct tc_attrs *cur_attr = attrs;
@@ -289,10 +300,12 @@ tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	LogWarn(COMPONENT_FSAL, "posix_setattrsv() called \n");
 
 	while(i<count) {
+		cur_attr = attrs + i;
+
 		if(cur_attr->path != NULL) {
 
 			/* Set the attributes if corrseponding mask bit is set */
-			if(helper_set_attrs(cur_attr) < 0) {
+			if(helper_set_attrs(cur_attr) == -1) {
 				result.okay = false;
 				result.err_no = errno;
         			result.index = i;
