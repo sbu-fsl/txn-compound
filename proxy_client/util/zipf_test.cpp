@@ -8,7 +8,7 @@
 
 #include <algorithm>
 
-bool is_about_the_same(long a, long b) {
+static bool is_about_the_same(long a, long b) {
   return a > (b * 0.9) && a < (b * 1.1);
 }
 

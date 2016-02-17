@@ -11,6 +11,15 @@ extern "C" {
  */
 void file_dist(int count, int *values, double locality);
 
+/**
+ * Generate a sequence of @count values that follows the zipf distribution.  The
+ * frequency of elements of rank k is
+ *      f(k; s, N) = \frac{1/k^s}{\sum_{n=1}^{N}{1/n^s}}
+ * 
+ * s should be larger than 0, and a larger s means higher locality.
+ */
+void zipf_dist(int N, int s, int count, int *values);
+
 #ifdef __cplusplus
 }
 #endif
