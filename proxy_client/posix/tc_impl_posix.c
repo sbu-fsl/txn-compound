@@ -46,11 +46,6 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 
 			if(close(fd) < 0) {
 				result.okay = false;
-				result.index = i;
-				result.err_no = errno;
-
-				POSIX_WARN("posix_readv() failed at index : %d\n", result.index);
-
 				break;
 			}
 		}
@@ -58,6 +53,16 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 		i++;
 	}
 
+	/* No error encountered */
+	if(result.okay)
+		goto exit;
+
+	result.index = i;
+	result.err_no = errno;
+
+	POSIX_WARN("posix_readv() failed at index : %d\n", result.index);
+
+exit:
 	return result;
 }
 
@@ -105,11 +110,6 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 
                 	if(close(fd) < 0) {
 				result.okay = false;
-				result.err_no = errno;
-				result.index = i;
-
-				POSIX_WARN("posix_writev() failed at index : %d\n", result.index);
-
 				break;
 			}
 		}
@@ -117,6 +117,17 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
                 i++;
         }
 
+	/* No errors encountered */
+	if(result.okay)
+		goto exit;
+
+	/* Set the index at which error occured and the error no */
+	result.index = i;
+	result.err_no = errno;
+
+	POSIX_WARN("posix_writev() failed at index : %d\n", result.index);
+
+exit:
 	return result;
 }
 
