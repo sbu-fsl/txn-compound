@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
@@ -7,36 +8,40 @@
 char usage[] = "tc_test Help\n"
 	       "============\n\n"	
 	       "Usage example:\n"
-	       "./tc_test -b 2048 -n 50 -m 20 -c 5 -p \"/mnt/test/abcd\" -r \n"
+	       "./tc_test -b 2048 -n 10000 -m 100000 -c 5 -p \"/mnt/test/abcd\" -r \n"
 	       "-b <Block_size per read/write>\n"
 	       "-l <Path of the input files>\n"
 	       "-n <Num of files of the form path0, path1, path2, ....>\n"
-	       "-m <Num of reads/writes per file>\n"
+	       "-m <Total num of reads>\n"
 	       "-c <Num of reads/writes per compound>\n"
 	       "-r <Read>\n"
 	       "-w <Write>\n"
+               "-z <dist>\n"
 	       "Only one of -r,-w can be specifed\n";
 
 int main(int argc, char *argv[])
 {
-	FILE *fp;
+	FILE *fp = NULL;
 	char *temp_path = NULL;
 	char *input_path = NULL;
 	int input_len = 0;
+	double dist = 0.0;
 	char *data_buf = NULL;
-	int block_size = 0; /* int because the max block size is 16k */
-	int num_files = 0;
-	int ops_per_comp = 0;
-	int num_ops = 0;
-	int rw = 0;
-	int i = 0;
-	int j = 0;
+	unsigned int block_size = 0; /* int because the max block size is 16k */
+	unsigned int num_files = 0;
+	unsigned int ops_per_comp = 0;
+	unsigned int num_ops = 0;
+	unsigned int rw = 0;
+	unsigned int *op_array = NULL;
+	unsigned int *temp_array = NULL;
+	unsigned int j = 0;
 	int opt;
 	clock_t t;
 	struct timeval tv1, tv2;
 	double time_taken;
+	srand (time(NULL));
 
-	while ((opt = getopt(argc, argv, "b:n:m:c:l:hrw")) != -1) {
+	while ((opt = getopt(argc, argv, "b:n:m:c:l:z:hrw")) != -1) {
 		switch (opt) {
 		case 'b':
 			/* Block size per read/write */
@@ -59,24 +64,23 @@ int main(int argc, char *argv[])
 
 			num_files = atoi((char *)optarg);
 
-			if (num_files <= 0 || num_files > 200) {
+			if (num_files <= 0 || num_files > 10000) {
 				printf(
-				    "Number of files exceeds 200 or invalid\n");
+				    "Number of files exceeds 10000 or invalid\n");
 				exit(-1);
 			}
 
 			break;
 		case 'm':
 			/*
-			 * Total number of reads/writes per file, an alternative
-			 * to file size
+			 * Total number of reads/writes
 			 */
 
 			num_ops = atoi((char *)optarg);
 
-			if (num_ops <= 0 || num_ops > 64) {
+			if (num_ops <= 0 || num_ops > 10000) {
 				printf("Invalid total number of reads/writes "
-				       "or it exceeds 64\n");
+				       "or it exceeds 10000\n");
 				exit(-1);
 			}
 
@@ -113,6 +117,19 @@ int main(int argc, char *argv[])
 			}
 
 			break;
+		case 'z':
+			/*
+ 			 * Distribution parameter
+ 			 */
+
+			dist = atof((char *)optarg);
+
+			if (dist < 0.0 || dist > 1.0) {
+				printf("Invalid distribution parameter "
+				       "specified\n");
+				exit(-1);
+			}
+			break;
 		case 'r':
 			/* Read */
 
@@ -132,7 +149,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if (argc != 12) {
+	if (argc != 14) {
 		printf("Wrong usage, use -h to get help\n");
 		exit(-1);
 	}
@@ -145,42 +162,46 @@ int main(int argc, char *argv[])
 	printf("Block size - %d\n", block_size);
 	printf("Path - %s\n", input_path);
 	printf("Num_files - %d\n", num_files);
-	printf("Num of reads/writes per file - %d\n", num_ops);
+	printf("Total num of reads/writes - %d\n", num_ops);
 	printf("Num of ops in a comp - %d\n", ops_per_comp);
+	printf("Distribution parameter - %f\n", dist);
 
-	temp_path = malloc(input_len + 4); /* 4 because the num_files <= 200 */
+	temp_path = malloc(input_len + 8);
 	data_buf = malloc(block_size);
 	j = 0;
+
+	printf("Op_array allocated\n");
+
+	j = 0;
+
 	// t = clock();
 	gettimeofday(&tv1, NULL);
-	while (j < num_files) {
 
-		snprintf(temp_path, input_len + 4, "%s%d", input_path, j);
+	snprintf(temp_path, input_len + 8, "%s%u", input_path, 0);
+
+	if (rw == 0) { /* Read */
+		fp = fopen(temp_path, "r");
+	} else { /* Write */
+		fp = fopen(temp_path, "w");
+	}
+
+	if (fp == NULL) {
+		printf("Error opening file - %s\n", temp_path);
+		goto main_exit;
+	}
+
+	while (j < num_ops) {
 
 		if (rw == 0) { /* Read */
-			fp = fopen(temp_path, "r");
+			fread(data_buf, block_size, 1, (FILE *)fp);
 		} else { /* Write */
-			fp = fopen(temp_path, "w");
+			fwrite(data_buf, 1, block_size, (FILE *)fp);
 		}
 
-		if (fp == NULL) {
-			printf("Error opening file - %s\n", temp_path);
-			goto exit;
-		}
-
-		i = 0;
-                while (i < num_ops) {
-			if (rw == 0) { /* Read */
-				fread(data_buf, block_size, 1, (FILE *)fp);
-			} else { /* Write */
-				fwrite(data_buf, 1, block_size, (FILE *)fp);
-			}
-                        i++;
-                }
-
-                fclose(fp);
                 j++;
         }
+
+	fclose(fp);
 
 	//t = clock() - t;
 	gettimeofday(&tv2, NULL);
@@ -190,7 +211,7 @@ int main(int argc, char *argv[])
 
 	printf("Took %f seconds to execute \n", time_taken);
 
-exit:
+main_exit:
 	free(data_buf);
         free(temp_path);
 

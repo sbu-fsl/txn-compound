@@ -50,6 +50,7 @@ set(fsal_CORE_SRCS
    ../TC_client/test2.c
    ../TC_client/tc_test.c
    ../TC_client/tc_dist.c
+   ../TC_client/tc_singlefile.c
 )
 
 ########### next target ###############
@@ -128,6 +129,27 @@ add_executable(tc_filedist
 )
 
 target_link_libraries(tc_filedist
+  MainServices
+  ${PROTOCOLS}
+  ${GANESHA_CORE}
+  config_parsing
+  ${LIBTIRPC_LIBRARIES}
+  ${SYSTEM_LIBRARIES}
+  m
+  tc_util
+)
+
+SET(tc_singlefile_SRCS
+   tc_singlefile.c
+)
+
+add_executable(tc_singlefile
+  ${tc_singlefile_SRCS}
+  ${fsal_CORE_SRCS}
+  ../include/tc_utils.h
+)
+
+target_link_libraries(tc_singlefile
   MainServices
   ${PROTOCOLS}
   ${GANESHA_CORE}

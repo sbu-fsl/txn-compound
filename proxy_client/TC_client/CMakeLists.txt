@@ -15,6 +15,7 @@ SET(fsalproxy_LIB_SRCS
    test2.c
    tc_test.c
    tc_dist.c
+   tc_singlefile.c
 )
 
 add_library(fsalproxy SHARED ${fsalproxy_LIB_SRCS})

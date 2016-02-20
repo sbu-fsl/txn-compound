@@ -14,34 +14,8 @@
 #include "tc_utils.h"
 #include <time.h>
 
-double randn(double mu, double sigma)
-{
-	double U1, U2, W, mult;
-	static double X1, X2;
-	static int call = 0;
-
-	if (call == 1) {
-		call = !call;
-		return (mu + sigma * (double)X2);
-	}
-
-	do {
-		U1 = -1 + ((double)rand() / RAND_MAX) * 2;
-		U2 = -1 + ((double)rand() / RAND_MAX) * 2;
-		W = pow(U1, 2) + pow(U2, 2);
-	} while (W >= 1 || W == 0);
-
-	mult = sqrt((-2 * log(W)) / W);
-	X1 = U1 * mult;
-	X2 = U2 * mult;
-
-	call = !call;
-
-	return (mu + sigma * (double)X1);
-}
-
-int tc_test(char *input_path, unsigned int block_size, unsigned int num_files,
-	    int num_ops, int ops_per_comp, int rw)
+int tc_singlefile(char *input_path, unsigned int block_size, unsigned int num_files,
+	    int num_ops, int ops_per_comp, double dist, int rw)
 {
 	struct fsal_module *new_module = NULL;
 	struct gsh_export *export = NULL;
@@ -50,7 +24,7 @@ int tc_test(char *input_path, unsigned int block_size, unsigned int num_files,
 	struct req_op_context req_ctx;
 	struct tc_iovec *user_arg = NULL;
 	struct tc_iovec *cur_arg = NULL;
-	char *temp_path = NULL;
+	char *temp_path[MAX_READ_COUNT];
 	char *data_buf = NULL;
 	unsigned int *op_array = NULL;
         unsigned int *temp_array = NULL;
@@ -92,23 +66,28 @@ int tc_test(char *input_path, unsigned int block_size, unsigned int num_files,
 	op_ctx->fsal_export = export->fsal_export;
 
 	input_len = strlen(input_path);
-	temp_path = malloc(input_len + 4);
+	k = 0;
+	while (k < MAX_READ_COUNT) {
+		temp_path[i] = NULL;
+		k++;
+	}
 
 	user_arg = malloc(ops_per_comp * (sizeof(struct tc_iovec)));
 	k = 0;
 	while (k < ops_per_comp) {
 		cur_arg = user_arg + k;
 		cur_arg->data = malloc(block_size);
+		temp_path[k] = malloc(input_len + 8);
 		k++;
 	}
 
-	k=0;
-	op_array = malloc(num_ops * sizeof(unsigned int));
+/*
 	while (k < num_ops) {
 		temp_array = op_array + k;
 		*temp_array = randn(num_ops / 2, num_ops / 8);
 		k++;
 	}
+*/
 
 	//t = clock();
 	gettimeofday(&tv1, NULL);
@@ -118,14 +97,14 @@ int tc_test(char *input_path, unsigned int block_size, unsigned int num_files,
 		k = 0;
 		while (k < ops_per_comp) {
 			cur_arg = user_arg + k;
-			temp_array = op_array + j + k;
-			snprintf(temp_path, input_len + 8, "%s%d",
-				 input_path, *temp_array);
-			cur_arg->path = temp_path;
-			cur_arg->offset = 0;
+			cur_arg->path = NULL;
+			cur_arg->offset = j*block_size + k*block_size;
 			cur_arg->length = block_size;
 			k++;
 		}
+
+		snprintf(temp_path[0], input_len + 8, "%s%d", input_path, 0);
+		user_arg->path = temp_path[0];
 
 		if (rw == 0) {
 			tcread_v(user_arg, ops_per_comp, FALSE);
@@ -143,14 +122,19 @@ int tc_test(char *input_path, unsigned int block_size, unsigned int num_files,
 		     (double)(tv2.tv_sec - tv1.tv_sec);
 	LogFatal(COMPONENT_FSAL, "tcreads done - %f seconds\n", time_taken);
 
+	k = 0;
+	while (k < ops_per_comp) {
+		free(temp_path[i]);
+		k++;
+	}
+
 	i = 0;
-	while (i < 100) {
+	while (i < num_ops) {
 		cur_arg = user_arg + i;
 		free(cur_arg->data);
 		i++;
 	}
 
 	free(user_arg);
-	free(temp_path);
 	return 0;
 }
