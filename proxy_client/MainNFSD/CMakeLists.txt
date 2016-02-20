@@ -44,12 +44,12 @@ set(fsal_CORE_SRCS
    ../FSAL_UP/fsal_up_top.c
    ../FSAL_UP/fsal_up_async.c
    ../FSAL_UP/fsal_up_utils.c
-   ../FSAL/FSAL_PROXY/handle.c
-   ../FSAL/FSAL_PROXY/tc_utils.c
-   ../FSAL/FSAL_PROXY/test1.c
-   ../FSAL/FSAL_PROXY/test2.c
-   ../FSAL/FSAL_PROXY/tc_test.c
-   ../FSAL/FSAL_PROXY/tc_dist.c
+   ../TC_client/handle.c
+   ../TC_client/tc_utils.c
+   ../TC_client/test1.c
+   ../TC_client/test2.c
+   ../TC_client/tc_test.c
+   ../TC_client/tc_dist.c
 )
 
 ########### next target ###############
