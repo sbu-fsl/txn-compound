@@ -14,8 +14,9 @@
 #include "tc_utils.h"
 #include <time.h>
 
-int tc_singlefile(char *input_path, unsigned int block_size, unsigned int num_files,
-	    int num_ops, int ops_per_comp, double dist, int rw)
+int tc_singlefile(char *input_path, unsigned int block_size,
+		  unsigned int num_files, unsigned int file_size,
+		  int ops_per_comp, double dist, int rw)
 {
 	struct fsal_module *new_module = NULL;
 	struct gsh_export *export = NULL;
@@ -81,18 +82,11 @@ int tc_singlefile(char *input_path, unsigned int block_size, unsigned int num_fi
 		k++;
 	}
 
-/*
-	while (k < num_ops) {
-		temp_array = op_array + k;
-		*temp_array = randn(num_ops / 2, num_ops / 8);
-		k++;
-	}
-*/
-
 	//t = clock();
 	gettimeofday(&tv1, NULL);
 
-	while (j < num_ops) {
+	j = 0;
+	while (j <= (file_size / block_size)) {
 
 		k = 0;
 		while (k < ops_per_comp) {
@@ -111,6 +105,7 @@ int tc_singlefile(char *input_path, unsigned int block_size, unsigned int num_fi
 		} else {
 			tcwrite_v(user_arg, ops_per_comp, FALSE);
 		}
+
 		j = j + ops_per_comp;
 	}
 
@@ -129,7 +124,7 @@ int tc_singlefile(char *input_path, unsigned int block_size, unsigned int num_fi
 	}
 
 	i = 0;
-	while (i < num_ops) {
+	while (i < ops_per_comp) {
 		cur_arg = user_arg + i;
 		free(cur_arg->data);
 		i++;

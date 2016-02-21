@@ -100,7 +100,7 @@ int main(int argc, char *argv[])
 	unsigned int num_files = 0;
 	unsigned int ops_per_comp = 0;
 	double dist = 0.0;
-	int num_ops = 0;
+	unsigned int file_size = 0;
 	int rw = 0;
 	int c, rc;
 	int pidfile;
@@ -259,9 +259,9 @@ int main(int argc, char *argv[])
 			 * Total number of reads/writes
 			 */
 
-			num_ops = atoi((char *)optarg);
+			file_size = atoi((char *)optarg);
 
-			if (num_ops <= 0 || num_ops > 10000) {
+			if (file_size <= 0) {
 				printf("Invalid total number of reads/writes "
 				       "or it exceeds 10000\n");
 				exit(-1);
@@ -536,7 +536,7 @@ int main(int argc, char *argv[])
 
 	/* Everything seems to be OK! We can now start service threads */
 	//nfs_start(&my_nfs_start_info);
-	tc_singlefile(input_path, block_size, num_files, num_ops, ops_per_comp,
+	tc_singlefile(input_path, block_size, num_files, file_size, ops_per_comp,
 		      dist, rw);
 
 	return 0;

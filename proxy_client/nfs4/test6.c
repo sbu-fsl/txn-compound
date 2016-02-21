@@ -191,7 +191,7 @@ int main(int argc, char *argv[])
 	}
 
 	j = 1;
-	while (j < (file_size / block_size)) {
+	while (j <= (file_size / block_size)) {
 
 		fseek(fp, file_size - j * block_size, SEEK_SET);
 		if (rw == 0) { /* Read */
@@ -201,6 +201,13 @@ int main(int argc, char *argv[])
 		}
 
 		j++;
+	}
+
+	fseek(fp, 0, SEEK_SET);
+	if (rw == 0) { /* Read */
+		fread(data_buf, block_size, 1, (FILE *)fp);
+	} else { /* Write */
+		fwrite(data_buf, 1, block_size, (FILE *)fp);
 	}
 
 	fclose(fp);
