@@ -30,7 +30,7 @@ int main(int argc, char *argv[])
 	unsigned int block_size = 0; /* int because the max block size is 16k */
 	unsigned int num_files = 0;
 	unsigned int ops_per_comp = 0;
-	unsigned int num_ops = 0;
+	unsigned int file_size = 0;
 	unsigned int rw = 0;
 	unsigned int *op_array = NULL;
 	unsigned int *temp_array = NULL;
@@ -76,9 +76,9 @@ int main(int argc, char *argv[])
 			 * Total number of reads/writes
 			 */
 
-			num_ops = atoi((char *)optarg);
+			file_size = atoi((char *)optarg);
 
-			if (num_ops <= 0 || num_ops > 10000) {
+			if (file_size <= 0) {
 				printf("Invalid total number of reads/writes "
 				       "or it exceeds 10000\n");
 				exit(-1);
@@ -162,7 +162,7 @@ int main(int argc, char *argv[])
 	printf("Block size - %d\n", block_size);
 	printf("Path - %s\n", input_path);
 	printf("Num_files - %d\n", num_files);
-	printf("Total num of reads/writes - %d\n", num_ops);
+	printf("Size of the file - %d\n", file_size);
 	printf("Num of ops in a comp - %d\n", ops_per_comp);
 	printf("Distribution parameter - %f\n", dist);
 
@@ -190,16 +190,18 @@ int main(int argc, char *argv[])
 		goto main_exit;
 	}
 
-	while (j < num_ops) {
+	j = 1;
+	while (j < (file_size / block_size)) {
 
+		fseek(fp, file_size - j * block_size, SEEK_SET);
 		if (rw == 0) { /* Read */
 			fread(data_buf, block_size, 1, (FILE *)fp);
 		} else { /* Write */
 			fwrite(data_buf, 1, block_size, (FILE *)fp);
 		}
 
-                j++;
-        }
+		j++;
+	}
 
 	fclose(fp);
 

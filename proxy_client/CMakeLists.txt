@@ -773,7 +773,7 @@ add_subdirectory(Protocols)
 add_subdirectory(support)
 add_subdirectory(os)
 add_subdirectory(FSAL)
-add_subdirectory(TC_client)
+add_subdirectory(nfs4)
 add_subdirectory(idmapper)
 
 add_subdirectory(MainNFSD)

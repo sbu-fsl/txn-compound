@@ -44,13 +44,13 @@ set(fsal_CORE_SRCS
    ../FSAL_UP/fsal_up_top.c
    ../FSAL_UP/fsal_up_async.c
    ../FSAL_UP/fsal_up_utils.c
-   ../TC_client/handle.c
-   ../TC_client/tc_utils.c
-   ../TC_client/test1.c
-   ../TC_client/test2.c
-   ../TC_client/tc_test.c
-   ../TC_client/tc_dist.c
-   ../TC_client/tc_singlefile.c
+   ../nfs4/handle.c
+   ../nfs4/tc_utils.c
+   ../nfs4/test1.c
+   ../nfs4/test2.c
+   ../nfs4/tc_test.c
+   ../nfs4/tc_dist.c
+   ../nfs4/tc_singlefile.c
 )
 
 ########### next target ###############
