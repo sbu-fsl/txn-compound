@@ -22,13 +22,13 @@ enum TC_FILETYPE {
 	FILE_PATH,
 };
 
-struct tc_file {
+typedef struct _tc_file {
 	int type;
 	union {
 		int fd;
 		const char *path;
 	};
-};
+}tc_file;
 
 /**
  * Represents an I/O vector of a file.
@@ -37,8 +37,9 @@ struct tc_file {
  * Most often, clients allocate an array of this struct.
  */
 struct tc_iovec {
-	const char *CONST path;		/* IN: the file path */
-	CONST size_t offset;		/* IN: read/write offset */
+	tc_file file;
+	//const char *CONST path;		/* IN: the file path */
+	size_t offset;		/* IN: read/write offset */
 
 	/**
 	 * IN:  # of bytes of requested read/write
@@ -54,7 +55,7 @@ struct tc_iovec {
 	 * IN:  data requested to be written
 	 * OUT: data successfully read
 	 */
-	void *CONST data;
+	void *data;
 
 	unsigned int is_creation : 1;  /* IN: create file if not exist? */
 	unsigned int is_failure : 1;   /* OUT: is this I/O a failure? */
@@ -71,7 +72,7 @@ typedef struct _tc_res {
 	bool okay;  /* no error */
 	int index;  /* index of the first failed operation */
 	int err_no;  /* error number of the failed operation */
-} tc_res;
+}tc_res;
 
 /**
  * Read from one or more files.
