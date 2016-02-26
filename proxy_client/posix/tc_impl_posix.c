@@ -10,6 +10,40 @@
 #define POSIX_WARN(fmt, args...) fprintf(stderr, "==posix-WARN==" fmt, ## args)
 
 /*
+ * open routine for POSIX files
+ * path - file path
+ * flags - open flags
+ */
+
+tc_file posix_open(const char *path, int flags)
+{
+	tc_file file;
+	int fd = open(path, flags);
+	file.fd = fd;
+
+	return file;
+}
+
+/*
+ * close routine for POSIX files
+ * file - tc_file structure with file
+ * descriptor value.
+ */
+
+int posix_close(const tc_file *file)
+{
+	int err = 0;
+
+	assert(file->type != FILE_DESCRIPTOR);
+
+	/* return error no in case of failure */
+	if(close(file->fd) < 0)
+		err = errno;
+
+	return err;
+}
+
+/*
  * arg - Array of reads for one or more files
  *       Contains file-path, read length, offset, etc.
  * read_count - Length of the above array
@@ -18,6 +52,7 @@
 tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 {
 	int fd, amount_read, i=0;
+	tc_file file = {0};
 	struct tc_iovec *cur_arg = NULL;
 	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
 
@@ -26,28 +61,37 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 	while (i < read_count) {
 		cur_arg = arg+i;
 
-		if(cur_arg->path != NULL) {
-			fd = open(cur_arg->path, O_RDONLY);
-			if(fd < 0) {
-				result.okay = false;
-				break;
-			}
+		/*
+		 * if the user specified the path and not file descriptor
+		 * then call open to obtain the file descriptor else
+		 * go ahead with the file descriptor specified by the user
+		 */
+		if(cur_arg->file.type == FILE_PATH)
+			file = posix_open(cur_arg->file.path, O_RDONLY);
+		else
+			file = cur_arg->file;
 
-			/* Read data */	
-			amount_read = pread(fd, cur_arg->data, cur_arg->length, cur_arg->offset);
-			if(amount_read < 0) {
-				close(fd);
-				result.okay = false;
-				break;
-			}
+		fd = file.fd;
+		if(fd < 0) {
+			result.okay = false;
+			break;
+		}
 
-			/* set the length to number of bytes successfully read */
-			cur_arg->length = amount_read;
+		/* Read data */
+		amount_read = pread(fd, cur_arg->data, cur_arg->length, cur_arg->offset);
+		if(amount_read < 0) {
+			if(file.type == FILE_PATH)
+				posix_close(&file);
+			result.okay = false;
+			break;
+		}
 
-			if(close(fd) < 0) {
-				result.okay = false;
-				break;
-			}
+		/* set the length to number of bytes successfully read */
+		cur_arg->length = amount_read;
+
+		if(file.type == FILE_PATH && posix_close(&file) < 0) {
+			result.okay = false;
+			break;
 		}
 
 		i++;
@@ -75,6 +119,7 @@ exit:
 tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 {
 	int fd, amount_written, i=0;
+	tc_file file = {0};
         struct tc_iovec *cur_arg = NULL;
 	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
 	int flags;
@@ -84,34 +129,41 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
         while (i < write_count) {
                 cur_arg = arg+i;
 
-		if(cur_arg->path != NULL) {
-			/* open the requested file */
-			flags = O_WRONLY;
-			if (cur_arg->is_creation) {
-				flags |= O_CREAT;
-			}
-			fd = open(cur_arg->path, flags);
-                	if(fd < 0) {
-				result.okay = false;
-                		break;
-			}
+		/* open the requested file */
+		flags = O_WRONLY;
+		if (cur_arg->is_creation) {
+			flags |= O_CREAT;
+		}
 
-			/* Write data */
-                	amount_written = pwrite(fd, cur_arg->data, cur_arg->length, cur_arg->offset);
+		if(cur_arg->file.type == FILE_PATH)
+			file = posix_open(cur_arg->file.path, flags);
+		else
+			file = cur_arg->file;
 
-                	if(amount_written < 0) {
-				close(fd);
-				result.okay = false;
-                        	break;
-			}
+		fd = file.fd;
+		if(fd < 0) {
+			result.okay = false;
+			break;
+		}
 
-			/* set the length to number of bytes successfully written */
-			cur_arg->length = amount_written;
+		/* Write data */
+		amount_written = pwrite(fd, cur_arg->data, cur_arg->length, cur_arg->offset);
 
-                	if(close(fd) < 0) {
-				result.okay = false;
-				break;
-			}
+		if(amount_written < 0) {
+			perror("");
+			POSIX_WARN("offset : %d\n", cur_arg->offset);
+			if(file.type == FILE_PATH)
+				posix_close(&file);
+			result.okay = false;
+			break;
+		}
+
+		/* set the length to number of bytes successfully written */
+		cur_arg->length = amount_written;
+
+		if(file.type == FILE_PATH && posix_close(&file) < 0) {
+			result.okay = false;
+			break;
 		}
 
                 i++;
