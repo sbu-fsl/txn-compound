@@ -231,8 +231,6 @@ bool compare(tc_attrs *usr, tc_attrs *check, int count)
 		written = usr + i;
 		read = check + i;
 
-		POSIX_WARN("file name : %s\n", written->path);
-
 		if (written->masks.has_mode) {
 			if (!written->mode & read->mode) {
 				POSIX_WARN("Mode does not match\n");
@@ -312,7 +310,7 @@ bool compare(tc_attrs *usr, tc_attrs *check, int count)
 	return true;
 }
 
-static tc_attrs *set_tc_attrs(const char **PATH, int count)
+static tc_attrs *set_tc_attrs(const char **PATH, int count, bool isPath)
 {
 	if (count > 3) {
 		POSIX_WARN("count should be less than 4\n");
@@ -337,7 +335,21 @@ static tc_attrs *set_tc_attrs(const char **PATH, int count)
 			return NULL;
 		}
 
-		(change_attr + i)->path = PATH[i];
+		if (isPath) {
+			(change_attr + i)->file.type = FILE_PATH;
+			(change_attr + i)->file.path = PATH[i];
+
+		} else {
+			(change_attr + i)->file.type = FILE_DESCRIPTOR;
+			(change_attr + i)->file.fd =
+			    open(PATH[i], O_RDWR | O_CREAT);
+
+			if ((change_attr + i)->file.fd < 0) {
+				free(change_attr);
+				return NULL;
+			}
+		}
+
 		(change_attr + i)->mode = mode[i];
 		(change_attr + i)->size = size[i];
 		(change_attr + i)->uid = uid[i];
@@ -373,8 +385,8 @@ static void set_attr_masks(tc_attrs *write, tc_attrs *read, int count)
 		write_attr = write + i;
 		read_attr = read + i;
 
-		/* set file path */
-		read_attr->path = write_attr->path;
+		/* set tc_file */
+		read_attr->file = write_attr->file;
 
 		/* set masks */
 		read_attr->masks.has_mode = write_attr->masks.has_mode;
@@ -391,16 +403,16 @@ static void set_attr_masks(tc_attrs *write, tc_attrs *read, int count)
 	}
 }
 
-TEST(tc_test, AttrsTest)
+TEST(tc_test, AttrsTestPath)
 {
 	const char *PATH[] = { "/tmp/WritevCanCreateFiles1.txt",
 			       "/tmp/WritevCanCreateFiles2.txt",
 			       "/tmp/WritevCanCreateFiles3.txt" };
 	tc_res res = { 0 };
-	int i = 0, count = 3;
+	int count = 3;
 
 	tc_attrs *write_attrs = NULL;
-	write_attrs = set_tc_attrs(PATH, count);
+	write_attrs = set_tc_attrs(PATH, count, true);
 	EXPECT_FALSE(write_attrs == NULL);
 
 	res = tc_setattrsv(write_attrs, count, false);
@@ -413,6 +425,40 @@ TEST(tc_test, AttrsTest)
 	EXPECT_TRUE(res.okay);
 
 	EXPECT_TRUE(compare(write_attrs, read_attrs, count));
+
+	free(write_attrs);
+	free(read_attrs);
+}
+
+TEST(tc_test, AttrsTestFileDesc)
+{
+	const char *PATH[] = { "/tmp/WritevCanCreateFiles4.txt",
+			       "/tmp/WritevCanCreateFiles5.txt",
+			       "/tmp/WritevCanCreateFiles6.txt" };
+	tc_res res = { 0 };
+	int i = 0, count = 3;
+
+	RemoveFiles(PATH, count);
+
+	tc_attrs *write_attrs = NULL;
+	write_attrs = set_tc_attrs(PATH, count, false);
+	EXPECT_FALSE(write_attrs == NULL);
+
+	res = tc_setattrsv(write_attrs, count, false);
+	EXPECT_TRUE(res.okay);
+
+	tc_attrs *read_attrs = (tc_attrs *)calloc(count, sizeof(tc_attrs));
+	set_attr_masks(write_attrs, read_attrs, count);
+
+	res = tc_getattrsv(read_attrs, count, false);
+	EXPECT_TRUE(res.okay);
+
+	EXPECT_TRUE(compare(write_attrs, read_attrs, count));
+
+	while (i < count) {
+		close((read_attrs + i)->file.fd);
+		i++;
+	}
 
 	free(write_attrs);
 	free(read_attrs);

@@ -22,13 +22,15 @@ enum TC_FILETYPE {
 	FILE_PATH,
 };
 
-typedef struct _tc_file {
+typedef struct _tc_file
+{
 	int type;
-	union {
+	union
+	{
 		int fd;
 		const char *path;
 	};
-}tc_file;
+} tc_file;
 
 /**
  * Represents an I/O vector of a file.
@@ -36,10 +38,10 @@ typedef struct _tc_file {
  * The fields have different meaning depending the operation is read or write.
  * Most often, clients allocate an array of this struct.
  */
-struct tc_iovec {
+struct tc_iovec
+{
 	tc_file file;
-	//const char *CONST path;		/* IN: the file path */
-	size_t offset;		/* IN: read/write offset */
+	size_t offset; /* IN: read/write offset */
 
 	/**
 	 * IN:  # of bytes of requested read/write
@@ -57,9 +59,9 @@ struct tc_iovec {
 	 */
 	void *data;
 
-	unsigned int is_creation : 1;  /* IN: create file if not exist? */
-	unsigned int is_failure : 1;   /* OUT: is this I/O a failure? */
-	unsigned int is_eof : 1;       /* OUT: does this I/O reach EOF? */
+	unsigned int is_creation : 1; /* IN: create file if not exist? */
+	unsigned int is_failure : 1;  /* OUT: is this I/O a failure? */
+	unsigned int is_eof : 1;      /* OUT: does this I/O reach EOF? */
 };
 
 /**
@@ -68,11 +70,12 @@ struct tc_iovec {
  * When transaction is not enabled, compound processing stops upon the first
  * failure.
  */
-typedef struct _tc_res {
+typedef struct _tc_res
+{
 	bool okay;  /* no error */
 	int index;  /* index of the first failed operation */
-	int err_no;  /* error number of the failed operation */
-}tc_res;
+	int err_no; /* error number of the failed operation */
+} tc_res;
 
 /**
  * Read from one or more files.
@@ -111,14 +114,15 @@ static inline bool tx_writev(struct tc_iovec *writes, int count)
 /**
  * The bitmap indicating the presence of file attributes.
  */
-struct tc_attrs_masks {
+struct tc_attrs_masks
+{
 	unsigned int has_mode : 1;  /* protection flags */
 	unsigned int has_size : 1;  /* file size, in bytes */
 	unsigned int has_nlink : 1; /* number of hard links */
 	unsigned int has_uid : 1;   /* user ID of owner */
 	unsigned int has_gid : 1;   /* group ID of owner */
 	unsigned int has_rdev : 1;  /* device ID of block or char special
-				       files */
+				     files */
 	unsigned int has_atime : 1; /* time of last access */
 	unsigned int has_mtime : 1; /* time of last modification */
 	unsigned int has_ctime : 1; /* time of last status change */
@@ -127,12 +131,13 @@ struct tc_attrs_masks {
 /**
  * File attributes.  See stat(2).
  */
-struct tc_attrs {
-	const char *path;   /* file path */
+struct tc_attrs
+{
+	tc_file file;
 	struct tc_attrs_masks masks;
-	mode_t mode;     /* protection */
-	size_t size;     /* file size, in bytes */
-	nlink_t nlink;   /* number of hard links */
+	mode_t mode;   /* protection */
+	size_t size;   /* file size, in bytes */
+	nlink_t nlink; /* number of hard links */
 	uid_t uid;
 	gid_t gid;
 	dev_t rdev;
@@ -194,7 +199,8 @@ tc_res tc_listdir(const char *dir, struct tc_attrs_masks masks, int max_count,
  */
 void tc_free_attrs(struct tc_attrs *attrs, int count, bool free_path);
 
-struct tc_file_pair {
+struct tc_file_pair
+{
 	const char *src_path;
 	const char *dst_path;
 };
@@ -214,7 +220,8 @@ static inline bool tx_renamev(struct tc_file_pair *pairs, int count)
 	return res.okay;
 }
 
-struct tc_extent_pair {
+struct tc_extent_pair
+{
 	const char *src_path;
 	const char *dst_path;
 	size_t src_offset;
@@ -242,7 +249,8 @@ static inline bool tx_copyv(struct tc_extent_pair *pairs, int count)
  *
  * See https://tools.ietf.org/html/draft-ietf-nfsv4-minorversion2-39#page-60
  */
-struct tc_adb {
+struct tc_adb
+{
 	const char *path;
 
 	/**
@@ -287,7 +295,6 @@ struct tc_adb {
 	size_t adb_pattern_size;
 	void *adb_pattern_data;
 };
-
 
 /**
  * Write Application Data Blocks (ADB) to one or more files.

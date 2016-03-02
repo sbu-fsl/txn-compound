@@ -232,7 +232,7 @@ void copy_attrs(const struct stat *st, struct tc_attrs *attr_obj)
 
 tc_res posix_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
-	int fd = -1, i = 0;
+	int fd = -1, i = 0, res = 0;
 	struct tc_attrs *cur_attr = NULL;
 	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
 	struct stat st;
@@ -242,22 +242,23 @@ tc_res posix_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	while (i < count) {
 		cur_attr = attrs + i;
 
-		if (cur_attr->path != NULL) {
+		/* get attributes */
+		if (cur_attr->file.type == FILE_PATH)
+			res = stat(cur_attr->file.path, &st);
+		else
+			res = fstat(cur_attr->file.fd, &st);
 
-			/* get attributes */
-			if (stat(cur_attr->path, &st) < 0) {
-				result.okay = false;
-				result.err_no = errno;
-				result.index = i;
-				POSIX_WARN(
-				    "posix_getattrsv() failed at index : %d\n",
-				    result.index);
-				break;
-			}
-
-			/* copy stat output */
-			copy_attrs(&st, cur_attr);
+		if (res < 0) {
+			result.okay = false;
+			result.err_no = errno;
+			result.index = i;
+			POSIX_WARN("posix_getattrsv() failed at index : %d\n",
+				   result.index);
+			break;
 		}
+
+		/* copy stat output */
+		copy_attrs(&st, cur_attr);
 
 		i++;
 	}
@@ -287,42 +288,46 @@ static int helper_set_attrs(struct tc_attrs *attrs)
 
 	/* set the mode */
 	if (attrs->masks.has_mode) {
-		res = chmod(attrs->path, attrs->mode);
-		if (res < 0) {
-			POSIX_WARN("helper_set_attrs() failed in setting"
-				   "attribute 'permissions'  of file %s\n",
-				   attrs->path);
+		if (attrs->file.type == FILE_PATH)
+			res = chmod(attrs->file.path, attrs->mode);
+		else
+			res = fchmod(attrs->file.fd, attrs->mode);
+
+		if (res < 0)
 			goto exit;
-		}
 	}
 
 	/* set the file size */
 	if (attrs->masks.has_size) {
-		res = truncate(attrs->path, attrs->size);
-		if (res < 0) {
-			POSIX_WARN("helper_set_attrs() failed in setting"
-				   " attribute size of the file %s \n",
-				   attrs->path);
+		if (attrs->file.type == FILE_PATH)
+			res = truncate(attrs->file.path, attrs->size);
+		else
+			res = ftruncate(attrs->file.fd, attrs->size);
+
+		if (res < 0)
 			goto exit;
-		}
 	}
 
 	/* set the UID and GID */
 	if (attrs->masks.has_uid || attrs->masks.has_gid) {
-		res = chown(attrs->path, attrs->uid, attrs->gid);
 
-		if (res < 0) {
-			POSIX_WARN("helper_set_attrs() failed in setting "
-				   "attributes 'UID and GID' of the file %s\n",
-				   attrs->path);
+		if (attrs->file.type == FILE_PATH)
+			res = chown(attrs->file.path, attrs->uid, attrs->gid);
+		else
+			res = fchown(attrs->file.fd, attrs->uid, attrs->gid);
+
+		if (res < 0)
 			goto exit;
-		}
 	}
 
 	/* set the atime and mtime */
 	if (attrs->masks.has_atime || attrs->masks.has_mtime) {
 
-		stat(attrs->path, &s);
+		if (attrs->file.type == FILE_PATH)
+			stat(attrs->file.path, &s);
+		else
+			fstat(attrs->file.fd, &s);
+
 		times[0].tv_sec = s.st_atime;
 		times[1].tv_sec = s.st_mtime;
 
@@ -332,16 +337,13 @@ static int helper_set_attrs(struct tc_attrs *attrs)
 		if (attrs->masks.has_mtime)
 			times[1].tv_sec = attrs->mtime;
 
-		res = utimes(attrs->path, times);
+		if (attrs->file.type == FILE_PATH)
+			res = utimes(attrs->file.path, times);
+		else
+			res = futimens(attrs->file.fd, times);
 
-		if (res < 0) {
-			POSIX_WARN(
-			    "helper_set_attrs() failed in setting the "
-			    "attributes 'atime and mtime' of the file %s\n",
-			    attrs->path);
-
+		if (res < 0)
 			goto exit;
-		}
 	}
 
 exit:
@@ -366,19 +368,16 @@ tc_res posix_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	while (i < count) {
 		cur_attr = attrs + i;
 
-		if (cur_attr->path != NULL) {
-
-			/* Set the attributes if corrseponding mask bit is set
-			 */
-			if (helper_set_attrs(cur_attr) < 0) {
-				result.okay = false;
-				result.err_no = errno;
-				result.index = i;
-				POSIX_WARN(
-				    "posix_setattrsv() failed at index : %d\n",
-				    result.index);
-				break;
-			}
+		/*
+		 * Set the attributes if corrseponding mask bit is set
+		 */
+		if (helper_set_attrs(cur_attr) < 0) {
+			result.okay = false;
+			result.err_no = errno;
+			result.index = i;
+			POSIX_WARN("posix_setattrsv() failed at index : %d\n",
+				   result.index);
+			break;
 		}
 
 		i++;
