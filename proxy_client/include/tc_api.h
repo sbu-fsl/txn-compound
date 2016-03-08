@@ -20,6 +20,8 @@ extern "C" {
 enum TC_FILETYPE {
 	FILE_DESCRIPTOR = 1,
 	FILE_PATH,
+	REGULAR_FILE,
+	DIRECTORY
 };
 
 typedef struct _tc_file
@@ -122,7 +124,7 @@ struct tc_attrs_masks
 	unsigned int has_uid : 1;   /* user ID of owner */
 	unsigned int has_gid : 1;   /* group ID of owner */
 	unsigned int has_rdev : 1;  /* device ID of block or char special
-				     files */
+				    files */
 	unsigned int has_atime : 1; /* time of last access */
 	unsigned int has_mtime : 1; /* time of last modification */
 	unsigned int has_ctime : 1; /* time of last status change */
@@ -199,11 +201,11 @@ tc_res tc_listdir(const char *dir, struct tc_attrs_masks masks, int max_count,
  */
 void tc_free_attrs(struct tc_attrs *attrs, int count, bool free_path);
 
-struct tc_file_pair
+typedef struct tc_file_pair
 {
 	const char *src_path;
 	const char *dst_path;
-};
+} tc_file_pair;
 
 /**
  * Rename the file from "src_path" to "dst_path" for each of "pairs".
@@ -214,9 +216,34 @@ struct tc_file_pair
  */
 tc_res tc_renamev(struct tc_file_pair *pairs, int count, bool is_transaction);
 
-static inline bool tx_renamev(struct tc_file_pair *pairs, int count)
+static inline bool tx_renamev(tc_file_pair *pairs, int count)
 {
 	tc_res res = tc_renamev(pairs, count, true);
+	return res.okay;
+}
+
+typedef struct _tc_target_file
+{
+	int file_type;
+	const char *path;
+	mode_t mode;
+
+} tc_target_file;
+
+tc_res tc_removev(tc_target_file *files, int count, bool is_transaction);
+
+static inline bool tx_removev(tc_target_file *files, int count)
+{
+	tc_res res = tc_removev(files, count, true);
+	return res.okay;
+}
+
+tc_res tc_mkdirv(tc_target_file *dir, int count, bool is_transaction);
+
+static inline bool tx_mkdirv(tc_target_file *dir, int count,
+			     bool is_transaction)
+{
+	tc_res res = tc_mkdirv(dir, count, is_transaction);
 	return res.okay;
 }
 
