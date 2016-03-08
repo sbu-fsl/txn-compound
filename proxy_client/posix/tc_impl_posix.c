@@ -4,6 +4,8 @@
 #include <sys/time.h>
 #include <assert.h>
 #include <stdio.h>
+#include <dirent.h>
+#include <string.h>
 
 #include "tc_impl_posix.h"
 
@@ -381,6 +383,260 @@ tc_res posix_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 		}
 
 		i++;
+	}
+
+	return result;
+}
+
+/*
+ * Rename File(s)
+ *
+ * @pairs[IN] - tc_file_pair structure containing the
+ * old and new path of the file
+ * @count[IN]: the count of tc_file_pair in the preceding array
+ * @is_transaction[IN]: whether to execute the compound as a transaction
+ */
+
+tc_res posix_renamev(struct tc_file_pair *pairs, int count, bool is_transaction)
+{
+	int i = 0;
+	tc_file_pair *cur_pair = NULL;
+	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
+
+	while (i < count) {
+		cur_pair = pairs + i;
+
+		assert(cur_pair->src_path != NULL &&
+		       cur_pair->dst_path != NULL);
+
+		if (rename(cur_pair->src_path, cur_pair->dst_path) < 0) {
+			perror("");
+			result.okay = false;
+			result.err_no = errno;
+			result.index = i;
+
+			POSIX_WARN("posix_renamev() failed at index : %d\n",
+				   result.index);
+
+			return result;
+		}
+
+		i++;
+	}
+
+	return result;
+}
+
+/*
+ * Remove File(s)
+ *
+ * @files[IN] - tc_target_file structure containing the
+ * path of the directory to be removed
+ * @count[IN]: the count of tc_target_file in the preceding array
+ * @is_transaction[IN]: whether to execute the compound as a transaction
+ */
+
+tc_res posix_removev(tc_target_file *files, int count, bool is_transaction)
+{
+	int i = 0;
+	tc_target_file *cur_file = NULL;
+	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
+
+	while (i < count) {
+		cur_file = files + i;
+
+		assert(cur_file->path != NULL &&
+		       cur_file->file_type == REGULAR_FILE);
+
+		if (unlink(cur_file->path) < 0) {
+			result.okay = false;
+			result.err_no = errno;
+			result.index = i;
+
+			POSIX_WARN("posix_removev() failed at index : %d\n",
+				   result.index);
+
+			return result;
+		}
+
+		i++;
+	}
+
+	return result;
+}
+
+/*
+ * Remove Directory
+ *
+ * @dir[IN] - tc_target_file structure containing the
+ * path of the directory to be removed
+ * @count: the count of tc_target_file in the preceding array
+ * @is_transaction: whether to execute the compound as a transaction
+ */
+
+tc_res posix_remove_dirv(tc_target_file *dir, int count, bool is_transaction)
+{
+	int i = 0;
+	tc_target_file *cur_dir = NULL;
+	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
+
+	while (i < count) {
+		cur_dir = dir + i;
+
+		assert(cur_dir->path != NULL &&
+		       cur_dir->file_type == DIRECTORY);
+
+		if (rmdir(cur_dir->path) < 0) {
+			result.okay = false;
+			result.err_no = errno;
+			result.index = i;
+
+			POSIX_WARN("posix_remove_dirv() failed at index : %d\n",
+				   result.index);
+
+			return result;
+		}
+
+		i++;
+	}
+
+	return result;
+}
+
+/*
+ * Create Directory
+ *
+ * @dir[IN] - tc_target_file structure containing the
+ * path of the directory to be created
+ * @count: the count of tc_target_file in the preceding array
+ * @is_transaction: whether to execute the compound as a transaction
+ */
+
+tc_res posix_mkdirv(tc_target_file *dir, int count, bool is_transaction)
+{
+	int i = 0;
+	tc_target_file *cur_dir = NULL;
+	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
+
+	while (i < count) {
+		cur_dir = dir + i;
+
+		assert(cur_dir->path != NULL &&
+		       cur_dir->file_type == DIRECTORY);
+
+		if (mkdir(cur_dir->path, cur_dir->mode) < 0) {
+			result.okay = false;
+			result.err_no = errno;
+			result.index = i;
+
+			POSIX_WARN("posix_mkdirv() failed at index : %d\n",
+				   result.index);
+
+			return result;
+		}
+
+		i++;
+	}
+
+	return result;
+}
+
+/**
+ * List the content of a directory.
+ *
+ * @dir [IN]: the path of the directory to list
+ * @masks [IN]: masks of attributes to get for listed objects
+ * @max_count [IN]: the maximum number of count to list
+ * @contents [OUT]: the pointer to the array of files/directories in the
+ * directory.  The array and the paths in the array will be allocated
+ * internally by this function; the caller is responsible for releasing the
+ * memory, probably by using tc_free_attrs().
+ */
+
+tc_res posix_listdir(const char *dir, struct tc_attrs_masks masks,
+		     int max_count, struct tc_attrs **contents, int *count)
+{
+	DIR *dir_fd;
+	struct tc_attrs *cur_attr = NULL;
+	struct dirent *dp;
+	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
+
+	assert(dir != NULL);
+
+	dir_fd = opendir(dir);
+
+	if (dir_fd < 0) {
+		result.okay = false;
+		result.err_no = errno;
+
+		return result;
+	}
+
+	while ((dp = readdir(dir_fd)) != NULL && *count < max_count) {
+
+		cur_attr = (*contents) + *count;
+
+		/* copy the file name */
+		cur_attr->file.type = FILE_PATH;
+
+		POSIX_WARN("List Dir : %s\n", dp->d_name);
+
+		/* Skip the current and parent directory entry */
+		if (!strncmp(dp->d_name, ".", strlen(dp->d_name)) ||
+		    !strncmp(dp->d_name, "..", strlen(dp->d_name)))
+			continue;
+
+		// strncpy(cur_attr->file.path, dp->d_name, strlen(dp->d_name));
+
+		/* copy the masks */
+		cur_attr->masks = masks;
+
+		struct stat st;
+		char *file_name =
+		    (char *)calloc(1, sizeof(dir) + sizeof(dp->d_name));
+		strcpy(file_name, dir);
+		strcat(file_name, "/");
+		strcat(file_name, dp->d_name);
+
+		if (stat(file_name, &st) < 0) {
+			result.okay = false;
+			result.err_no = errno;
+			result.index = *count;
+
+			POSIX_WARN("stat failed for file : %s\n", dp->d_name);
+
+			return result;
+		}
+
+		/* copy the attributes */
+		if (masks.has_mode)
+			cur_attr->mode = st.st_mode;
+
+		if (masks.has_size)
+			cur_attr->size = st.st_size;
+
+		if (masks.has_nlink)
+			cur_attr->nlink = st.st_nlink;
+
+		if (masks.has_uid)
+			cur_attr->uid = st.st_uid;
+
+		if (masks.has_gid)
+			cur_attr->gid = st.st_gid;
+
+		if (masks.has_rdev)
+			cur_attr->rdev = st.st_rdev;
+
+		if (masks.has_atime)
+			cur_attr->atime = st.st_atime;
+
+		if (masks.has_mtime)
+			cur_attr->mtime = st.st_mtime;
+
+		if (masks.has_ctime)
+			cur_attr->ctime = st.st_ctime;
+
+		(*count)++;
 	}
 
 	return result;
