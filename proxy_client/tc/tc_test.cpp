@@ -8,26 +8,47 @@
 
 #define POSIX_WARN(fmt, args...) fprintf(stderr, "==posix-WARN==" fmt, ##args)
 
-// Ensure the file does not exist before test.
+/**
+ * Ensure the file does not exist
+ * before test.
+ */
 static void RemoveFile(const char *path)
 {
 	int r = unlink(path);
-	EXPECT_TRUE(r == 0 || r == ENOENT);
+	EXPECT_TRUE(r == 0 || errno == ENOENT);
 }
 
-// Ensure files does not exist before test.
+/**
+ * Ensure files does not exist
+ * before test.
+ */
 static void RemoveFiles(const char **path, int count)
 {
 	int i = 0, r = 0;
 
 	while (i < count) {
 		r = unlink(path[i]);
+		EXPECT_TRUE(r == 0 || errno == ENOENT);
+		i++;
+	}
+}
+
+/**
+ * Ensure Directory does not exist
+ * before test.
+ */
+static void RemoveDir(const char **path, int count)
+{
+	int i = 0, r = 0;
+
+	while (i < count) {
+		r = rmdir(path[i]);
 		EXPECT_TRUE(r == 0 || r == ENOENT);
 		i++;
 	}
 }
 
-/*
+/**
  * Free the tc_iovec
  */
 
@@ -43,7 +64,7 @@ void clear_iovec(tc_iovec *user_arg, int count)
 	free(user_arg);
 }
 
-/*
+/**
  * Set the tc_iovec
  */
 static tc_iovec *set_iovec_file_paths(const char **PATH, int count,
@@ -86,6 +107,10 @@ static tc_iovec *set_iovec_file_paths(const char **PATH, int count,
 	return user_arg;
 }
 
+/**
+ * Verify the data has been
+ * written as specified
+ */
 bool compare_content(tc_iovec *writev, tc_iovec *readv, int count)
 {
 	int i = 0;
@@ -101,6 +126,10 @@ bool compare_content(tc_iovec *writev, tc_iovec *readv, int count)
 	return true;
 }
 
+/**
+ * TC-Read and Write test using
+ * File path
+ */
 TEST(tc_test, WritevCanCreateFiles)
 {
 	const char *PATH[] = { "/tmp/WritevCanCreateFiles1.txt",
@@ -133,6 +162,9 @@ TEST(tc_test, WritevCanCreateFiles)
 	clear_iovec(readv, count);
 }
 
+/**
+ * Set the TC I/O vector
+ */
 static tc_iovec *set_iovec_fd(int *fd, int count)
 {
 	int i = 0, N = 4096;
@@ -168,6 +200,10 @@ static tc_iovec *set_iovec_fd(int *fd, int count)
 	return user_arg;
 }
 
+/**
+ * TC-Read and Write test using
+ * File Descriptor
+ */
 TEST(tc_test, TestFileDesc)
 {
 	const char *PATH[] = { "/tmp/WritevCanCreateFiles1.txt",
@@ -181,7 +217,7 @@ TEST(tc_test, TestFileDesc)
 	int fd[count];
 	int open_flags = O_RDWR | O_CREAT;
 
-	RemoveFiles(PATH, count);
+	RemoveFiles(PATH, 4);
 
 	while (i < count) {
 		fd[i] = open(PATH[i], open_flags);
@@ -216,7 +252,7 @@ TEST(tc_test, TestFileDesc)
 	}
 }
 
-/*
+/**
  * Compare the attributes once set, to check if set properly
  */
 
@@ -310,6 +346,9 @@ bool compare(tc_attrs *usr, tc_attrs *check, int count)
 	return true;
 }
 
+/**
+ * Set the TC Attributes
+ */
 static tc_attrs *set_tc_attrs(const char **PATH, int count, bool isPath)
 {
 	if (count > 3) {
@@ -375,6 +414,7 @@ static tc_attrs *set_tc_attrs(const char **PATH, int count, bool isPath)
 	return change_attr;
 }
 
+/* Set the TC attributes masks */
 static void set_attr_masks(tc_attrs *write, tc_attrs *read, int count)
 {
 	int i = 0;
@@ -403,6 +443,10 @@ static void set_attr_masks(tc_attrs *write, tc_attrs *read, int count)
 	}
 }
 
+/**
+ * TC-Set/Get Attributes test
+ * using File Path
+ */
 TEST(tc_test, AttrsTestPath)
 {
 	const char *PATH[] = { "/tmp/WritevCanCreateFiles1.txt",
@@ -430,6 +474,10 @@ TEST(tc_test, AttrsTestPath)
 	free(read_attrs);
 }
 
+/*
+ * TC-Set/Get Attributes test
+ * using File Descriptor
+ */
 TEST(tc_test, AttrsTestFileDesc)
 {
 	const char *PATH[] = { "/tmp/WritevCanCreateFiles4.txt",
@@ -462,4 +510,126 @@ TEST(tc_test, AttrsTestFileDesc)
 
 	free(write_attrs);
 	free(read_attrs);
+}
+
+/**
+ * List Directory Contents Test
+ */
+TEST(tc_test, ListDirContents)
+{
+	tc_attrs *contents = (tc_attrs *)calloc(5, sizeof(tc_attrs));
+	tc_attrs_masks masks = { 0 };
+	int count = 0;
+
+	masks.has_mode = 1;
+	masks.has_size = 1;
+	masks.has_atime = 1;
+	masks.has_mtime = 1;
+	masks.has_uid = 1;
+	masks.has_gid = 1;
+	masks.has_rdev = 1;
+	masks.has_nlink = 1;
+	masks.has_ctime = 1;
+
+	contents->masks = masks;
+
+	tc_res res = tc_listdir("/tmp/", masks, 5, &contents, &count);
+	EXPECT_TRUE(res.okay);
+
+	tc_attrs *read_attrs = (tc_attrs *)calloc(count, sizeof(tc_attrs));
+	set_attr_masks(contents, read_attrs, count);
+
+	res = tc_getattrsv(read_attrs, count, false);
+	EXPECT_TRUE(res.okay);
+
+	EXPECT_TRUE(compare(contents, read_attrs, count));
+
+	free(contents);
+	free(read_attrs);
+}
+
+/**
+ * Rename File Test
+ */
+TEST(tc_test, RenameFile)
+{
+	int i = 0;
+	const char *src_path[] = { "/tmp/WritevCanCreateFiles1.txt",
+				   "/tmp/WritevCanCreateFiles2.txt",
+				   "/tmp/WritevCanCreateFiles3.txt",
+				   "/tmp/WritevCanCreateFiles4.txt" };
+
+	const char *dest_path[] = { "/tmp/rename1.txt", "/tmp/rename2.txt",
+				    "/tmp/rename3.txt", "/tmp/rename4.txt" };
+
+	tc_file_pair *file = (tc_file_pair *)calloc(4, sizeof(tc_file_pair));
+
+	while (i < 4) {
+
+		(file + i)->src_path = src_path[i];
+		(file + i)->dst_path = dest_path[i];
+
+		i++;
+	}
+
+	tc_res res = tc_renamev(file, 4, false);
+
+	EXPECT_TRUE(res.okay);
+
+	free(file);
+}
+
+/**
+ * Remove File Test
+ */
+TEST(tc_test, RemoveFile)
+{
+	int i = 0;
+	const char *path[] = { "/tmp/rename1.txt", "/tmp/rename2.txt",
+			       "/tmp/rename3.txt", "/tmp/rename4.txt" };
+
+	tc_file *file = (tc_file *)calloc(4, sizeof(tc_file));
+
+	while (i < 4) {
+
+		(file + i)->path = path[i];
+		(file + i)->type = FILE_PATH;
+
+		i++;
+	}
+
+	tc_res res = tc_removev(file, 4, false);
+
+	EXPECT_TRUE(res.okay);
+
+	free(file);
+}
+
+/**
+ * Make Directory Test
+ */
+TEST(tc_test, MakeDirectory)
+{
+	int i = 0;
+	mode_t mode[] = { S_IRWXU, S_IRUSR | S_IRGRP | S_IROTH,
+			  S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH };
+	const char *path[] = { "/tmp/a", "/tmp/b", "/tmp/c" };
+
+	tc_file *file = (tc_file *)calloc(3, sizeof(tc_file));
+
+	RemoveDir(path, 3);
+
+	while (i < 3) {
+
+		(file + i)->path = path[i];
+		(file + i)->type = FILE_PATH;
+
+		i++;
+	}
+
+	tc_res res = tc_mkdirv(file, mode, 3, false);
+
+	EXPECT_TRUE(res.okay);
+
+	free(file);
 }

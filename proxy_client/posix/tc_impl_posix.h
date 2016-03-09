@@ -61,8 +61,7 @@ tc_res posix_renamev(tc_file_pair *pairs, int count, bool is_transaction);
  * @count: the count of tc_ in the preceding array
  * @is_transaction: whether to execute the compound as a transaction
  */
-tc_res posix_removev(tc_target_file *tc_target_files, int count,
-		     bool is_transaction);
+tc_res posix_removev(tc_file *tc_files, int count, bool is_transaction);
 
 /**
  * List the content of a directory.
@@ -78,7 +77,7 @@ tc_res posix_removev(tc_target_file *tc_target_files, int count,
 tc_res posix_listdir(const char *dir, struct tc_attrs_masks masks,
 		     int max_count, struct tc_attrs **contents, int *count);
 
-tc_res posix_mkdirv(tc_target_file *dir, int count, bool is_transaction);
+tc_res posix_mkdirv(tc_file *dir, mode_t *mode, int count, bool is_transaction);
 
 #ifdef __cplusplus
 }

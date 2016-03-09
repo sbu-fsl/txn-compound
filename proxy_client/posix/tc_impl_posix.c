@@ -251,6 +251,8 @@ tc_res posix_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 			res = fstat(cur_attr->file.fd, &st);
 
 		if (res < 0) {
+			perror("");
+			POSIX_WARN("file path : %s\n", cur_attr->file.path);
 			result.okay = false;
 			result.err_no = errno;
 			result.index = i;
@@ -430,23 +432,22 @@ tc_res posix_renamev(struct tc_file_pair *pairs, int count, bool is_transaction)
 /*
  * Remove File(s)
  *
- * @files[IN] - tc_target_file structure containing the
+ * @files[IN] - tc_file structure containing the
  * path of the directory to be removed
  * @count[IN]: the count of tc_target_file in the preceding array
  * @is_transaction[IN]: whether to execute the compound as a transaction
  */
 
-tc_res posix_removev(tc_target_file *files, int count, bool is_transaction)
+tc_res posix_removev(tc_file *files, int count, bool is_transaction)
 {
 	int i = 0;
-	tc_target_file *cur_file = NULL;
+	tc_file *cur_file = NULL;
 	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
 
 	while (i < count) {
 		cur_file = files + i;
 
-		assert(cur_file->path != NULL &&
-		       cur_file->file_type == REGULAR_FILE);
+		assert(cur_file->path != NULL);
 
 		if (unlink(cur_file->path) < 0) {
 			result.okay = false;
@@ -468,23 +469,22 @@ tc_res posix_removev(tc_target_file *files, int count, bool is_transaction)
 /*
  * Remove Directory
  *
- * @dir[IN] - tc_target_file structure containing the
+ * @dir[IN] - tc_file structure containing the
  * path of the directory to be removed
  * @count: the count of tc_target_file in the preceding array
  * @is_transaction: whether to execute the compound as a transaction
  */
 
-tc_res posix_remove_dirv(tc_target_file *dir, int count, bool is_transaction)
+tc_res posix_remove_dirv(tc_file *dir, int count, bool is_transaction)
 {
 	int i = 0;
-	tc_target_file *cur_dir = NULL;
+	tc_file *cur_dir = NULL;
 	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
 
 	while (i < count) {
 		cur_dir = dir + i;
 
-		assert(cur_dir->path != NULL &&
-		       cur_dir->file_type == DIRECTORY);
+		assert(cur_dir->path != NULL);
 
 		if (rmdir(cur_dir->path) < 0) {
 			result.okay = false;
@@ -506,25 +506,25 @@ tc_res posix_remove_dirv(tc_target_file *dir, int count, bool is_transaction)
 /*
  * Create Directory
  *
- * @dir[IN] - tc_target_file structure containing the
+ * @dir[IN] - tc_file structure containing the
  * path of the directory to be created
  * @count: the count of tc_target_file in the preceding array
  * @is_transaction: whether to execute the compound as a transaction
  */
 
-tc_res posix_mkdirv(tc_target_file *dir, int count, bool is_transaction)
+tc_res posix_mkdirv(tc_file *dir, mode_t *mode, int count, bool is_transaction)
 {
 	int i = 0;
-	tc_target_file *cur_dir = NULL;
+	tc_file *cur_dir = NULL;
 	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
 
 	while (i < count) {
 		cur_dir = dir + i;
 
-		assert(cur_dir->path != NULL &&
-		       cur_dir->file_type == DIRECTORY);
+		assert(cur_dir->path != NULL);
 
-		if (mkdir(cur_dir->path, cur_dir->mode) < 0) {
+		if (mkdir(cur_dir->path, mode[i]) < 0) {
+			perror("");
 			result.okay = false;
 			result.err_no = errno;
 			result.index = i;
@@ -579,14 +579,19 @@ tc_res posix_listdir(const char *dir, struct tc_attrs_masks masks,
 		/* copy the file name */
 		cur_attr->file.type = FILE_PATH;
 
-		POSIX_WARN("List Dir : %s\n", dp->d_name);
+		POSIX_WARN("DirEntry  : %s\n", dp->d_name);
 
 		/* Skip the current and parent directory entry */
 		if (!strncmp(dp->d_name, ".", strlen(dp->d_name)) ||
 		    !strncmp(dp->d_name, "..", strlen(dp->d_name)))
 			continue;
 
-		// strncpy(cur_attr->file.path, dp->d_name, strlen(dp->d_name));
+		char *file_path =
+		    (char *)calloc(1, strlen(dp->d_name) + strlen(dir) + 2);
+		strncpy(file_path, dir, strlen(dir));
+		strncat(file_path, "/", 1);
+		strncat(file_path, dp->d_name, strlen(dp->d_name));
+		cur_attr->file.path = file_path;
 
 		/* copy the masks */
 		cur_attr->masks = masks;

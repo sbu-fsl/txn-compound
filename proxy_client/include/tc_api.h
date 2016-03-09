@@ -19,9 +19,7 @@ extern "C" {
 
 enum TC_FILETYPE {
 	FILE_DESCRIPTOR = 1,
-	FILE_PATH,
-	REGULAR_FILE,
-	DIRECTORY
+	FILE_PATH
 };
 
 typedef struct _tc_file
@@ -222,28 +220,19 @@ static inline bool tx_renamev(tc_file_pair *pairs, int count)
 	return res.okay;
 }
 
-typedef struct _tc_target_file
-{
-	int file_type;
-	const char *path;
-	mode_t mode;
+tc_res tc_removev(tc_file *files, int count, bool is_transaction);
 
-} tc_target_file;
-
-tc_res tc_removev(tc_target_file *files, int count, bool is_transaction);
-
-static inline bool tx_removev(tc_target_file *files, int count)
+static inline bool tx_removev(tc_file *files, int count)
 {
 	tc_res res = tc_removev(files, count, true);
 	return res.okay;
 }
 
-tc_res tc_mkdirv(tc_target_file *dir, int count, bool is_transaction);
+tc_res tc_mkdirv(tc_file *dir, mode_t *mode, int count, bool is_transaction);
 
-static inline bool tx_mkdirv(tc_target_file *dir, int count,
-			     bool is_transaction)
+static inline bool tx_mkdirv(tc_file *dir, mode_t *mode, int count, bool is_transaction)
 {
-	tc_res res = tc_mkdirv(dir, count, is_transaction);
+	tc_res res = tc_mkdirv(dir, mode, count, is_transaction);
 	return res.okay;
 }
 
