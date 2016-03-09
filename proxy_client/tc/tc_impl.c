@@ -7,6 +7,18 @@
 
 static tc_res TC_OKAY = { .okay = true, .index = -1, .err_no = 0, };
 
+tc_file tc_file_from_path(const char *pathname)
+{
+	tc_file tf;
+
+	assert(pathname);
+	tf.type = TC_FILE_PATH;
+	tf.fd = pathname[0] == '/' ? TC_FD_ABS : TC_FD_CWD;
+	tf.path = pathname;
+
+	return tf;
+}
+
 tc_res tc_readv(struct tc_iovec *reads, int count, bool is_transaction)
 {
 	/**
@@ -37,7 +49,7 @@ void tc_free_attrs(struct tc_attrs *attrs, int count, bool free_path)
 
 	if (free_path) {
 		for (i = 0; i < count; ++i) {
-			if (attrs[i].file.type == FILE_PATH)
+			if (attrs[i].file.type == TC_FILE_PATH)
 				free((char *)attrs[i].file.path);
 		}
 	}

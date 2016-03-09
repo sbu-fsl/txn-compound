@@ -18,19 +18,65 @@ extern "C" {
 #endif
 
 enum TC_FILETYPE {
-	FILE_DESCRIPTOR = 1,
-	FILE_PATH
+	TC_FILE_DESCRIPTOR = 1,
+	TC_FILE_PATH,
+	TC_FILE_HANDLE,
 };
 
+#define TC_FD_NULL -1
+#define TC_FD_CWD -2
+#define TC_FD_ABS -3
+
+/**
+ * "type" is one of the three file types; "fd" and "path_or_handle" depend on
+ * the file type:
+ *
+ *	1. When "type" is TC_FILE_DESCRIPTOR, "fd" identifies the file we are
+ *	operating on.
+ *
+ *	2. When "type" is TC_FILE_PATH, "fd" is the base file descriptor, and
+ *	"path_or_handle" is the file path.  The file is identified by resolving
+ *	the path relative to "fd".  In this case, "fd" has two special values:
+ *	(a) TC_FDCWD which means the current working directory, and
+ *	(b) TC_FDABS which means the "path_or_handle" is an absolute path.
+ *
+ *	3. When "type" is TC_FILE_HANDLE, "fd" is "mount_fd", and
+ *	"path_or_handle" points to "struct file_handle".
+ *
+ * See http://man7.org/linux/man-pages/man2/open_by_handle_at.2.html
+ */
 typedef struct _tc_file
 {
 	int type;
-	union
-	{
-		int fd;
+
+	int fd;
+
+	union {
 		const char *path;
-	};
+		const struct file_handle *handle;
+	};   /* path_or_handle */
 } tc_file;
+
+tc_file tc_file_from_path(const char *pathname);
+
+/**
+ * Open a tc_file using path.  Similar to "openat(2)".
+ *
+ * NOTE: It is not necessary that a tc_file have to be open before reading
+ * from/writing to it.  We recommend using tc_readv() and tc_writev() to
+ * implicitly open a file when necessary.
+ */
+tc_file tc_open_by_path(int dirfd, const char *pathname, int flags, mode_t mode);
+
+/**
+ * Open a tc_file using file handle.  Similar to "open_by_handle_at(2)".
+ */
+tc_file tc_open_by_handle(int mount_fd, struct file_handle *fh, int flags);
+
+/**
+ * Close a tc_file if necessary.
+ */
+int tc_close(tc_file file);
 
 /**
  * Represents an I/O vector of a file.
@@ -201,8 +247,8 @@ void tc_free_attrs(struct tc_attrs *attrs, int count, bool free_path);
 
 typedef struct tc_file_pair
 {
-	const char *src_path;
-	const char *dst_path;
+	tc_file src_file;
+	tc_file dst_file;
 } tc_file_pair;
 
 /**

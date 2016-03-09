@@ -22,7 +22,7 @@ tc_file posix_open(const char *path, int flags)
 	tc_file file;
 	int fd = open(path, flags);
 
-	file.type = FILE_DESCRIPTOR;
+	file.type = TC_FILE_DESCRIPTOR;
 	file.fd = fd;
 
 	return file;
@@ -38,7 +38,7 @@ int posix_close(const tc_file *file)
 {
 	int err = 0;
 
-	assert(file->type == FILE_DESCRIPTOR);
+	assert(file->type == TC_FILE_DESCRIPTOR);
 
 	/* return error no in case of failure */
 	if (close(file->fd) < 0)
@@ -70,7 +70,7 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 		 * then call open to obtain the file descriptor else
 		 * go ahead with the file descriptor specified by the user
 		 */
-		if (cur_arg->file.type == FILE_PATH)
+		if (cur_arg->file.type == TC_FILE_PATH)
 			file = posix_open(cur_arg->file.path, O_RDONLY);
 		else
 			file = cur_arg->file;
@@ -85,7 +85,7 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 		amount_read =
 		    pread(fd, cur_arg->data, cur_arg->length, cur_arg->offset);
 		if (amount_read < 0) {
-			if (cur_arg->file.type == FILE_PATH)
+			if (cur_arg->file.type == TC_FILE_PATH)
 				posix_close(&file);
 			result.okay = false;
 			break;
@@ -94,7 +94,8 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 		/* set the length to number of bytes successfully read */
 		cur_arg->length = amount_read;
 
-		if (cur_arg->file.type == FILE_PATH && posix_close(&file) < 0) {
+		if (cur_arg->file.type == TC_FILE_PATH &&
+		    posix_close(&file) < 0) {
 			result.okay = false;
 			break;
 		}
@@ -140,7 +141,7 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 			flags |= O_CREAT;
 		}
 
-		if (cur_arg->file.type == FILE_PATH)
+		if (cur_arg->file.type == TC_FILE_PATH)
 			file = posix_open(cur_arg->file.path, flags);
 		else
 			file = cur_arg->file;
@@ -156,7 +157,7 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 		    pwrite(fd, cur_arg->data, cur_arg->length, cur_arg->offset);
 
 		if (amount_written < 0) {
-			if (cur_arg->file.type == FILE_PATH)
+			if (cur_arg->file.type == TC_FILE_PATH)
 				posix_close(&file);
 			result.okay = false;
 			break;
@@ -165,7 +166,8 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 		/* set the length to number of bytes successfully written */
 		cur_arg->length = amount_written;
 
-		if (cur_arg->file.type == FILE_PATH && posix_close(&file) < 0) {
+		if (cur_arg->file.type == TC_FILE_PATH &&
+		    posix_close(&file) < 0) {
 			result.okay = false;
 			break;
 		}
@@ -245,7 +247,7 @@ tc_res posix_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 		cur_attr = attrs + i;
 
 		/* get attributes */
-		if (cur_attr->file.type == FILE_PATH)
+		if (cur_attr->file.type == TC_FILE_PATH)
 			res = stat(cur_attr->file.path, &st);
 		else
 			res = fstat(cur_attr->file.fd, &st);
@@ -292,7 +294,7 @@ static int helper_set_attrs(struct tc_attrs *attrs)
 
 	/* set the mode */
 	if (attrs->masks.has_mode) {
-		if (attrs->file.type == FILE_PATH)
+		if (attrs->file.type == TC_FILE_PATH)
 			res = chmod(attrs->file.path, attrs->mode);
 		else
 			res = fchmod(attrs->file.fd, attrs->mode);
@@ -303,7 +305,7 @@ static int helper_set_attrs(struct tc_attrs *attrs)
 
 	/* set the file size */
 	if (attrs->masks.has_size) {
-		if (attrs->file.type == FILE_PATH)
+		if (attrs->file.type == TC_FILE_PATH)
 			res = truncate(attrs->file.path, attrs->size);
 		else
 			res = ftruncate(attrs->file.fd, attrs->size);
@@ -315,7 +317,7 @@ static int helper_set_attrs(struct tc_attrs *attrs)
 	/* set the UID and GID */
 	if (attrs->masks.has_uid || attrs->masks.has_gid) {
 
-		if (attrs->file.type == FILE_PATH)
+		if (attrs->file.type == TC_FILE_PATH)
 			res = chown(attrs->file.path, attrs->uid, attrs->gid);
 		else
 			res = fchown(attrs->file.fd, attrs->uid, attrs->gid);
@@ -327,7 +329,7 @@ static int helper_set_attrs(struct tc_attrs *attrs)
 	/* set the atime and mtime */
 	if (attrs->masks.has_atime || attrs->masks.has_mtime) {
 
-		if (attrs->file.type == FILE_PATH)
+		if (attrs->file.type == TC_FILE_PATH)
 			stat(attrs->file.path, &s);
 		else
 			fstat(attrs->file.fd, &s);
@@ -341,7 +343,7 @@ static int helper_set_attrs(struct tc_attrs *attrs)
 		if (attrs->masks.has_mtime)
 			times[1].tv_sec = attrs->mtime;
 
-		if (attrs->file.type == FILE_PATH)
+		if (attrs->file.type == TC_FILE_PATH)
 			res = utimes(attrs->file.path, times);
 		else
 			res = futimens(attrs->file.fd, times);
@@ -408,10 +410,13 @@ tc_res posix_renamev(struct tc_file_pair *pairs, int count, bool is_transaction)
 	while (i < count) {
 		cur_pair = pairs + i;
 
-		assert(cur_pair->src_path != NULL &&
-		       cur_pair->dst_path != NULL);
+		assert(cur_pair->src_file.type == TC_FILE_PATH &&
+		       cur_pair->dst_file.type == TC_FILE_PATH &&
+		       cur_pair->src_file.path != NULL &&
+		       cur_pair->src_file.path != NULL);
 
-		if (rename(cur_pair->src_path, cur_pair->dst_path) < 0) {
+		if (rename(cur_pair->src_file.path, cur_pair->dst_file.path) <
+		    0) {
 			perror("");
 			result.okay = false;
 			result.err_no = errno;
@@ -454,8 +459,10 @@ tc_res posix_removev(tc_file *files, int count, bool is_transaction)
 			result.err_no = errno;
 			result.index = i;
 
-			POSIX_WARN("posix_removev() failed at index : %d\n",
-				   result.index);
+			POSIX_WARN("posix_removev() failed at index %d for "
+				   "path %s: %s\n",
+				   result.index, cur_file->path,
+				   strerror(errno));
 
 			return result;
 		}
@@ -577,7 +584,7 @@ tc_res posix_listdir(const char *dir, struct tc_attrs_masks masks,
 		cur_attr = (*contents) + *count;
 
 		/* copy the file name */
-		cur_attr->file.type = FILE_PATH;
+		cur_attr->file.type = TC_FILE_PATH;
 
 		POSIX_WARN("DirEntry  : %s\n", dp->d_name);
 

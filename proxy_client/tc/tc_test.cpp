@@ -92,7 +92,7 @@ static tc_iovec *set_iovec_file_paths(const char **PATH, int count,
 			return NULL;
 		}
 
-		(user_arg + i)->file.type = FILE_PATH;
+		(user_arg + i)->file.type = TC_FILE_PATH;
 		(user_arg + i)->file.path = PATH[i];
 		(user_arg + i)->offset = 0;
 		(user_arg + i)->length = N;
@@ -188,7 +188,7 @@ static tc_iovec *set_iovec_fd(int *fd, int count)
 			return NULL;
 		}
 
-		(user_arg + i)->file.type = FILE_DESCRIPTOR;
+		(user_arg + i)->file.type = TC_FILE_DESCRIPTOR;
 		(user_arg + i)->file.fd = fd[i];
 		(user_arg + i)->offset = 0;
 		(user_arg + i)->length = N;
@@ -375,11 +375,11 @@ static tc_attrs *set_tc_attrs(const char **PATH, int count, bool isPath)
 		}
 
 		if (isPath) {
-			(change_attr + i)->file.type = FILE_PATH;
+			(change_attr + i)->file.type = TC_FILE_PATH;
 			(change_attr + i)->file.path = PATH[i];
 
 		} else {
-			(change_attr + i)->file.type = FILE_DESCRIPTOR;
+			(change_attr + i)->file.type = TC_FILE_DESCRIPTOR;
 			(change_attr + i)->file.fd =
 			    open(PATH[i], O_RDWR | O_CREAT);
 
@@ -565,10 +565,8 @@ TEST(tc_test, RenameFile)
 	tc_file_pair *file = (tc_file_pair *)calloc(4, sizeof(tc_file_pair));
 
 	while (i < 4) {
-
-		(file + i)->src_path = src_path[i];
-		(file + i)->dst_path = dest_path[i];
-
+		file[i].src_file = tc_file_from_path(src_path[i]);
+		file[i].dst_file = tc_file_from_path(dest_path[i]);
 		i++;
 	}
 
@@ -591,10 +589,7 @@ TEST(tc_test, RemoveFile)
 	tc_file *file = (tc_file *)calloc(4, sizeof(tc_file));
 
 	while (i < 4) {
-
-		(file + i)->path = path[i];
-		(file + i)->type = FILE_PATH;
-
+		file[i] = tc_file_from_path(path[i]);
 		i++;
 	}
 
@@ -622,7 +617,7 @@ TEST(tc_test, MakeDirectory)
 	while (i < 3) {
 
 		(file + i)->path = path[i];
-		(file + i)->type = FILE_PATH;
+		(file + i)->type = TC_FILE_PATH;
 
 		i++;
 	}
