@@ -230,9 +230,9 @@ int main(int argc, char *argv[])
 
 			block_size = atoi((char *)optarg);
 
-			if (block_size <= 0 || block_size > 32 * 1024) {
+			if (block_size <= 0 || block_size > 1024 * 1024) {
 				printf(
-				    "Invalid block size or it exceeds 32k\n");
+				    "Invalid block size or it exceeds 1024k\n");
 				exit(-1);
 			}
 

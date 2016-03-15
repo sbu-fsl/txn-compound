@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
+#include <fcntl.h>
 
 char usage[] = "tc_test Help\n"
 	       "============\n\n"	
@@ -22,6 +23,7 @@ char usage[] = "tc_test Help\n"
 int main(int argc, char *argv[])
 {
 	FILE *fp = NULL;
+	int fd;
 	char *temp_path = NULL;
 	char *input_path = NULL;
 	int input_len = 0;
@@ -180,37 +182,38 @@ int main(int argc, char *argv[])
 	snprintf(temp_path, input_len + 8, "%s%u", input_path, 0);
 
 	if (rw == 0) { /* Read */
-		fp = fopen(temp_path, "r");
+		//fp = fopen(temp_path, "r");
+		fd = open(temp_path, O_RDONLY);
 	} else { /* Write */
-		fp = fopen(temp_path, "w");
+		//fp = fopen(temp_path, "w");
+		fd = open(temp_path, O_WRONLY);
 	}
 
-	if (fp == NULL) {
+	//if (fp == NULL) {
+	if (fd < 0) {
 		printf("Error opening file - %s\n", temp_path);
 		goto main_exit;
 	}
 
-	j = 1;
+	j = 0;
 	while (j <= (file_size / block_size)) {
 
-		fseek(fp, file_size - j * block_size, SEEK_SET);
+		//fseek(fp, file_size - j * block_size, SEEK_SET);
+		posix_fadvise(fd, j * block_size, block_size,
+			      POSIX_FADV_RANDOM);
 		if (rw == 0) { /* Read */
-			fread(data_buf, block_size, 1, (FILE *)fp);
+			//fread(data_buf, block_size, 1, (FILE *)fp);
+			read(fd, data_buf, block_size);
 		} else { /* Write */
-			fwrite(data_buf, 1, block_size, (FILE *)fp);
+			//fwrite(data_buf, 1, block_size, (FILE *)fp);
+			write(fd, data_buf, block_size);
 		}
 
 		j++;
 	}
 
-	fseek(fp, 0, SEEK_SET);
-	if (rw == 0) { /* Read */
-		fread(data_buf, block_size, 1, (FILE *)fp);
-	} else { /* Write */
-		fwrite(data_buf, 1, block_size, (FILE *)fp);
-	}
-
-	fclose(fp);
+	//fclose(fp);
+	close(fd);
 
 	//t = clock() - t;
 	gettimeofday(&tv2, NULL);

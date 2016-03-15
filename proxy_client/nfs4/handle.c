@@ -1329,13 +1329,14 @@ static fsal_status_t fs_create(struct fsal_obj_handle *dir_hdl,
 }
 
 static fsal_status_t fs_read_state(const nfs_fh4 *fh4, const nfs_fh4 *fh4_1,
-				    uint64_t offset, size_t buffer_size,
-				    void *buffer, size_t *read_amount,
-				    bool *end_of_file, stateid4 *sid,
-				    stateid4 *sid1)
+				   uint64_t offset, size_t buffer_size,
+				   void *buffer, size_t *read_amount,
+				   bool *end_of_file, stateid4 *sid,
+				   stateid4 *sid1)
 {
 	int rc;
 	int opcnt = 0;
+	/*struct fs_obj_handle *ph;*/
 #define FSAL_READSTATE_NB_OP_ALLOC 6
 	nfs_argop4 argoparray[FSAL_READSTATE_NB_OP_ALLOC];
 	nfs_resop4 resoparray[FSAL_READSTATE_NB_OP_ALLOC];
@@ -1348,8 +1349,8 @@ static fsal_status_t fs_read_state(const nfs_fh4 *fh4, const nfs_fh4 *fh4_1,
 		*end_of_file = false;
 		return fsalstat(ERR_FSAL_NO_ERROR, 0);
 	}
-
-#if 0
+	/*ph = container_of(obj_hdl, struct fs_obj_handle, obj);*/
+	#if 0
         if ((ph->openflags & (FSAL_O_RDONLY | FSAL_O_RDWR)) == 0)
                 return fsalstat(ERR_FSAL_FILE_OPEN, EBADF);
 #endif
@@ -1387,7 +1388,7 @@ static fsal_status_t fs_read_state(const nfs_fh4 *fh4, const nfs_fh4 *fh4_1,
 				   buffer_size);
 
 	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds, opcnt,
-			    argoparray, resoparray);
+			   argoparray, resoparray);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
 
@@ -1396,12 +1397,18 @@ static fsal_status_t fs_read_state(const nfs_fh4 *fh4, const nfs_fh4 *fh4_1,
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
+/*
+ * Helper function for do_fs_openread
+ * Again like fs_openread, this is a *very early stage* of development,
+ * so far just being used to verify if things work as intended and whether
+ * mange the stateids properly.
+ */
 static fsal_status_t do_fs_openread(struct fsal_obj_handle *dir_hdl,
-				     const char *name, struct attrlist *attrib,
-				     struct fsal_obj_handle **handle,
-				     struct GETFH4resok *fhok_handle,
-				     struct OPEN4resok *opok_handle,
-				     struct GETATTR4resok *atok_handle)
+				    const char *name, struct attrlist *attrib,
+				    struct fsal_obj_handle **handle,
+				    struct GETFH4resok *fhok_handle,
+				    struct OPEN4resok *opok_handle,
+				    struct GETATTR4resok *atok_handle)
 {
 	int rc;
 	int opcnt = 0;
@@ -1414,18 +1421,18 @@ static fsal_status_t do_fs_openread(struct fsal_obj_handle *dir_hdl,
 	GETFH4resok *fhok;
 	GETATTR4resok *atok;
 	OPEN4resok *opok;
-        char owner_val[128];
-        unsigned int owner_len = 0;
-        struct fs_obj_handle *ph;
-        fsal_status_t st;
-        clientid4 cid;
+	char owner_val[128];
+	unsigned int owner_len = 0;
+	struct fs_obj_handle *ph;
+	fsal_status_t st;
+	clientid4 cid;
 	char *data_buf = NULL;
-        size_t read_amount = 0;
-        bool eof = false;
+	size_t read_amount = 0;
+	bool eof = false;
 
 	LogDebug(COMPONENT_FSAL, "fs_openread() called\n");
 
-        /* Create the owner */
+	/* Create the owner */
 	snprintf(owner_val, sizeof(owner_val), "GANESHA/PROXY: pid=%u %" PRIu64,
 		 getpid(), atomic_inc_uint64_t(&fcnt));
 	owner_len = strnlen(owner_val, sizeof(owner_val));
@@ -1455,11 +1462,11 @@ static fsal_status_t do_fs_openread(struct fsal_obj_handle *dir_hdl,
 	COMPOUNDV4_ARG_ADD_OP_GETFH(opcnt, argoparray);
 
 	atok = fs_fill_getattr_reply(resoparray + opcnt, fattr_blob,
-				      sizeof(fattr_blob));
+				     sizeof(fattr_blob));
 	COMPOUNDV4_ARG_ADD_OP_GETATTR(opcnt, argoparray, fs_bitmap_getattr);
 
 	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds, opcnt,
-			    argoparray, resoparray);
+			   argoparray, resoparray);
 
 	fhok_handle->object.nfs_fh4_len = fhok->object.nfs_fh4_len;
 	fhok_handle->object.nfs_fh4_val = malloc(fhok->object.nfs_fh4_len);
@@ -1475,12 +1482,22 @@ static fsal_status_t do_fs_openread(struct fsal_obj_handle *dir_hdl,
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
+/*
+ * This is supposed to be a more stateful version of ktcread
+ * i.e. First open is sent, and subsequent reads/writes are sent
+ * with the stateid got from open reply
+ * So have to close the files as well.
+ *
+ * This is at a *very early stage* of the development, to see if the stateid
+ * handling is correct. This will be made similar to ktcread() in future.
+ */
+
 static fsal_status_t fs_openread(struct fsal_obj_handle *dir_hdl,
-				  const char *name, const char *name1,
-				  struct attrlist *attrib,
-				  struct attrlist *attrib1,
-				  struct fsal_obj_handle **handle,
-				  struct fsal_obj_handle **handle1)
+				 const char *name, const char *name1,
+				 struct attrlist *attrib,
+				 struct attrlist *attrib1,
+				 struct fsal_obj_handle **handle,
+				 struct fsal_obj_handle **handle1)
 {
 	int rc;
 	GETFH4resok fhok;
@@ -1496,20 +1513,19 @@ static fsal_status_t fs_openread(struct fsal_obj_handle *dir_hdl,
 
 	LogDebug(COMPONENT_FSAL, "fs_openread() called\n");
 
-	st =
-	    do_fs_openread(dir_hdl, name, attrib, handle, &fhok, &opok, &atok);
+	st = do_fs_openread(dir_hdl, name, attrib, handle, &fhok, &opok, &atok);
 	if (FSAL_IS_ERROR(st))
 		return st;
 
 	st = do_fs_openread(dir_hdl, name1, attrib1, handle1, &fhok1, &opok1,
-			     &atok1);
+			    &atok1);
 	if (FSAL_IS_ERROR(st))
 		return st;
 
 	/* See if a OPEN_CONFIRM is required */
 	if (opok.rflags & OPEN4_RESULT_CONFIRM) {
-		st = fs_open_confirm(op_ctx->creds, &fhok.object,
-				      &opok.stateid, op_ctx->fsal_export);
+		st = fs_open_confirm(op_ctx->creds, &fhok.object, &opok.stateid,
+				     op_ctx->fsal_export);
 		if (FSAL_IS_ERROR(st)) {
 			LogDebug(COMPONENT_FSAL,
 				 "fs_open_confirm failed: status %d", st);
@@ -1520,7 +1536,7 @@ static fsal_status_t fs_openread(struct fsal_obj_handle *dir_hdl,
 	/* See if a OPEN_CONFIRM is required */
 	if (opok1.rflags & OPEN4_RESULT_CONFIRM) {
 		st = fs_open_confirm(op_ctx->creds, &fhok1.object,
-				      &opok1.stateid, op_ctx->fsal_export);
+				     &opok1.stateid, op_ctx->fsal_export);
 		if (FSAL_IS_ERROR(st)) {
 			LogDebug(COMPONENT_FSAL,
 				 "fs_open_confirm failed: status %d", st);
@@ -1529,22 +1545,22 @@ static fsal_status_t fs_openread(struct fsal_obj_handle *dir_hdl,
 	}
 
 	fs_read_state(&fhok.object, &fhok1.object, 0, 1024, data_buf,
-		       &read_amount, &eof, &opok.stateid, &opok1.stateid);
+		      &read_amount, &eof, &opok.stateid, &opok1.stateid);
 
 	/* The created file is still opened, to preserve the correct
 	 * seqid for later use, we close it */
 	st = fs_do_close(op_ctx->creds, &fhok.object, &opok.stateid,
-			  op_ctx->fsal_export);
+			 op_ctx->fsal_export);
 	if (FSAL_IS_ERROR(st))
 		return st;
 
 	st = fs_do_close(op_ctx->creds, &fhok1.object, &opok1.stateid,
-			  op_ctx->fsal_export);
+			 op_ctx->fsal_export);
 	if (FSAL_IS_ERROR(st))
 		return st;
 
 	st = fs_make_object(op_ctx->fsal_export, &atok.obj_attributes,
-			     &fhok.object, handle);
+			    &fhok.object, handle);
 	free(fhok.object.nfs_fh4_val);
 	free(fhok1.object.nfs_fh4_val);
 	if (FSAL_IS_ERROR(st))
@@ -1597,7 +1613,7 @@ static int construct_lookup(char *path, nfs_argop4 *argoparray, int *opcnt_temp,
 	}
 
 	gsh_free(pcopy);
-	free(temp); // Caller has to do this
+	free(temp);
 	*opcnt_temp = opcnt;
 
 	return 0;
@@ -1641,7 +1657,11 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 	if (fs_fsalattr_to_fattr4(&kern_arg->attrib, &input_attr) == -1)
 		return fsalstat(ERR_FSAL_INVAL, -1);
 
+	/*
+	 * Need to fix this, make sure umask is set to the calling process umask
+	 */
 	input_attr.attrmask = empty_bitmap;
+
 	if (kern_arg->path == NULL) {
 		/*
 		 * file path is empty, so no need to send lookups,
@@ -1672,14 +1692,14 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 		 */
 
 		if (opcnt != 0) {
-			/* 
- 			 * No need to send close if its the first read request
+			/*
+			 * No need to send close if its the first read request
 			 */
 			COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
 		}
 
-		/* 
- 		 * Parse the file-path and send lookups to set the current
+		/*
+		 * Parse the file-path and send lookups to set the current
 		 * file-handle
 		 */
 		if (construct_lookup(kern_arg->path, argoparray, &opcnt,
@@ -1687,7 +1707,8 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 			goto exit_pathinval;
 		}
 
-		LogDebug(COMPONENT_FSAL, "ktcread name: %s\n", kern_arg->path + marker);
+		LogDebug(COMPONENT_FSAL, "ktcread name: %s\n",
+			 kern_arg->path + marker);
 
 		kern_arg->opok_handle =
 		    &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
@@ -1772,17 +1793,17 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 	COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
 
 	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds, opcnt,
-			    argoparray, resoparray);
+			   argoparray, resoparray);
 
 	if (rc != NFS4_OK) {
 		LogDebug(COMPONENT_FSAL, "fs_nfsv4_call() returned error\n");
 		st = nfsstat4_to_fsal(rc);
-	
+
 		/*
- 		 * We know one of the calls failed in the compound,
- 		 * now let us proceed identifying which read failed.
- 		 * Also populate the user arg with the right error
- 		 */ 
+		 * We know one of the calls failed in the compound,
+		 * now let us proceed identifying which read failed.
+		 * Also populate the user arg with the right error
+		 */
 		i = 0;
 		j = 0;
 
@@ -1869,6 +1890,9 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 	if (fs_fsalattr_to_fattr4(&kern_arg->attrib, &input_attr) == -1)
 		return fsalstat(ERR_FSAL_INVAL, -1);
 
+	/*
+	 * Need to fix this, make sure umask is set to the calling process umask
+	 */
 	input_attr.attrmask = empty_bitmap;
 
 	if (kern_arg->path == NULL) {
@@ -1890,30 +1914,31 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 
 	} else {
 		/*
-                 * File path is not empty, so
-                 *  1) Close the already opened file
-                 *  2) Parse the file-path,
-                 *  3) Start from putrootfh and keeping adding lookups,
-                 *  4) Followed by open and write
-                 */
-		
+		 * File path is not empty, so
+		 *  1) Close the already opened file
+		 *  2) Parse the file-path,
+		 *  3) Start from putrootfh and keeping adding lookups,
+		 *  4) Followed by open and write
+		 */
+
 		if (opcnt != 0) {
-			/* 
-                         * No need to send close if its the first write request
-                         */
+			/*
+			 * No need to send close if its the first write request
+			 */
 			COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
 		}
 
-		/* 
-                 * Parse the file-path and send lookups to set the current
-                 * file-handle
-                 */
+		/*
+		 * Parse the file-path and send lookups to set the current
+		 * file-handle
+		 */
 		if (construct_lookup(kern_arg->path, argoparray, &opcnt,
 				     &marker) == -1) {
 			goto error_pathinval;
 		}
 
-		LogDebug(COMPONENT_FSAL, "ktcwrite name: %s\n", kern_arg->path + marker);
+		LogDebug(COMPONENT_FSAL, "ktcwrite name: %s\n",
+			 kern_arg->path + marker);
 
 		kern_arg->opok_handle =
 		    &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
@@ -1994,17 +2019,17 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
 	COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
 
 	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds, opcnt,
-			    argoparray, resoparray);
+			   argoparray, resoparray);
 
 	if (rc != NFS4_OK) {
 		LogDebug(COMPONENT_FSAL, "fs_nfsv4_call() returned error\n");
 		st = nfsstat4_to_fsal(rc);
 
 		/*
-                 * We know one of the calls failed in the compound,
-                 * now let us proceed identifying which read failed.
-                 * Also populate the user arg with the right error
-                 */
+		 * We know one of the calls failed in the compound,
+		 * now let us proceed identifying which read failed.
+		 * Also populate the user arg with the right error
+		 */
 		i = 0;
 		j = 0;
 		while (i < arg_count) {
@@ -2057,9 +2082,9 @@ exit:
 	return st;
 }
 
-static fsal_status_t fs_mkdir(struct fsal_obj_handle *dir_hdl,
-			       const char *name, struct attrlist *attrib,
-			       struct fsal_obj_handle **handle)
+static fsal_status_t fs_mkdir(struct fsal_obj_handle *dir_hdl, const char *name,
+			      struct attrlist *attrib,
+			      struct fsal_obj_handle **handle)
 {
 	int rc;
 	int opcnt = 0;
