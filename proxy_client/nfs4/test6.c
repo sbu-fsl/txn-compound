@@ -22,7 +22,6 @@ char usage[] = "tc_test Help\n"
 
 int main(int argc, char *argv[])
 {
-	FILE *fp = NULL;
 	int fd;
 	char *temp_path = NULL;
 	char *input_path = NULL;
@@ -182,14 +181,11 @@ int main(int argc, char *argv[])
 	snprintf(temp_path, input_len + 8, "%s%u", input_path, 0);
 
 	if (rw == 0) { /* Read */
-		//fp = fopen(temp_path, "r");
 		fd = open(temp_path, O_RDONLY);
 	} else { /* Write */
-		//fp = fopen(temp_path, "w");
 		fd = open(temp_path, O_WRONLY);
 	}
 
-	//if (fp == NULL) {
 	if (fd < 0) {
 		printf("Error opening file - %s\n", temp_path);
 		goto main_exit;
@@ -198,21 +194,17 @@ int main(int argc, char *argv[])
 	j = 0;
 	while (j <= (file_size / block_size)) {
 
-		//fseek(fp, file_size - j * block_size, SEEK_SET);
 		posix_fadvise(fd, j * block_size, block_size,
 			      POSIX_FADV_RANDOM);
 		if (rw == 0) { /* Read */
-			//fread(data_buf, block_size, 1, (FILE *)fp);
 			read(fd, data_buf, block_size);
 		} else { /* Write */
-			//fwrite(data_buf, 1, block_size, (FILE *)fp);
 			write(fd, data_buf, block_size);
 		}
 
 		j++;
 	}
 
-	//fclose(fp);
 	close(fd);
 
 	//t = clock() - t;
