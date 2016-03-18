@@ -1,10 +1,4 @@
-[submodule "src/libntirpc"]
-	path = src/libntirpc
+[submodule "tc_client/libntirpc"]
+	path = tc_client/libntirpc
 	url = https://github.com/nfs-ganesha/ntirpc.git
 
-[submodule "proxy_client/libntirpc"]
-	path = proxy_client/libntirpc
-	url = https://github.com/nfs-ganesha/ntirpc.git
-[submodule "apps/filebench"]
-	path = apps/filebench
-	url = mchen@git.fsl.cs.sunysb.edu:/scm/fslgit/nfs4tc-filebench.git
