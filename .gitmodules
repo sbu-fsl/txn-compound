@@ -3,5 +3,5 @@
 	url = https://github.com/nfs-ganesha/ntirpc.git
 
 [submodule "apps/filebench"]
-	path = tc_client/apps/filebench
-	url = mchen@git.fsl.cs.sunysb.edu:/scm/fslgit/nfs4tc-filebench.git
+	path = apps/filebench
+	url = git.fsl.cs.sunysb.edu:/scm/fslgit/nfs4tc-filebench.git
