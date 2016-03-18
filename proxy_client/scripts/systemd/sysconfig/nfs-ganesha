@@ -1,1 +1,0 @@
-OPTIONS="-d -L /var/log/ganesha.log -f /etc/ganesha.nfsd.conf -N NIV_EVENT"

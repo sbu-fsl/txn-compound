@@ -1,0 +1,201 @@
+\documentclass[10pt, journal, twocolumn, twoside]{IEEEtran}
+
+\usepackage{url}
+\usepackage{graphicx}
+\usepackage{framed}
+\usepackage{listings}
+\RequirePackage{epsfig}
+\RequirePackage{color}
+
+\lstset{breaklines=true} 
+
+\hyphenation{op-tical net-works semi-conduc-tor}
+
+\begin{document}
+\title{Stackable~File~System~Using~NFS~Ganesha}
+
+\author{Arun~Olappamanna~Vasudevan,~\IEEEmembership{CS,~Stony~Brook~University,}
+\thanks{Arun O. V. is a graduate student with the Department
+of Computer Science, Stony Brook University, Stony Brook,
+NY, 11079 USA e-mail: aolappamanna@cs.stonybrook.edu,
+web: http://www.fsl.cs.sunysb.edu/\~{}arunov/}}% <-this % stops a space
+
+% The paper headers
+\markboth{Stackable~File~system~Using~NFS~Ganesha}%
+{File~Systems~and~Storage~Lab}
+
+\maketitle
+
+\begin{abstract}
+%\boldmath
+NFS Ganesha is a userland implementation of Network File System. This article
+explores stackable file system feature supported by NFS Ganesha version 2.0.
+A file-encrypting stackable file system CRYPTFS.
+\end{abstract}
+
+% Note that keywords are not normally used for peerreview papers.
+\begin{IEEEkeywords}
+network file system, file system, file system abstraction layer, proxy,
+NFSv4, NFS, FSAL, stackable
+\end{IEEEkeywords}
+
+\IEEEpeerreviewmaketitle
+
+\section{Introduction}
+\IEEEPARstart{G}{anesha} NFS being a userland implementation of Network File
+System protocol is a convenient place to try out new features and algorithms.
+Duo Yi and Youlong Cheng implemented security features in proxy server
+\cite{NFSv4SecurityProxy} using Ganesha NFS. The implementation is mostly in
+NFSv4 protocol, which makes it highly inflexible and non-modular. Stackable
+FSAL might help implement features in a cleaner way.
+
+Stackable FSAL was explored by implementing a basic file-encrypting
+stackable file system in NFS Ganesha version 2.0.
+
+\section{Background}
+The NFSv4 Security Proxy project involved security features - antivirus, logging,
+and filtering based on policy. Implementation was done at development stages of
+NFS Ganesha version 2.0. To match the latest version of NFS Ganesha, the security proxy project
+had to be ported.
+
+Implementation was done in NFSv4 protocol layer introduced difficulty in porting --
+changes in NFSv4 operations rename, open, and close had modifications in the way
+access mode was checked. TODO: What exactly is change.
+
+Implementing in NFSv4 layer also makes it inflexible. Irrespective of whether FSAL\_PROXY
+is used, these features are present. Using stackable FSAL module is a solution.
+
+\section{Project Design}
+In order to design stackable file system, an overview of NFS
+Ganesha architecture is discussed first.
+
+\subsection{FSAL - File System Abstraction Layer}
+There are several types of file systems supported by Ganesha. The FSAL is an
+abstraction layer that abstracts each file system to a set of common operations
+that are handled by each module.
+
+Each module can be configured using special key-value pairs in
+configuration file that is parsed by NFS Ganesha. For instance, FSAL\_PROXY
+required Srv\_Addr to be defined in configuration file.
+
+\begin{figure*}[!btp]
+  \centering
+  \psfig{figure=figs/ganesha-proxy-overview.eps, width=\textwidth}
+  \caption{Architecture of FSAL\_PROXY}
+  \label{fsalProxyArch}
+\end{figure*}
+
+\subsubsection{PROXY FSAL}
+This is an abstraction that implements proxy machine between a client and a
+server. FSAL\_PROXY uses NFSv4. Figure \ref{fsalProxyArch} shows how requests
+from clients are handled by FSAL\_PROXY by contacting server.
+
+\begin{enumerate}
+\item Init module invokes config parser %1
+\item `proxy.ganesha.conf' is parsed %2
+\item Library mentioned as value of `FSAL\_Shared\_Library' is loaded %3
+\item dlopen() invokes constructor that registers FSAL of library %4
+\item FSAL added to fsal\_list, call backs registered for configuration (init\_config) and creating export (create\_export) %5
+\item EXPORT block in config file corresponds to a line in /etc/exports in Linux. Export entry is created with the FSAL
+mentioned in EXPORT block. In this case PROXY. %6
+\item Proxy operations are registered with the export entry (function pointers for read, write, open, close, etc.) %7
+\item After config file is parsed, all FSALs in fsal\_list are initialized %8
+\item Initialization of FSAL Proxy %9
+\item Configuration items specific to FSAL Proxy, such as server address (Srv\_addr) is obtained from config parse tree %10
+\item Thread spawned to connect to server and initialize RPC %11
+\item RPC socket that's used for send RPC request and listen %12
+\item Worker threads spawned for handling requests from client %13
+\item NFSv4 request from client received by worker thread %14
+\item After access permission (supports even authentication) checks of client on export entry corresponding to request, NFSv4 service function (usually nfs4\_Compound) is called %15
+\item All metadata is maintained in cache inode and dentry data structures in AVL trees. Request received from NFSv4 operations. %16
+\item Request is forwarded to FSAL operations registered to particular export entry %17
+\item Server request through RPC socket %18
+\item NFSv4 request to Server %19
+\item NFSv4 response from Server %20
+\item Response passed to PROXY handler %21
+\item Response passed to cache inode %22
+\item Response passed to NFSv4 protocol handler %23
+\item Response passed to worker thread %24
+\item svc\_sendreply() to client %25
+\end{enumerate}
+
+\begin{figure}[!btp]
+  \centering
+  \psfig{figure=figs/ganesha-stackable-fsal.eps, width=0.5\textwidth}
+  \caption{Architecture of Stackable FSAL}
+  \label{fsalStackArch}
+\end{figure}
+
+\subsubsection{Stackable FSAL}
+Every EXPORT block in config file has a FS\_Specific entry that is passed to create\_export()
+function of FSAL of the export entry. The FS\_Specific entry is again an FSAL name. This
+opens possibilities for using the FS\_Specific for stacking on top of a particular FSAL.
+Figure \ref{fsalStackArch} shows architecture and working of a  general stackable FSAL.
+
+\begin{enumerate}
+\item Config file parsed %1
+\item EXPORT block corresponds to Stackable FSAL. Stackable FSAL's create\_export() is called with a parameter FS\_Specific. %2
+\item FS\_Specific is another FSAL module. It's create\_export() method is called. %3
+\item Handlers of FS\_Specific FSAL is returned %4
+\item Stackable FSAL handlers are registered for the export entry %5
+\item When a client request comes, Stackable FSAL handler is called %6
+\item After performing its own operation, FS\_Specific FSAL's handler is called %7
+\item Response from FS\_Specific FSAL handler %8
+\item Response passed back to client %9
+\end{enumerate}
+
+\begin{figure*}[!bth]
+  \centering
+  \psfig{figure=figs/ganesha-crypt-proxy-stack.eps, width=\textwidth}
+  \caption{Architecture of CRYPTFS stacked on PROXY}
+  \label{fsalCryptArch}
+\end{figure*}
+
+\subsection{CRYPTFS Stackable file system}
+CRYPTFS is a stackable FSAL module that secures data using cryptography. CRYPTFS when used in a proxy machine
+encrypts data that is written to server and decrypts data when read from server. Architecture of CRYPTFS in proxy
+is as shown in figure \ref{fsalCryptArch}.
+
+Control flow is similar to a general stackable FSAL. All operations are merely wrappers that call underlying PROXY FSAL
+except read and write. Write involved DES encryption in counter mode (see figure \ref{fsalCryptEncrypt}) and read involves
+decryption (see figure \ref{fsalCryptDecrypt}).
+
+\begin{figure}[!btp]
+  \centering
+  \psfig{figure=figs/ganesha-crypt-ctr-encrypt.eps, width=0.5\textwidth}
+  \caption{Encryption in CRYPTFS}
+  \label{fsalCryptEncrypt}
+\end{figure}
+
+\begin{figure}[!btp]
+  \centering
+  \psfig{figure=figs/ganesha-crypt-ctr-decrypt.eps, width=0.5\textwidth}
+  \caption{Decryption in CRYPTFS}
+  \label{fsalCryptDecrypt}
+\end{figure}
+
+\section{Conclusion}
+\begin{itemize}
+\item To use stackable FSAL for a NFSv4 Security features can be implemented by using a File Handle to
+File Name Map in stackable FSAL. After digging cache inode data structures, I think they are right
+that file name cannot be retrieved from file handle. Needs to be seen if there are other ways of
+doing this (possibly using cache inode data structures).
+\item The existing restriction on FSAL Stackable to have only one underlying file system can be
+worked around by compromising on flexibility (yet to be checked). Also, I think it's worth
+exploring a change in config parsing to allow multiple layers. Further investigation needs to be
+done on this.
+\item Implementation of CRYPTFS has some performance improvements that I have identified. Also,
+impact on performance by inclusion of CRYPTFS stackable file system is yet to be
+measured.
+\item Performance of NFS Ganesha Proxy with different ports of communication with server and client machines
+is also worth study.
+\end{itemize}
+
+\section*{Acknowledgment}
+Ming Chen has been extremely supportive through the duration of work on NFS Ganesha and Stackable FS.
+
+\bibliographystyle{IEEEtran}
+\bibliography{ganesha-stackable-nfs-overview}
+
+\end{document}
+
