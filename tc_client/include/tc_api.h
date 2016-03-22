@@ -9,6 +9,7 @@
 
 #include <stdbool.h>
 #include <stdlib.h>
+#include <fcntl.h>
 
 #ifdef __cplusplus
 #define CONST const
@@ -58,6 +59,10 @@ typedef struct _tc_file
 } tc_file;
 
 tc_file tc_file_from_path(const char *pathname);
+
+static inline tc_file tc_open(const char *pathname, int flags, mode_t mode) {
+	return tc_open_by_path(AT_FDCWD, pathname, flags, mode);
+}
 
 /**
  * Open a tc_file using path.  Similar to "openat(2)".
