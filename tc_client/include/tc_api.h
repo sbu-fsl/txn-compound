@@ -52,17 +52,14 @@ typedef struct _tc_file
 
 	int fd;
 
-	union {
+	union
+	{
 		const char *path;
 		const struct file_handle *handle;
-	};   /* path_or_handle */
+	}; /* path_or_handle */
 } tc_file;
 
 tc_file tc_file_from_path(const char *pathname);
-
-static inline tc_file tc_open(const char *pathname, int flags, mode_t mode) {
-	return tc_open_by_path(AT_FDCWD, pathname, flags, mode);
-}
 
 /**
  * Open a tc_file using path.  Similar to "openat(2)".
@@ -71,7 +68,13 @@ static inline tc_file tc_open(const char *pathname, int flags, mode_t mode) {
  * from/writing to it.  We recommend using tc_readv() and tc_writev() to
  * implicitly open a file when necessary.
  */
-tc_file tc_open_by_path(int dirfd, const char *pathname, int flags, mode_t mode);
+tc_file tc_open_by_path(int dirfd, const char *pathname, int flags,
+			mode_t mode);
+
+static inline tc_file tc_open(const char *pathname, int flags, mode_t mode)
+{
+	return tc_open_by_path(AT_FDCWD, pathname, flags, mode);
+}
 
 /**
  * Open a tc_file using file handle.  Similar to "open_by_handle_at(2)".
@@ -173,7 +176,7 @@ struct tc_attrs_masks
 	unsigned int has_uid : 1;   /* user ID of owner */
 	unsigned int has_gid : 1;   /* group ID of owner */
 	unsigned int has_rdev : 1;  /* device ID of block or char special
-				    files */
+				   files */
 	unsigned int has_atime : 1; /* time of last access */
 	unsigned int has_mtime : 1; /* time of last modification */
 	unsigned int has_ctime : 1; /* time of last status change */
@@ -281,7 +284,8 @@ static inline bool tx_removev(tc_file *files, int count)
 
 tc_res tc_mkdirv(tc_file *dir, mode_t *mode, int count, bool is_transaction);
 
-static inline bool tx_mkdirv(tc_file *dir, mode_t *mode, int count, bool is_transaction)
+static inline bool tx_mkdirv(tc_file *dir, mode_t *mode, int count,
+			     bool is_transaction)
 {
 	tc_res res = tc_mkdirv(dir, mode, count, is_transaction);
 	return res.okay;

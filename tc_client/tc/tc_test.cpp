@@ -8,6 +8,9 @@
 
 #define POSIX_WARN(fmt, args...) fprintf(stderr, "==posix-WARN==" fmt, ##args)
 
+#define APPEND -1
+#define CURRENT -2
+
 /**
  * Ensure the file does not exist
  * before test.
@@ -68,7 +71,7 @@ void clear_iovec(tc_iovec *user_arg, int count)
  * Set the tc_iovec
  */
 static tc_iovec *set_iovec_file_paths(const char **PATH, int count,
-				      int is_write)
+				      int is_write, int offset)
 {
 	int i = 0;
 	tc_iovec *user_arg = NULL;
@@ -94,7 +97,8 @@ static tc_iovec *set_iovec_file_paths(const char **PATH, int count,
 
 		(user_arg + i)->file.type = TC_FILE_PATH;
 		(user_arg + i)->file.path = PATH[i];
-		(user_arg + i)->offset = 0;
+		(user_arg + i)->offset = offset;
+
 		(user_arg + i)->length = N;
 		(user_arg + i)->data = (void *)malloc(N);
 
@@ -143,14 +147,14 @@ TEST(tc_test, WritevCanCreateFiles)
 	RemoveFiles(PATH, count);
 
 	struct tc_iovec *writev = NULL;
-	writev = set_iovec_file_paths(PATH, count, 1);
+	writev = set_iovec_file_paths(PATH, count, 1, 0);
 	EXPECT_FALSE(writev == NULL);
 
 	res = tc_writev(writev, count, false);
 	EXPECT_TRUE(res.okay);
 
 	struct tc_iovec *readv = NULL;
-	readv = set_iovec_file_paths(PATH, count, 0);
+	readv = set_iovec_file_paths(PATH, count, 0, 0);
 	EXPECT_FALSE(readv == NULL);
 
 	res = tc_readv(readv, count, false);
@@ -165,7 +169,7 @@ TEST(tc_test, WritevCanCreateFiles)
 /**
  * Set the TC I/O vector
  */
-static tc_iovec *set_iovec_fd(int *fd, int count)
+static tc_iovec *set_iovec_fd(int *fd, int count, int offset)
 {
 	int i = 0, N = 4096;
 	tc_iovec *user_arg = NULL;
@@ -190,7 +194,7 @@ static tc_iovec *set_iovec_fd(int *fd, int count)
 
 		(user_arg + i)->file.type = TC_FILE_DESCRIPTOR;
 		(user_arg + i)->file.fd = fd[i];
-		(user_arg + i)->offset = 0;
+		(user_arg + i)->offset = offset;
 		(user_arg + i)->length = N;
 		(user_arg + i)->data = (void *)malloc(N);
 
@@ -227,14 +231,14 @@ TEST(tc_test, TestFileDesc)
 	}
 
 	struct tc_iovec *writev = NULL;
-	writev = set_iovec_fd(fd, count);
+	writev = set_iovec_fd(fd, count, 0);
 	EXPECT_FALSE(writev == NULL);
 
 	res = tc_writev(writev, count, false);
 	EXPECT_TRUE(res.okay);
 
 	struct tc_iovec *readv = NULL;
-	readv = set_iovec_fd(fd, count);
+	readv = set_iovec_fd(fd, count, 0);
 	EXPECT_FALSE(readv == NULL);
 
 	res = tc_readv(readv, count, false);
@@ -565,8 +569,12 @@ TEST(tc_test, RenameFile)
 	tc_file_pair *file = (tc_file_pair *)calloc(4, sizeof(tc_file_pair));
 
 	while (i < 4) {
-		file[i].src_file = tc_file_from_path(src_path[i]);
-		file[i].dst_file = tc_file_from_path(dest_path[i]);
+
+		(file + i)->src_file.type = TC_FILE_PATH;
+		(file + i)->src_file.path = src_path[i];
+		(file + i)->dst_file.type = TC_FILE_PATH;
+		(file + i)->dst_file.path = dest_path[i];
+
 		i++;
 	}
 
@@ -589,7 +597,10 @@ TEST(tc_test, RemoveFile)
 	tc_file *file = (tc_file *)calloc(4, sizeof(tc_file));
 
 	while (i < 4) {
-		file[i] = tc_file_from_path(path[i]);
+
+		(file + i)->path = path[i];
+		(file + i)->type = TC_FILE_PATH;
+
 		i++;
 	}
 
@@ -627,4 +638,144 @@ TEST(tc_test, MakeDirectory)
 	EXPECT_TRUE(res.okay);
 
 	free(file);
+}
+
+/**
+ * Append test case
+ */
+TEST(tc_test, Append)
+{
+	const char *PATH[] = { "/tmp/WritevCanCreateFiles6.txt" };
+	int i = 0, count = 4, N = 4096;
+	struct stat st;
+	void *data = calloc(1, N);
+	tc_res res;
+
+	struct tc_iovec *writev = NULL;
+	writev = set_iovec_file_paths(PATH, 1, 1, APPEND);
+	EXPECT_FALSE(writev == NULL);
+
+	int fd = open(PATH[0], O_RDONLY);
+	EXPECT_FALSE(fd < 0);
+
+	while (i < 4) {
+		fstat(fd, &st);
+		free(writev->data);
+		writev->data = (void *)malloc(N);
+		res = tc_writev(writev, 1, false);
+		EXPECT_TRUE(res.okay);
+
+		/* read the data from the file from the same offset */
+		int error = pread(fd, data, writev->length, st.st_size);
+		EXPECT_FALSE(error < 0);
+
+		/* compare data written with just read data from the file */
+		error = memcmp(data, writev->data, writev->length);
+		EXPECT_TRUE(error == 0);
+
+		i++;
+	}
+
+	free(data);
+	clear_iovec(writev, 1);
+}
+
+/**
+ * Successive reads
+ */
+TEST(tc_test, SuccesiveReads)
+{
+	const char *path = "/tmp/WritevCanCreateFiles6.txt";
+	int fd[2], i = 0, N = 4096;
+	fd[0] = open(path, O_RDONLY);
+	fd[1] = open(path, O_RDONLY);
+	tc_res res;
+	off_t offset = 0;
+
+	void *data = calloc(1, N);
+
+	struct tc_iovec *readv = NULL;
+	readv = set_iovec_fd(fd, 1, CURRENT);
+	EXPECT_FALSE(readv == NULL);
+
+	/* move th current pointer by 10 bytes */
+	lseek(fd[0], 10, SEEK_CUR);
+
+	while (i < 4) {
+		/* get the current offset of the file */
+		offset = lseek(fd[0], 0, SEEK_CUR);
+
+		res = tc_readv(readv, 1, false);
+		EXPECT_TRUE(res.okay);
+
+		POSIX_WARN("Test reading from offset : %d\n", offset);
+
+		/* read from the file to compare the data */
+		int error = pread(fd[1], data, readv->length, offset);
+		EXPECT_FALSE(error < 0);
+
+		/* compare the content read */
+		error = memcmp(data, readv->data, readv->length);
+		EXPECT_TRUE(error == 0);
+
+		i++;
+	}
+
+	free(data);
+	clear_iovec(readv, 1);
+
+	RemoveFile(path);
+}
+
+/**
+ * Successive writes
+ */
+TEST(tc_test, SuccesiveWrites)
+{
+	const char *path = "/tmp/WritevCanCreateFiles10.txt";
+	int fd[2], i = 0, N = 4096;
+	off_t offset = 0;
+	void *data = calloc(1, N);
+	tc_res res;
+
+	/*
+	 * open file one for actual writing
+	 * other descriptor to verify
+	 */
+	fd[0] = open(path, O_WRONLY | O_CREAT);
+	fd[1] = open(path, O_RDONLY);
+	EXPECT_FALSE(fd[0] < 0);
+	EXPECT_FALSE(fd[1] < 0);
+
+	struct tc_iovec *writev = NULL;
+	writev = set_iovec_fd(fd, 1, CURRENT);
+	EXPECT_FALSE(writev == NULL);
+
+	while (i < 4) {
+		/* get the current offset of the file */
+		offset = lseek(fd[0], 0, SEEK_CUR);
+
+		free(writev->data);
+		writev->data = (void *)malloc(N);
+
+		res = tc_writev(writev, 1, false);
+		EXPECT_TRUE(res.okay);
+
+		POSIX_WARN("Test read from offset : %d\n", offset);
+
+		/* read the data from the file from the same offset */
+		int error = pread(fd[1], data, writev->length, offset);
+		EXPECT_FALSE(error < 0);
+
+		/* compare data written with just read data from the file */
+		error = memcmp(data, writev->data, writev->length);
+		EXPECT_TRUE(error == 0);
+
+		i++;
+	}
+
+	free(data);
+	clear_iovec(writev, 1);
+
+	RemoveFile(path);
 }

@@ -82,8 +82,14 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 		}
 
 		/* Read data */
-		amount_read =
-		    pread(fd, cur_arg->data, cur_arg->length, cur_arg->offset);
+		if (cur_arg->offset == -2) {
+			off_t offset = lseek(fd, 0, SEEK_CUR);
+			POSIX_WARN("Posix read from offset : %d\n", offset);
+
+			amount_read = read(fd, cur_arg->data, cur_arg->length);
+		} else
+			amount_read = pread(fd, cur_arg->data, cur_arg->length,
+					    cur_arg->offset);
 		if (amount_read < 0) {
 			if (cur_arg->file.type == TC_FILE_PATH)
 				posix_close(&file);
@@ -152,9 +158,29 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 			break;
 		}
 
+		off_t offset = cur_arg->offset;
+
+		/* append */
+		if (offset == -1) {
+			offset = lseek(fd, 0, SEEK_END);
+
+			if (offset == (off_t) - 1) {
+				result.okay = false;
+				break;
+			}
+		}
+
 		/* Write data */
-		amount_written =
-		    pwrite(fd, cur_arg->data, cur_arg->length, cur_arg->offset);
+		if (offset == -2) {
+			offset = lseek(fd, 0, SEEK_CUR);
+
+			POSIX_WARN("Posix write at offset : %d\n", offset);
+
+			amount_written =
+			    write(fd, cur_arg->data, cur_arg->length);
+		} else
+			amount_written =
+			    pwrite(fd, cur_arg->data, cur_arg->length, offset);
 
 		if (amount_written < 0) {
 			if (cur_arg->file.type == TC_FILE_PATH)
