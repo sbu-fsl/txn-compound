@@ -569,11 +569,8 @@ TEST(tc_test, RenameFile)
 	tc_file_pair *file = (tc_file_pair *)calloc(4, sizeof(tc_file_pair));
 
 	while (i < 4) {
-
-		(file + i)->src_file.type = TC_FILE_PATH;
-		(file + i)->src_file.path = src_path[i];
-		(file + i)->dst_file.type = TC_FILE_PATH;
-		(file + i)->dst_file.path = dest_path[i];
+		file[i].src_file = tc_file_from_path(src_path[i]);
+		file[i].dst_file = tc_file_from_path(dest_path[i]);
 
 		i++;
 	}
@@ -597,9 +594,7 @@ TEST(tc_test, RemoveFile)
 	tc_file *file = (tc_file *)calloc(4, sizeof(tc_file));
 
 	while (i < 4) {
-
-		(file + i)->path = path[i];
-		(file + i)->type = TC_FILE_PATH;
+		file[i] = tc_file_from_path(path[i]);
 
 		i++;
 	}
