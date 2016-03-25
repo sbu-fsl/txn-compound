@@ -50,7 +50,7 @@ set(fsal_CORE_SRCS
    ../nfs4/test2.c
    ../nfs4/tc_test.c
    ../nfs4/tc_dist.c
-   ../nfs4/tc_singlefile.c
+   ../nfs4/tc_daemontest.c
 )
 
 ########### next target ###############

@@ -50,6 +50,24 @@ typedef struct tc_res
 	int err_no;  /* error number of the failed operation */
 } tc_res;
 
+/* 
+ * Initialize export structures and other functions
+ * User has to call this before using tc functions
+ *
+ * export_id - Export id mentioned in the conf file
+ *
+ * Returns
+ * 0 for success
+ * -1 for failure
+ */
+int tc_init(uint16_t export_id);
+
+/*
+ * Deinit the export which was initialized previously
+ * Will always succeed
+ */
+void tc_deinit();
+
 /* User has to set op_ctx->export to the right export for this to work */
 struct tc_res tcread_v(struct tc_iovec *arg, int read_count,
 		       bool isTransaction);
