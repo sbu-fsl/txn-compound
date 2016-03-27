@@ -39,7 +39,7 @@ int tc_singlefile(char *input_path, unsigned int block_size,
 
 	srand(time(NULL));
 
-	if (tc_init(77) < 0) {
+	if (export_init(77) < 0) {
 		LogFatal(COMPONENT_FSAL, "tc_init() failed");
 		return -1;
 	}
@@ -94,7 +94,7 @@ int tc_singlefile(char *input_path, unsigned int block_size,
 	gettimeofday(&tv2, NULL);
 	time_taken = ((double)(tv2.tv_usec - tv1.tv_usec) / 1000000) +
 		     (double)(tv2.tv_sec - tv1.tv_sec);
-	LogFatal(COMPONENT_FSAL, "tcreads done - %f seconds\n", time_taken);
+	//LogFatal(COMPONENT_FSAL, "tcreads done - %f seconds\n", time_taken);
 
 	k = 0;
 	while (k < ops_per_comp) {
@@ -111,6 +111,7 @@ int tc_singlefile(char *input_path, unsigned int block_size,
 
 	free(user_arg);
 
-	tc_deinit();
+	export_deinit();
+	LogDebug(COMPONENT_FSAL, "Export deinit() done\n");
 	return 0;
 }

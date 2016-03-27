@@ -160,6 +160,27 @@ target_link_libraries(tc_singlefile
   tc_util
 )
 
+SET(tc_daemon_SRCS
+   tc_daemon.c
+)
+
+add_executable(tc_daemon
+  ${tc_daemon_SRCS}
+  ${fsal_CORE_SRCS}
+  ../include/tc_utils.h
+)
+
+target_link_libraries(tc_daemon
+  MainServices
+  ${PROTOCOLS}
+  ${GANESHA_CORE}
+  config_parsing
+  ${LIBTIRPC_LIBRARIES}
+  ${SYSTEM_LIBRARIES}
+  m
+  tc_util
+)
+
 ########### install files ###############
 
 # We are still missing the install of docs and stuff

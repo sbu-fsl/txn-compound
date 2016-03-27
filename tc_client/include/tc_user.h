@@ -51,6 +51,24 @@ typedef struct tc_res
 } tc_res;
 
 /* 
+ * Initialize tc_client
+ * log_path - Location of the log file
+ * config_path - Location of the config file
+ *
+ * This returns fsal_module pointer to tc_client module
+ * If tc_client module does not exist, it will return NULL
+ *
+ * Caller of this function should call tc_deinit after use
+ */
+struct fsal_module* tc_init(char *log_path, char *config_path);
+
+/*
+ * Free the reference to module
+ * Should be called if tc_init() was called previously
+ */
+void tc_deinit(struct fsal_module *module);
+
+/* 
  * Initialize export structures and other functions
  * User has to call this before using tc functions
  *
@@ -60,13 +78,13 @@ typedef struct tc_res
  * 0 for success
  * -1 for failure
  */
-int tc_init(uint16_t export_id);
+int export_init(uint16_t export_id);
 
 /*
  * Deinit the export which was initialized previously
  * Will always succeed
  */
-void tc_deinit();
+void export_deinit();
 
 /* User has to set op_ctx->export to the right export for this to work */
 struct tc_res tcread_v(struct tc_iovec *arg, int read_count,

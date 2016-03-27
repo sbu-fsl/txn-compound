@@ -7,6 +7,7 @@
 #include <sys/poll.h>
 #include "ganesha_list.h"
 #include "abstract_atomic.h"
+#include "../MainNFSD/nfs_init.h"
 #include "fsal_types.h"
 #include "FSAL/fsal_commonlib.h"
 #include "fs_fsal_methods.h"
@@ -16,7 +17,200 @@
 #include "export_mgr.h"
 #include "tc_utils.h"
 
-/* 
+void handle_detach()
+{
+#ifdef HAVE_DAEMON
+	/* daemonize the process (fork, close xterm fds,
+	 * detach from parent process) */
+	if (daemon(0, 0))
+		LogFatal(COMPONENT_MAIN,
+			 "Error detaching process from parent: %s",
+			 strerror(errno));
+
+	/* In the child process, change the log header
+	 * if not, the header will contain the parent's pid */
+	set_const_log_str();
+#else
+	/* Step 1: forking a service process */
+	switch (son_pid = fork()) {
+	case -1:
+		/* Fork failed */
+		LogFatal(COMPONENT_MAIN,
+			 "Could not start nfs daemon (fork error %d (%s)",
+			 errno, strerror(errno));
+		break;
+
+	case 0:
+		/* This code is within the son (that will actually work)
+		 * Let's make it the leader of its group of process */
+		if (setsid() == -1) {
+			LogFatal(
+			    COMPONENT_MAIN,
+			    "Could not start nfs daemon (setsid error %d (%s)",
+			    errno, strerror(errno));
+		}
+
+		/* stdin, stdout and stderr should not refer to a tty
+		 * I close 0, 1 & 2  and redirect them to /dev/null */
+		dev_null_fd = open("/dev/null", O_RDWR);
+		if (dev_null_fd < 0)
+			LogFatal(COMPONENT_MAIN,
+				 "Could not open /dev/null: %d (%s)", errno,
+				 strerror(errno));
+
+		if (close(STDIN_FILENO) == -1)
+			LogEvent(COMPONENT_MAIN,
+				 "Error while closing stdin: %d (%s)", errno,
+				 strerror(errno));
+		else {
+			LogEvent(COMPONENT_MAIN, "stdin closed");
+			dup(dev_null_fd);
+		}
+
+		if (close(STDOUT_FILENO) == -1)
+			LogEvent(COMPONENT_MAIN,
+				 "Error while closing stdout: %d (%s)", errno,
+				 strerror(errno));
+		else {
+			LogEvent(COMPONENT_MAIN, "stdout closed");
+			dup(dev_null_fd);
+		}
+
+		if (close(STDERR_FILENO) == -1)
+			LogEvent(COMPONENT_MAIN,
+				 "Error while closing stderr: %d (%s)", errno,
+				 strerror(errno));
+		else {
+			LogEvent(COMPONENT_MAIN, "stderr closed");
+			dup(dev_null_fd);
+		}
+
+		if (close(dev_null_fd) == -1)
+			LogFatal(COMPONENT_MAIN,
+				 "Could not close tmp fd to /dev/null: %d (%s)",
+				 errno, strerror(errno));
+
+		/* In the child process, change the log header
+		 * if not, the header will contain the parent's pid */
+		set_const_log_str();
+		break;
+
+	default:
+		/* This code is within the parent process,
+		 * it is useless, it must die */
+		LogFullDebug(COMPONENT_MAIN, "Starting a child of pid %d",
+			     son_pid);
+		exit(0);
+		break;
+	}
+#endif
+}
+
+struct fsal_module* tc_init(char *log_path, char *config_path)
+{
+	char *exec_name = "nfs-ganesha";
+	char *host_name = "localhost";
+	struct fsal_module *new_module = NULL;
+	sigset_t signals_to_block;
+	struct config_error_type err_type;
+	int rc;
+	nfs_start_info_t my_nfs_start_info = { .dump_default_config = false,
+					       .lw_mark_trigger = false };
+
+	nfs_prereq_init(exec_name, host_name, -1, log_path);
+
+	// Should ganesha be detached?
+	handle_detach();
+
+	/* Set up for the signal handler.
+         * Blocks the signals the signal handler will handle.
+         */
+        sigemptyset(&signals_to_block);
+        sigaddset(&signals_to_block, SIGTERM);
+        sigaddset(&signals_to_block, SIGHUP);
+        sigaddset(&signals_to_block, SIGPIPE);
+        if (pthread_sigmask(SIG_BLOCK, &signals_to_block, NULL) != 0)
+                LogFatal(COMPONENT_MAIN,
+                         "Could not start nfs daemon, pthread_sigmask failed");
+
+	/* Parse the configuration file so we all know what is going on. */
+
+	if (config_path == NULL) {
+		LogFatal(COMPONENT_INIT,
+			 "start_fsals: No configuration file named.");
+		return NULL;
+	}
+
+	config_struct = config_ParseFile(config_path, &err_type);
+
+	if (!config_error_no_error(&err_type)) {
+		char *errstr = err_type_str(&err_type);
+
+		if (!config_error_is_harmless(&err_type))
+			LogFatal(
+			    COMPONENT_INIT,
+			    "Fatal error while parsing %s because of %s errors",
+			    config_path, errstr != NULL ? errstr : "unknown");
+		/* NOT REACHED */
+		LogCrit(COMPONENT_INIT, "Minor parse errors found %s in %s",
+			errstr != NULL ? errstr : "unknown", config_path);
+		if (errstr != NULL)
+			gsh_free(errstr);
+	}
+
+	if (read_log_config(config_struct) < 0)
+		LogFatal(COMPONENT_INIT,
+			 "Error while parsing log configuration");
+	/* We need all the fsal modules loaded so we can have
+	 * the list available at exports parsing time.
+	 */
+	start_fsals();
+
+	/* parse configuration file */
+
+	if (nfs_set_param_from_conf(config_struct, &my_nfs_start_info)) {
+                LogFatal(COMPONENT_INIT,
+                         "Error setting parameters from configuration file.");
+        }
+
+	/* initialize core subsystems and data structures */
+        if (init_server_pkgs() != 0)
+                LogFatal(COMPONENT_INIT,
+                         "Failed to initialize server packages");
+
+        /* Load export entries from parsed file
+         * returns the number of export entries.
+         */
+        rc = ReadExports(config_struct);
+        if (rc < 0)
+                LogFatal(COMPONENT_INIT,
+                          "Error while parsing export entries");
+        else if (rc == 0)
+                LogWarn(COMPONENT_INIT,
+                        "No export entries found in configuration file !!!");
+
+        /* freeing syntax tree : */
+
+        config_Free(config_struct);
+
+	new_module = lookup_fsal("PROXY");
+	if (new_module == NULL) {
+		LogDebug(COMPONENT_FSAL, "Proxy Module Not found\n");
+		return NULL;
+	}
+
+	return new_module;
+}
+
+void tc_deinit(struct fsal_module *module)
+{
+	if (module != NULL) {
+		LogDebug(COMPONENT_FSAL, "Dereferencing tc_client module\n");
+		fsal_put(module);
+	}
+}
+
+/*
  * Initialize export structures and other functions
  * User has to call this before using tc functions
  *
@@ -26,17 +220,10 @@
  * 0 for success
  * -1 for failure
  */
-int tc_init(uint16_t export_id)
+int export_init(uint16_t export_id)
 {
-	struct fsal_module *new_module = NULL;
 	struct gsh_export *export = NULL;
 	struct req_op_context *req_ctx = NULL;
-
-	new_module = lookup_fsal("PROXY");
-	if (new_module == NULL) {
-		LogDebug(COMPONENT_FSAL, "Proxy Module Not found\n");
-		return -1;
-	}
 
 	export = get_gsh_export(export_id);
 	if (export == NULL) {
@@ -69,7 +256,7 @@ int tc_init(uint16_t export_id)
  * Deinit the last export which was initialized
  * Will always succeed
  */
-void tc_deinit()
+void export_deinit()
 {
 	if (op_ctx != NULL) {
 		free(op_ctx);
