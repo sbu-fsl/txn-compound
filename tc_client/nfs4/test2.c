@@ -82,7 +82,7 @@ int test2(char *input_path, int block_size, int num_files, int num_ops,
 			k = 0;
 			while (k < ops_per_comp) {
 				cur_arg = user_arg + k;
-				cur_arg->path = NULL;
+				cur_arg->file.path = NULL;
 				cur_arg->offset =
 				    (i * ops_per_comp * block_size) +
 				    (k * block_size);
@@ -92,7 +92,7 @@ int test2(char *input_path, int block_size, int num_files, int num_ops,
 
 			snprintf(temp_path, input_len + 4, "%s%d", input_path,
 				 j);
-			user_arg->path = temp_path;
+			user_arg->file = tc_file_from_path(temp_path);
 
 			if (rw == 0) {
 				tcread_v(user_arg, ops_per_comp, FALSE);

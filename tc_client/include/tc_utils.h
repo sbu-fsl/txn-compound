@@ -2,7 +2,7 @@
 
 #include "export_mgr.h"
 #include "ganesha_list.h"
-#include "tc_user.h"
+#include "tc_api.h"
 
 /*
  * Structure to be passed to ktcread

@@ -59,7 +59,16 @@ typedef struct _tc_file
 	}; /* path_or_handle */
 } tc_file;
 
-tc_file tc_file_from_path(const char *pathname);
+static inline tc_file tc_file_from_path(const char *pathname) {
+	tc_file tf;
+
+	assert(pathname);
+	tf.type = TC_FILE_PATH;
+	tf.fd = pathname[0] == '/' ? TC_FD_ABS : TC_FD_CWD;
+	tf.path = pathname;
+
+	return tf;
+}
 
 /**
  * Open a tc_file using path.  Similar to "openat(2)".

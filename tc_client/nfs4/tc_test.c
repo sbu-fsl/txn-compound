@@ -121,7 +121,7 @@ int tc_test(char *input_path, unsigned int block_size, unsigned int num_files,
 			temp_array = op_array + j + k;
 			snprintf(temp_path, input_len + 8, "%s%d",
 				 input_path, *temp_array);
-			cur_arg->path = temp_path;
+			cur_arg->file = tc_file_from_path(temp_path);
 			cur_arg->offset = 0;
 			cur_arg->length = block_size;
 			k++;

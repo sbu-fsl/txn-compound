@@ -163,7 +163,7 @@ int test1()
 	   LogDebug(COMPONENT_FSAL, "openread() for abcd succeeded\n");
 */
 	user_arg = malloc(4 * (sizeof(struct tc_iovec)));
-	user_arg->path = "/vfs0/abcd7";
+	user_arg->file = tc_file_from_path("/vfs0/abcd7");
 	user_arg->offset = 0;
 	user_arg->length = 256;
 	user_arg->data = malloc(256);
@@ -171,7 +171,7 @@ int test1()
 	i = 1;
 	while (i < 4) {
 		cur_arg = user_arg + i;
-		cur_arg->path = NULL;
+		cur_arg->file = user_arg->file;
 		cur_arg->offset = i * 256;
 		cur_arg->length = 256;
 		cur_arg->data = malloc(256);
@@ -194,22 +194,22 @@ int test1()
 	free(user_arg);
 
 	user_arg = malloc(4 * (sizeof(struct tc_iovec)));
-	user_arg->path = "/vfs0/abcd";
+	user_arg->file = tc_file_from_path("/vfs0/abcd");
 	user_arg->offset = 0;
 	user_arg->length = 256;
 	user_arg->data = malloc(256);
 	cur_arg = user_arg + 1;
-	cur_arg->path = NULL;
+	cur_arg->file = user_arg->file;
         cur_arg->offset = 256;
         cur_arg->length = 256;
         cur_arg->data = malloc(256);
 	cur_arg = user_arg + 2;
-	cur_arg->path = "/vfs0/abcd7";
+	cur_arg->file = user_arg->file;
         cur_arg->offset = 0;
         cur_arg->length = 256;
         cur_arg->data = malloc(256);
         cur_arg = user_arg + 3;
-        cur_arg->path = NULL;
+        cur_arg->file = user_arg->file;
         cur_arg->offset = 256;
         cur_arg->length = 256;
         cur_arg->data = malloc(256);
@@ -230,7 +230,7 @@ int test1()
 	free(user_arg);
 
 	user_arg = malloc(4 * (sizeof(struct tc_iovec)));
-	user_arg->path = "/vfs0/abcd";
+	user_arg->file = tc_file_from_path("/vfs0/abcd");
 	user_arg->offset = 0;
 	user_arg->length = 8;
 	user_arg->data = malloc(9);
@@ -239,7 +239,7 @@ int test1()
 	i = 1;
 	while (i < 4) {
 		cur_arg = user_arg + i;
-		cur_arg->path = NULL;
+		cur_arg->file = user_arg->file;
 		cur_arg->offset = i * 8;
 		cur_arg->length = 8;
 		cur_arg->data = malloc(8);
@@ -263,25 +263,25 @@ int test1()
 	free(user_arg);
 
 	user_arg = malloc(4 * (sizeof(struct tc_iovec)));
-	user_arg->path = "/vfs0/abcd";
+	user_arg->file = tc_file_from_path("/vfs0/abcd");
 	user_arg->offset = 0;
 	user_arg->length = 8;
 	user_arg->data = malloc(9);
 	strcpy(user_arg->data, "abcd1234");
 	cur_arg = user_arg + 1;
-	cur_arg->path = NULL;
+	cur_arg->file = tc_file_from_path("/vfs0/abcd");
 	cur_arg->offset = 8;
 	user_arg->length = 8;
 	user_arg->data = malloc(9);
 	strcpy(user_arg->data, "abcd1234");
 	cur_arg = user_arg + 2;
-	cur_arg->path = "/vfs0/abcd1";
+	cur_arg->file = tc_file_from_path("/vfs0/abcd1");
 	cur_arg->offset = 0;
 	user_arg->length = 8;
 	user_arg->data = malloc(9);
 	strcpy(user_arg->data, "abcd1234");
 	cur_arg = user_arg + 3;
-	cur_arg->path = NULL;
+	cur_arg->file = tc_file_from_path("/vfs0/abcd1");
 	cur_arg->offset = 8;
 	user_arg->length = 8;
 	user_arg->data = malloc(9);
