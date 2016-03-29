@@ -50,10 +50,11 @@ int main(int argc, char *argv[])
 	struct fsal_module* module = NULL;
 	int rc = 0;
 
-	module = tc_init("/home/ashok/log_ganesha",
-			 "/home/ashok/work/fsl/fsl-nfs-ganesha/secnfs/"
-			 "config/vfs.proxy.conf",
-			 77);
+	module = (struct fsal_module *)tc_init(
+	    "/home/ashok/log_ganesha",
+	    "/home/ashok/work/fsl/fsl-nfs-ganesha/secnfs/"
+	    "config/vfs.proxy.conf",
+	    77);
 
 	if (module == NULL) {
 		LogFatal(COMPONENT_INIT, "Error while initializing tc_client");

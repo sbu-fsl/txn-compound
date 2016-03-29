@@ -117,7 +117,7 @@ void handle_detach()
  *
  * Caller of this function should call tc_deinit() after use
  */
-struct fsal_module* tc_init(char *log_path, char *config_path, uint16_t export_id)
+void* tc_init(char *log_path, char *config_path, uint16_t export_id)
 {
 	char *exec_name = "nfs-ganesha";
 	char *host_name = "localhost";
@@ -236,7 +236,7 @@ struct fsal_module* tc_init(char *log_path, char *config_path, uint16_t export_i
         op_ctx->fsal_export = export->fsal_export;
 
 	sleep(1);
-	return new_module;
+	return (void*)new_module;
 }
 
 /*
@@ -245,12 +245,15 @@ struct fsal_module* tc_init(char *log_path, char *config_path, uint16_t export_i
  *
  * This will always succeed
  */
-void tc_deinit(struct fsal_module *module)
+void tc_deinit(void *arg)
 {
+	struct fsal_module *module = NULL;
+
 	if (op_ctx != NULL) {
 		free(op_ctx);
 	}
 
+	module = (struct fsal_module*) arg;
 	if (module != NULL) {
 		LogDebug(COMPONENT_FSAL, "Dereferencing tc_client module\n");
 		fsal_put(module);

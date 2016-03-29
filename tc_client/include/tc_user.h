@@ -61,7 +61,7 @@ typedef struct tc_res
  *
  * Caller of this function should call tc_deinit() after use
  */
-struct fsal_module* tc_init(char *log_path, char *config_path, uint16_t export_id);
+void* tc_init(char *log_path, char *config_path, uint16_t export_id);
 
 /*
  * Free the reference to module and op_ctx
@@ -69,7 +69,7 @@ struct fsal_module* tc_init(char *log_path, char *config_path, uint16_t export_i
  *
  * This will always succeed
  */
-void tc_deinit(struct fsal_module *module);
+void tc_deinit(void *module);
 
 /* User has to set op_ctx->export to the right export for this to work */
 struct tc_res tcread_v(struct tc_iovec *arg, int read_count,
