@@ -51,22 +51,17 @@ int main(int argc, char *argv[])
 	int rc = 0;
 
 	module = tc_init("/home/ashok/log_ganesha",
-		"/home/ashok/work/fsl/fsl-nfs-ganesha/secnfs/"
-		"config/vfs.proxy.conf");
+			 "/home/ashok/work/fsl/fsl-nfs-ganesha/secnfs/"
+			 "config/vfs.proxy.conf",
+			 77);
 
 	if (module == NULL) {
 		LogFatal(COMPONENT_INIT, "Error while initializing tc_client");
 	}
 
-	rc = export_init(77);
-	if (rc < 0) {
-		LogDebug(COMPONENT_FSAL, "export_init() failed\n");
-	}
-
 	/* Everything seems to be OK! We can now start service threads */
 	tc_singlefile("/vfs0/test_cdist/abcd", 1048576, 1, 2000000, 1, 0.0, 0);
 
-	export_deinit();
 	tc_deinit(module);
 
 	return 0;

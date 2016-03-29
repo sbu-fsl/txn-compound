@@ -39,10 +39,10 @@ int tc_singlefile(char *input_path, unsigned int block_size,
 
 	srand(time(NULL));
 
-	if (export_init(77) < 0) {
+	/*if (export_init(77) < 0) {
 		LogFatal(COMPONENT_FSAL, "tc_init() failed");
 		return -1;
-	}
+	}*/
 
 	LogDebug(COMPONENT_FSAL, "tc_init() success");
 	input_len = strlen(input_path);
@@ -111,7 +111,7 @@ int tc_singlefile(char *input_path, unsigned int block_size,
 
 	free(user_arg);
 
-	export_deinit();
+	//export_deinit();
 	LogDebug(COMPONENT_FSAL, "Export deinit() done\n");
 	return 0;
 }

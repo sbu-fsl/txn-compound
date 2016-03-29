@@ -106,13 +106,26 @@ void handle_detach()
 #endif
 }
 
-struct fsal_module* tc_init(char *log_path, char *config_path)
+/* 
+ * Initialize tc_client
+ * log_path - Location of the log file
+ * config_path - Location of the config file
+ * export_id - Export id of the export configured in the conf file
+ *
+ * This returns fsal_module pointer to tc_client module
+ * If tc_client module does not exist, it will return NULL
+ *
+ * Caller of this function should call tc_deinit() after use
+ */
+struct fsal_module* tc_init(char *log_path, char *config_path, uint16_t export_id)
 {
 	char *exec_name = "nfs-ganesha";
 	char *host_name = "localhost";
 	struct fsal_module *new_module = NULL;
 	sigset_t signals_to_block;
 	struct config_error_type err_type;
+	struct gsh_export *export = NULL;
+	struct req_op_context *req_ctx = NULL;
 	int rc;
 	nfs_start_info_t my_nfs_start_info = { .dump_default_config = false,
 					       .lw_mark_trigger = false };
@@ -199,36 +212,10 @@ struct fsal_module* tc_init(char *log_path, char *config_path)
 		return NULL;
 	}
 
-	return new_module;
-}
-
-void tc_deinit(struct fsal_module *module)
-{
-	if (module != NULL) {
-		LogDebug(COMPONENT_FSAL, "Dereferencing tc_client module\n");
-		fsal_put(module);
-	}
-}
-
-/*
- * Initialize export structures and other functions
- * User has to call this before using tc functions
- *
- * export_id - Export id mentioned in the conf file
- *
- * Returns
- * 0 for success
- * -1 for failure
- */
-int export_init(uint16_t export_id)
-{
-	struct gsh_export *export = NULL;
-	struct req_op_context *req_ctx = NULL;
-
 	export = get_gsh_export(export_id);
 	if (export == NULL) {
 		LogDebug(COMPONENT_FSAL, "Export Not found\n");
-		return -1;
+		return NULL;
 	}
 
 	LogDebug(COMPONENT_FSAL,
@@ -239,7 +226,7 @@ int export_init(uint16_t export_id)
 	req_ctx = malloc(sizeof(struct req_op_context));
 	if (req_ctx == NULL) {
 		LogDebug(COMPONENT_FSAL, "No memory for req_ctx\n");
-		return -1;
+		return NULL;
 	}
 
 	memset(req_ctx, 0, sizeof(struct req_op_context));
@@ -249,17 +236,24 @@ int export_init(uint16_t export_id)
         op_ctx->fsal_export = export->fsal_export;
 
 	sleep(1);
-	return 0;
+	return new_module;
 }
 
 /*
- * Deinit the last export which was initialized
- * Will always succeed
+ * Free the reference to module and op_ctx
+ * Should be called if tc_init() was called previously
+ *
+ * This will always succeed
  */
-void export_deinit()
+void tc_deinit(struct fsal_module *module)
 {
 	if (op_ctx != NULL) {
 		free(op_ctx);
+	}
+
+	if (module != NULL) {
+		LogDebug(COMPONENT_FSAL, "Dereferencing tc_client module\n");
+		fsal_put(module);
 	}
 }
 
