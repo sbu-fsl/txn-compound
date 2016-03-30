@@ -1,3 +1,6 @@
+/**
+ * XXX: To add a new test, don't forget to register the test in REGISTER_TYPED_TEST_CASE_P().
+ */
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -12,6 +15,7 @@
 #define CURRENT -2
 
 /**
+ * TODO(mchen): move to fileutil.h
  * Ensure the file does not exist
  * before test.
  */
@@ -130,11 +134,64 @@ bool compare_content(tc_iovec *writev, tc_iovec *readv, int count)
 	return true;
 }
 
+class TcPosixImpl {
+public:
+	static void SetUpTestCase() {
+		/* TODO: setup posix impl */
+		POSIX_WARN("Global SetUp of Posix Impl\n");
+	}
+	static void TearDownTestCase() {
+		POSIX_WARN("Global TearDown of Posix Impl\n");
+	}
+	static void SetUp() {
+		POSIX_WARN("SetUp Posix Impl Test\n");
+	}
+	static void TearDown() {
+		POSIX_WARN("TearDown Posix Impl Test\n");
+	}
+};
+
+class TcNFS4Impl {
+public:
+	static void SetUpTestCase() {
+		/* TODO: setup NFS4 impl */
+		POSIX_WARN("Global SetUp of NFS4 Impl\n");
+	}
+	static void TearDownTestCase() {
+		POSIX_WARN("Global TearDown of NFS4 Impl\n");
+	}
+	static void SetUp() {
+		POSIX_WARN("SetUp NFS4 Impl Test\n");
+	}
+	static void TearDown() {
+		POSIX_WARN("TearDown NFS4 Impl Test\n");
+	}
+};
+
+template <typename T>
+class TcTest : public ::testing::Test {
+public:
+	static void SetUpTestCase() {
+		T::SetUpTestCase();
+	}
+	static void TearDownTestCase() {
+		T::TearDownTestCase();
+	}
+	void SetUp() override {
+		T::SetUp();
+	}
+	void TearDown() override {
+		T::TearDown();
+	}
+};
+
+TYPED_TEST_CASE_P(TcTest);
+
 /**
  * TC-Read and Write test using
  * File path
  */
-TEST(tc_test, WritevCanCreateFiles)
+TYPED_TEST_P(TcTest, WritevCanCreateFiles)
 {
 	const char *PATH[] = { "/tmp/WritevCanCreateFiles1.txt",
 			       "/tmp/WritevCanCreateFiles2.txt",
@@ -208,7 +265,7 @@ static tc_iovec *set_iovec_fd(int *fd, int count, int offset)
  * TC-Read and Write test using
  * File Descriptor
  */
-TEST(tc_test, TestFileDesc)
+TYPED_TEST_P(TcTest, TestFileDesc)
 {
 	const char *PATH[] = { "/tmp/WritevCanCreateFiles1.txt",
 			       "/tmp/WritevCanCreateFiles2.txt",
@@ -451,7 +508,7 @@ static void set_attr_masks(tc_attrs *write, tc_attrs *read, int count)
  * TC-Set/Get Attributes test
  * using File Path
  */
-TEST(tc_test, AttrsTestPath)
+TYPED_TEST_P(TcTest, AttrsTestPath)
 {
 	const char *PATH[] = { "/tmp/WritevCanCreateFiles1.txt",
 			       "/tmp/WritevCanCreateFiles2.txt",
@@ -482,7 +539,7 @@ TEST(tc_test, AttrsTestPath)
  * TC-Set/Get Attributes test
  * using File Descriptor
  */
-TEST(tc_test, AttrsTestFileDesc)
+TYPED_TEST_P(TcTest, AttrsTestFileDesc)
 {
 	const char *PATH[] = { "/tmp/WritevCanCreateFiles4.txt",
 			       "/tmp/WritevCanCreateFiles5.txt",
@@ -519,7 +576,7 @@ TEST(tc_test, AttrsTestFileDesc)
 /**
  * List Directory Contents Test
  */
-TEST(tc_test, ListDirContents)
+TYPED_TEST_P(TcTest, ListDirContents)
 {
 	tc_attrs *contents = (tc_attrs *)calloc(5, sizeof(tc_attrs));
 	tc_attrs_masks masks = { 0 };
@@ -555,7 +612,7 @@ TEST(tc_test, ListDirContents)
 /**
  * Rename File Test
  */
-TEST(tc_test, RenameFile)
+TYPED_TEST_P(TcTest, RenameFile)
 {
 	int i = 0;
 	const char *src_path[] = { "/tmp/WritevCanCreateFiles1.txt",
@@ -585,7 +642,7 @@ TEST(tc_test, RenameFile)
 /**
  * Remove File Test
  */
-TEST(tc_test, RemoveFile)
+TYPED_TEST_P(TcTest, RemoveFileTest)
 {
 	int i = 0;
 	const char *path[] = { "/tmp/rename1.txt", "/tmp/rename2.txt",
@@ -609,7 +666,7 @@ TEST(tc_test, RemoveFile)
 /**
  * Make Directory Test
  */
-TEST(tc_test, MakeDirectory)
+TYPED_TEST_P(TcTest, MakeDirectory)
 {
 	int i = 0;
 	mode_t mode[] = { S_IRWXU, S_IRUSR | S_IRGRP | S_IROTH,
@@ -638,7 +695,7 @@ TEST(tc_test, MakeDirectory)
 /**
  * Append test case
  */
-TEST(tc_test, Append)
+TYPED_TEST_P(TcTest, Append)
 {
 	const char *PATH[] = { "/tmp/WritevCanCreateFiles6.txt" };
 	int i = 0, count = 4, N = 4096;
@@ -678,7 +735,7 @@ TEST(tc_test, Append)
 /**
  * Successive reads
  */
-TEST(tc_test, SuccesiveReads)
+TYPED_TEST_P(TcTest, SuccesiveReads)
 {
 	const char *path = "/tmp/WritevCanCreateFiles6.txt";
 	int fd[2], i = 0, N = 4096;
@@ -725,7 +782,7 @@ TEST(tc_test, SuccesiveReads)
 /**
  * Successive writes
  */
-TEST(tc_test, SuccesiveWrites)
+TYPED_TEST_P(TcTest, SuccesiveWrites)
 {
 	const char *path = "/tmp/WritevCanCreateFiles10.txt";
 	int fd[2], i = 0, N = 4096;
@@ -774,3 +831,19 @@ TEST(tc_test, SuccesiveWrites)
 
 	RemoveFile(path);
 }
+
+REGISTER_TYPED_TEST_CASE_P(TcTest,
+			   WritevCanCreateFiles,
+			   TestFileDesc,
+			   AttrsTestPath,
+			   AttrsTestFileDesc,
+			   ListDirContents,
+			   RenameFile,
+			   RemoveFileTest,
+			   MakeDirectory,
+			   Append,
+			   SuccesiveReads,
+			   SuccesiveWrites);
+
+typedef ::testing::Types<TcPosixImpl, TcNFS4Impl> TcImpls;
+INSTANTIATE_TYPED_TEST_CASE_P(TC, TcTest, TcImpls);

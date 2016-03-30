@@ -79,11 +79,12 @@ static inline tc_file tc_file_from_path(const char *pathname) {
 }
 
 static inline tc_file tc_file_current() {
-	tc_file tf = {
-		.type = TC_FILE_CURRENT,
-		.fd = -1,	/* poison */
-		.path = NULL,	/* poison */
-	};
+	tc_file tf;
+	
+	tf.type = TC_FILE_CURRENT;
+	tf.fd = -1;	/* poison */
+	tf.path = NULL;	/* poison */
+
 	return tf;
 }
 
