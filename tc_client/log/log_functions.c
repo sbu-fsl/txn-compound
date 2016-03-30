@@ -205,17 +205,17 @@ struct log_facility {
  */
 #define MAX_TD_FMT_LEN (MAX_TD_USER_LEN * 2 + 4)
 
-static int log_to_syslog(log_header_t headers, void *private,
+static int log_to_syslog(log_header_t headers, void *extra_args,
 			 log_levels_t level,
 			 struct display_buffer *buffer, char *compstr,
 			 char *message);
 
-static int log_to_file(log_header_t headers, void *private,
+static int log_to_file(log_header_t headers, void *extra_args,
 		       log_levels_t level,
 		       struct display_buffer *buffer, char *compstr,
 		       char *message);
 
-static int log_to_stream(log_header_t headers, void *private,
+static int log_to_stream(log_header_t headers, void *extra_args,
 			 log_levels_t level,
 			 struct display_buffer *buffer, char *compstr,
 			 char *message);
@@ -669,7 +669,7 @@ static struct log_facility *find_log_facility(const char *name)
  * @param log_func   [IN] function pointer to the helper
  * @param max_level  [IN] maximum message level this logger will handle.
  * @param header     [IN] detail level for header part of messages
- * @param private    [IN] logger specific argument.
+ * @param extra_args [IN] logger specific argument.
  *
  * @return 0 on success, -errno for failure
  */
@@ -678,7 +678,7 @@ int create_log_facility(char *name,
 			lf_function_t *log_func,
 			log_levels_t max_level,
 			log_header_t header,
-			void *private)
+			void *extra_args)
 {
 	struct log_facility *facility;
 
@@ -686,25 +686,25 @@ int create_log_facility(char *name,
 		return -EINVAL;
 	if (max_level < NIV_NULL || max_level >= NB_LOG_LEVEL)
 		return -EINVAL;
-	if (log_func == log_to_file && private != NULL) {
+	if (log_func == log_to_file && extra_args != NULL) {
 		char *dir;
 		int rc;
 
-		if (*(char *)private == '\0' ||
-		    strlen(private) >= MAXPATHLEN) {
+		if (*(char *)extra_args == '\0' ||
+		    strlen(extra_args) >= MAXPATHLEN) {
 			LogCrit(COMPONENT_LOG,
 				 "New log file path empty or too long");
 			return -EINVAL;
 		}
-		dir = alloca(strlen(private) + 1);
-		strcpy(dir, private);
+		dir = alloca(strlen(extra_args) + 1);
+		strcpy(dir, extra_args);
 		dir = dirname(dir);
 		rc = access(dir, W_OK);
 		if (rc != 0) {
 			rc = errno;
 			LogCrit(COMPONENT_LOG,
 				 "Cannot create new log file (%s), because: %s",
-				 (char *)private, strerror(rc));
+				 (char *)extra_args, strerror(rc));
 			return -rc;
 		}
 	}
@@ -734,8 +734,8 @@ int create_log_facility(char *name,
 	facility->lf_func = log_func;
 	facility->lf_max_level = max_level;
 	facility->lf_headers = header;
-	if (log_func == log_to_file && private != NULL) {
-		facility->lf_private = gsh_strdup(private);
+	if (log_func == log_to_file && extra_args != NULL) {
+		facility->lf_private = gsh_strdup(extra_args);
 		if (facility->lf_private == NULL) {
 			PTHREAD_RWLOCK_unlock(&log_rwlock);
 			gsh_free(facility);
@@ -743,7 +743,7 @@ int create_log_facility(char *name,
 			return -ENOMEM;
 		}
 	} else
-		facility->lf_private = private;
+		facility->lf_private = extra_args;
 	glist_add_tail(&facility_list, &facility->lf_list);
 
 	PTHREAD_RWLOCK_unlock(&log_rwlock);
@@ -1162,7 +1162,7 @@ void init_logging(const char *log_path, const int debug_level)
 /*
  * Routines for managing error messages
  */
-static int log_to_syslog(log_header_t headers, void *private,
+static int log_to_syslog(log_header_t headers, void *extra_args,
 			 log_levels_t level,
 			 struct display_buffer *buffer, char *compstr,
 			 char *message)
@@ -1178,13 +1178,13 @@ static int log_to_syslog(log_header_t headers, void *private,
 	return 0;
 }
 
-static int log_to_file(log_header_t headers, void *private,
+static int log_to_file(log_header_t headers, void *extra_args,
 		       log_levels_t level,
 		       struct display_buffer *buffer, char *compstr,
 		       char *message)
 {
 	int fd, my_status, len, rc = 0;
-	char *path = private;
+	char *path = extra_args;
 
 	len = display_buffer_len(buffer);
 
@@ -1231,12 +1231,12 @@ static int log_to_file(log_header_t headers, void *private,
 	return rc;
 }
 
-static int log_to_stream(log_header_t headers, void *private,
+static int log_to_stream(log_header_t headers, void *extra_args,
 			 log_levels_t level,
 			 struct display_buffer *buffer, char *compstr,
 			 char *message)
 {
-	FILE *stream = private;
+	FILE *stream = extra_args;
 	int rc;
 	char *msg = buffer->b_start;
 	int len;
@@ -1397,7 +1397,7 @@ static int display_log_component(struct display_buffer *dsp_log,
 
 void display_log_component_level(log_components_t component, char *file,
 				 int line, char *function, log_levels_t level,
-				 char *format, va_list arguments)
+				 const char *format, va_list arguments)
 {
 	char *compstr;
 	char *message;
@@ -1615,8 +1615,8 @@ struct log_component_info LogComponents[COMPONENT_COUNT] = {
 };
 
 void DisplayLogComponentLevel(log_components_t component, char *file, int line,
-			      char *function, log_levels_t level, char *format,
-			      ...)
+			      char *function, log_levels_t level,
+			      const char *format, ...)
 {
 	va_list arguments;
 

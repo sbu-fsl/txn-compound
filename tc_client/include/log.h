@@ -45,6 +45,10 @@
 #include "config_parsing.h"
 #include "display.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* The maximum size of a log buffer */
 #define LOG_BUFF_LEN 2048
 
@@ -149,9 +153,9 @@ void Fatal(void);
 void SetComponentLogLevel(log_components_t component, int level_to_set);
 
 void DisplayLogComponentLevel(log_components_t component, char *file, int line,
-			      char *function, log_levels_t level, char *format,
-			      ...)
-			      __attribute__ ((format(printf, 6, 7)));
+			      char *function, log_levels_t level,
+			      const char *format, ...)
+    __attribute__((format(printf, 6, 7)));
 			      /* 6=format 7=params */
 
 int read_log_config(config_file_t in_config);
@@ -176,7 +180,7 @@ typedef enum log_header_t {
  * @brief Prototype for special log facility logging functions
  */
 
-typedef int (lf_function_t) (log_header_t headers, void *private,
+typedef int (lf_function_t) (log_header_t headers, void *extra_args,
 			     log_levels_t level,
 			     struct display_buffer *buffer, char *compstr,
 			     char *message);
@@ -185,7 +189,7 @@ int create_log_facility(char *name,
 			lf_function_t *log_func,
 			log_levels_t max_level,
 			log_header_t header,
-			void *private);
+			void *extra_args);
 void release_log_facility(char *name);
 int enable_log_facility(char *name);
 int disable_log_facility(char *name);
@@ -453,5 +457,9 @@ LogFullDebugOpaque(component, format, buf_size, value, length, args...) \
  *  Re-export component logging to TI-RPC internal logging
  */
 void rpc_warnx(/* const */ char *fmt, ...);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
