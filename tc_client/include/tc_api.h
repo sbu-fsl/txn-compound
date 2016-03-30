@@ -22,6 +22,8 @@ enum TC_FILETYPE {
 	TC_FILE_DESCRIPTOR = 1,
 	TC_FILE_PATH,
 	TC_FILE_HANDLE,
+	TC_FILE_CURRENT,
+	TC_FILE_SAVED,
 };
 
 #define TC_FD_NULL -1
@@ -29,7 +31,7 @@ enum TC_FILETYPE {
 #define TC_FD_ABS -3
 
 /**
- * "type" is one of the three file types; "fd" and "path_or_handle" depend on
+ * "type" is one of the five file types; "fd" and "path_or_handle" depend on
  * the file type:
  *
  *	1. When "type" is TC_FILE_DESCRIPTOR, "fd" identifies the file we are
@@ -43,6 +45,12 @@ enum TC_FILETYPE {
  *
  *	3. When "type" is TC_FILE_HANDLE, "fd" is "mount_fd", and
  *	"path_or_handle" points to "struct file_handle".
+ *
+ *	4. When "type" is TC_FILE_CURRENT, the "current filehandle" on the NFS
+ *	server side is used.  "fd" and "path" are ignored.
+ *
+ *	5. When "type" is TC_FILE_SAVED, the "saved filehandle" on the NFS
+ *	server side is used.  "fd" and "path" are ignored.
  *
  * See http://man7.org/linux/man-pages/man2/open_by_handle_at.2.html
  */
@@ -67,6 +75,15 @@ static inline tc_file tc_file_from_path(const char *pathname) {
 	tf.fd = pathname[0] == '/' ? TC_FD_ABS : TC_FD_CWD;
 	tf.path = pathname;
 
+	return tf;
+}
+
+static inline tc_file tc_file_current() {
+	tc_file tf = {
+		.type = TC_FILE_CURRENT,
+		.fd = -1,	/* poison */
+		.path = NULL,	/* poison */
+	};
 	return tf;
 }
 
