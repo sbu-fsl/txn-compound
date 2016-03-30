@@ -1,5 +1,10 @@
 /**
- * XXX: To add a new test, don't forget to register the test in REGISTER_TYPED_TEST_CASE_P().
+ * XXX: To add a new test, don't forget to register the test in
+ * REGISTER_TYPED_TEST_CASE_P().
+ *
+ * This file uses an advanced GTEST feature called Type-Parameterized Test,
+ * which is documented at
+ * https://github.com/google/googletest/blob/master/googletest/docs/V1_7_AdvancedGuide.md
  */
 #include <errno.h>
 #include <unistd.h>
@@ -99,8 +104,7 @@ static tc_iovec *set_iovec_file_paths(const char **PATH, int count,
 			return NULL;
 		}
 
-		(user_arg + i)->file.type = TC_FILE_PATH;
-		(user_arg + i)->file.path = PATH[i];
+		(user_arg + i)->file = tc_file_from_path(PATH[i]);
 		(user_arg + i)->offset = offset;
 
 		(user_arg + i)->length = N;
@@ -139,6 +143,7 @@ public:
 	static void SetUpTestCase() {
 		/* TODO: setup posix impl */
 		POSIX_WARN("Global SetUp of Posix Impl\n");
+		tc_init("/etc/ganesha/tc.conf", "/var/log/tc.log");
 	}
 	static void TearDownTestCase() {
 		POSIX_WARN("Global TearDown of Posix Impl\n");
@@ -156,6 +161,7 @@ public:
 	static void SetUpTestCase() {
 		/* TODO: setup NFS4 impl */
 		POSIX_WARN("Global SetUp of NFS4 Impl\n");
+		tc_init("/etc/ganesha/tc.conf", "/var/log/tc.log");
 	}
 	static void TearDownTestCase() {
 		POSIX_WARN("Global TearDown of NFS4 Impl\n");

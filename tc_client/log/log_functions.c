@@ -1489,7 +1489,10 @@ static log_levels_t default_log_levels[] = {
 	[COMPONENT_9P] = NIV_EVENT,
 	[COMPONENT_9P_DISPATCH] = NIV_EVENT,
 	[COMPONENT_FSAL_UP] = NIV_EVENT,
-	[COMPONENT_DBUS] = NIV_EVENT
+	[COMPONENT_DBUS] = NIV_EVENT,
+	[COMPONENT_TC_POSIX] = NIV_INFO,
+	[COMPONENT_TC_NFS4] = NIV_INFO,
+	[COMPONENT_TC_TEST] = NIV_INFO,
 };
 
 log_levels_t *component_log_level = default_log_levels;
@@ -1599,7 +1602,16 @@ struct log_component_info LogComponents[COMPONENT_COUNT] = {
 		.comp_str = "FSAL_UP",},
 	[COMPONENT_DBUS] = {
 		.comp_name = "COMPONENT_DBUS",
-		.comp_str = "DBUS",}
+		.comp_str = "DBUS",},
+	[COMPONENT_TC_POSIX] = {
+		.comp_name = "COMPONENT_TC_POSIX",
+		.comp_str = "TC_POSIX",},
+	[COMPONENT_TC_NFS4] = {
+		.comp_name = "COMPONENT_TC_NFS4",
+		.comp_str = "TC_NFS4",},
+	[COMPONENT_TC_TEST] = {
+		.comp_name = "COMPONENT_TC_TEST",
+		.comp_str = "TC_TEST",},
 };
 
 void DisplayLogComponentLevel(log_components_t component, char *file, int line,
@@ -1742,6 +1754,9 @@ HANDLE_PROP(9P);
 HANDLE_PROP(9P_DISPATCH);
 HANDLE_PROP(FSAL_UP);
 HANDLE_PROP(DBUS);
+HANDLE_PROP(TC_POSIX);
+HANDLE_PROP(TC_NFS4);
+HANDLE_PROP(TC_TEST);
 
 static struct gsh_dbus_prop *log_props[] = {
 	LOG_PROPERTY_ITEM(ALL),
@@ -1779,6 +1794,9 @@ static struct gsh_dbus_prop *log_props[] = {
 	LOG_PROPERTY_ITEM(9P_DISPATCH),
 	LOG_PROPERTY_ITEM(FSAL_UP),
 	LOG_PROPERTY_ITEM(DBUS),
+	LOG_PROPERTY_ITEM(TC_POSIX),
+	LOG_PROPERTY_ITEM(TC_NFS4),
+	LOG_PROPERTY_ITEM(TC_TEST),
 	NULL
 };
 
@@ -2070,6 +2088,12 @@ static struct config_item component_levels[] = {
 			 COMPONENT_FSAL_UP, int),
 	CONF_INDEX_TOKEN("DBUS", NB_LOG_LEVEL, log_levels,
 			 COMPONENT_DBUS, int),
+	CONF_INDEX_TOKEN("TC_POSIX", NB_LOG_LEVEL, log_levels,
+			 COMPONENT_TC_POSIX, int),
+	CONF_INDEX_TOKEN("TC_NFS4", NB_LOG_LEVEL, log_levels,
+			 COMPONENT_TC_NFS4, int),
+	CONF_INDEX_TOKEN("TC_TEST", NB_LOG_LEVEL, log_levels,
+			 COMPONENT_TC_TEST, int),
 	CONFIG_EOL
 };
 

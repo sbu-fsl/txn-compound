@@ -7,6 +7,11 @@
 
 static tc_res TC_OKAY = { .okay = true, .index = -1, .err_no = 0, };
 
+void *tc_init(const char *config_file, const char *log_file)
+{
+	return posix_init(config_file, log_file);
+}
+
 tc_res tc_readv(struct tc_iovec *reads, int count, bool is_transaction)
 {
 	/**

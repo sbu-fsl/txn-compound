@@ -18,6 +18,8 @@ extern "C" {
 #define CONST
 #endif
 
+void* tc_init(const char* config_file, const char* log_file);
+
 enum TC_FILETYPE {
 	TC_FILE_DESCRIPTOR = 1,
 	TC_FILE_PATH,
