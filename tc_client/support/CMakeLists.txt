@@ -33,6 +33,15 @@ SET(hashtable_STAT_SRCS
 
 add_library(hashtable STATIC ${hashtable_STAT_SRCS})
 
+SET(avltree_STAT_SRCS
+   avl.c
+   bst.c
+   rb.c
+   splay.c
+)
+
+add_library(avltree STATIC ${avltree_STAT_SRCS})
+
 # uid2grp mapper
 set( uid2grp_SRCS
      uid2grp.c
@@ -74,5 +83,6 @@ if(APPLE)
 endif(APPLE)
 
 add_library(support STATIC ${support_STAT_SRCS})
+target_link_libraries(support hashtable avltree)
 
 ########### install files ###############
