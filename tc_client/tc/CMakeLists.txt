@@ -26,6 +26,9 @@ include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 include_directories("${CMAKE_SOURCE_DIR}")
 
+add_library(gtest "${GTEST}/src/gtest-all.cc")
+add_library(gtest_main "${GTEST}/src/gtest_main.cc")
+
 set(test_LIB
   pthread
   gtest

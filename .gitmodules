@@ -2,3 +2,6 @@
 	path = tc_client/libntirpc
 	url = https://github.com/nfs-ganesha/ntirpc.git
 
+[submodule "apps/filebench"]
+	path = apps/filebench
+	url = git.fsl.cs.sunysb.edu:/scm/fslgit/nfs4tc-filebench.git

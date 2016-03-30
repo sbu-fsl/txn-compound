@@ -274,6 +274,7 @@ tc_res tcread_v(struct tc_iovec *arg, int read_count, bool is_transaction)
 	int i = 0;
 	struct gsh_export *export = op_ctx->export;
 	tc_res result = { .okay = false, .index = 0, .err_no = (int)ENOENT };
+	const char *file_path = NULL;
 
 	if (export == NULL) {
 		return result;
@@ -293,10 +294,10 @@ tc_res tcread_v(struct tc_iovec *arg, int read_count, bool is_transaction)
 		cur_arg->user_arg = arg + i;
 		cur_arg->opok_handle = NULL;
 		cur_arg->path = NULL;
-		if (cur_arg->user_arg->path != NULL) {
-			cur_arg->path =
-			    malloc(strlen(cur_arg->user_arg->path) + 1);
-			strcpy(cur_arg->path, cur_arg->user_arg->path);
+		assert(cur_arg->user_arg->file.type == TC_FILE_PATH);
+		file_path = cur_arg->user_arg->file.path;
+		if (file_path != NULL) {
+			cur_arg->path = strndup(file_path, PATH_MAX);
 		}
 		// cur_arg->read_ok = NULL;
 		i++;
@@ -341,6 +342,7 @@ tc_res tcwrite_v(struct tc_iovec *arg, int write_count, bool is_transaction)
 	int i = 0;
 	struct gsh_export *export = op_ctx->export;
 	tc_res result = { .okay = false, .index = 0, .err_no = (int)ENOENT };
+	const char *file_path = NULL;
 
 	if (export == NULL) {
 		return result;
@@ -360,10 +362,10 @@ tc_res tcwrite_v(struct tc_iovec *arg, int write_count, bool is_transaction)
 		cur_arg->user_arg = arg + i;
 		cur_arg->opok_handle = NULL;
 		cur_arg->path = NULL;
-		if (cur_arg->user_arg->path != NULL) {
-			cur_arg->path =
-			    malloc(strlen(cur_arg->user_arg->path) + 1);
-			strcpy(cur_arg->path, cur_arg->user_arg->path);
+		assert(cur_arg->user_arg->file.type == TC_FILE_PATH);
+		file_path = cur_arg->user_arg->file.path;
+		if (file_path != NULL) {
+			cur_arg->path = strndup(file_path, PATH_MAX);
 		}
 		// cur_arg->write_ok = NULL;
 		i++;

@@ -8,7 +8,9 @@
 #define __TC_API_H__
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
+#include <fcntl.h>
 
 #ifdef __cplusplus
 #define CONST const
@@ -18,17 +20,81 @@ extern "C" {
 #endif
 
 enum TC_FILETYPE {
-	FILE_DESCRIPTOR = 1,
-	FILE_PATH,
+	TC_FILE_DESCRIPTOR = 1,
+	TC_FILE_PATH,
+	TC_FILE_HANDLE,
 };
 
-struct tc_file {
+#define TC_FD_NULL -1
+#define TC_FD_CWD -2
+#define TC_FD_ABS -3
+
+/**
+ * "type" is one of the three file types; "fd" and "path_or_handle" depend on
+ * the file type:
+ *
+ *	1. When "type" is TC_FILE_DESCRIPTOR, "fd" identifies the file we are
+ *	operating on.
+ *
+ *	2. When "type" is TC_FILE_PATH, "fd" is the base file descriptor, and
+ *	"path_or_handle" is the file path.  The file is identified by resolving
+ *	the path relative to "fd".  In this case, "fd" has two special values:
+ *	(a) TC_FDCWD which means the current working directory, and
+ *	(b) TC_FDABS which means the "path_or_handle" is an absolute path.
+ *
+ *	3. When "type" is TC_FILE_HANDLE, "fd" is "mount_fd", and
+ *	"path_or_handle" points to "struct file_handle".
+ *
+ * See http://man7.org/linux/man-pages/man2/open_by_handle_at.2.html
+ */
+typedef struct _tc_file
+{
 	int type;
-	union {
-		int fd;
+
+	int fd;
+
+	union
+	{
 		const char *path;
-	};
-};
+		const struct file_handle *handle;
+	}; /* path_or_handle */
+} tc_file;
+
+static inline tc_file tc_file_from_path(const char *pathname) {
+	tc_file tf;
+
+	assert(pathname);
+	tf.type = TC_FILE_PATH;
+	tf.fd = pathname[0] == '/' ? TC_FD_ABS : TC_FD_CWD;
+	tf.path = pathname;
+
+	return tf;
+}
+
+/**
+ * Open a tc_file using path.  Similar to "openat(2)".
+ *
+ * NOTE: It is not necessary that a tc_file have to be open before reading
+ * from/writing to it.  We recommend using tc_readv() and tc_writev() to
+ * implicitly open a file when necessary.
+ */
+tc_file tc_open_by_path(int dirfd, const char *pathname, int flags,
+			mode_t mode);
+
+static inline tc_file tc_open(const char *pathname, int flags, mode_t mode)
+{
+	return tc_open_by_path(AT_FDCWD, pathname, flags, mode);
+}
+
+/**
+ * Open a tc_file using file handle.  Similar to "open_by_handle_at(2)".
+ */
+tc_file tc_open_by_handle(int mount_fd, struct file_handle *fh, int flags);
+
+/**
+ * Close a tc_file if necessary.
+ */
+int tc_close(tc_file file);
 
 /**
  * Represents an I/O vector of a file.
@@ -36,9 +102,10 @@ struct tc_file {
  * The fields have different meaning depending the operation is read or write.
  * Most often, clients allocate an array of this struct.
  */
-struct tc_iovec {
-	const char *CONST path;		/* IN: the file path */
-	CONST size_t offset;		/* IN: read/write offset */
+struct tc_iovec
+{
+	tc_file file;
+	size_t offset; /* IN: read/write offset */
 
 	/**
 	 * IN:  # of bytes of requested read/write
@@ -54,11 +121,11 @@ struct tc_iovec {
 	 * IN:  data requested to be written
 	 * OUT: data successfully read
 	 */
-	void *CONST data;
+	void *data;
 
-	unsigned int is_creation : 1;  /* IN: create file if not exist? */
-	unsigned int is_failure : 1;   /* OUT: is this I/O a failure? */
-	unsigned int is_eof : 1;       /* OUT: does this I/O reach EOF? */
+	unsigned int is_creation : 1; /* IN: create file if not exist? */
+	unsigned int is_failure : 1;  /* OUT: is this I/O a failure? */
+	unsigned int is_eof : 1;      /* OUT: does this I/O reach EOF? */
 };
 
 /**
@@ -67,10 +134,11 @@ struct tc_iovec {
  * When transaction is not enabled, compound processing stops upon the first
  * failure.
  */
-typedef struct _tc_res {
+typedef struct _tc_res
+{
 	bool okay;  /* no error */
 	int index;  /* index of the first failed operation */
-	int err_no;  /* error number of the failed operation */
+	int err_no; /* error number of the failed operation */
 } tc_res;
 
 /**
@@ -110,14 +178,15 @@ static inline bool tx_writev(struct tc_iovec *writes, int count)
 /**
  * The bitmap indicating the presence of file attributes.
  */
-struct tc_attrs_masks {
+struct tc_attrs_masks
+{
 	unsigned int has_mode : 1;  /* protection flags */
 	unsigned int has_size : 1;  /* file size, in bytes */
 	unsigned int has_nlink : 1; /* number of hard links */
 	unsigned int has_uid : 1;   /* user ID of owner */
 	unsigned int has_gid : 1;   /* group ID of owner */
 	unsigned int has_rdev : 1;  /* device ID of block or char special
-				       files */
+				   files */
 	unsigned int has_atime : 1; /* time of last access */
 	unsigned int has_mtime : 1; /* time of last modification */
 	unsigned int has_ctime : 1; /* time of last status change */
@@ -126,12 +195,13 @@ struct tc_attrs_masks {
 /**
  * File attributes.  See stat(2).
  */
-struct tc_attrs {
-	const char *path;   /* file path */
+struct tc_attrs
+{
+	tc_file file;
 	struct tc_attrs_masks masks;
-	mode_t mode;     /* protection */
-	size_t size;     /* file size, in bytes */
-	nlink_t nlink;   /* number of hard links */
+	mode_t mode;   /* protection */
+	size_t size;   /* file size, in bytes */
+	nlink_t nlink; /* number of hard links */
 	uid_t uid;
 	gid_t gid;
 	dev_t rdev;
@@ -193,10 +263,11 @@ tc_res tc_listdir(const char *dir, struct tc_attrs_masks masks, int max_count,
  */
 void tc_free_attrs(struct tc_attrs *attrs, int count, bool free_path);
 
-struct tc_file_pair {
-	const char *src_path;
-	const char *dst_path;
-};
+typedef struct tc_file_pair
+{
+	tc_file src_file;
+	tc_file dst_file;
+} tc_file_pair;
 
 /**
  * Rename the file from "src_path" to "dst_path" for each of "pairs".
@@ -207,13 +278,31 @@ struct tc_file_pair {
  */
 tc_res tc_renamev(struct tc_file_pair *pairs, int count, bool is_transaction);
 
-static inline bool tx_renamev(struct tc_file_pair *pairs, int count)
+static inline bool tx_renamev(tc_file_pair *pairs, int count)
 {
 	tc_res res = tc_renamev(pairs, count, true);
 	return res.okay;
 }
 
-struct tc_extent_pair {
+tc_res tc_removev(tc_file *files, int count, bool is_transaction);
+
+static inline bool tx_removev(tc_file *files, int count)
+{
+	tc_res res = tc_removev(files, count, true);
+	return res.okay;
+}
+
+tc_res tc_mkdirv(tc_file *dir, mode_t *mode, int count, bool is_transaction);
+
+static inline bool tx_mkdirv(tc_file *dir, mode_t *mode, int count,
+			     bool is_transaction)
+{
+	tc_res res = tc_mkdirv(dir, mode, count, is_transaction);
+	return res.okay;
+}
+
+struct tc_extent_pair
+{
 	const char *src_path;
 	const char *dst_path;
 	size_t src_offset;
@@ -241,7 +330,8 @@ static inline bool tx_copyv(struct tc_extent_pair *pairs, int count)
  *
  * See https://tools.ietf.org/html/draft-ietf-nfsv4-minorversion2-39#page-60
  */
-struct tc_adb {
+struct tc_adb
+{
 	const char *path;
 
 	/**
@@ -287,7 +377,6 @@ struct tc_adb {
 	void *adb_pattern_data;
 };
 
-
 /**
  * Write Application Data Blocks (ADB) to one or more files.
  *
@@ -302,6 +391,37 @@ static inline bool tx_write_adb(struct tc_adb *patterns, int count)
 	tc_res res = tc_write_adb(patterns, count, true);
 	return res.okay;
 };
+
+/* 
+ * Initialize tc_client
+ * log_path - Location of the log file
+ * config_path - Location of the config file
+ * export_id - Export id of the export configured in the conf file
+ *
+ * This returns fsal_module pointer to tc_client module
+ * If tc_client module does not exist, it will return NULL
+ *
+ * Caller of this function should call tc_deinit() after use
+ */
+void* tc_init(char *log_path, char *config_path, uint16_t export_id);
+
+/*
+ * Free the reference to module and op_ctx
+ * Should be called if tc_init() was called previously
+ *
+ * This will always succeed
+ */
+void tc_deinit(void *module);
+
+/* 
+ * User should have called tc_init() with the right export before calling this
+ */
+tc_res tcread_v(struct tc_iovec *arg, int read_count, bool isTransaction);
+
+/* 
+ * User should have called tc_init() with the right export before calling this
+ */
+tc_res tcwrite_v(struct tc_iovec *arg, int write_count, bool isTransaction);
 
 #ifdef __cplusplus
 #undef CONST

@@ -41,7 +41,7 @@
 #include <signal.h>		/* for sigaction */
 #include <errno.h>
 #include "fsal_pnfs.h"
-#include "tc_user.h"
+#include "tc_utils.h"
 
 config_file_t config_struct;
 
@@ -61,7 +61,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* Everything seems to be OK! We can now start service threads */
-	tc_singlefile("/vfs0/test_cdist/abcd", 1048576, 1, 2000000, 1, 0.0, 0);
+	tc_singlefile("/vfs0/test_cdist/abcd", 65536, 1, 200000, 3, 0.0, 0);
 
 	tc_deinit(module);
 

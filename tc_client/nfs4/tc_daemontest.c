@@ -70,14 +70,15 @@ int tc_singlefile(char *input_path, unsigned int block_size,
 		k = 0;
 		while (k < ops_per_comp) {
 			cur_arg = user_arg + k;
-			cur_arg->path = NULL;
+			cur_arg->file.path = NULL;
+			cur_arg->file.type = TC_FILE_PATH;
 			cur_arg->offset = j*block_size + k*block_size;
 			cur_arg->length = block_size;
 			k++;
 		}
 
 		snprintf(temp_path[0], input_len + 8, "%s%d", input_path, 0);
-		user_arg->path = temp_path[0];
+		user_arg->file = tc_file_from_path(temp_path[0]);
 
 		if (rw == 0) {
 			tcread_v(user_arg, ops_per_comp, FALSE);

@@ -62,7 +62,6 @@ SET(test1_SRCS
 add_executable(test1
   ${test1_SRCS}
   ${fsal_CORE_SRCS}
-  ../include/tc_user.h
 )
 
 target_link_libraries(test1
