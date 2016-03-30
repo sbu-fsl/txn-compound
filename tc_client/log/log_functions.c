@@ -528,9 +528,6 @@ void set_const_log_str()
 
 	const_log_str[0] = '\0';
 
-	if (b_left > 0 && logfields->disp_epoch)
-		b_left = display_printf(&dspbuf, ": epoch %08x ", ServerEpoch);
-
 	if (b_left > 0 && logfields->disp_host)
 		b_left = display_printf(&dspbuf, ": %s ", hostname);
 
@@ -2506,7 +2503,7 @@ int read_log_config(config_file_t in_config)
 		return -1;
 }				/* read_log_config */
 
-void reread_log_config()
+void reread_log_config(char* config_path)
 {
 	int status = 0;
 	int i;
