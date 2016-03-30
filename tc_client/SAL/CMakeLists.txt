@@ -28,6 +28,7 @@ if(USE_9P)
 endif(USE_9P)
 
 add_library(sal STATIC ${sal_STAT_SRCS})
+target_link_libraries(sal hashtable)
 
 
 ########### install files ###############
