@@ -125,7 +125,7 @@ void *sigmgr_thread(void *UnusedArg)
 			LogEvent(COMPONENT_MAIN,
 				 "SIGHUP_HANDLER: Received SIGHUP.... initiating export list reload");
 			admin_replace_exports();
-			reread_log_config();
+			reread_log_config(config_path);
 			svcauth_gss_release_cred();
 		}
 	}

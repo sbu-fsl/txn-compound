@@ -9,13 +9,19 @@
 
 #include "tc_impl_posix.h"
 
-#define POSIX_WARN(fmt, args...) fprintf(stderr, "==posix-WARN==" fmt, ##args)
-
 /*
  * open routine for POSIX files
  * path - file path
  * flags - open flags
  */
+
+void* posix_init(const char* config_file, const char* log_file) {
+	SetNamePgm("TC-POSIX");
+	SetNameFunction("posix");
+	SetNameHost("localhost");
+	init_logging(log_file, NIV_EVENT);
+	return NULL;
+}
 
 tc_file posix_open(const char *path, int flags)
 {
@@ -78,6 +84,7 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 		fd = file.fd;
 		if (fd < 0) {
 			result.okay = false;
+			POSIX_ERR("failed in readv: %s\n", strerror(errno));
 			break;
 		}
 

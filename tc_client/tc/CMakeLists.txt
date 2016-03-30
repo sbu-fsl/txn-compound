@@ -3,7 +3,7 @@ add_definitions(
   -D_GNU_SOURCE
 )
 
-#add_definitions(-std=c++11)
+add_definitions(-std=c++11)
 
 set(tc_SRC
   tc_impl.c

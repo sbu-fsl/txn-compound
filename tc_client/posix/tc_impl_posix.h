@@ -5,10 +5,18 @@
 #define __TC_IMPL_POSIX_H__
 
 #include "tc_api.h"
+#include "log.h"
+
+#define POSIX_ERR(fmt, args...) LogCrit(COMPONENT_TC_POSIX, fmt, ##args)
+#define POSIX_WARN(fmt, args...) LogWarn(COMPONENT_TC_POSIX, fmt, ##args)
+#define POSIX_INFO(fmt, args...) LogInfo(COMPONENT_TC_POSIX, fmt, ##args)
+#define POSIX_DEBUG(fmt, args...) LogDebug(COMPONENT_TC_POSIX, fmt, ##args)
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+void* posix_init(const char* config_file, const char* log_file);
 
 /**
  * @reads - Array of reads for one or more files
