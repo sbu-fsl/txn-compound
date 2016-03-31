@@ -127,6 +127,7 @@ void* tc_init(char *log_path, char *config_path, uint16_t export_id)
 	struct gsh_export *export = NULL;
 	struct req_op_context *req_ctx = NULL;
 	int rc;
+	config_file_t config_struct;
 	nfs_start_info_t my_nfs_start_info = { .dump_default_config = false,
 					       .lw_mark_trigger = false };
 

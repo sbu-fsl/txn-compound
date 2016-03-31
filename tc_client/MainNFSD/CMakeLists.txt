@@ -46,67 +46,24 @@ set(fsal_CORE_SRCS
    ../FSAL_UP/fsal_up_utils.c
    ../nfs4/handle.c
    ../nfs4/tc_utils.c
-   ../nfs4/test1.c
-   ../nfs4/test2.c
-   ../nfs4/tc_test.c
+   ../nfs4/tc_seq.c
    ../nfs4/tc_dist.c
    ../nfs4/tc_daemontest.c
 )
 
 ########### next target ###############
 
-SET(test1_SRCS
-   test1.c
+SET(tc_seq_SRCS
+   tc_seq.c
 )
 
-add_executable(test1
-  ${test1_SRCS}
-  ${fsal_CORE_SRCS}
-)
-
-target_link_libraries(test1
-  MainServices
-  ${PROTOCOLS}
-  ${GANESHA_CORE}
-  config_parsing
-  ${LIBTIRPC_LIBRARIES}
-  ${SYSTEM_LIBRARIES}
-  m
-  tc_util
-)
-
-SET(test2_SRCS
-   test2.c
-)
-
-add_executable(test2
-  ${test2_SRCS}
+add_executable(tc_seq
+  ${tc_seq_SRCS}
   ${fsal_CORE_SRCS}
   ../include/tc_utils.h
 )
 
-target_link_libraries(test2
-  MainServices
-  ${PROTOCOLS}
-  ${GANESHA_CORE}
-  config_parsing
-  ${LIBTIRPC_LIBRARIES}
-  ${SYSTEM_LIBRARIES}
-  m
-  tc_util
-)
-
-SET(tctest_SRCS
-   tc_test.c
-)
-
-add_executable(cache_test
-  ${tctest_SRCS}
-  ${fsal_CORE_SRCS}
-  ../include/tc_utils.h
-)
-
-target_link_libraries(cache_test
+target_link_libraries(tc_seq
   MainServices
   ${PROTOCOLS}
   ${GANESHA_CORE}
