@@ -11,9 +11,7 @@ SET(fsalproxy_LIB_SRCS
    export.c
    xattrs.c
    tc_utils.c
-   test1.c
-   test2.c
-   tc_test.c
+   tc_seq.c
    tc_dist.c
    tc_singlefile.c
 )

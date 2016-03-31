@@ -523,7 +523,7 @@ int main(int argc, char *argv[])
 
 	/* Everything seems to be OK! We can now start service threads */
 	//nfs_start(&my_nfs_start_info);
-	test2(input_path, block_size, num_files, num_ops, ops_per_comp, rw);
+	tc_seq(input_path, block_size, num_files, num_ops, ops_per_comp, rw);
 
 	return 0;
 

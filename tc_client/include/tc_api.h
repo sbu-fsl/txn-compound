@@ -8,6 +8,7 @@
 #define __TC_API_H__
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <fcntl.h>
 
@@ -18,7 +19,28 @@ extern "C" {
 #define CONST
 #endif
 
-void* tc_init(const char* config_file, const char* log_file);
+void *tc_init1(const char *config_file, const char *log_file);
+
+/* 
+ * Initialize tc_client
+ * log_path - Location of the log file
+ * config_path - Location of the config file
+ * export_id - Export id of the export configured in the conf file
+ *
+ * This returns fsal_module pointer to tc_client module
+ * If tc_client module does not exist, it will return NULL
+ *
+ * Caller of this function should call tc_deinit() after use
+ */
+void* tc_init(char *log_path, char *config_path, uint16_t export_id);
+
+/*
+ * Free the reference to module and op_ctx
+ * Should be called if tc_init() was called previously
+ *
+ * This will always succeed
+ */
+void tc_deinit(void *module);
 
 enum TC_FILETYPE {
 	TC_FILE_DESCRIPTOR = 1,
@@ -410,6 +432,16 @@ static inline bool tx_write_adb(struct tc_adb *patterns, int count)
 	tc_res res = tc_write_adb(patterns, count, true);
 	return res.okay;
 };
+
+/* 
+ * User should have called tc_init() with the right export before calling this
+ */
+tc_res tcread_v(struct tc_iovec *arg, int read_count, bool isTransaction);
+
+/* 
+ * User should have called tc_init() with the right export before calling this
+ */
+tc_res tcwrite_v(struct tc_iovec *arg, int write_count, bool isTransaction);
 
 #ifdef __cplusplus
 #undef CONST

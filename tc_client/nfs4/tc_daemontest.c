@@ -39,33 +39,12 @@ int tc_singlefile(char *input_path, unsigned int block_size,
 
 	srand(time(NULL));
 
-	LogDebug(COMPONENT_FSAL, "test2() called\n");
-	new_module = lookup_fsal("PROXY");
-	if (new_module == NULL) {
-		LogDebug(COMPONENT_FSAL, "Proxy Module Not found\n");
+	/*if (export_init(77) < 0) {
+		LogFatal(COMPONENT_FSAL, "tc_init() failed");
 		return -1;
-	}
-	LogDebug(COMPONENT_FSAL, "Proxy Module Found\n");
-	export = get_gsh_export(77);
-	if(export == NULL){
-		LogDebug(COMPONENT_FSAL, "Export Not found\n");
-		return -1;
-	}
-	LogDebug(COMPONENT_FSAL, "Export Found\n");
-	LogDebug(COMPONENT_FSAL,
-                 "Export %d at pseudo (%s) with path (%s) and tag (%s) \n",
-                 export->export_id, export->pseudopath,
-                 export->fullpath, export->FS_tag);
+	}*/
 
-	
-	sleep(1);
-
-	memset(&req_ctx, 0, sizeof(struct req_op_context));
-	op_ctx = &req_ctx;
-	op_ctx->creds = NULL;
-	op_ctx->export = export;
-	op_ctx->fsal_export = export->fsal_export;
-
+	LogDebug(COMPONENT_FSAL, "tc_init() success");
 	input_len = strlen(input_path);
 	k = 0;
 	while (k < MAX_READ_COUNT) {
@@ -115,7 +94,7 @@ int tc_singlefile(char *input_path, unsigned int block_size,
 	gettimeofday(&tv2, NULL);
 	time_taken = ((double)(tv2.tv_usec - tv1.tv_usec) / 1000000) +
 		     (double)(tv2.tv_sec - tv1.tv_sec);
-	LogFatal(COMPONENT_FSAL, "tcreads done - %f seconds\n", time_taken);
+	//LogFatal(COMPONENT_FSAL, "tcreads done - %f seconds\n", time_taken);
 
 	k = 0;
 	while (k < ops_per_comp) {
@@ -131,5 +110,8 @@ int tc_singlefile(char *input_path, unsigned int block_size,
 	}
 
 	free(user_arg);
+
+	//export_deinit();
+	LogDebug(COMPONENT_FSAL, "Export deinit() done\n");
 	return 0;
 }
