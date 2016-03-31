@@ -294,7 +294,8 @@ tc_res tcread_v(struct tc_iovec *arg, int read_count, bool is_transaction)
 		cur_arg->user_arg = arg + i;
 		cur_arg->opok_handle = NULL;
 		cur_arg->path = NULL;
-		assert(cur_arg->user_arg->file.type == TC_FILE_PATH);
+		assert(cur_arg->user_arg->file.type == TC_FILE_PATH ||
+		       cur_arg->user_arg->file.type == TC_FILE_CURRENT);
 		file_path = cur_arg->user_arg->file.path;
 		if (file_path != NULL) {
 			cur_arg->path = strndup(file_path, PATH_MAX);
@@ -362,7 +363,8 @@ tc_res tcwrite_v(struct tc_iovec *arg, int write_count, bool is_transaction)
 		cur_arg->user_arg = arg + i;
 		cur_arg->opok_handle = NULL;
 		cur_arg->path = NULL;
-		assert(cur_arg->user_arg->file.type == TC_FILE_PATH);
+		assert(cur_arg->user_arg->file.type == TC_FILE_PATH ||
+		       cur_arg->user_arg->file.type == TC_FILE_CURRENT);
 		file_path = cur_arg->user_arg->file.path;
 		if (file_path != NULL) {
 			cur_arg->path = strndup(file_path, PATH_MAX);

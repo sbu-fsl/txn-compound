@@ -143,7 +143,7 @@ public:
 	static void SetUpTestCase() {
 		/* TODO: setup posix impl */
 		POSIX_WARN("Global SetUp of Posix Impl\n");
-		tc_init("/etc/ganesha/tc.conf", "/var/log/tc.log");
+		tc_init1("/etc/ganesha/tc.conf", "/var/log/tc.log");
 	}
 	static void TearDownTestCase() {
 		POSIX_WARN("Global TearDown of Posix Impl\n");
@@ -161,7 +161,7 @@ public:
 	static void SetUpTestCase() {
 		/* TODO: setup NFS4 impl */
 		POSIX_WARN("Global SetUp of NFS4 Impl\n");
-		tc_init("/etc/ganesha/tc.conf", "/var/log/tc.log");
+		tc_init1("/etc/ganesha/tc.conf", "/var/log/tc.log");
 	}
 	static void TearDownTestCase() {
 		POSIX_WARN("Global TearDown of NFS4 Impl\n");
