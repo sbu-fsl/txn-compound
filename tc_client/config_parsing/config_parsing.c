@@ -42,7 +42,7 @@
  * Reads the content of a configuration file and
  * stores it in a memory structure.
  */
-config_file_t config_ParseFile(char *file_path,
+config_file_t config_ParseFile(const char *file_path,
 			       struct config_error_type *err_type)
 {
 	struct parser_state st;
@@ -52,7 +52,7 @@ config_file_t config_ParseFile(char *file_path,
 	clear_error_type(err_type);
 	memset(&st, 0, sizeof(struct parser_state));
 	st.err_type = err_type;
-	rc = ganeshun_yy_init_parser(file_path, &st);
+	rc = ganeshun_yy_init_parser((char *)file_path, &st);
 	if (rc) {
 		return NULL;
 	}

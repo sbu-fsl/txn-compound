@@ -51,7 +51,7 @@ struct bufstack {
 };
 
 static char *filter_string(char *src, int esc);
-static int new_file(char *filename,
+static int new_file(const char *filename,
 	     struct parser_state *st);
 static int pop_file(struct parser_state *st);
 
@@ -283,7 +283,7 @@ int ganeshun_yywrap(void *yyscanner){
     return 1;
 }
 
-int ganeshun_yy_init_parser(char *srcfile, struct parser_state *st)
+int ganeshun_yy_init_parser(const char *srcfile, struct parser_state *st)
 {
 	FILE *in_file;
 	void *yyscanner = st->scanner;
@@ -377,7 +377,7 @@ done:
 	return dst;
 }
 
-static int new_file(char *name_tok,
+static int new_file(const char *name_tok,
 	     struct parser_state *st)
 {
 	struct bufstack *bs = NULL;

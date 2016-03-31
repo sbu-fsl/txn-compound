@@ -41,7 +41,7 @@
 #include <signal.h>		/* for sigaction */
 #include <errno.h>
 #include "fsal_pnfs.h"
-#include "tc_utils.h"
+#include "../nfs4/nfs4_util.h"
 
 config_file_t config_struct;
 
@@ -50,7 +50,7 @@ int main(int argc, char *argv[])
 	struct fsal_module* module = NULL;
 	int rc = 0;
 
-	module = (struct fsal_module *)tc_init(
+	module = (struct fsal_module *)nfs4_init(
 	    "/home/ashok/log_ganesha",
 	    "/home/ashok/work/fsl/fsl-nfs-ganesha/secnfs/"
 	    "config/vfs.proxy.conf",
@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
 	/* Everything seems to be OK! We can now start service threads */
 	tc_singlefile("/vfs0/test_cdist/abcd", 65536, 1, 200000, 3, 0.0, 0);
 
-	tc_deinit(module);
+	nfs4_deinit(module);
 
 	return 0;
 

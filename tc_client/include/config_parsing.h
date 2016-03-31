@@ -823,7 +823,7 @@ static inline bool is_prime(int v)
  *
  * @return pointer to parse tree.  Must be freed if != NULL
  */
-config_file_t config_ParseFile(char *file_path,
+config_file_t config_ParseFile(const char *file_path,
 			       struct config_error_type *err_type);
 
 /**

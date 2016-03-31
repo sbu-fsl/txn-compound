@@ -95,8 +95,7 @@ struct parser_state {
 };
 
 int ganesha_yyparse(struct parser_state *st);
-int ganeshun_yy_init_parser(char *srcfile,
-			   struct parser_state *st);
+int ganeshun_yy_init_parser(const char *srcfile, struct parser_state *st);
 void ganeshun_yy_cleanup_parser(struct parser_state *st);
 
 /**

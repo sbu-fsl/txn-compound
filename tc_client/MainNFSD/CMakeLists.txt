@@ -60,7 +60,6 @@ SET(tc_seq_SRCS
 add_executable(tc_seq
   ${tc_seq_SRCS}
   ${fsal_CORE_SRCS}
-  ../include/tc_utils.h
 )
 
 target_link_libraries(tc_seq
@@ -72,6 +71,7 @@ target_link_libraries(tc_seq
   ${SYSTEM_LIBRARIES}
   m
   tc_util
+  tc_impl_nfs4
 )
 
 SET(tcfiledist_SRCS
@@ -81,7 +81,6 @@ SET(tcfiledist_SRCS
 add_executable(tc_filedist
   ${tcfiledist_SRCS}
   ${fsal_CORE_SRCS}
-  ../include/tc_utils.h
 )
 
 target_link_libraries(tc_filedist
@@ -93,6 +92,7 @@ target_link_libraries(tc_filedist
   ${SYSTEM_LIBRARIES}
   m
   tc_util
+  tc_impl_nfs4
 )
 
 SET(tc_singlefile_SRCS
@@ -102,7 +102,6 @@ SET(tc_singlefile_SRCS
 add_executable(tc_singlefile
   ${tc_singlefile_SRCS}
   ${fsal_CORE_SRCS}
-  ../include/tc_utils.h
 )
 
 target_link_libraries(tc_singlefile
@@ -114,6 +113,7 @@ target_link_libraries(tc_singlefile
   ${SYSTEM_LIBRARIES}
   m
   tc_util
+  tc_impl_nfs4
 )
 
 SET(tc_daemon_SRCS
@@ -123,7 +123,6 @@ SET(tc_daemon_SRCS
 add_executable(tc_daemon
   ${tc_daemon_SRCS}
   ${fsal_CORE_SRCS}
-  ../include/tc_utils.h
 )
 
 target_link_libraries(tc_daemon
@@ -135,6 +134,7 @@ target_link_libraries(tc_daemon
   ${SYSTEM_LIBRARIES}
   m
   tc_util
+  tc_impl_nfs4
 )
 
 ########### install files ###############

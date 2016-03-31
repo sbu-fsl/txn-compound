@@ -44,7 +44,7 @@
 #include "nfs_proto_functions.h"
 #include "nfs_proto_tools.h"
 #include "export_mgr.h"
-#include "tc_utils.h"
+#include "nfs4_util.h"
 
 #include <stdlib.h>
 

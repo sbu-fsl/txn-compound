@@ -1,8 +1,14 @@
 /* Header file for implementing tc features */
 
+#ifndef __TC_NFS4_UTIL_H__
+#define __TC_NFS4_UTIL_H__
+
 #include "export_mgr.h"
-#include "ganesha_list.h"
-#include "tc_api.h"
+#include "tc_impl_nfs4.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Structure to be passed to ktcread
@@ -45,3 +51,10 @@ struct tcwrite_kargs
 
 int tc_seq();
 bool readdir_reply(const char *name, void *dir_state, fsal_cookie_t cookie);
+
+#ifdef __cplusplus
+}
+#endif
+
+
+#endif // __TC_NFS4_UTIL_H__

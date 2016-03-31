@@ -11,7 +11,7 @@
 #include "fsal.h"
 #include "FSAL/fsal_init.h"
 #include "fs_fsal_methods.h"
-#include "tc_utils.h"
+#include "nfs4_util.h"
 #include "../../util/bench.h"
 #include <time.h>
 
@@ -113,9 +113,9 @@ int tc_dist(char *input_path, unsigned int block_size, unsigned int num_files,
 		}
 
 		if (rw == 0) {
-			tcread_v(user_arg, ops_per_comp, FALSE);
+			nfs4_readv(user_arg, ops_per_comp, FALSE);
 		} else {
-			tcwrite_v(user_arg, ops_per_comp, FALSE);
+			nfs4_writev(user_arg, ops_per_comp, FALSE);
 		}
 		j = j + ops_per_comp;
 	}

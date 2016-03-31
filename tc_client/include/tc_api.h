@@ -433,16 +433,6 @@ static inline bool tx_write_adb(struct tc_adb *patterns, int count)
 	return res.okay;
 };
 
-/* 
- * User should have called tc_init() with the right export before calling this
- */
-tc_res tcread_v(struct tc_iovec *arg, int read_count, bool isTransaction);
-
-/* 
- * User should have called tc_init() with the right export before calling this
- */
-tc_res tcwrite_v(struct tc_iovec *arg, int write_count, bool isTransaction);
-
 #ifdef __cplusplus
 #undef CONST
 }

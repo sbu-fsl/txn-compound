@@ -29,7 +29,7 @@
  * @brief Most of the init routines
  */
 #include "config.h"
-#include "tc_utils.h"
+#include "../nfs4/nfs4_util.h"
 #include "ganesha_rpc.h"
 #include "nfs_init.h"
 #include "log.h"
@@ -145,8 +145,8 @@ void *sigmgr_thread(void *UnusedArg)
  * @param[in] debug_level  Debug level
  * @param[in] log_path     Log path
  */
-void nfs_prereq_init(char *program_name, char *host_name, int debug_level,
-		     char *log_path)
+void nfs_prereq_init(const char *program_name, const char *host_name,
+		     int debug_level, const char *log_path)
 {
 	/* Initialize logging */
 	SetNamePgm(program_name);
