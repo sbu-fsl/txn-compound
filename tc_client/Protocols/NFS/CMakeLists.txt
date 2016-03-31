@@ -63,6 +63,7 @@ SET(nfsproto_STAT_SRCS
 )
 
 add_library(nfsproto STATIC ${nfsproto_STAT_SRCS})
+set_target_properties(nfsproto PROPERTIES POSITION_INDEPENDENT_CODE on)
 
 set(nfs4callbackSRCS
    nfs4_cb_Compound.c

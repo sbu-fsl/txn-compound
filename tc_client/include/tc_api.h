@@ -19,7 +19,7 @@ extern "C" {
 #define CONST
 #endif
 
-void *tc_init1(const char *config_file, const char *log_file);
+#define TC_IMPL_IS_NFS4 0
 
 /* 
  * Initialize tc_client
@@ -32,7 +32,8 @@ void *tc_init1(const char *config_file, const char *log_file);
  *
  * Caller of this function should call tc_deinit() after use
  */
-void* tc_init(char *log_path, char *config_path, uint16_t export_id);
+void *tc_init(const char *config_path, const char *log_path,
+	      uint16_t export_id);
 
 /*
  * Free the reference to module and op_ctx

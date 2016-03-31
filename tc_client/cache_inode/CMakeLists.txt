@@ -37,5 +37,6 @@ SET(cache_inode_STAT_SRCS
 )
 
 add_library(cache_inode STATIC ${cache_inode_STAT_SRCS})
+set_target_properties(cache_inode PROPERTIES POSITION_INDEPENDENT_CODE on)
 
 ########### install files ###############

@@ -148,7 +148,7 @@ public:
 	static constexpr const char* POSIX_TEST_DIR = "/tmp/tc_posix_test";
 	static void SetUpTestCase() {
 		/* TODO: setup posix impl */
-		tc_init1("/etc/ganesha/tc.conf", "/tmp/tc.log");
+		tc_init("/etc/ganesha/tc.conf", "/tmp/tc.log", 0);
 		TCTEST_WARN("Global SetUp of Posix Impl\n");
 		util::CreateOrUseDir(POSIX_TEST_DIR);
 		chdir(POSIX_TEST_DIR);
@@ -168,7 +168,7 @@ class TcNFS4Impl {
 public:
 	static void SetUpTestCase() {
 		/* TODO: setup NFS4 impl */
-		tc_init1("/etc/ganesha/tc.conf", "/tmp/tc.log");
+		tc_init("/etc/ganesha/tc.conf", "/tmp/tc.log", 0);
 		TCTEST_WARN("Global SetUp of NFS4 Impl\n");
 		chdir("tc_nfs4_test");  /* change to mnt point */
 	}

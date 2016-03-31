@@ -17,6 +17,7 @@ set(string_utils_STAT_SRCS
 )
 
 add_library(string_utils STATIC ${string_utils_STAT_SRCS})
+set_target_properties(string_utils PROPERTIES POSITION_INDEPENDENT_CODE on)
 
 # hash function libraries
 
@@ -26,12 +27,14 @@ set(hash_SRCS
 )
 
 add_library(hash STATIC ${hash_SRCS})
+set_target_properties(hash PROPERTIES POSITION_INDEPENDENT_CODE on)
 
 SET(hashtable_STAT_SRCS
    hashtable.c
 )
 
 add_library(hashtable STATIC ${hashtable_STAT_SRCS})
+set_target_properties(hashtable PROPERTIES POSITION_INDEPENDENT_CODE on)
 
 SET(avltree_STAT_SRCS
    avl.c
@@ -41,6 +44,7 @@ SET(avltree_STAT_SRCS
 )
 
 add_library(avltree STATIC ${avltree_STAT_SRCS})
+set_target_properties(avltree PROPERTIES POSITION_INDEPENDENT_CODE on)
 
 # uid2grp mapper
 set( uid2grp_SRCS
@@ -48,7 +52,8 @@ set( uid2grp_SRCS
      uid2grp_cache.c
 )
 
-add_library( uid2grp ${uid2grp_SRCS} )
+add_library(uid2grp ${uid2grp_SRCS})
+set_target_properties(uid2grp PROPERTIES POSITION_INDEPENDENT_CODE on)
 
 ########### next target ###############
 
@@ -84,5 +89,6 @@ endif(APPLE)
 
 add_library(support STATIC ${support_STAT_SRCS})
 target_link_libraries(support hashtable avltree)
+set_target_properties(support PROPERTIES POSITION_INDEPENDENT_CODE on)
 
 ########### install files ###############

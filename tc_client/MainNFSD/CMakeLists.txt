@@ -25,6 +25,7 @@ SET(MainServices_STAT_SRCS
 )
 
 add_library(MainServices STATIC ${MainServices_STAT_SRCS})
+set_target_properties(MainServices PROPERTIES POSITION_INDEPENDENT_CODE on)
 
 # FSAL core sources
 # fsal_manager and fsal_destroyer are the only objects referenced by the
@@ -44,12 +45,10 @@ set(fsal_CORE_SRCS
    ../FSAL_UP/fsal_up_top.c
    ../FSAL_UP/fsal_up_async.c
    ../FSAL_UP/fsal_up_utils.c
-   ../nfs4/handle.c
-   ../nfs4/tc_utils.c
-   ../nfs4/tc_seq.c
-   ../nfs4/tc_dist.c
-   ../nfs4/tc_daemontest.c
 )
+
+add_library(fsal_core STATIC ${fsal_CORE_SRCS})
+set_target_properties(fsal_core PROPERTIES POSITION_INDEPENDENT_CODE on)
 
 ########### next target ###############
 

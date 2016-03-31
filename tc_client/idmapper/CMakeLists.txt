@@ -16,5 +16,6 @@ SET(idmap_STAT_SRCS
 )
 
 add_library(idmap STATIC ${idmap_STAT_SRCS})
+set_target_properties(idmap PROPERTIES POSITION_INDEPENDENT_CODE on)
 
 ########### install files ###############

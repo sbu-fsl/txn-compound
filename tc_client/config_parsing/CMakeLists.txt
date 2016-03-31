@@ -32,6 +32,7 @@ add_library(config_parsing STATIC
   ${BISON_ConfigParser_OUTPUTS}
   ${FLEX_ConfigScanner_OUTPUTS}
 )
+set_target_properties(config_parsing PROPERTIES POSITION_INDEPENDENT_CODE on)
 
 
 ########### next target ###############

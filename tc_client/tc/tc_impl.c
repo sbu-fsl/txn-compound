@@ -4,12 +4,24 @@
 #include <assert.h>
 #include "tc_api.h"
 #include "posix/tc_impl_posix.h"
+#include "nfs4/tc_impl_nfs4.h"
 
 static tc_res TC_OKAY = { .okay = true, .index = -1, .err_no = 0, };
 
-void *tc_init1(const char *config_file, const char *log_file)
+void *tc_init(const char *config_path, const char *log_path, uint16_t export_id)
 {
-	return posix_init(config_file, log_file);
+#if TC_IMPL_IS_NFS4 == 1
+	return nfs4_init(config_path, log_path, export_id);
+#else
+	return posix_init(config_path, log_path);
+#endif
+}
+
+void tc_deinit(void *module)
+{
+#if TC_IMPL_IS_NFS4 == 1
+	nfs4_deinit(module);
+#endif
 }
 
 tc_res tc_readv(struct tc_iovec *reads, int count, bool is_transaction)
@@ -18,12 +30,20 @@ tc_res tc_readv(struct tc_iovec *reads, int count, bool is_transaction)
 	 * TODO: check if the functions should use posix or TC depending on the
 	 * back-end file system.
 	 */
+#if TC_IMPL_IS_NFS4 == 1
+	return nfs4_readv(reads, count, is_transaction);
+#else
 	return posix_readv(reads, count, is_transaction);
+#endif
 }
 
 tc_res tc_writev(struct tc_iovec *writes, int count, bool is_transaction)
 {
+#if TC_IMPL_IS_NFS4 == 1
+	return nfs4_writev(writes, count, is_transaction);
+#else
 	return posix_writev(writes, count, is_transaction);
+#endif
 }
 
 tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
