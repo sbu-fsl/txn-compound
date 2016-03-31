@@ -13,7 +13,6 @@ SET(fsalproxy_LIB_SRCS
    tc_utils.c
    tc_seq.c
    tc_dist.c
-   tc_singlefile.c
    tc_impl_nfs4.c
 )
 
