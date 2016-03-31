@@ -28,11 +28,15 @@ include_directories("${CMAKE_SOURCE_DIR}")
 
 add_library(gtest "${GTEST}/src/gtest-all.cc")
 add_library(gtest_main "${GTEST}/src/gtest_main.cc")
+add_library(gmock "${GMOCK}/src/gmock-all.cc")
+add_library(gmock_main "${GMOCK}/src/gmock_main.cc")
 
 set(test_LIB
   pthread
   gtest
   gtest_main
+  gmock
+  gmock_main
 )
 
 function (add_unittest TestName LibName)
@@ -42,6 +46,6 @@ function (add_unittest TestName LibName)
 endfunction (add_unittest)
 
 add_library(tc_impl STATIC ${tc_SRC})
-target_link_libraries(tc_impl tc_impl_posix log config_parsing)
+target_link_libraries(tc_impl tc_impl_posix log config_parsing tc_util)
 
 add_unittest(tc_test tc_impl)

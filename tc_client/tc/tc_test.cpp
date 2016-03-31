@@ -13,11 +13,16 @@
 #include <gtest/gtest.h>
 
 #include "tc_api.h"
-
-#define POSIX_WARN(fmt, args...) fprintf(stderr, "==posix-WARN==" fmt, ##args)
+#include "util/fileutil.h"
+#include "log.h"
 
 #define APPEND -1
 #define CURRENT -2
+
+#define TCTEST_ERR(fmt, args...) LogCrit(COMPONENT_TC_TEST, fmt, ##args)
+#define TCTEST_WARN(fmt, args...) LogWarn(COMPONENT_TC_TEST, fmt, ##args)
+#define TCTEST_INFO(fmt, args...) LogInfo(COMPONENT_TC_TEST, fmt, ##args)
+#define TCTEST_DEBUG(fmt, args...) LogDebug(COMPONENT_TC_TEST, fmt, ##args)
 
 /**
  * TODO(mchen): move to fileutil.h
@@ -90,7 +95,7 @@ static tc_iovec *set_iovec_file_paths(const char **PATH, int count,
 
 	while (i < count) {
 		if (PATH[i] == NULL) {
-			POSIX_WARN(
+			TCTEST_WARN(
 			    "set_iovec_FilePath() failed for file : %s\n",
 			    PATH[i]);
 
@@ -140,19 +145,22 @@ bool compare_content(tc_iovec *writev, tc_iovec *readv, int count)
 
 class TcPosixImpl {
 public:
+	static constexpr const char* POSIX_TEST_DIR = "/tmp/tc_posix_test";
 	static void SetUpTestCase() {
 		/* TODO: setup posix impl */
-		POSIX_WARN("Global SetUp of Posix Impl\n");
-		tc_init1("/etc/ganesha/tc.conf", "/var/log/tc.log");
+		tc_init1("/etc/ganesha/tc.conf", "/tmp/tc.log");
+		TCTEST_WARN("Global SetUp of Posix Impl\n");
+		util::CreateOrUseDir(POSIX_TEST_DIR);
+		chdir(POSIX_TEST_DIR);
 	}
 	static void TearDownTestCase() {
-		POSIX_WARN("Global TearDown of Posix Impl\n");
+		TCTEST_WARN("Global TearDown of Posix Impl\n");
 	}
 	static void SetUp() {
-		POSIX_WARN("SetUp Posix Impl Test\n");
+		TCTEST_WARN("SetUp Posix Impl Test\n");
 	}
 	static void TearDown() {
-		POSIX_WARN("TearDown Posix Impl Test\n");
+		TCTEST_WARN("TearDown Posix Impl Test\n");
 	}
 };
 
@@ -160,17 +168,18 @@ class TcNFS4Impl {
 public:
 	static void SetUpTestCase() {
 		/* TODO: setup NFS4 impl */
-		POSIX_WARN("Global SetUp of NFS4 Impl\n");
-		tc_init1("/etc/ganesha/tc.conf", "/var/log/tc.log");
+		tc_init1("/etc/ganesha/tc.conf", "/tmp/tc.log");
+		TCTEST_WARN("Global SetUp of NFS4 Impl\n");
+		chdir("tc_nfs4_test");  /* change to mnt point */
 	}
 	static void TearDownTestCase() {
-		POSIX_WARN("Global TearDown of NFS4 Impl\n");
+		TCTEST_WARN("Global TearDown of NFS4 Impl\n");
 	}
 	static void SetUp() {
-		POSIX_WARN("SetUp NFS4 Impl Test\n");
+		TCTEST_WARN("SetUp NFS4 Impl Test\n");
 	}
 	static void TearDown() {
-		POSIX_WARN("TearDown NFS4 Impl Test\n");
+		TCTEST_WARN("TearDown NFS4 Impl Test\n");
 	}
 };
 
@@ -199,10 +208,10 @@ TYPED_TEST_CASE_P(TcTest);
  */
 TYPED_TEST_P(TcTest, WritevCanCreateFiles)
 {
-	const char *PATH[] = { "/tmp/WritevCanCreateFiles1.txt",
-			       "/tmp/WritevCanCreateFiles2.txt",
-			       "/tmp/WritevCanCreateFiles3.txt",
-			       "/tmp/WritevCanCreateFiles4.txt" };
+	const char *PATH[] = { "WritevCanCreateFiles1.txt",
+			       "WritevCanCreateFiles2.txt",
+			       "WritevCanCreateFiles3.txt",
+			       "WritevCanCreateFiles4.txt" };
 	char data[] = "abcd123";
 	tc_res res;
 	int count = 4;
@@ -241,7 +250,7 @@ static tc_iovec *set_iovec_fd(int *fd, int count, int offset)
 
 	while (i < count) {
 		if (fd[i] < 0) {
-			POSIX_WARN(
+			TCTEST_WARN(
 			    "set_iovec_fd() failed for fd at index : %d\n",
 			    fd[i]);
 
@@ -273,10 +282,10 @@ static tc_iovec *set_iovec_fd(int *fd, int count, int offset)
  */
 TYPED_TEST_P(TcTest, TestFileDesc)
 {
-	const char *PATH[] = { "/tmp/WritevCanCreateFiles1.txt",
-			       "/tmp/WritevCanCreateFiles2.txt",
-			       "/tmp/WritevCanCreateFiles3.txt",
-			       "/tmp/WritevCanCreateFiles4.txt" };
+	const char *PATH[] = { "WritevCanCreateFiles1.txt",
+			       "WritevCanCreateFiles2.txt",
+			       "WritevCanCreateFiles3.txt",
+			       "WritevCanCreateFiles4.txt" };
 	const int N = 7;
 	char data[] = "abcd123";
 	tc_res res;
@@ -289,7 +298,7 @@ TYPED_TEST_P(TcTest, TestFileDesc)
 	while (i < count) {
 		fd[i] = open(PATH[i], open_flags);
 		if (fd[i] < 0)
-			POSIX_WARN("open failed for file %s\n", PATH[i]);
+			TCTEST_WARN("open failed for file %s\n", PATH[i]);
 		i++;
 	}
 
@@ -336,8 +345,8 @@ bool compare(tc_attrs *usr, tc_attrs *check, int count)
 
 		if (written->masks.has_mode) {
 			if (!written->mode & read->mode) {
-				POSIX_WARN("Mode does not match\n");
-				POSIX_WARN(" %d %d\n", written->mode,
+				TCTEST_WARN("Mode does not match\n");
+				TCTEST_WARN(" %d %d\n", written->mode,
 					   read->mode);
 
 				return false;
@@ -347,8 +356,8 @@ bool compare(tc_attrs *usr, tc_attrs *check, int count)
 		if (written->masks.has_rdev) {
 			if (memcmp((void *)&(written->rdev),
 				   (void *)&(read->rdev), sizeof(read->rdev))) {
-				POSIX_WARN("rdev does not match\n");
-				POSIX_WARN(" %d %d\n", written->rdev,
+				TCTEST_WARN("rdev does not match\n");
+				TCTEST_WARN(" %d %d\n", written->rdev,
 					   read->rdev);
 
 				return false;
@@ -357,8 +366,8 @@ bool compare(tc_attrs *usr, tc_attrs *check, int count)
 
 		if (written->masks.has_nlink) {
 			if (written->nlink != read->nlink) {
-				POSIX_WARN("nlink does not match\n");
-				POSIX_WARN(" %d %d\n", written->nlink,
+				TCTEST_WARN("nlink does not match\n");
+				TCTEST_WARN(" %d %d\n", written->nlink,
 					   read->nlink);
 
 				return false;
@@ -367,8 +376,8 @@ bool compare(tc_attrs *usr, tc_attrs *check, int count)
 
 		if (written->masks.has_uid) {
 			if (written->uid != read->uid) {
-				POSIX_WARN("uid does not match\n");
-				POSIX_WARN(" %d %d\n", written->uid, read->uid);
+				TCTEST_WARN("uid does not match\n");
+				TCTEST_WARN(" %d %d\n", written->uid, read->uid);
 
 				return false;
 			}
@@ -376,8 +385,8 @@ bool compare(tc_attrs *usr, tc_attrs *check, int count)
 
 		if (written->masks.has_gid) {
 			if (written->gid != read->gid) {
-				POSIX_WARN("gid does not match\n");
-				POSIX_WARN(" %d %d\n", written->gid, read->gid);
+				TCTEST_WARN("gid does not match\n");
+				TCTEST_WARN(" %d %d\n", written->gid, read->gid);
 
 				return false;
 			}
@@ -387,8 +396,8 @@ bool compare(tc_attrs *usr, tc_attrs *check, int count)
 			if (memcmp((void *)&(written->atime),
 				   (void *)&(read->atime),
 				   sizeof(read->atime))) {
-				POSIX_WARN("atime does not match\n");
-				POSIX_WARN(" %d %d\n", written->atime,
+				TCTEST_WARN("atime does not match\n");
+				TCTEST_WARN(" %d %d\n", written->atime,
 					   read->atime);
 
 				return false;
@@ -399,8 +408,8 @@ bool compare(tc_attrs *usr, tc_attrs *check, int count)
 			if (memcmp((void *)&(written->mtime),
 				   (void *)&(read->mtime),
 				   sizeof(read->mtime))) {
-				POSIX_WARN("mtime does not match\n");
-				POSIX_WARN(" %d %d\n", written->mtime,
+				TCTEST_WARN("mtime does not match\n");
+				TCTEST_WARN(" %d %d\n", written->mtime,
 					   read->mtime);
 
 				return false;
@@ -419,7 +428,7 @@ bool compare(tc_attrs *usr, tc_attrs *check, int count)
 static tc_attrs *set_tc_attrs(const char **PATH, int count, bool isPath)
 {
 	if (count > 3) {
-		POSIX_WARN("count should be less than 4\n");
+		TCTEST_WARN("count should be less than 4\n");
 		return NULL;
 	}
 
@@ -516,9 +525,9 @@ static void set_attr_masks(tc_attrs *write, tc_attrs *read, int count)
  */
 TYPED_TEST_P(TcTest, AttrsTestPath)
 {
-	const char *PATH[] = { "/tmp/WritevCanCreateFiles1.txt",
-			       "/tmp/WritevCanCreateFiles2.txt",
-			       "/tmp/WritevCanCreateFiles3.txt" };
+	const char *PATH[] = { "WritevCanCreateFiles1.txt",
+			       "WritevCanCreateFiles2.txt",
+			       "WritevCanCreateFiles3.txt" };
 	tc_res res = { 0 };
 	int count = 3;
 
@@ -547,9 +556,9 @@ TYPED_TEST_P(TcTest, AttrsTestPath)
  */
 TYPED_TEST_P(TcTest, AttrsTestFileDesc)
 {
-	const char *PATH[] = { "/tmp/WritevCanCreateFiles4.txt",
-			       "/tmp/WritevCanCreateFiles5.txt",
-			       "/tmp/WritevCanCreateFiles6.txt" };
+	const char *PATH[] = { "WritevCanCreateFiles4.txt",
+			       "WritevCanCreateFiles5.txt",
+			       "WritevCanCreateFiles6.txt" };
 	tc_res res = { 0 };
 	int i = 0, count = 3;
 
@@ -600,7 +609,7 @@ TYPED_TEST_P(TcTest, ListDirContents)
 
 	contents->masks = masks;
 
-	tc_res res = tc_listdir("/tmp/", masks, 5, &contents, &count);
+	tc_res res = tc_listdir(".", masks, 5, &contents, &count);
 	EXPECT_TRUE(res.okay);
 
 	tc_attrs *read_attrs = (tc_attrs *)calloc(count, sizeof(tc_attrs));
@@ -621,13 +630,13 @@ TYPED_TEST_P(TcTest, ListDirContents)
 TYPED_TEST_P(TcTest, RenameFile)
 {
 	int i = 0;
-	const char *src_path[] = { "/tmp/WritevCanCreateFiles1.txt",
-				   "/tmp/WritevCanCreateFiles2.txt",
-				   "/tmp/WritevCanCreateFiles3.txt",
-				   "/tmp/WritevCanCreateFiles4.txt" };
+	const char *src_path[] = { "WritevCanCreateFiles1.txt",
+				   "WritevCanCreateFiles2.txt",
+				   "WritevCanCreateFiles3.txt",
+				   "WritevCanCreateFiles4.txt" };
 
-	const char *dest_path[] = { "/tmp/rename1.txt", "/tmp/rename2.txt",
-				    "/tmp/rename3.txt", "/tmp/rename4.txt" };
+	const char *dest_path[] = { "rename1.txt", "rename2.txt",
+				    "rename3.txt", "rename4.txt" };
 
 	tc_file_pair *file = (tc_file_pair *)calloc(4, sizeof(tc_file_pair));
 
@@ -651,8 +660,8 @@ TYPED_TEST_P(TcTest, RenameFile)
 TYPED_TEST_P(TcTest, RemoveFileTest)
 {
 	int i = 0;
-	const char *path[] = { "/tmp/rename1.txt", "/tmp/rename2.txt",
-			       "/tmp/rename3.txt", "/tmp/rename4.txt" };
+	const char *path[] = { "rename1.txt", "rename2.txt",
+			       "rename3.txt", "rename4.txt" };
 
 	tc_file *file = (tc_file *)calloc(4, sizeof(tc_file));
 
@@ -677,7 +686,7 @@ TYPED_TEST_P(TcTest, MakeDirectory)
 	int i = 0;
 	mode_t mode[] = { S_IRWXU, S_IRUSR | S_IRGRP | S_IROTH,
 			  S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH };
-	const char *path[] = { "/tmp/a", "/tmp/b", "/tmp/c" };
+	const char *path[] = { "a", "b", "c" };
 
 	tc_file *file = (tc_file *)calloc(3, sizeof(tc_file));
 
@@ -703,7 +712,7 @@ TYPED_TEST_P(TcTest, MakeDirectory)
  */
 TYPED_TEST_P(TcTest, Append)
 {
-	const char *PATH[] = { "/tmp/WritevCanCreateFiles6.txt" };
+	const char *PATH[] = { "WritevCanCreateFiles6.txt" };
 	int i = 0, count = 4, N = 4096;
 	struct stat st;
 	void *data = calloc(1, N);
@@ -743,7 +752,7 @@ TYPED_TEST_P(TcTest, Append)
  */
 TYPED_TEST_P(TcTest, SuccesiveReads)
 {
-	const char *path = "/tmp/WritevCanCreateFiles6.txt";
+	const char *path = "WritevCanCreateFiles6.txt";
 	int fd[2], i = 0, N = 4096;
 	fd[0] = open(path, O_RDONLY);
 	fd[1] = open(path, O_RDONLY);
@@ -766,7 +775,7 @@ TYPED_TEST_P(TcTest, SuccesiveReads)
 		res = tc_readv(readv, 1, false);
 		EXPECT_TRUE(res.okay);
 
-		POSIX_WARN("Test reading from offset : %d\n", offset);
+		TCTEST_WARN("Test reading from offset : %d\n", offset);
 
 		/* read from the file to compare the data */
 		int error = pread(fd[1], data, readv->length, offset);
@@ -790,7 +799,7 @@ TYPED_TEST_P(TcTest, SuccesiveReads)
  */
 TYPED_TEST_P(TcTest, SuccesiveWrites)
 {
-	const char *path = "/tmp/WritevCanCreateFiles10.txt";
+	const char *path = "WritevCanCreateFiles10.txt";
 	int fd[2], i = 0, N = 4096;
 	off_t offset = 0;
 	void *data = calloc(1, N);
@@ -819,7 +828,7 @@ TYPED_TEST_P(TcTest, SuccesiveWrites)
 		res = tc_writev(writev, 1, false);
 		EXPECT_TRUE(res.okay);
 
-		POSIX_WARN("Test read from offset : %d\n", offset);
+		TCTEST_WARN("Test read from offset : %d\n", offset);
 
 		/* read the data from the file from the same offset */
 		int error = pread(fd[1], data, writev->length, offset);

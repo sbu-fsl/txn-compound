@@ -7,6 +7,7 @@ add_definitions(-std=c++11)
 
 set(util_SRC
   bench.cpp
+  fileutil.cpp
 )
 
 set(GTEST "$ENV{GOOGLE_TEST}")
@@ -32,6 +33,7 @@ set(test_LIB
   pthread
   gtest
   gtest_main
+  gmock
 )
 
 function (add_unittest TestName LibName)
@@ -44,3 +46,4 @@ add_library(tc_util SHARED ${util_SRC})
 
 add_unittest(bench_test tc_util)
 add_unittest(zipf_test tc_util)
+add_unittest(fileutil_test tc_util)

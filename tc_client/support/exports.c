@@ -614,7 +614,7 @@ static int fsal_commit(void *node, void *link_mem, void *self_struct,
 			"Could not create export for (%s) to (%s)",
 			export->pseudopath,
 			export->fullpath);
-		err_type->export = true;
+		err_type->nfsexport = true;
 		errcnt++;
 		goto err;
 	}

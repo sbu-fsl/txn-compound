@@ -719,8 +719,6 @@ set(GANESHA_CORE
   sal
   cache_inode
   idmap
-  avltree
-  hashtable
   rpcal
   support
   nfs4callbacks
@@ -762,8 +760,6 @@ add_subdirectory(log)
 add_subdirectory(config_parsing)
 add_subdirectory(cidr)
 add_subdirectory(test)
-add_subdirectory(avl)
-add_subdirectory(hashtable)
 add_subdirectory(NodeList)
 add_subdirectory(cache_inode)
 add_subdirectory(SAL)
