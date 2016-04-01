@@ -112,16 +112,16 @@ target_link_libraries(tc_singlefile
   tc_impl_nfs4
 )
 
-SET(tc_daemon_SRCS
-   tc_daemon.c
+SET(tc_test_read_SRCS
+   tc_test_read.c
 )
 
-add_executable(tc_daemon
-  ${tc_daemon_SRCS}
+add_executable(tc_test_read
+  ${tc_test_read_SRCS}
   ${fsal_CORE_SRCS}
 )
 
-target_link_libraries(tc_daemon
+target_link_libraries(tc_test_read
   MainServices
   ${PROTOCOLS}
   ${GANESHA_CORE}
@@ -131,6 +131,8 @@ target_link_libraries(tc_daemon
   m
   tc_util
   tc_impl_nfs4
+  tc_impl_posix
+  tc_impl
 )
 
 ########### install files ###############

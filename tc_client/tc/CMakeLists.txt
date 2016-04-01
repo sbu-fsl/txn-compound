@@ -28,14 +28,13 @@ add_library(gtest_main "${GTEST}/src/gtest_main.cc")
 add_library(gmock "${GMOCK}/src/gmock-all.cc")
 add_library(gmock_main "${GMOCK}/src/gmock_main.cc")
 
-add_library(tc_impl SHARED ${tc_SRC})
+add_library(tc_impl STATIC ${tc_SRC})
 target_link_libraries(tc_impl
-  tc_impl_posix
   support
   log
   config_parsing
   tc_util
-  tc_impl_nfs4
+  tc_impl_posix
 ) 
 
 set(test_LIB
@@ -44,6 +43,7 @@ set(test_LIB
   gtest_main
   gmock
   gmock_main
+  tc_impl_nfs4
   tc_impl
 )
 

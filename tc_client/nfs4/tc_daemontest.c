@@ -18,17 +18,9 @@ int tc_singlefile(char *input_path, unsigned int block_size,
 		  unsigned int num_files, unsigned int file_size,
 		  int ops_per_comp, double dist, int rw)
 {
-	struct fsal_module *new_module = NULL;
-	struct gsh_export *export = NULL;
-	struct fsal_obj_handle *vfs0_handle = NULL;
-	fsal_status_t fsal_status = { 0, 0 };
-	struct req_op_context req_ctx;
 	struct tc_iovec *user_arg = NULL;
 	struct tc_iovec *cur_arg = NULL;
 	char *temp_path[MAX_READ_COUNT];
-	char *data_buf = NULL;
-	unsigned int *op_array = NULL;
-        unsigned int *temp_array = NULL;
 	int input_len = 0;
 	int i = 0;
 	int j = 0;
@@ -38,11 +30,6 @@ int tc_singlefile(char *input_path, unsigned int block_size,
 	struct timeval tv1, tv2;
 
 	srand(time(NULL));
-
-	/*if (export_init(77) < 0) {
-		LogFatal(COMPONENT_FSAL, "tc_init() failed");
-		return -1;
-	}*/
 
 	LogDebug(COMPONENT_FSAL, "tc_init() success");
 	input_len = strlen(input_path);
@@ -94,7 +81,6 @@ int tc_singlefile(char *input_path, unsigned int block_size,
 	gettimeofday(&tv2, NULL);
 	time_taken = ((double)(tv2.tv_usec - tv1.tv_usec) / 1000000) +
 		     (double)(tv2.tv_sec - tv1.tv_sec);
-	//LogFatal(COMPONENT_FSAL, "tcreads done - %f seconds\n", time_taken);
 
 	k = 0;
 	while (k < ops_per_comp) {
@@ -111,7 +97,5 @@ int tc_singlefile(char *input_path, unsigned int block_size,
 
 	free(user_arg);
 
-	//export_deinit();
-	LogDebug(COMPONENT_FSAL, "Export deinit() done\n");
 	return 0;
 }

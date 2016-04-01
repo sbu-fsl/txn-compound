@@ -69,22 +69,24 @@ All configurations are done by editing the config file at
    exported directory (default to "/vfs0") accordingly in the config file.
 
 3. create the test file in the exported directory, or update the test file path
-   to an existing file in <txn-compound>/tc_client/MainNFSD/tc_daemon.c
+   to an existing file in <txn-compound>/tc_client/MainNFSD/tc_test_read.c
 
-        mkdir -p /vfs0/test_cdist
-        echo "hello txn-compound" > /vfs0/test_cdist/abcd
+        mkdir -p /vfs0/tcdir
+        echo "hello txn-compound" > /vfs0/tcdir/abcd
 
 Run
 ---
-Please check "dmesg" and the log file at "/tmp/tc_daemon.log":
+Please check "dmesg" and the log file at "/tmp/tc_test_read.log":
 
         cd  debug/MainNFSD
-        sudo ./tc_daemon
+        sudo ./tc_test_read
 
 
+Code tree
+=========
 
 nfs-ganesha
-===========
+-----------
 The source code of txn-compound is largely adapted from NFS-Ganesha,
 particularly PROXY_FSAL.  So this repository contains many files from
 NFS-Ganesha that are not really needed here; they will be gradually cleaned up
@@ -94,6 +96,10 @@ NFS-Ganesha is an NFSv3,v4,v4.1 fileserver that runs in user mode on most
 UNIX/Linux systems.  It also supports the 9p.2000L protocol.
 
 For more information, consult the [project wiki](https://github.com/nfs-ganesha/nfs-ganesha/wiki).
+
+Examples
+--------
+A good example of using TC library is
 
 Contribution
 ============
