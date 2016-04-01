@@ -9,14 +9,11 @@ set(tc_SRC
   tc_impl.c
 )
 
-set(GTEST "$ENV{GOOGLE_TEST}")
-
 include_directories(
   "${GTEST}"
   "${GTEST}/include"
 )
 
-set(GMOCK "$ENV{GOOGLE_MOCK}")
 include_directories(
   "${GMOCK}"
   "${GMOCK}/include"
