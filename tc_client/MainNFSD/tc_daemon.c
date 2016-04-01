@@ -45,16 +45,21 @@
 
 config_file_t config_struct;
 
+static char exe_path[PATH_MAX];
+static char tc_config_path[PATH_MAX];
+
 int main(int argc, char *argv[])
 {
 	struct fsal_module* module = NULL;
 	int rc = 0;
 
-	module = (struct fsal_module *)nfs4_init(
-	    "/home/ashok/log_ganesha",
-	    "/home/ashok/work/fsl/fsl-nfs-ganesha/secnfs/"
-	    "config/vfs.proxy.conf",
-	    77);
+	readlink("/proc/self/exe", exe_path, PATH_MAX);
+	snprintf(tc_config_path, PATH_MAX,
+		 "%s/../../secnfs/config/vfs.proxy.conf", dirname(exe_path));
+	fprintf(stderr, "using config file: %s\n", tc_config_path);
+
+	module = (struct fsal_module *)nfs4_init(tc_config_path,
+						 "/tmp/tc_daemon.log", 77);
 
 	if (module == NULL) {
 		LogFatal(COMPONENT_INIT, "Error while initializing tc_client");

@@ -47,9 +47,6 @@ set(fsal_CORE_SRCS
    ../FSAL_UP/fsal_up_utils.c
 )
 
-add_library(fsal_core STATIC ${fsal_CORE_SRCS})
-set_target_properties(fsal_core PROPERTIES POSITION_INDEPENDENT_CODE on)
-
 ########### next target ###############
 
 SET(tc_seq_SRCS

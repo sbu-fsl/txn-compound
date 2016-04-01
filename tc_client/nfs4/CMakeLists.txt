@@ -5,11 +5,22 @@ add_definitions(
 
 ########### next target ###############
 
-SET(tc_impl_nfs4_SRCS
+set(LIB_PREFIX 64)
+SET(fsalproxy_LIB_SRCS
    handle.c
    fs.c
    export.c
    xattrs.c
+)
+
+add_library(fsalproxy SHARED ${fsalproxy_LIB_SRCS} ${fsal_CORE_SRCS})
+target_link_libraries(fsalproxy ${SYSTEM_LIBRARIES})
+set_target_properties(fsalproxy PROPERTIES VERSION 4.2.0 SOVERSION 4)
+set_target_properties(fsalproxy PROPERTIES POSITION_INDEPENDENT_CODE on)
+install(TARGETS fsalproxy COMPONENT fsal DESTINATION  ${FSAL_DESTINATION} )
+
+
+SET(tc_impl_nfs4_SRCS
    tc_utils.c
    tc_seq.c
    tc_dist.c
@@ -17,17 +28,12 @@ SET(tc_impl_nfs4_SRCS
    tc_daemontest.c
 )
 
-add_library(tc_impl_nfs4 SHARED ${tc_impl_nfs4_SRCS})
+add_library(tc_impl_nfs4 STATIC ${tc_impl_nfs4_SRCS})
 
 target_link_libraries(tc_impl_nfs4
 		      ${SYSTEM_LIBRARIES}
-                      ${LIBTIRPC_LIBRARIES}
-		      ${PROTOCOLS}
-		      ${GANESHA_CORE}
-		      config_parsing
                       tc_util
 		      MainServices
-		      fsal_core
                       m)
 
 set_target_properties(tc_impl_nfs4 PROPERTIES VERSION 4.2.0 SOVERSION 4)
