@@ -1784,6 +1784,8 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 		st = do_ktcread(cur_arg, argoparray, resoparray, &opcnt);
 
 		if (FSAL_IS_ERROR(st)) {
+                        NFS4_ERR("do_ktcread failed: major=%d, minor=%d\n",
+                                 st.major, st.minor);
 			goto exit;
 		}
 
@@ -1796,7 +1798,7 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 			   argoparray, resoparray);
 
 	if (rc != NFS4_OK) {
-		LogDebug(COMPONENT_FSAL, "fs_nfsv4_call() returned error\n");
+                NFS4_ERR("fs_nfsv4_call() returned error: %d\n", rc);
 		st = nfsstat4_to_fsal(rc);
 
 		/*
