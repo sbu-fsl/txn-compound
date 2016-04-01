@@ -55,7 +55,7 @@ int main(int argc, char *argv[])
 
 	readlink("/proc/self/exe", exe_path, PATH_MAX);
 	snprintf(tc_config_path, PATH_MAX,
-		 "%s/../../secnfs/config/vfs.proxy.conf", dirname(exe_path));
+		 "%s/../../../secnfs/config/vfs.proxy.conf", dirname(exe_path));
 	fprintf(stderr, "using config file: %s\n", tc_config_path);
 
 	module = (struct fsal_module *)nfs4_init(tc_config_path,
