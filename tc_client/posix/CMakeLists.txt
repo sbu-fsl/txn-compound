@@ -39,5 +39,5 @@ function (add_unittest TestName LibName)
 endfunction (add_unittest)
 
 add_library(tc_impl_posix STATIC ${tc_posix_SRC})
-target_link_libraries(tc_impl_posix log config_parsing)
-set_target_properties(tc_impl_posix PROPERTIES POSITION_INDEPENDENT_CODE on)
+#target_link_libraries(tc_impl_posix log config_parsing)
+#set_target_properties(tc_impl_posix PROPERTIES POSITION_INDEPENDENT_CODE on)

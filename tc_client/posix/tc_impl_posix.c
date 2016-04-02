@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "tc_impl_posix.h"
+#include "log.h"
 
 /*
  * open routine for POSIX files

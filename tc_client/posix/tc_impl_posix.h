@@ -5,7 +5,6 @@
 #define __TC_IMPL_POSIX_H__
 
 #include "tc_api.h"
-#include "log.h"
 
 #define POSIX_ERR(fmt, args...) LogCrit(COMPONENT_TC_POSIX, fmt, ##args)
 #define POSIX_WARN(fmt, args...) LogWarn(COMPONENT_TC_POSIX, fmt, ##args)

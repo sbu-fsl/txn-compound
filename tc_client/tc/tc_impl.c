@@ -8,20 +8,24 @@
 
 static tc_res TC_OKAY = { .okay = true, .index = -1, .err_no = 0, };
 
+static bool TC_IMPL_IS_NFS4 = false;
+
+/* Not thread-safe */
 void *tc_init(const char *config_path, const char *log_path, uint16_t export_id)
 {
-#if TC_IMPL_IS_NFS4 == 1
-	return nfs4_init(config_path, log_path, export_id);
-#else
-	return posix_init(config_path, log_path);
-#endif
+	TC_IMPL_IS_NFS4 = (config_path !=  NULL);
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_init(config_path, log_path, export_id);
+	} else {
+		return posix_init(config_path, log_path);
+	}
 }
 
 void tc_deinit(void *module)
 {
-#if TC_IMPL_IS_NFS4 == 1
-	nfs4_deinit(module);
-#endif
+	if (TC_IMPL_IS_NFS4) {
+		nfs4_deinit(module);
+	}
 }
 
 tc_res tc_readv(struct tc_iovec *reads, int count, bool is_transaction)
@@ -30,20 +34,20 @@ tc_res tc_readv(struct tc_iovec *reads, int count, bool is_transaction)
 	 * TODO: check if the functions should use posix or TC depending on the
 	 * back-end file system.
 	 */
-#if TC_IMPL_IS_NFS4 == 1
-	return nfs4_readv(reads, count, is_transaction);
-#else
-	return posix_readv(reads, count, is_transaction);
-#endif
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_readv(reads, count, is_transaction);
+	} else {
+		return posix_readv(reads, count, is_transaction);
+	}
 }
 
 tc_res tc_writev(struct tc_iovec *writes, int count, bool is_transaction)
 {
-#if TC_IMPL_IS_NFS4 == 1
-	return nfs4_writev(writes, count, is_transaction);
-#else
-	return posix_writev(writes, count, is_transaction);
-#endif
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_writev(writes, count, is_transaction);
+	} else {
+		return posix_writev(writes, count, is_transaction);
+	}
 }
 
 tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)

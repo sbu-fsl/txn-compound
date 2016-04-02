@@ -26,10 +26,6 @@ static char tc_config_path[PATH_MAX];
 
 int main(int argc, char *argv[])
 {
-#if TC_IMPL_IS_NFS4 == 1
-#define TC_IMPL_IS_NFS4 1
-#define TC_TEST_READ_SET_IMPL_TO_NFS4
-#endif
 	void *context = NULL;
 	struct tc_iovec read_iovec;
 	tc_res res;
@@ -47,6 +43,7 @@ int main(int argc, char *argv[])
 		NFS4_ERR("Error while initializing tc_client using config "
 			 "file: %s; see log at %s",
 			 tc_config_path, DEFAULT_LOG_FILE);
+		return EIO;
 	}
 
 	/* Setup I/O request */
@@ -77,8 +74,4 @@ int main(int argc, char *argv[])
 	tc_deinit(context);
 
 	return res.okay ? 0 : res.err_no;
-
-#ifdef TC_TEST_READ_SET_IMPL_TO_NFS4
-#define TC_IMPL_IS_NFS4 0
-#endif
 }

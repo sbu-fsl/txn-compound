@@ -19,7 +19,15 @@ extern "C" {
 #define CONST
 #endif
 
-#define TC_IMPL_IS_NFS4 0
+#define TC_MODULE_NAME_MAX_LEN 16
+
+//struct tc_module {
+	//struct glist_head modules;	[> all TC modules <]
+	//pthread_rwlock_t lock;
+	//struct glist_head fstrees;	[> all FS trees of this module <]
+	//char name[TC_MODULE_NAME_MAX_LEN];
+	//void *dl_handle;		[> handle returned by dlopen() <]
+//};
 
 /* 
  * Initialize tc_client

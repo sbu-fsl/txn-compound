@@ -1,5 +1,6 @@
 #include "tc_impl_nfs4.h"
 #include "nfs4_util.h"
+#include "log.h"
 #include "../MainNFSD/nfs_init.h"
 
 /* 
