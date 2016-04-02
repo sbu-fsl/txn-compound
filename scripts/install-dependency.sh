@@ -50,10 +50,8 @@ sudo yum install -y boost-static
 sudo yum install -y glib2-devel glib-devel
 sudo yum install -y automake autoconf libtool
 
+mkdir -p /opt
 cd /opt
-
-# set the environment variables required for configuration
-# and add it to the .bashrc file as well
 
 # setup gmock and gtest
 if [ ! -d gmock-1.7.0 ]; then

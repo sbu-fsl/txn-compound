@@ -41,7 +41,7 @@ have a package manager like Maven in the C/C++ world :-(
 
 So, the simplest way is to create a CentOS VM, and then execute
 
-        <txn-compound>/secnfs/install-dependency.sh
+        <txn-compound>/scripts/install-dependency.sh
 
 Build
 -----
@@ -60,7 +60,7 @@ Assuming staying in the debug directory created above:
 Configure
 ---------
 All configurations are done by editing the config file at
-<txn-compound>/secnfs/config/vfs.proxy.conf
+<txn-compound>/config/vfs.proxy.conf
 
 1. start an NFS server (e.g., NFS-Ganesha), and update its IP in the config
    file.
