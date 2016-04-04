@@ -21,7 +21,6 @@ install(TARGETS fsalproxy COMPONENT fsal DESTINATION  ${FSAL_DESTINATION} )
 
 
 SET(tc_impl_nfs4_SRCS
-   tc_utils.c
    tc_seq.c
    tc_dist.c
    tc_impl_nfs4.c

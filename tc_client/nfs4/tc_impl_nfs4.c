@@ -31,9 +31,6 @@ void *nfs4_init(const char *config_path, const char *log_path,
 
 	nfs_prereq_init(exec_name, host_name, -1, log_path);
 
-	// Should ganesha be detached?
-	handle_detach();
-
 	/* Set up for the signal handler.
          * Blocks the signals the signal handler will handle.
          */
