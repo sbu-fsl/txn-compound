@@ -7,6 +7,7 @@
 #ifndef __TC_API_H__
 #define __TC_API_H__
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -440,7 +441,7 @@ static inline bool tx_write_adb(struct tc_adb *patterns, int count)
 {
 	tc_res res = tc_write_adb(patterns, count, true);
 	return res.okay;
-};
+}
 
 #ifdef __cplusplus
 #undef CONST

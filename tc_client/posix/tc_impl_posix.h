@@ -17,6 +17,8 @@ extern "C" {
 
 void* posix_init(const char* config_file, const char* log_file);
 
+tc_file posix_open(const char *path, int flags);
+
 /**
  * @reads - Array of reads for one or more files
  *         Contains file-path, read length, offset, etc.
