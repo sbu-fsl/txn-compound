@@ -60,7 +60,7 @@ Assuming staying in the debug directory created above:
 Configure
 ---------
 All configurations are done by editing the config file at
-<txn-compound>/config/vfs.proxy.conf
+<txn-compound>/config/tc.ganesha.conf
 
 1. start an NFS server (e.g., NFS-Ganesha), and update its IP in the config
    file.
