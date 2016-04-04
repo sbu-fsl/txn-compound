@@ -141,8 +141,6 @@ void *nfs4_init(const char *config_path, const char *log_path,
 /*
  * Free the reference to module and op_ctx
  * Should be called if nfs4_init() was called previously
- *
- * This will always succeed
  */
 void nfs4_deinit(void *arg)
 {
@@ -155,7 +153,11 @@ void nfs4_deinit(void *arg)
 	module = (struct fsal_module*) arg;
 	if (module != NULL) {
 		LogDebug(COMPONENT_FSAL, "Dereferencing tc_client module\n");
-		fsal_put(module);
+		// In tc_init(), two references of the module are taken, one by
+		// load_fsal() called via commit_fsal() during config loading,
+		// and lookup_fsal() explicitly in tc_init().
+		fsal_put(module);  /* for lookup_fsal() */
+		fsal_put(module);  /* for load_fsal() */
 	}
 }
 
