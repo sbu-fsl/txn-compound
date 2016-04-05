@@ -60,12 +60,13 @@ int main(int argc, char *argv[])
 	if (res.okay) {
 		fprintf(stderr,
 			"Successfully read the first %d bytes of file \"%s\" "
-			"via NFS.",
+			"via NFS.\n",
 			read_iovec.length, TC_TEST_NFS_FILE);
 	} else {
 		fprintf(stderr,
 			"Failed to read file \"%s\" at the %d-th operation "
-			"with error code %d (%s). See log file for details: %s",
+			"with error code %d (%s). See log file for details: "
+			"%s\n",
 			TC_TEST_NFS_FILE, res.index, res.err_no,
 			strerror(res.err_no),
 			DEFAULT_LOG_FILE);
