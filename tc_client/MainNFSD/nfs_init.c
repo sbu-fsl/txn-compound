@@ -29,7 +29,6 @@
  * @brief Most of the init routines
  */
 #include "config.h"
-#include "../nfs4/nfs4_util.h"
 #include "ganesha_rpc.h"
 #include "nfs_init.h"
 #include "log.h"

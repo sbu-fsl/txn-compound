@@ -25,27 +25,12 @@ SET(MainServices_STAT_SRCS
 )
 
 add_library(MainServices STATIC ${MainServices_STAT_SRCS})
-set_target_properties(MainServices PROPERTIES POSITION_INDEPENDENT_CODE on)
 
 # FSAL core sources
 # fsal_manager and fsal_destroyer are the only objects referenced by the
 # core server all the rest are for the common support of fsal plugins.
 # we put them here in the core rather than in a lib so that they are always
 # present and available for runtime linkage.
-
-set(fsal_CORE_SRCS
-   ../FSAL/fsal_convert.c
-   ../FSAL/commonlib.c
-   ../FSAL/fsal_manager.c
-   ../FSAL/access_check.c
-   ../FSAL/fsal_config.c
-   ../FSAL/default_methods.c
-   ../FSAL/common_pnfs.c
-   ../FSAL/fsal_destroyer.c
-   ../FSAL_UP/fsal_up_top.c
-   ../FSAL_UP/fsal_up_async.c
-   ../FSAL_UP/fsal_up_utils.c
-)
 
 ########### next target ###############
 
@@ -55,7 +40,6 @@ SET(tc_seq_SRCS
 
 add_executable(tc_seq
   ${tc_seq_SRCS}
-  ${fsal_CORE_SRCS}
 )
 
 target_link_libraries(tc_seq
@@ -76,7 +60,6 @@ SET(tcfiledist_SRCS
 
 add_executable(tc_filedist
   ${tcfiledist_SRCS}
-  ${fsal_CORE_SRCS}
 )
 
 target_link_libraries(tc_filedist
@@ -97,7 +80,6 @@ SET(tc_singlefile_SRCS
 
 add_executable(tc_singlefile
   ${tc_singlefile_SRCS}
-  ${fsal_CORE_SRCS}
 )
 
 target_link_libraries(tc_singlefile
@@ -112,16 +94,19 @@ target_link_libraries(tc_singlefile
   tc_impl_nfs4
 )
 
-SET(tc_daemon_SRCS
-   tc_daemon.c
+SET(tc_test_read_SRCS
+   tc_test_read.c
 )
 
-add_executable(tc_daemon
-  ${tc_daemon_SRCS}
-  ${fsal_CORE_SRCS}
+add_executable(tc_test_read
+  ${tc_test_read_SRCS}
 )
 
-target_link_libraries(tc_daemon
+target_link_libraries(tc_test_read
+  tc_impl
+  tc_impl_nfs4
+  tc_impl_posix
+  tc_util
   MainServices
   ${PROTOCOLS}
   ${GANESHA_CORE}
@@ -129,10 +114,29 @@ target_link_libraries(tc_daemon
   ${LIBTIRPC_LIBRARIES}
   ${SYSTEM_LIBRARIES}
   m
-  tc_util
-  tc_impl_nfs4
 )
 
+SET(tc_daemon_SRCS
+   tc_daemon.c
+)
+
+add_executable(tc_daemon
+  ${tc_daemon_SRCS}
+)
+
+target_link_libraries(tc_daemon
+  tc_impl
+  tc_impl_nfs4
+  tc_impl_posix
+  tc_util
+  MainServices
+  ${PROTOCOLS}
+  ${GANESHA_CORE}
+  config_parsing
+  ${LIBTIRPC_LIBRARIES}
+  ${SYSTEM_LIBRARIES}
+  m
+)
 ########### install files ###############
 
 # We are still missing the install of docs and stuff

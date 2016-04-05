@@ -1,5 +1,6 @@
 #include "tc_impl_nfs4.h"
 #include "nfs4_util.h"
+#include "log.h"
 #include "../MainNFSD/nfs_init.h"
 
 /* 
@@ -29,9 +30,6 @@ void *nfs4_init(const char *config_path, const char *log_path,
 					       .lw_mark_trigger = false };
 
 	nfs_prereq_init(exec_name, host_name, -1, log_path);
-
-	// Should ganesha be detached?
-	handle_detach();
 
 	/* Set up for the signal handler.
          * Blocks the signals the signal handler will handle.
@@ -140,8 +138,6 @@ void *nfs4_init(const char *config_path, const char *log_path,
 /*
  * Free the reference to module and op_ctx
  * Should be called if nfs4_init() was called previously
- *
- * This will always succeed
  */
 void nfs4_deinit(void *arg)
 {
@@ -154,7 +150,11 @@ void nfs4_deinit(void *arg)
 	module = (struct fsal_module*) arg;
 	if (module != NULL) {
 		LogDebug(COMPONENT_FSAL, "Dereferencing tc_client module\n");
-		fsal_put(module);
+		// In tc_init(), two references of the module are taken, one by
+		// load_fsal() called via commit_fsal() during config loading,
+		// and lookup_fsal() explicitly in tc_init().
+		fsal_put(module);  /* for lookup_fsal() */
+		fsal_put(module);  /* for load_fsal() */
 	}
 }
 

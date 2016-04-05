@@ -5,7 +5,6 @@
 #define __TC_IMPL_NFS4_H__
 
 #include "tc_api.h"
-#include "log.h"
 
 #define NFS4_ERR(fmt, args...) LogCrit(COMPONENT_TC_NFS4, fmt, ##args)
 #define NFS4_WARN(fmt, args...) LogWarn(COMPONENT_TC_NFS4, fmt, ##args)

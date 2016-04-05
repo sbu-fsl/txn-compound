@@ -17,7 +17,6 @@ SET(log_STAT_SRCS
 )
 
 add_library(log STATIC ${log_STAT_SRCS})
-set_target_properties(log PROPERTIES POSITION_INDEPENDENT_CODE on)
 
 
 ########### next target ###############

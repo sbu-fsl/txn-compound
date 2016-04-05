@@ -756,6 +756,9 @@ Alternatively, if you are not using git, get the current version at
     https://github.com/nfs-ganesha/ntirpc" )
 ENDIF( NOT EXISTS ${PROJECT_SOURCE_DIR}/libntirpc/CMakeLists.txt )
 
+set(GMOCK "/opt/gmock-1.7.0")
+set(GTEST "/opt/gmock-1.7.0/gtest")
+
 add_subdirectory(log)
 add_subdirectory(config_parsing)
 add_subdirectory(cidr)
@@ -1016,7 +1019,6 @@ endif(USE_FSAL_PT)
 if(USE_ADMIN_TOOLS)
     set( WITH_ARG "${WITH_ARG} --with utils")
 endif(USE_ADMIN_TOOLS)
-
 
 add_custom_target( rpm DEPENDS dist)
 add_custom_command(TARGET rpm

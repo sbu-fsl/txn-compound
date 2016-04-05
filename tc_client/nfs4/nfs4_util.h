@@ -49,7 +49,6 @@ struct tcwrite_kargs
 #define MAX_DIR_DEPTH       10
 #define MAX_FILENAME_LENGTH 256
 
-int tc_seq();
 bool readdir_reply(const char *name, void *dir_state, fsal_cookie_t cookie);
 
 #ifdef __cplusplus
