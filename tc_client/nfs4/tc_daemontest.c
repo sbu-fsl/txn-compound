@@ -71,6 +71,7 @@ int tc_singlefile(char *input_path, unsigned int block_size,
 		while (k < ops_per_comp) {
 			cur_arg = user_arg + k;
 			cur_arg->file = tc_file_current();
+			//cur_arg->is_creation = 1;
 			cur_arg->offset = j*block_size + k*block_size;
 			cur_arg->length = block_size;
 			k++;

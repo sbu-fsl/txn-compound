@@ -43,7 +43,7 @@
 #include "fsal_pnfs.h"
 #include "../nfs4/nfs4_util.h"
 
-config_file_t config_struct;
+//config_file_t config_struct;
 
 static char exe_path[PATH_MAX];
 static char tc_config_path[PATH_MAX];
@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* Everything seems to be OK! We can now start service threads */
-	tc_singlefile("/vfs0/test_cdist/abcd", 65536, 1, 200000, 3, 0.0, 0);
+	tc_singlefile("/vfs0/test_cdist/abcd", 65536, 1, 200000, 1, 0.0, 0);
 
 	nfs4_deinit(module);
 
