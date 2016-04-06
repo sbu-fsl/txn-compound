@@ -49,6 +49,7 @@ sudo yum install -y libcurl-devel boost-system boost-filesystem boost-regex
 sudo yum install -y boost-static
 sudo yum install -y glib2-devel glib-devel
 sudo yum install -y automake autoconf libtool
+sudo yum install -y libcap-devel libwbclient-devel libuuid-devel libblkid-devel
 
 mkdir -p /opt
 cd /opt
