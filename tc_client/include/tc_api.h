@@ -31,21 +31,8 @@
 #include <fcntl.h>
 
 #ifdef __cplusplus
-#define CONST const
 extern "C" {
-#else
-#define CONST
 #endif
-
-#define TC_MODULE_NAME_MAX_LEN 16
-
-//struct tc_module {
-	//struct glist_head modules;	[> all TC modules <]
-	//pthread_rwlock_t lock;
-	//struct glist_head fstrees;	[> all FS trees of this module <]
-	//char name[TC_MODULE_NAME_MAX_LEN];
-	//void *dl_handle;		[> handle returned by dlopen() <]
-//};
 
 /* 
  * Initialize tc_client
@@ -461,10 +448,7 @@ static inline bool tx_write_adb(struct tc_adb *patterns, int count)
 }
 
 #ifdef __cplusplus
-#undef CONST
 }
-#else
-#undef CONST
 #endif
 
 #endif // __TC_API_H__
