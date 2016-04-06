@@ -1763,7 +1763,7 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 	fsal_status_t st;
 	nfsstat4 temp_status;
 	struct tcread_kargs *cur_arg = NULL;
-#define FSAL_TCREAD_NB_OP_ALLOC ((MAX_DIR_DEPTH + 3) * arg_count)
+        const int NB_OP_ALLOC = ((MAX_DIR_DEPTH + 3) * arg_count);
 	nfs_argop4 *argoparray = NULL;
 	nfs_resop4 *resoparray = NULL;
 	nfs_resop4 *temp_res = NULL;
@@ -1774,10 +1774,8 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 
 	LogDebug(COMPONENT_FSAL, "ktcread() called\n");
 
-	argoparray =
-	    malloc(FSAL_TCREAD_NB_OP_ALLOC * sizeof(struct nfs_argop4));
-	resoparray =
-	    malloc(FSAL_TCREAD_NB_OP_ALLOC * sizeof(struct nfs_resop4));
+	argoparray = malloc(NB_OP_ALLOC * sizeof(struct nfs_argop4));
+	resoparray = malloc(NB_OP_ALLOC * sizeof(struct nfs_resop4));
 
 	while (i < arg_count) {
 		cur_arg = kern_arg + i;
@@ -1991,7 +1989,7 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
 	fsal_status_t st;
 	nfsstat4 temp_status;
 	struct tcwrite_kargs *cur_arg = NULL;
-#define FSAL_TCWRITE_NB_OP_ALLOC ((MAX_DIR_DEPTH + 3) * arg_count)
+        const int NB_OP_ALLOC = ((MAX_DIR_DEPTH + 3) * arg_count);
 	nfs_argop4 *argoparray = NULL;
 	nfs_resop4 *resoparray = NULL;
 	nfs_resop4 *temp_res = NULL;
@@ -2002,10 +2000,8 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
 
 	LogDebug(COMPONENT_FSAL, "ktcwrite() called\n");
 
-	argoparray =
-	    malloc(FSAL_TCWRITE_NB_OP_ALLOC * sizeof(struct nfs_argop4));
-	resoparray =
-	    malloc(FSAL_TCWRITE_NB_OP_ALLOC * sizeof(struct nfs_resop4));
+	argoparray = malloc(NB_OP_ALLOC * sizeof(struct nfs_argop4));
+	resoparray = malloc(NB_OP_ALLOC * sizeof(struct nfs_resop4));
 
 	while (i < arg_count) {
 		cur_arg = kern_arg + i;
