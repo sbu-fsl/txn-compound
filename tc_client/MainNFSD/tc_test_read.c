@@ -18,6 +18,8 @@
  */
 
 /**
+ * This is an example showing how tc_client/include/tc_api.h should be used.
+ *
  * @file tc_test_read.c
  * @brief Test read a small file from NFS using TC.
  *
@@ -49,8 +51,9 @@ int main(int argc, char *argv[])
 	struct tc_iovec read_iovec;
 	tc_res res;
 
-	/* Locate and use the default config file.  Please update the config
-	 * file to the correct NFS server. */
+	/* Locate and use the default config file in the repo.  Before running
+	 * this example, please update the config file to a correct NFS server.
+	 */
 	readlink("/proc/self/exe", exe_path, PATH_MAX);
 	snprintf(tc_config_path, PATH_MAX,
 		 "%s/../../../config/tc.ganesha.conf", dirname(exe_path));
@@ -72,7 +75,8 @@ int main(int argc, char *argv[])
 	read_iovec.data = malloc(4096);
 	assert(read_iovec.data);
 
-	/* Read the file; nfs4_readv() will open it first if needed. */
+	/* Read the file using NFS compounds; nfs4_readv() will open the file,
+	 * read it, and then close it. */
 	res = tc_readv(&read_iovec, 1, false);
 
 	/* Check results. */
