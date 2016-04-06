@@ -40,14 +40,14 @@ Google Mock, ........................... Life will be so much better if we
 have a package manager like Maven in the C/C++ world :-(
 
 So, the simplest way is to create a CentOS VM, and then execute
-
-        <txn-compound>/scripts/install-dependency.sh
+[`scripts/install-dependency.sh`](scripts/install-dependency.sh)
 
 Build
 -----
 
         cd tc_client
         mkdir debug
+        cd debug
         sudo -E cmake -DCMAKE_BUILD_TYPE=Debug ../src
         make
 
@@ -85,7 +85,7 @@ Please check "dmesg" and the log file at "/tmp/tc_test_read.log":
 Code tree
 =========
 
-nfs-ganesha
+NFS-Ganesha
 -----------
 The source code of txn-compound is largely adapted from NFS-Ganesha,
 particularly PROXY_FSAL.  So this repository contains many files from
@@ -101,6 +101,12 @@ Examples
 --------
 A simple example of using TC library is
 [tc_client/MainNFSD/tc_test_read.c](tc_client/MainNFSD/tc_test_read.c)
+
+LICENSE
+=======
+Most code in this repo has [LGPL license](tc_client/LICENSE.txt).  However, a
+small number utility files has BSD license, for example,
+[tc_client/util/slice.h](tc_client/util/slice.h).
 
 Contribution
 ============
