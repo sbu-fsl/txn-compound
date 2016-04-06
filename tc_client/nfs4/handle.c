@@ -1625,6 +1625,36 @@ error_after_gsh:
 	return -1;
 }
 
+static nfsstat4 get_nfs4_op_status(const nfs_resop4 *op_res)
+{
+        nfsstat4 op_status;
+
+        switch (op_res->resop) {
+        case NFS4_OP_READ:
+		op_status = op_res->nfs_resop4_u.opread.status;
+	case NFS4_OP_WRITE:
+                op_status = op_res->nfs_resop4_u.opwrite.status;
+                break;
+        case NFS4_OP_LOOKUP:
+                op_status = op_res->nfs_resop4_u.oplookup.status;
+                break;
+        case NFS4_OP_OPEN:
+                op_status = op_res->nfs_resop4_u.opopen.status;
+                break;
+        case NFS4_OP_PUTROOTFH:
+                op_status = op_res->nfs_resop4_u.opputrootfh.status;
+                break;
+        case NFS4_OP_CLOSE:
+                op_status = op_res->nfs_resop4_u.opclose.status;
+                break;
+        default:
+                NFS4_ERR("not supported operation: %d", op_res->resop);
+                break;
+        }
+
+        return op_status;
+}
+
 /*
  * Called for each tcread element in the tcread_kargs array
  * Adds operations to argoparray, also updates the opcnt_temp
@@ -1761,16 +1791,16 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 {
 	int rc;
 	fsal_status_t st;
-	nfsstat4 temp_status;
+	nfsstat4 op_status;
 	struct tcread_kargs *cur_arg = NULL;
         const int NB_OP_ALLOC = ((MAX_DIR_DEPTH + 3) * arg_count);
 	nfs_argop4 *argoparray = NULL;
 	nfs_resop4 *resoparray = NULL;
-	nfs_resop4 *temp_res = NULL;
+	struct READ4resok *read_res;
 	int opcnt = 0;
 	bool eof = false;
-	int i = 0;
-	int j = 0;
+	int i = 0;      /* index of tc_iovec */
+	int j = 0;      /* index of NFS operations */
 
 	LogDebug(COMPONENT_FSAL, "ktcread() called\n");
 
@@ -1794,64 +1824,31 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 
 	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds, opcnt,
 			   argoparray, resoparray);
-
 	if (rc != NFS4_OK) {
                 NFS4_ERR("fs_nfsv4_call() returned error: %d\n", rc);
-		st = nfsstat4_to_fsal(rc);
+        }
 
-		/*
-		 * We know one of the calls failed in the compound,
-		 * now let us proceed identifying which read failed.
-		 * Also populate the user arg with the right error
-		 */
-		i = 0;
-		j = 0;
-
-		while (i < arg_count) {
-			cur_arg = kern_arg + i;
-			temp_res = resoparray + j;
-			switch (temp_res->resop) {
-			case NFS4_OP_READ:
-				temp_status =
-				    temp_res->nfs_resop4_u.opread.status;
-
-				if (temp_res->nfs_resop4_u.opread.READ4res_u
-					.resok4.eof == true) {
-					cur_arg->user_arg->is_eof = 1;
-				}
-
-				i++;
-				break;
-			case NFS4_OP_LOOKUP:
-				temp_status =
-				    temp_res->nfs_resop4_u.oplookup.status;
-				break;
-			case NFS4_OP_OPEN:
-				temp_status =
-				    temp_res->nfs_resop4_u.opopen.status;
-				break;
-			case NFS4_OP_PUTROOTFH:
-				temp_status =
-				    temp_res->nfs_resop4_u.opputrootfh.status;
-				break;
-			case NFS4_OP_CLOSE:
-				temp_status =
-				    temp_res->nfs_resop4_u.opclose.status;
-				break;
-			default:
-				break;
-			}
-			if (temp_status != NFS4_OK) {
-				cur_arg->user_arg->is_failure = 1;
-				*fail_index = i;
-				break;
-			}
-			j++;
+        /* No matter failure or success, we need to fill in results */
+        i = 0;
+        for (j = 0; j < opcnt; ++j) {
+                op_status = get_nfs4_op_status(&resoparray[j]);
+                if (op_status != NFS4_OK) {
+                        *fail_index = i;
+			kern_arg[i].user_arg->is_failure = 1;
+			NFS4_ERR("the %d-th tc_iovec failed (NFS op: %d)", i,
+				 resoparray[j].resop);
+                        break;
+                }
+                if (resoparray[j].resop == NFS4_OP_READ) {
+			read_res = &resoparray[j]
+					.nfs_resop4_u.opread.READ4res_u.resok4;
+			kern_arg[i].user_arg->length = read_res->data.data_len;
+			kern_arg[i].user_arg->is_eof = read_res->eof;
+                        i++;
 		}
-		goto exit;
 	}
 
-	st = fsalstat(ERR_FSAL_NO_ERROR, 0);
+        st = nfsstat4_to_fsal(rc);
 
 exit:
 	free(argoparray);
@@ -1987,16 +1984,16 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
 {
 	int rc;
 	fsal_status_t st;
-	nfsstat4 temp_status;
+	nfsstat4 op_status;
 	struct tcwrite_kargs *cur_arg = NULL;
         const int NB_OP_ALLOC = ((MAX_DIR_DEPTH + 3) * arg_count);
 	nfs_argop4 *argoparray = NULL;
 	nfs_resop4 *resoparray = NULL;
-	nfs_resop4 *temp_res = NULL;
+        struct WRITE4resok *write_res = NULL;
 	int opcnt = 0;
 	bool eof = false;
-	int i = 0;
-	int j = 0;
+	int i = 0;      /* index of tc_iovec */
+	int j = 0;      /* index of NFS operations */
 
 	LogDebug(COMPONENT_FSAL, "ktcwrite() called\n");
 
@@ -2020,59 +2017,33 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
 			   argoparray, resoparray);
 
 	if (rc != NFS4_OK) {
-		LogDebug(COMPONENT_FSAL, "fs_nfsv4_call() returned error\n");
-		st = nfsstat4_to_fsal(rc);
-
-		/*
-		 * We know one of the calls failed in the compound,
-		 * now let us proceed identifying which read failed.
-		 * Also populate the user arg with the right error
-		 */
-		i = 0;
-		j = 0;
-		while (i < arg_count) {
-			temp_res = resoparray + j;
-			switch (temp_res->resop) {
-			case NFS4_OP_WRITE:
-				temp_status =
-				    temp_res->nfs_resop4_u.opwrite.status;
-
-				cur_arg->user_arg->length =
-				    temp_res->nfs_resop4_u.opwrite.WRITE4res_u
-					.resok4.count;
-
-				i++;
-				break;
-			case NFS4_OP_LOOKUP:
-				temp_status =
-				    temp_res->nfs_resop4_u.oplookup.status;
-				break;
-			case NFS4_OP_OPEN:
-				temp_status =
-				    temp_res->nfs_resop4_u.opopen.status;
-				break;
-			case NFS4_OP_PUTROOTFH:
-				temp_status =
-				    temp_res->nfs_resop4_u.opputrootfh.status;
-				break;
-			case NFS4_OP_CLOSE:
-				temp_status =
-				    temp_res->nfs_resop4_u.opclose.status;
-				break;
-			default:
-				break;
-			}
-			if (temp_status != NFS4_OK) {
-				*fail_index = i;
-				cur_arg->user_arg->is_failure = 1;
-				break;
-			}
-			j++;
-		}
-		goto exit;
+		NFS4_ERR("fs_nfsv4_call() returned error: %d (%s)\n", rc,
+			 strerror(rc));
 	}
 
-	st = fsalstat(ERR_FSAL_NO_ERROR, 0);
+        /* No matter failure or success, we need to fill in results */
+        i = 0;
+        for (j = 0; j < opcnt; ++j) {
+                op_status = get_nfs4_op_status(&resoparray[j]);
+                if (op_status != NFS4_OK) {
+                        *fail_index = i;
+			kern_arg[i].user_arg->is_failure = 1;
+			NFS4_ERR("the %d-th tc_iovec failed (NFS op: %d)", i,
+				 resoparray[j].resop);
+			break;
+                }
+                if (resoparray[j].resop == NFS4_OP_WRITE) {
+			write_res =
+			    &resoparray[j]
+				 .nfs_resop4_u.opwrite.WRITE4res_u.resok4;
+			kern_arg[i].user_arg->length = write_res->count;
+			kern_arg[i].user_arg->is_write_stable =
+			    (write_res->committed != UNSTABLE4);
+			i++;
+                }
+        }
+
+        st = nfsstat4_to_fsal(rc);
 
 exit:
 	free(argoparray);

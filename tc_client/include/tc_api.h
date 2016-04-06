@@ -181,6 +181,7 @@ struct tc_iovec
 	unsigned int is_creation : 1; /* IN: create file if not exist? */
 	unsigned int is_failure : 1;  /* OUT: is this I/O a failure? */
 	unsigned int is_eof : 1;      /* OUT: does this I/O reach EOF? */
+	unsigned int is_write_stable : 1;   /* IN/OUT: stable write? */
 };
 
 /**
