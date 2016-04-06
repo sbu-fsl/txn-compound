@@ -14,11 +14,11 @@ scary thing, but having the choice for something different is always better
 than "no choice."
 
 The project will be implemented as a user-space file-system library with the
-API defined in <txn-compound>/tc_client/include/tc_api.h  Right now, we are
-implementing two implementations of the API: TC_NFS4 and TC_POSIX.  The TC_NFS4
-will implement the API using NFS4's compound procedures whenever possible,
-whereas TC_POSIX just translates the higher-level functions to lower-level
-POSIX functions.
+API defined in [tc_client/include/tc_api.h](tc_client/include/tc_api.h).  Right
+now, we are implementing two implementations of the API: TC_NFS4 and TC_POSIX.
+The TC_NFS4 will implement the API using NFS4's compound procedures whenever
+possible, whereas TC_POSIX just translates the higher-level functions to
+lower-level POSIX functions.
 
 In theory, transactional compounds can be initiated by applications in storage
 client, then be transfered/translated all the way down (through network, OS, and
@@ -60,7 +60,7 @@ Assuming staying in the debug directory created above:
 Configure
 ---------
 All configurations are done by editing the config file at
-<txn-compound>/config/tc.ganesha.conf
+"txn-compound/config/tc.ganesha.conf".
 
 1. start an NFS server (e.g., NFS-Ganesha), and update its IP in the config
    file.
@@ -99,7 +99,8 @@ For more information, consult the [project wiki](https://github.com/nfs-ganesha/
 
 Examples
 --------
-A good example of using TC library is
+A simple example of using TC library is
+[tc_client/MainNFSD/tc_test_read.c](tc_client/MainNFSD/tc_test_read.c)
 
 Contribution
 ============
