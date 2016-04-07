@@ -770,9 +770,17 @@ static int fs_compoundv4_call(struct fs_rpc_io_context *pcontext,
 	return rc;
 }
 
-int fs_compoundv4_execute(const char *caller, const struct user_cred *creds,
-			   uint32_t cnt, nfs_argop4 *argoparray,
-			   nfs_resop4 *resoparray)
+/**
+ * Make the RPC call of the NFS request.  Note the difference of failure of RPC
+ * and failure of NFS.  If "nfsstat" is NULL, the return value is the status of
+ * the whole call (both RPC and NFS).  If "nfsstat" is not NULL, the return
+ * value is the status of RPC call and "nfsstat" is the status of the NFS
+ * request.
+ */
+static int fs_compoundv4_execute(const char *caller,
+				 const struct user_cred *creds, uint32_t cnt,
+				 nfs_argop4 *argoparray, nfs_resop4 *resoparray,
+				 nfsstat4 *nfsstat)
 {
 	enum clnt_stat rc;
 	struct fs_rpc_io_context *ctx;
@@ -796,8 +804,7 @@ int fs_compoundv4_execute(const char *caller, const struct user_cred *creds,
 	do {
 		rc = fs_compoundv4_call(ctx, creds, &arg, &res);
 		if (rc != RPC_SUCCESS)
-			LogDebug(COMPONENT_FSAL, "%s failed with %d", caller,
-				 rc);
+			NFS4_DEBUG("RPC by %s failed with %d", caller, rc);
 		if (rc == RPC_CANTSEND)
 			fs_rpc_need_sock();
 	} while ((rc == RPC_CANTRECV && (ctx->ioresult == -EAGAIN))
@@ -808,13 +815,18 @@ int fs_compoundv4_execute(const char *caller, const struct user_cred *creds,
 	glist_add(&free_contexts, &ctx->calls);
 	pthread_mutex_unlock(&context_lock);
 
-	if (rc == RPC_SUCCESS)
-		return res.status;
+	if (rc == RPC_SUCCESS) {
+               if (nfsstat != NULL) {
+                        *nfsstat = res.status;
+               } else {
+                       rc = res.status;
+               }
+        }
 	return rc;
 }
 
-#define fs_nfsv4_call(exp, creds, cnt, args, resp) \
-	fs_compoundv4_execute(__func__, creds, cnt, args, resp)
+#define fs_nfsv4_call(creds, cnt, args, resp, st) \
+	fs_compoundv4_execute(__func__, creds, cnt, args, resp, st)
 
 void fs_get_clientid(clientid4 *ret)
 {
@@ -875,7 +887,7 @@ static int fs_setclientid(clientid4 *resultclientid, uint32_t *lease_time)
 	arg[0].nfs_argop4_u.opsetclientid.callback = cbkern;
 	arg[0].nfs_argop4_u.opsetclientid.callback_ident = 1;
 
-	rc = fs_compoundv4_execute(__func__, NULL, 1, arg, res);
+	rc = fs_nfsv4_call(NULL, 1, arg, res, NULL);
 	if (rc != NFS4_OK)
 		return -1;
 
@@ -884,7 +896,7 @@ static int fs_setclientid(clientid4 *resultclientid, uint32_t *lease_time)
 	memcpy(arg[0].nfs_argop4_u.opsetclientid_confirm.setclientid_confirm,
 	       sok->setclientid_confirm, NFS4_VERIFIER_SIZE);
 
-	rc = fs_compoundv4_execute(__func__, NULL, 1, arg, res);
+	rc = fs_nfsv4_call(NULL, 1, arg, res, NULL);
 	if (rc != NFS4_OK)
 		return -1;
 
@@ -927,8 +939,7 @@ static void *fs_clientid_renewer(void *Arg)
 				 fs_clientid);
 			arg.argop = NFS4_OP_RENEW;
 			arg.nfs_argop4_u.oprenew.clientid = fs_clientid;
-			rc = fs_compoundv4_execute(__func__, NULL, 1, &arg,
-						    &res);
+			rc = fs_nfsv4_call(NULL, 1, &arg, &res, NULL);
 			if (rc == NFS4_OK) {
 				LogDebug(COMPONENT_FSAL,
 					 "Renewed client id %lx", fs_clientid);
@@ -1075,7 +1086,7 @@ static fsal_status_t fs_root_lookup_impl(struct fsal_export *export,
 	fhok->object.nfs_fh4_val = (char *)padfilehandle;
 	fhok->object.nfs_fh4_len = sizeof(padfilehandle);
 
-	rc = fs_nfsv4_call(export, cred, opcnt, argoparray, resoparray);
+	rc = fs_nfsv4_call(cred, opcnt, argoparray, resoparray, NULL);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
 
@@ -1151,7 +1162,7 @@ static fsal_status_t fs_lookup_impl(struct fsal_obj_handle *parent,
 	fhok->object.nfs_fh4_val = (char *)padfilehandle;
 	fhok->object.nfs_fh4_len = sizeof(padfilehandle);
 
-	rc = fs_nfsv4_call(export, cred, opcnt, argoparray, resoparray);
+	rc = fs_nfsv4_call(cred, opcnt, argoparray, resoparray, NULL);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
 
@@ -1193,7 +1204,7 @@ static fsal_status_t fs_do_close(const struct user_cred *creds,
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, *fh4);
 	COMPOUNDV4_ARG_ADD_OP_CLOSE(opcnt, argoparray, sid);
 
-	rc = fs_nfsv4_call(exp, creds, opcnt, argoparray, resoparray);
+	rc = fs_nfsv4_call(creds, opcnt, argoparray, resoparray, NULL);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
 	sid->seqid++;
@@ -1233,7 +1244,7 @@ static fsal_status_t fs_open_confirm(const struct user_cred *cred,
  	 */
 	op->nfs_argop4_u.opopen_confirm.seqid = 1;
 
-	rc = fs_nfsv4_call(export, cred, opcnt, argoparray, resoparray);
+	rc = fs_nfsv4_call(cred, opcnt, argoparray, resoparray, NULL);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
 
@@ -1295,8 +1306,7 @@ static fsal_status_t fs_create(struct fsal_obj_handle *dir_hdl,
 				   sizeof(fattr_blob));
 	COMPOUNDV4_ARG_ADD_OP_GETATTR(opcnt, argoparray, fs_bitmap_getattr);
 
-	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds,
-			    opcnt, argoparray, resoparray);
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray, NULL);
 	nfs4_Fattr_Free(&input_attr);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
@@ -1387,8 +1397,7 @@ static fsal_status_t fs_read_state(const nfs_fh4 *fh4, const nfs_fh4 *fh4_1,
 	COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argoparray, offset + buffer_size,
 				   buffer_size);
 
-	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds, opcnt,
-			   argoparray, resoparray);
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray, NULL);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
 
@@ -1465,8 +1474,7 @@ static fsal_status_t do_fs_openread(struct fsal_obj_handle *dir_hdl,
 				     sizeof(fattr_blob));
 	COMPOUNDV4_ARG_ADD_OP_GETATTR(opcnt, argoparray, fs_bitmap_getattr);
 
-	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds, opcnt,
-			   argoparray, resoparray);
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray, NULL);
 
 	fhok_handle->object.nfs_fh4_len = fhok->object.nfs_fh4_len;
 	fhok_handle->object.nfs_fh4_val = malloc(fhok->object.nfs_fh4_len);
@@ -1791,6 +1799,7 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 {
 	int rc;
 	fsal_status_t st;
+        nfsstat4 cpd_status;
 	nfsstat4 op_status;
 	struct tcread_kargs *cur_arg = NULL;
         const int NB_OP_ALLOC = ((MAX_DIR_DEPTH + 3) * arg_count);
@@ -1806,6 +1815,8 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 
 	argoparray = malloc(NB_OP_ALLOC * sizeof(struct nfs_argop4));
 	resoparray = malloc(NB_OP_ALLOC * sizeof(struct nfs_resop4));
+        assert(argoparray);
+        assert(resoparray);
 
 	while (i < arg_count) {
 		cur_arg = kern_arg + i;
@@ -1822,13 +1833,15 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 
 	COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
 
-	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds, opcnt,
-			   argoparray, resoparray);
-	if (rc != NFS4_OK) {
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray,
+			   &cpd_status);
+	if (rc != RPC_SUCCESS) {    /* RPC failed */
                 NFS4_ERR("fs_nfsv4_call() returned error: %d\n", rc);
+                st = fsalstat(ERR_FSAL_SERVERFAULT, rc);
+                goto exit;
         }
 
-        /* No matter failure or success, we need to fill in results */
+        /* No matter NFS failed or succeeded, we need to fill in results */
         i = 0;
         for (j = 0; j < opcnt; ++j) {
                 op_status = get_nfs4_op_status(&resoparray[j]);
@@ -1848,7 +1861,7 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 		}
 	}
 
-        st = nfsstat4_to_fsal(rc);
+        st = nfsstat4_to_fsal(cpd_status);
 
 exit:
 	free(argoparray);
@@ -1985,6 +1998,7 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
 	int rc;
 	fsal_status_t st;
 	nfsstat4 op_status;
+        nfsstat4 cpd_status;
 	struct tcwrite_kargs *cur_arg = NULL;
         const int NB_OP_ALLOC = ((MAX_DIR_DEPTH + 3) * arg_count);
 	nfs_argop4 *argoparray = NULL;
@@ -1999,6 +2013,8 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
 
 	argoparray = malloc(NB_OP_ALLOC * sizeof(struct nfs_argop4));
 	resoparray = malloc(NB_OP_ALLOC * sizeof(struct nfs_resop4));
+        assert(argoparray);
+        assert(resoparray);
 
 	while (i < arg_count) {
 		cur_arg = kern_arg + i;
@@ -2013,12 +2029,13 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
 
 	COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
 
-	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds, opcnt,
-			   argoparray, resoparray);
-
-	if (rc != NFS4_OK) {
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray,
+			   &cpd_status);
+	if (rc != RPC_SUCCESS) {
 		NFS4_ERR("fs_nfsv4_call() returned error: %d (%s)\n", rc,
 			 strerror(rc));
+                st = fsalstat(ERR_FSAL_SERVERFAULT, rc);
+                goto exit;
 	}
 
         /* No matter failure or success, we need to fill in results */
@@ -2043,7 +2060,7 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
                 }
         }
 
-        st = nfsstat4_to_fsal(rc);
+        st = nfsstat4_to_fsal(cpd_status);
 
 exit:
 	free(argoparray);
@@ -2095,8 +2112,7 @@ static fsal_status_t fs_mkdir(struct fsal_obj_handle *dir_hdl, const char *name,
 				   sizeof(fattr_blob));
 	COMPOUNDV4_ARG_ADD_OP_GETATTR(opcnt, argoparray, fs_bitmap_getattr);
 
-	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds,
-			    opcnt, argoparray, resoparray);
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray, NULL);
 	nfs4_Fattr_Free(&input_attr);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
@@ -2180,8 +2196,7 @@ static fsal_status_t fs_mknod(struct fsal_obj_handle *dir_hdl,
 				   sizeof(fattr_blob));
 	COMPOUNDV4_ARG_ADD_OP_GETATTR(opcnt, argoparray, fs_bitmap_getattr);
 
-	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds,
-			    opcnt, argoparray, resoparray);
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray, NULL);
 	nfs4_Fattr_Free(&input_attr);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
@@ -2239,8 +2254,7 @@ static fsal_status_t fs_symlink(struct fsal_obj_handle *dir_hdl,
 				   sizeof(fattr_blob));
 	COMPOUNDV4_ARG_ADD_OP_GETATTR(opcnt, argoparray, fs_bitmap_getattr);
 
-	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds,
-			    opcnt, argoparray, resoparray);
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray, NULL);
 	nfs4_Fattr_Free(&input_attr);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
@@ -2286,8 +2300,7 @@ static fsal_status_t fs_readlink(struct fsal_obj_handle *obj_hdl,
 	rlok->link.utf8string_len = link_content->len;
 	COMPOUNDV4_ARG_ADD_OP_READLINK(opcnt, argoparray);
 
-	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds,
-			    opcnt, argoparray, resoparray);
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray, NULL);
 	if (rc != NFS4_OK) {
 		gsh_free(link_content->addr);
 		link_content->addr = NULL;
@@ -2325,8 +2338,7 @@ static fsal_status_t fs_link(struct fsal_obj_handle *obj_hdl,
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, dst->fh4);
 	COMPOUNDV4_ARG_ADD_OP_LINK(opcnt, argoparray, (char *)name);
 
-	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds,
-			    opcnt, argoparray, resoparray);
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray, NULL);
 	return nfsstat4_to_fsal(rc);
 }
 
@@ -2361,8 +2373,7 @@ static fsal_status_t fs_do_readdir(struct fs_obj_handle *ph,
 	COMPOUNDV4_ARG_ADD_OP_READDIR(opcnt, argoparray, *cookie,
 				      fs_bitmap_readdir);
 
-	rc = fs_nfsv4_call(ph->obj.export, op_ctx->creds, opcnt, argoparray,
-			    resoparray);
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray, NULL);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
 
@@ -2435,8 +2446,7 @@ static fsal_status_t fs_rename(struct fsal_obj_handle *olddir_hdl,
 	COMPOUNDV4_ARG_ADD_OP_RENAME(opcnt, argoparray, (char *)old_name,
 				     (char *)new_name);
 
-	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds,
-			    opcnt, argoparray, resoparray);
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray, NULL);
 	return nfsstat4_to_fsal(rc);
 }
 
@@ -2459,7 +2469,7 @@ static fsal_status_t fs_getattrs_impl(const struct user_cred *creds,
 				      sizeof(fattr_blob));
 	COMPOUNDV4_ARG_ADD_OP_GETATTR(opcnt, argoparray, fs_bitmap_getattr);
 
-	rc = fs_nfsv4_call(exp, creds, opcnt, argoparray, resoparray);
+	rc = fs_nfsv4_call(creds, opcnt, argoparray, resoparray, NULL);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
 
@@ -2525,8 +2535,7 @@ static fsal_status_t fs_setattrs(struct fsal_obj_handle *obj_hdl,
 				   sizeof(fattr_blob));
 	COMPOUNDV4_ARG_ADD_OP_GETATTR(opcnt, argoparray, fs_bitmap_getattr);
 
-	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds,
-			    opcnt, argoparray, resoparray);
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray, NULL);
 	nfs4_Fattr_Free(&input_attr);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
@@ -2571,8 +2580,7 @@ static fsal_status_t fs_unlink(struct fsal_obj_handle *dir_hdl,
 				   sizeof(fattr_blob));
 	COMPOUNDV4_ARG_ADD_OP_GETATTR(opcnt, argoparray, fs_bitmap_getattr);
 
-	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds,
-			    opcnt, argoparray, resoparray);
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray, NULL);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
 
@@ -2705,8 +2713,7 @@ static fsal_status_t fs_read(struct fsal_obj_handle *obj_hdl,
 	rok->data.data_len = buffer_size;
 	COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argoparray, offset, buffer_size);
 
-	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds,
-			    opcnt, argoparray, resoparray);
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray, NULL);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
 
@@ -2748,8 +2755,7 @@ static fsal_status_t fs_write(struct fsal_obj_handle *obj_hdl,
 	wok = &resoparray[opcnt].nfs_resop4_u.opwrite.WRITE4res_u.resok4;
 	COMPOUNDV4_ARG_ADD_OP_WRITE(opcnt, argoparray, offset, buffer, size);
 
-	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds,
-			    opcnt, argoparray, resoparray);
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray, NULL);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
 
@@ -2800,9 +2806,8 @@ fsal_status_t fs_read_plus(struct fsal_obj_handle *obj_hdl,
         COMPOUNDV4_ARG_ADD_OP_READ_PLUS(opcnt, argoparray, offset,
                                         buffer_size, info->io_content.what);
 
-	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds,
-			    opcnt, argoparray, resoparray);
-        if (rc != NFS4_OK)
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray, NULL);
+	if (rc != NFS4_OK)
                 return nfsstat4_to_fsal(rc);
 
         // TODO: add sanity check of returned io_info
@@ -2849,8 +2854,7 @@ fsal_status_t fs_write_plus(struct fsal_obj_handle *obj_hdl,
         wpr4 = &wp4res->WRITE_PLUS4res_u.wpr_resok4;
         COMPOUNDV4_ARG_ADD_OP_WRITE_PLUS(opcnt, argoparray, (&info->io_content));
 
-	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds,
-			    opcnt, argoparray, resoparray);
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray, NULL);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
 
@@ -3096,8 +3100,7 @@ fsal_status_t kernel_lookupplus(const char *path, struct fsal_obj_handle **handl
 
 	gsh_free(pcopy);
 
-	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds, opcnt,
-			    argoparray, resoparray);
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray, NULL);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
 
@@ -3171,8 +3174,7 @@ fsal_status_t fs_get_dynamic_info(struct fsal_export *exp_hdl,
 				   sizeof(fattr_blob));
 	COMPOUNDV4_ARG_ADD_OP_GETATTR(opcnt, argoparray, fs_bitmap_fsinfo);
 
-	rc = fs_nfsv4_call(exp_hdl, op_ctx->creds, opcnt, argoparray,
-			    resoparray);
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray, NULL);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
 
