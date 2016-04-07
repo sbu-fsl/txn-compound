@@ -1820,6 +1820,11 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 
 	while (i < arg_count) {
 		cur_arg = kern_arg + i;
+		NFS4_DEBUG("path: %s; offset: %d; len: %d; data: %p",
+			   cur_arg->user_arg->file.path,
+			   cur_arg->user_arg->offset, cur_arg->user_arg->length,
+			   cur_arg->user_arg->data);
+
 		st = do_ktcread(cur_arg, argoparray, resoparray, &opcnt);
 
 		if (FSAL_IS_ERROR(st)) {

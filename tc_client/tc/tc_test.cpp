@@ -32,6 +32,7 @@
 #include <gtest/gtest.h>
 
 #include "tc_api.h"
+#include "tc_helper.h"
 #include "util/fileutil.h"
 #include "log.h"
 
@@ -85,22 +86,6 @@ static void RemoveDir(const char **path, int count)
 }
 
 /**
- * Free the tc_iovec
- */
-
-void clear_iovec(tc_iovec *user_arg, int count)
-{
-	int i = 0;
-
-	while (i < count) {
-		free((user_arg + i)->data);
-		i++;
-	}
-
-	free(user_arg);
-}
-
-/**
  * Set the tc_iovec
  */
 static tc_iovec *set_iovec_file_paths(const char **PATH, int count,
@@ -143,31 +128,12 @@ static tc_iovec *set_iovec_file_paths(const char **PATH, int count,
 	return user_arg;
 }
 
-/**
- * Verify the data has been
- * written as specified
- */
-bool compare_content(tc_iovec *writev, tc_iovec *readv, int count)
-{
-	int i = 0;
-
-	while (i < count) {
-		if (memcmp((writev + i)->data, (readv + i)->data,
-			   (writev + i)->length))
-			return false;
-
-		i++;
-	}
-
-	return true;
-}
-
 class TcPosixImpl {
 public:
 	static constexpr const char* POSIX_TEST_DIR = "/tmp/tc_posix_test";
 	static void SetUpTestCase() {
 		/* TODO: setup posix impl */
-		tc_init("/etc/ganesha/tc.conf", "/tmp/tc.log", 0);
+		tc_init(NULL, "/tmp/tc-posix.log", 0);
 		TCTEST_WARN("Global SetUp of Posix Impl\n");
 		util::CreateOrUseDir(POSIX_TEST_DIR);
 		chdir(POSIX_TEST_DIR);
@@ -187,7 +153,8 @@ class TcNFS4Impl {
 public:
 	static void SetUpTestCase() {
 		/* TODO: setup NFS4 impl */
-		tc_init("/etc/ganesha/tc.conf", "/tmp/tc.log", 0);
+		tc_init("../../../config/tc.ganesha.conf", "/tmp/tc-nfs4.log",
+			0);
 		TCTEST_WARN("Global SetUp of NFS4 Impl\n");
 		chdir("tc_nfs4_test");  /* change to mnt point */
 	}
@@ -253,8 +220,8 @@ TYPED_TEST_P(TcTest, WritevCanCreateFiles)
 
 	EXPECT_TRUE(compare_content(writev, readv, count));
 
-	clear_iovec(writev, count);
-	clear_iovec(readv, count);
+	free_iovec(writev, count);
+	free_iovec(readv, count);
 }
 
 /**
@@ -337,8 +304,8 @@ TYPED_TEST_P(TcTest, TestFileDesc)
 
 	EXPECT_TRUE(compare_content(writev, readv, count));
 
-	clear_iovec(writev, count);
-	clear_iovec(readv, count);
+	free_iovec(writev, count);
+	free_iovec(readv, count);
 
 	i = 0;
 	while (i < count) {
@@ -763,7 +730,7 @@ TYPED_TEST_P(TcTest, Append)
 	}
 
 	free(data);
-	clear_iovec(writev, 1);
+	free_iovec(writev, 1);
 }
 
 /**
@@ -808,7 +775,7 @@ TYPED_TEST_P(TcTest, SuccesiveReads)
 	}
 
 	free(data);
-	clear_iovec(readv, 1);
+	free_iovec(readv, 1);
 
 	RemoveFile(path);
 }
@@ -861,7 +828,7 @@ TYPED_TEST_P(TcTest, SuccesiveWrites)
 	}
 
 	free(data);
-	clear_iovec(writev, 1);
+	free_iovec(writev, 1);
 
 	RemoveFile(path);
 }

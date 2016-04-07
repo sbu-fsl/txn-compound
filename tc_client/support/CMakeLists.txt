@@ -55,6 +55,9 @@ set( uid2grp_SRCS
 add_library(uid2grp ${uid2grp_SRCS})
 set_target_properties(uid2grp PROPERTIES POSITION_INDEPENDENT_CODE on)
 
+set(tc_helper_SRCS tc_helper.c)
+add_library(tc_helper STATIC ${tc_helper_SRCS})
+
 ########### next target ###############
 
 SET(support_STAT_SRCS
