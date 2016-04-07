@@ -116,6 +116,27 @@ target_link_libraries(tc_test_read
   m
 )
 
+SET(tc_daemon_SRCS
+   tc_daemon.c
+)
+
+add_executable(tc_daemon
+  ${tc_daemon_SRCS}
+)
+
+target_link_libraries(tc_daemon
+  tc_impl
+  tc_impl_nfs4
+  tc_impl_posix
+  tc_util
+  MainServices
+  ${PROTOCOLS}
+  ${GANESHA_CORE}
+  config_parsing
+  ${LIBTIRPC_LIBRARIES}
+  ${SYSTEM_LIBRARIES}
+  m
+)
 ########### install files ###############
 
 # We are still missing the install of docs and stuff

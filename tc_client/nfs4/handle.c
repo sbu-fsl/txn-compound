@@ -41,6 +41,7 @@
 #include "FSAL/fsal_commonlib.h"
 #include "fs_fsal_methods.h"
 #include "fsal_nfsv4_macros.h"
+#include "fsal_convert.h"
 #include "nfs_proto_functions.h"
 #include "nfs_proto_tools.h"
 #include "export_mgr.h"
@@ -324,6 +325,7 @@ static int fs_fsalattr_to_fattr4(const struct attrlist *attrs, fattr4 *data)
 			} else {
 				bmap.map[0] |=
 					1U << fsal_mask2bit[i].fattr_bit;
+				bmap.map[0] = 1U << fsal_mask2bit[i].mask;
 			}
 		}
 	}
@@ -1669,10 +1671,9 @@ static nfsstat4 get_nfs4_op_status(const nfs_resop4 *op_res)
  */
 static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 				nfs_argop4 *argoparray, nfs_resop4 *resoparray,
-				int *opcnt_temp)
+				int *opcnt_temp, fattr4 *input_attr)
 {
 	int opcnt = *opcnt_temp;
-	fattr4 input_attr;
 	char owner_val[128];
 	unsigned int owner_len = 0;
 	struct fs_obj_handle *ph;
@@ -1690,15 +1691,6 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 
 	kern_arg->user_arg->is_failure = 0;
 	kern_arg->user_arg->is_eof = 0;
-
-	kern_arg->attrib.mask &= ATTR_MODE | ATTR_OWNER | ATTR_GROUP;
-	if (fs_fsalattr_to_fattr4(&kern_arg->attrib, &input_attr) == -1)
-		return fsalstat(ERR_FSAL_INVAL, -1);
-
-	/*
-	 * Need to fix this, make sure umask is set to the calling process umask
-	 */
-	input_attr.attrmask = empty_bitmap;
 
 	if (kern_arg->path == NULL) {
 		/*
@@ -1755,12 +1747,33 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 		fs_get_clientid(&cid);
 
 		if (kern_arg->user_arg->is_creation & 1) {
+			kern_arg->attrib.mode = unix2fsal_mode((mode_t)0644);
+			FSAL_SET_MASK(kern_arg->attrib.mask, ATTR_MODE);
+
+			if (FSAL_TEST_MASK(kern_arg->attrib.mask, ATTR_MODE)) {
+				kern_arg->attrib.mode &=
+				    ~op_ctx->fsal_export->ops->fs_umask(
+					op_ctx->fsal_export);
+			}
+
+			if (fs_fsalattr_to_fattr4(&kern_arg->attrib,
+						  input_attr) == -1)
+				return fsalstat(ERR_FSAL_INVAL, -1);
+
+			LogDebug(COMPONENT_FSAL, "do_ktcread() Bitmap: "
+						 "%d%d%d, len:%u);\n",
+				 input_attr->attrmask.map[0],
+				 input_attr->attrmask.map[1],
+				 input_attr->attrmask.map[2],
+				 input_attr->attrmask.bitmap4_len);
+
 			COMPOUNDV4_ARG_ADD_OP_TCOPEN_CREATE(
-			    opcnt, argoparray, 0 /*seq id*/, cid, input_attr,
+			    opcnt, argoparray, 0 /*seq id*/, cid, *input_attr,
 			    (kern_arg->path + marker), owner_val, owner_len);
 		} else {
+			input_attr->attrmask = empty_bitmap;
 			COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(
-			    opcnt, argoparray, 0 /*seq id*/, cid, input_attr,
+			    opcnt, argoparray, 0 /*seq id*/, cid, *input_attr,
 			    (kern_arg->path + marker), owner_val, owner_len);
 		}
 
@@ -1806,6 +1819,7 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 	nfs_argop4 *argoparray = NULL;
 	nfs_resop4 *resoparray = NULL;
 	struct READ4resok *read_res;
+	fattr4 *input_attr = NULL;
 	int opcnt = 0;
 	bool eof = false;
 	int i = 0;      /* index of tc_iovec */
@@ -1818,6 +1832,9 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
         assert(argoparray);
         assert(resoparray);
 
+	input_attr = malloc(sizeof(fattr4));
+	memset(input_attr, 0, sizeof(fattr4));
+
 	while (i < arg_count) {
 		cur_arg = kern_arg + i;
 		NFS4_DEBUG("path: %s; offset: %d; len: %d; data: %p",
@@ -1825,7 +1842,8 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 			   cur_arg->user_arg->offset, cur_arg->user_arg->length,
 			   cur_arg->user_arg->data);
 
-		st = do_ktcread(cur_arg, argoparray, resoparray, &opcnt);
+		st = do_ktcread(cur_arg, argoparray, resoparray, &opcnt,
+				input_attr);
 
 		if (FSAL_IS_ERROR(st)) {
                         NFS4_ERR("do_ktcread failed: major=%d, minor=%d\n",
@@ -1880,16 +1898,19 @@ exit:
  */
 static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 				 nfs_argop4 *argoparray, nfs_resop4 *resoparray,
-				 int *opcnt_temp)
+				 int *opcnt_temp, fattr4 *input_attr)
 {
 	int opcnt = *opcnt_temp;
-	fattr4 input_attr;
 	char owner_val[128];
 	unsigned int owner_len = 0;
 	struct fs_obj_handle *ph;
+	//fattr4 input_attr;
+	XDR xdrs;
 	clientid4 cid;
 	int marker = 0;
 	bool eof = false;
+	int i,j,k;
+	struct bitmap4 DEBUG_bm;
 
 	LogDebug(COMPONENT_FSAL, "do_ktcwrite() called: %d\n", opcnt);
 
@@ -1900,15 +1921,6 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 
 	kern_arg->user_arg->is_failure = 0;
 	kern_arg->user_arg->is_eof = 0;
-
-	kern_arg->attrib.mask &= ATTR_MODE | ATTR_OWNER | ATTR_GROUP;
-	if (fs_fsalattr_to_fattr4(&kern_arg->attrib, &input_attr) == -1)
-		return fsalstat(ERR_FSAL_INVAL, -1);
-
-	/*
-	 * Need to fix this, make sure umask is set to the calling process umask
-	 */
-	input_attr.attrmask = empty_bitmap;
 
 	if (kern_arg->path == NULL) {
 		/*
@@ -1962,12 +1974,33 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 		fs_get_clientid(&cid);
 
 		if (kern_arg->user_arg->is_creation & 1) {
+			kern_arg->attrib.mode = unix2fsal_mode((mode_t)0644);
+			FSAL_SET_MASK(kern_arg->attrib.mask, ATTR_MODE);
+
+			if (FSAL_TEST_MASK(kern_arg->attrib.mask, ATTR_MODE)) {
+				kern_arg->attrib.mode &=
+				    ~op_ctx->fsal_export->ops->fs_umask(
+					op_ctx->fsal_export);
+			}
+
+			if (fs_fsalattr_to_fattr4(&kern_arg->attrib,
+						  input_attr) == -1)
+				return fsalstat(ERR_FSAL_INVAL, -1);
+
+			LogDebug(COMPONENT_FSAL, "do_ktcwrite() Bitmap: "
+						 "%d%d%d, len:%u\n",
+				 input_attr->attrmask.map[0],
+				 input_attr->attrmask.map[1],
+				 input_attr->attrmask.map[2],
+				 input_attr->attrmask.bitmap4_len);
+
 			COMPOUNDV4_ARG_ADD_OP_TCOPEN_CREATE(
-			    opcnt, argoparray, 0 /*seq id*/, cid, input_attr,
+			    opcnt, argoparray, 0 /*seq id*/, cid, *input_attr,
 			    (kern_arg->path + marker), owner_val, owner_len);
 		} else {
+			input_attr->attrmask = empty_bitmap;
 			COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(
-			    opcnt, argoparray, 0 /*seq id*/, cid, input_attr,
+			    opcnt, argoparray, 0 /*seq id*/, cid, *input_attr,
 			    (kern_arg->path + marker), owner_val, owner_len);
 		}
 
@@ -2009,6 +2042,7 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
 	nfs_argop4 *argoparray = NULL;
 	nfs_resop4 *resoparray = NULL;
         struct WRITE4resok *write_res = NULL;
+	fattr4 *input_attr = NULL;
 	int opcnt = 0;
 	bool eof = false;
 	int i = 0;      /* index of tc_iovec */
@@ -2021,9 +2055,12 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
         assert(argoparray);
         assert(resoparray);
 
+	input_attr = malloc(sizeof(fattr4));
+	memset(input_attr, 0, sizeof(fattr4));
+
 	while (i < arg_count) {
 		cur_arg = kern_arg + i;
-		st = do_ktcwrite(cur_arg, argoparray, resoparray, &opcnt);
+		st = do_ktcwrite(cur_arg, argoparray, resoparray, &opcnt, input_attr);
 
 		if (FSAL_IS_ERROR(st)) {
 			goto exit;
@@ -2068,6 +2105,7 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
         st = nfsstat4_to_fsal(cpd_status);
 
 exit:
+	free(input_attr);
 	free(argoparray);
 	free(resoparray);
 	return st;
