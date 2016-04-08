@@ -70,8 +70,7 @@ do { \
 } while (0)
 
 #define COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(opcnt, args, __seqid, inclientid,  \
-					    inaccess, inname, __owner_val,     \
-					    __owner_len)                       \
+					    inname, __owner_val, __owner_len)  \
 	do {                                                                   \
 		nfs_argop4 *op = args + opcnt;                                 \
 		opcnt++;                                                       \
