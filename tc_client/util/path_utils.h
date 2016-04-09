@@ -33,7 +33,7 @@ extern "C" {
  *
  * Caller owns "components" and is responsible for freeing it.
  */
-int tc_path_tokenize(const char *path, slice_t *components);
+int tc_path_tokenize(const char *path, slice_t **components);
 
 /**
  * Normalize a path and save the result into "buf".  Normalization include
@@ -48,7 +48,7 @@ int tc_path_tokenize(const char *path, slice_t *components);
  *
  * "path" and "buf" may be the same.
  */
-int tc_path_nomalize(const char *path, char *buf, size_t buf_size);
+int tc_path_normalize(const char *path, char *buf, size_t buf_size);
 
 /**
  * Return the depth of the path in the FS tree. "/" is zero; "/foo" is one;
@@ -59,6 +59,9 @@ int tc_path_depth(const char *path);
 /**
  * Return the distance of two nodes in the FS tree. For example, the distance
  * is 1 between between "/" and "/foo", 2 between "/foo" and "/bar".
+ *
+ * When "dst" is a relative path, "src" is not used and can be NULL.
+ * When "dst" is an absolute path, "src" must be an ansolute path.
  */
 int tc_path_distance(const char *src, const char *dst);
 
@@ -69,7 +72,7 @@ int tc_path_distance(const char *src, const char *dst);
  *
  * NOTE: "buf" must not overlap with "path"
  *
- * Return the size of the resultant size.
+ * Return the size of the resultant "path".
  */
 int tc_path_rebase(const char *base, const char *path, char *buf, int buf_size);
 

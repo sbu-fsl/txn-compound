@@ -29,11 +29,7 @@
 
 using util::Slice;
 
-/**
- * An empty vector indicate error.
- */
-static std::vector<Slice> tc_get_path_components(Slice path,
-						 bool backtrace = true)
+static std::vector<Slice> tc_get_path_components(Slice path)
 {
 	assert(!path.empty());
 	std::vector<Slice> components;
@@ -46,67 +42,86 @@ static std::vector<Slice> tc_get_path_components(Slice path,
 			++end;
 		}
 		Slice comp(path.data() + beg, end - beg);
-		if (end - beg == 1) {	// two consecutive '/'
-			beg = ++end;	// ignore
-		} else if (comp == ".") {  // "."
-			beg = ++end;	// ignore
-		} else if (backtrace && comp == "..") { // ".."
-			if (!components.empty()) {
-				components.pop_back();
-			} else if (!is_absolute) {
-				// return an empty vector to indicate error
-				return components;
+		if (comp == "..") {
+			if (components.empty()) {
+				if (!is_absolute)
+					components.push_back(comp);
+			} else {
+				if (components.back() != "..")
+					components.pop_back();
+				else
+					components.push_back(comp);
 			}
-			beg = ++end;
-		} else {
+		} else if (comp != "/" && comp != ".") { // ignore '/', and "."
 			components.push_back(comp);
-			beg = ++end;
 		}
-	}
-
-	if (components.empty()) {
-		components.push_back(is_absolute ? "/" : ".");
+		beg = ++end;
 	}
 
 	return components;
 }
 
-int tc_path_tokenize(const char *path, slice_t *components)
+int tc_path_tokenize(const char *path, slice_t **components)
 {
+	if (path == NULL || strnlen(path, TC_PATH_MAX) >= TC_PATH_MAX)
+		return -1;
 	std::vector<Slice> comps = tc_get_path_components(path);
 	if (comps.empty()) {
-		return -1;
+		*components = NULL;
+		return 0;
 	}
-	components = (slice_t *)malloc(sizeof(*components) * comps.size());
-	if (!components) {
+	if (components == NULL) {
+		return comps.size();
+	}
+	slice_t *sls = (slice_t *)malloc(sizeof(slice_t) * comps.size());
+	if (!sls) {
 		return -1;
 	}
 	for (int i = 0; i < comps.size(); ++i) {
-		components[i].data = comps[i].data();
-		components[i].size = comps[i].size();
+		sls[i].data = comps[i].data();
+		sls[i].size = comps[i].size();
 	}
+	*components = sls;
 	return comps.size();
 }
 
 int tc_path_depth(const char *path)
 {
 	std::vector<Slice> comps = tc_get_path_components(path);
-	return comps.size();
+	int depth;
+	if (comps.size() == 1 && comps[0] == "/") {
+		depth = 0;
+	} else {
+		depth = comps.size();
+	}
+	return depth;
 }
 
 int tc_path_distance(const char *src, const char *dst)
 {
+	assert(dst);
+	if (dst[0] != '/') {
+		auto comps = tc_get_path_components(dst);
+		return comps.size();
+	}
+	assert(src && src[0] == '/');
 	std::vector<Slice> src_comps = tc_get_path_components(src);
 	std::vector<Slice> dst_comps = tc_get_path_components(dst);
 	int src_len = src_comps.size();
-	int dst_len = src_comps.size();
+	int dst_len = dst_comps.size();
+	if (src_len == 1 && src_comps[0] == "/") {
+		return (dst_len == 1 && dst_comps[0] == "/") ? 0 : dst_len;
+	}
+	if (dst_len == 1 && dst_comps[0] == "/") {
+		return src_len;
+	}
 	int l = 0;
 	while (l < src_len && l < dst_len && src_comps[l] == dst_comps[l])
 		++l;
 	return src_len - l + dst_len - l;
 }
 
-static char *copy_slice(char *buf, Slice s)
+static inline char *copy_slice(char *buf, Slice s)
 {
 	if (buf != s.data()) {
 		memmove(buf, s.data(), s.size());
@@ -152,18 +167,22 @@ int tc_path_join(const char *path1, const char *path2, char *buf, int buf_size)
 
 	int n = tc_path_join_impl(buf, buf_size, p1, p2);
 	buf[n] = 0;
+
+	n = tc_path_normalize(buf, buf, buf_size);
 	return n;
 }
 
-int tc_path_nomalize(const char *path, char *buf, size_t buf_size)
+int tc_path_normalize(const char *path, char *buf, size_t buf_size)
 {
-	int len;
-	if (path == NULL || (len = strnlen(path, TC_PATH_MAX)) >= TC_PATH_MAX)
+	if (!path || strnlen(path, TC_PATH_MAX) >= TC_PATH_MAX || buf_size <= 1)
 		return -1;
 
 	std::vector<Slice> components = tc_get_path_components(path);
-	if (components.empty())
-		return -1;
+	if (components.empty()) {
+		buf[0] = path[0] == '/' ? '/' : '.';
+		buf[1] = 0;
+		return 1;
+	}
 
 	char *p = buf;
 	int plen = 0;
@@ -216,5 +235,6 @@ int tc_path_rebase(const char *base, const char *path, char *buf, int buf_size)
 	for (Slice s : relative_comps) {
 		size = tc_path_join_impl(buf, buf_size, Slice(buf, size), s);
 	}
+	buf[size] = 0;
 	return size;
 }
