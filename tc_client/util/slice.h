@@ -75,6 +75,20 @@ class Slice {
     return *this;
   }
 
+  Slice& ltrim(char c) {
+    int n = 0;
+    while (n < size_ && data_[n] == c)
+      ++n;
+    remove_prefix(n);
+    return *this;
+  }
+
+  Slice& trim(char c) {
+    rtrim(c);
+    ltrim(c);
+    return *this;
+  }
+
   // Return a string that contains the copy of the referenced data.
   std::string ToString() const { return std::string(data_, size_); }
 
