@@ -76,7 +76,11 @@ tc_res tc_writev(struct tc_iovec *writes, int count, bool is_transaction)
 
 tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
-	return posix_getattrsv(attrs, count, is_transaction);
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_getattrsv(attrs, count, is_transaction);
+	} else {
+		return posix_getattrsv(attrs, count, is_transaction);
+	}
 }
 
 tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
@@ -115,7 +119,11 @@ tc_res tc_removev(tc_file *files, int count, bool is_transaction)
 
 tc_res tc_mkdirv(tc_file *dir, mode_t *mode, int count, bool is_transaction)
 {
-	return posix_mkdirv(dir, mode, count, is_transaction);
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_mkdirv(dir, mode, count, is_transaction);
+	} else {
+		return posix_mkdirv(dir, mode, count, is_transaction);
+	}
 }
 
 tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)

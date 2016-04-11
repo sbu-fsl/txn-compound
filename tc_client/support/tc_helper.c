@@ -47,4 +47,3 @@ bool compare_content(struct tc_iovec *iovec1, struct tc_iovec *iovec2,
 
 	return true;
 }
-

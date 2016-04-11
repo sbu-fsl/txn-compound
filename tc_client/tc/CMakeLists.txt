@@ -49,6 +49,7 @@ set(test_LIB
   tc_impl_nfs4
   tc_util
   tc_helper
+  path_utils
   MainServices
   ${PROTOCOLS}
   ${GANESHA_CORE}

@@ -455,8 +455,8 @@ static tc_attrs *set_tc_attrs(const char **PATH, int count, bool isPath)
 		(change_attr + i)->size = size[i];
 		(change_attr + i)->uid = uid[i];
 		(change_attr + i)->gid = gid[i];
-		(change_attr + i)->atime = atime[i];
-		(change_attr + i)->mtime = time(NULL);
+		(change_attr + i)->atime.tv_sec = atime[i];
+		(change_attr + i)->mtime.tv_sec = time(NULL);
 
 		masks[i].has_mode = 1;
 		masks[i].has_size = 1;

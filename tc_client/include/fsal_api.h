@@ -40,6 +40,7 @@
 #ifndef FSAL_API
 #define FSAL_API
 
+#include "tc_api.h"
 #include "fsal_pnfs.h"
 #include "avltree.h"
 #include "abstract_atomic.h"
@@ -1322,6 +1323,8 @@ struct fsal_obj_ops {
 /* Multiple open..write..close in a single compound */
 	fsal_status_t (*tc_write)(struct tcwrite_kargs *arg, int arg_count,
 				  int *fail_index);
+
+	tc_res (*tc_getattrsv)(struct tc_attrs *attrs, int count);
 
 	fsal_status_t(*root_lookup) (struct fsal_obj_handle **handle);
 

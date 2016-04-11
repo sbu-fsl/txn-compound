@@ -28,7 +28,7 @@
 #include <vector>
 #include <initializer_list>
 
-#include "util/path_utils.h"
+#include "path_utils.h"
 
 using std::string;
 using std::vector;

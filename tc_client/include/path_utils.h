@@ -21,7 +21,7 @@
 #ifndef __TC_PATH_UTILS_H__
 #define __TC_PATH_UTILS_H__
 
-#include "util/types.h"
+#include "common_types.h"
 
 #ifdef __cplusplus
 extern "C" {

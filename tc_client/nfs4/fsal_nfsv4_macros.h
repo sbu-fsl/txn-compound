@@ -336,13 +336,11 @@ do { \
 	opcnt++;							\
 } while (0)
 
-#define COMPOUNDV4_ARG_ADD_OP_RESTOREFH(argcompound) \
-do { \
-	argcompound.argarray.argarray_val[\
-		argcompound.argarray.argarray_len].argop		\
-		= NFS4_OP_RESTOREFH;					\
-	argcompound.argarray.argarray_len += 1;				\
-} while (0)
+#define COMPOUNDV4_ARG_ADD_OP_RESTOREFH(opcnt, argarray)                       \
+	do {                                                                   \
+		argarray[opcnt].argop = NFS4_OP_RESTOREFH;                     \
+		opcnt++;                                                       \
+	} while (0)
 
 #define COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argarray, inoffset, incount) \
 do { \

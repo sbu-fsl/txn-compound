@@ -35,6 +35,7 @@
 #include <pthread.h>
 #include <arpa/inet.h>
 #include <sys/poll.h>
+#include <sys/types.h>
 #include "ganesha_list.h"
 #include "abstract_atomic.h"
 #include "fsal_types.h"
@@ -46,6 +47,8 @@
 #include "nfs_proto_tools.h"
 #include "export_mgr.h"
 #include "nfs4_util.h"
+
+#include "path_utils.h"
 
 #include <stdlib.h>
 
@@ -1635,6 +1638,35 @@ error_after_gsh:
 	return -1;
 }
 
+#define TC_BASE_PATH_CURRENT 1
+#define TC_BASE_PATH_ROOT 2
+#define TC_BASE_PATH_SAVED 3
+
+static int construct_lookups(slice_t *comps, int compcnt,
+			     nfs_argop4 *argoparray, int *opcnt, int base)
+{
+        int i;
+        int new_opcnt = *opcnt;
+
+        if (base == TC_BASE_PATH_ROOT) {
+                COMPOUNDV4_ARG_ADD_OP_PUTROOTFH(new_opcnt, argoparray);
+        } else if (base == TC_BASE_PATH_SAVED) {
+                COMPOUNDV4_ARG_ADD_OP_RESTOREFH(new_opcnt, argoparray);
+        } else {
+		// Nothing need to be done if base is the current file handle
+		assert(base == TC_BASE_PATH_CURRENT);
+        }
+
+        for (i = 0; i < compcnt; ++i) {
+		COMPOUNDV4_ARG_ADD_OP_LOOKUPNAME(new_opcnt, argoparray,
+						 comps[i].data, comps[i].size);
+	}
+
+        i = new_opcnt - *opcnt;
+        *opcnt = new_opcnt;
+        return i;
+}
+
 static nfsstat4 get_nfs4_op_status(const nfs_resop4 *op_res)
 {
         nfsstat4 op_status;
@@ -1940,7 +1972,7 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 		kern_arg->opok_handle->attrset = empty_bitmap;
 		fs_get_clientid(&cid);
 
-		if (kern_arg->user_arg->is_creation & 1) {
+		if (kern_arg->user_arg->is_creation) {
 			kern_arg->attrib.mode = unix2fsal_mode((mode_t)0644);
 			FSAL_SET_MASK(kern_arg->attrib.mask, ATTR_MODE);
 
@@ -2895,6 +2927,181 @@ static fsal_status_t fs_close(struct fsal_obj_handle *obj_hdl)
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
+void tc_attrs_to_fattr4(const struct tc_attrs *tca, fattr4 *attr4)
+{
+        struct attrlist attrlist;
+
+        attrlist.mask = 0;
+        if (tca->masks.has_mode) {
+                attrlist.mask |= ATTR_MODE;
+                attrlist.mode = tca->mode;
+        }
+        if (tca->masks.has_size) {
+                attrlist.mask |= ATTR_SIZE;
+                attrlist.filesize = tca->size;
+        }
+        if (tca->masks.has_uid) {
+                attrlist.mask |= ATTR_OWNER;
+                attrlist.owner = tca->uid;
+        }
+        if (tca->masks.has_gid) {
+                attrlist.mask |= ATTR_GROUP;
+                attrlist.group = tca->gid;
+        }
+        if (tca->masks.has_rdev) {
+                attrlist.mask |= ATTR_RAWDEV;
+                attrlist.rawdev.major = major(tca->rdev);
+                attrlist.rawdev.minor = minor(tca->rdev);
+        }
+        if (tca->masks.has_atime) {
+                attrlist.mask |= ATTR_ATIME;
+                attrlist.atime = tca->atime;
+        }
+        if (tca->masks.has_mtime) {
+                attrlist.mask |= ATTR_MTIME;
+                attrlist.mtime = tca->mtime;
+        }
+        if (tca->masks.has_ctime) {
+                attrlist.mask |= ATTR_CTIME;
+                attrlist.ctime = tca->ctime;
+        }
+
+        if (fs_fsalattr_to_fattr4(&attrlist, attr4) == 0) {
+                NFS4_ERR("cannot encode NFS attributes");
+                assert(false);
+        }
+}
+
+void fattr4_to_tc_attrs(const fattr4 *attr4, struct tc_attrs *tca)
+{
+        struct attrlist attrlist;
+
+        /* FIXME: void the const cast */
+	if (nfs4_Fattr_To_FSAL_attr(&attrlist, (fattr4 *)attr4, NULL) !=
+	    NFS4_OK) {
+		NFS4_ERR("cannot decode NFS attributes");
+                assert(false);
+        }
+
+        memset(&tca->masks, sizeof(tca->masks), 0);
+        if (attrlist.mask & ATTR_MODE) {
+                tca->masks.has_mode = true;
+                tca->mode = attrlist.mode;
+        }
+        if (attrlist.mask & ATTR_SIZE) {
+                tca->masks.has_size = true;
+                tca->size = attrlist.filesize;
+        }
+        if (attrlist.mask & ATTR_NUMLINKS) {
+                tca->masks.has_nlink = true;
+                tca->nlink = attrlist.numlinks;
+        }
+        if (attrlist.mask & ATTR_OWNER) {
+                tca->masks.has_uid = true;
+                tca->uid = attrlist.owner;
+        }
+        if (attrlist.mask & ATTR_GROUP) {
+                tca->masks.has_gid = true;
+                tca->gid = attrlist.group;
+        }
+        if (attrlist.mask & ATTR_RAWDEV) {
+                tca->masks.has_rdev = true;
+		tca->rdev =
+		    makedev(attrlist.rawdev.major, attrlist.rawdev.minor);
+	}
+        if (attrlist.mask & ATTR_ATIME) {
+                tca->masks.has_atime = true;
+                tca->atime = attrlist.atime;
+        }
+        if (attrlist.mask & ATTR_MTIME) {
+                tca->masks.has_mtime = true;
+                tca->mtime = attrlist.mtime;
+        }
+        if (attrlist.mask & ATTR_CTIME) {
+                tca->masks.has_ctime = true;
+                tca->ctime = attrlist.ctime;
+        }
+}
+
+static tc_res tc_nfs4_getattrsv(struct tc_attrs *attrs, int count)
+{
+        int rc;
+        tc_res tcres;
+        nfsstat4 cpd_status;
+	nfsstat4 op_status;
+	uint32_t opcnt = 0;
+        const int NB_OP_ALLOC = (MAX_DIR_DEPTH + 3) * count;
+	nfs_argop4 *argoparray = NULL;
+	nfs_resop4 *resoparray = NULL;
+	GETATTR4resok *atok;
+	int i = 0;      /* index of tc_iovec */
+	int j = 0;      /* index of NFS operations */
+	char *fattr_blobs; /* an array of FATTR_BLOB_SZ-sized buffers */
+
+        assert(count >= 1);
+	argoparray = malloc(NB_OP_ALLOC * sizeof(struct nfs_argop4));
+	resoparray = malloc(NB_OP_ALLOC * sizeof(struct nfs_resop4));
+        assert(argoparray);
+        assert(resoparray);
+        fattr_blobs = (char *)malloc(count * FATTR_BLOB_SZ);
+        assert(fattr_blobs);
+        
+        for (i = 0; i < count; ++i) {
+                if (attrs[i].file.type == TC_FILE_PATH) {
+                        int n;
+                        slice_t *comps;
+                        n = tc_path_tokenize(attrs[i].file.path, &comps);
+			int dirbase = attrs[i].file.path[0] == '/'
+				       ? TC_BASE_PATH_ROOT
+				       : TC_BASE_PATH_CURRENT;
+			if (n < 0) {
+                                NFS4_ERR("Cannot tokenize path: %s",
+                                         attrs[i].file.path);
+                                tcres = tc_failure(i, ERR_FSAL_INVAL);
+                                goto exit;
+                        }
+			construct_lookups(comps, n, argoparray, &opcnt,
+					  dirbase);
+		}
+		fs_fill_getattr_reply(resoparray + opcnt,
+				      fattr_blobs + i * FATTR_BLOB_SZ,
+				      FATTR_BLOB_SZ);
+		COMPOUNDV4_ARG_ADD_OP_GETATTR(opcnt, argoparray, fs_bitmap_getattr);
+        }
+
+	rc = fs_nfsv4_call(op_ctx->creds, opcnt, argoparray, resoparray,
+			   &cpd_status);
+        if (rc != RPC_SUCCESS) {
+                NFS4_ERR("rpc failed: %d", rc);
+                tcres = tc_failure(0, rc);
+                goto exit;
+        }
+
+        i = 0;
+	for (j = 0; j < opcnt; ++j) {
+                op_status = get_nfs4_op_status(&resoparray[j]);
+                if (op_status != NFS4_OK) {
+			NFS4_ERR("NFS operation (%d) failed: %d",
+				 resoparray[j].resop, op_status);
+			tcres = tc_failure(i, op_status);
+                        goto exit;
+                }
+                if (resoparray[j].resop != NFS4_OP_GETATTR)
+                        continue;
+		atok =
+		    &resoparray[j].nfs_resop4_u.opgetattr.GETATTR4res_u.resok4;
+                fattr4_to_tc_attrs(&atok->obj_attributes, attrs + i);
+		++i;
+	}
+        tcres.okay = true;
+
+exit:
+        free(argoparray);
+        free(resoparray);
+        free(fattr_blobs);
+        return tcres;
+}
+
 void fs_handle_ops_init(struct fsal_obj_ops *ops)
 {
 	ops->release = fs_hdl_release;
@@ -2925,6 +3132,7 @@ void fs_handle_ops_init(struct fsal_obj_ops *ops)
 	ops->openread = fs_openread;
 	ops->tc_read = ktcread;
 	ops->tc_write = ktcwrite;
+        ops->tc_getattrsv = tc_nfs4_getattrsv;
 	ops->root_lookup = fs_root_lookup;
 }
 
@@ -3237,3 +3445,4 @@ fsal_status_t fs_extract_handle(struct fsal_export *exp_hdl,
 	fh_desc->len = fh_size;
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
+

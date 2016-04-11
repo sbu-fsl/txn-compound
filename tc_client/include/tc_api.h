@@ -29,6 +29,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <time.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -197,6 +198,13 @@ typedef struct _tc_res
 	int err_no; /* error number of the failed operation */
 } tc_res;
 
+static inline tc_res tc_failure(int i, int err) {
+	tc_res res;
+	res.okay = false;
+	res.err_no = err;
+	return res;
+}
+
 /**
  * Read from one or more files.
  *
@@ -261,9 +269,9 @@ struct tc_attrs
 	uid_t uid;
 	gid_t gid;
 	dev_t rdev;
-	time_t atime;
-	time_t mtime;
-	time_t ctime;
+	struct timespec atime;
+	struct timespec mtime;
+	struct timespec ctime;
 };
 
 /**

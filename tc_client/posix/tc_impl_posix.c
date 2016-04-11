@@ -269,14 +269,20 @@ void copy_attrs(const struct stat *st, struct tc_attrs *attr_obj)
 	if (attr_obj->masks.has_rdev)
 		attr_obj->rdev = st->st_rdev;
 
-	if (attr_obj->masks.has_atime)
-		attr_obj->atime = st->st_atime;
+	if (attr_obj->masks.has_atime) {
+		attr_obj->atime.tv_sec = st->st_atime;
+		attr_obj->atime.tv_nsec = 0;
+	}
 
-	if (attr_obj->masks.has_mtime)
-		attr_obj->mtime = st->st_mtime;
+	if (attr_obj->masks.has_mtime) {
+		attr_obj->mtime.tv_sec = st->st_mtime;
+		attr_obj->mtime.tv_nsec = 0;
+	}
 
-	if (attr_obj->masks.has_ctime)
-		attr_obj->ctime = st->st_ctime;
+	if (attr_obj->masks.has_ctime) {
+		attr_obj->ctime.tv_sec = st->st_ctime;
+		attr_obj->ctime.tv_nsec = 0;
+	}
 }
 
 /**
@@ -391,10 +397,10 @@ static int helper_set_attrs(struct tc_attrs *attrs)
 		times[1].tv_sec = s.st_mtime;
 
 		if (attrs->masks.has_atime)
-			times[0].tv_sec = attrs->atime;
+			TIMESPEC_TO_TIMEVAL(&times[0], &attrs->atime);
 
 		if (attrs->masks.has_mtime)
-			times[1].tv_sec = attrs->mtime;
+			TIMEVAL_TO_TIMESPEC(&times[1], &attrs->mtime);
 
 		if (attrs->file.type == TC_FILE_PATH)
 			res = utimes(attrs->file.path, times);
@@ -693,13 +699,13 @@ tc_res posix_listdir(const char *dir, struct tc_attrs_masks masks,
 			cur_attr->rdev = st.st_rdev;
 
 		if (masks.has_atime)
-			cur_attr->atime = st.st_atime;
+			cur_attr->atime.tv_sec = st.st_atime;
 
 		if (masks.has_mtime)
-			cur_attr->mtime = st.st_mtime;
+			cur_attr->mtime.tv_sec = st.st_mtime;
 
 		if (masks.has_ctime)
-			cur_attr->ctime = st.st_ctime;
+			cur_attr->ctime.tv_sec = st.st_ctime;
 
 		(*count)++;
 	}

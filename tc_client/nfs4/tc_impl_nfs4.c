@@ -314,3 +314,19 @@ tc_res nfs4_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 	result.okay = true;
 	return result;
 }
+
+tc_res nfs4_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
+{
+	struct gsh_export *exp = op_ctx->export;
+	tc_res res;
+
+	res = exp->fsal_export->obj_ops->tc_getattrsv(attrs, count);
+
+	return res;
+}
+
+tc_res nfs4_mkdirv(tc_file *dir, mode_t *mode, int count, bool is_transaction)
+{
+	tc_res res;
+	return res;
+}
