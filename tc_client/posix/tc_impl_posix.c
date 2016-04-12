@@ -578,18 +578,18 @@ tc_res posix_remove_dirv(tc_file *dir, int count, bool is_transaction)
  * @is_transaction: whether to execute the compound as a transaction
  */
 
-tc_res posix_mkdirv(tc_file *dir, mode_t *mode, int count, bool is_transaction)
+tc_res posix_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)
 {
 	int i = 0;
 	tc_file *cur_dir = NULL;
 	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
 
 	while (i < count) {
-		cur_dir = dir + i;
+		cur_dir = &dirs[i].file;
 
 		assert(cur_dir->path != NULL);
 
-		if (mkdir(cur_dir->path, mode[i]) < 0) {
+		if (mkdir(cur_dir->path, dirs[i].mode) < 0) {
 			perror("");
 			result.okay = false;
 			result.err_no = errno;

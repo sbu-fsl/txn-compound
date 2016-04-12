@@ -22,6 +22,7 @@
 #define __TC_UTIL_TYPES_H__
 
 #include <stdlib.h>
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,6 +32,14 @@ typedef struct {
 	char *data;
 	size_t size;
 } buf_t;
+
+static inline buf_t new_buf(char *b, size_t s)
+{
+	buf_t buf;
+	buf.data = b;
+	buf.size = s;
+	return buf;
+}
 
 typedef struct {
 	const char *data;
@@ -42,6 +51,14 @@ static inline slice_t new_slice(const char *d, size_t s)
 	slice_t sl;
 	sl.data = d;
 	sl.size = s;
+	return sl;
+}
+
+static inline slice_t toslice(const char *d)
+{
+	slice_t sl;
+	sl.data = d;
+	sl.size = strlen(d);
 	return sl;
 }
 

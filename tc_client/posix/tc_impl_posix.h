@@ -106,7 +106,7 @@ tc_res posix_removev(tc_file *tc_files, int count, bool is_transaction);
 tc_res posix_listdir(const char *dir, struct tc_attrs_masks masks,
 		     int max_count, struct tc_attrs **contents, int *count);
 
-tc_res posix_mkdirv(tc_file *dir, mode_t *mode, int count, bool is_transaction);
+tc_res posix_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction);
 
 #ifdef __cplusplus
 }

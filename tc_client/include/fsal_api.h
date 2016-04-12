@@ -1326,6 +1326,15 @@ struct fsal_obj_ops {
 
 	tc_res (*tc_getattrsv)(struct tc_attrs *attrs, int count);
 
+/**
+ * @brief Create a list of directories.
+ *
+ * On success, the attributes and file handle of the newly created directories
+ * will be set in "dirs".  Note that the caller is responsible for freeing the
+ * file handles in the returned "dirs".
+ */
+	tc_res (*tc_mkdirv)(struct tc_attrs *dirs, int count);
+
 	fsal_status_t(*root_lookup) (struct fsal_obj_handle **handle);
 
 	fsal_status_t (*lookup_plus)(const char *path,

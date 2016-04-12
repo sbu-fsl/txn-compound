@@ -69,6 +69,9 @@ enum TC_FILETYPE {
 #define TC_FD_CWD -2
 #define TC_FD_ABS -3
 
+/* See http://lxr.free-electrons.com/source/include/linux/exportfs.h */
+#define FILEID_NFS_FH_TYPE 0x1001
+
 /**
  * "type" is one of the five file types; "fd" and "path_or_handle" depend on
  * the file type:
@@ -83,7 +86,8 @@ enum TC_FILETYPE {
  *	(b) TC_FDABS which means the "path_or_handle" is an absolute path.
  *
  *	3. When "type" is TC_FILE_HANDLE, "fd" is "mount_fd", and
- *	"path_or_handle" points to "struct file_handle".
+ *	"path_or_handle" points to "struct file_handle".  We expand the "type"
+ *	of "struct file_handle" to include FILEID_NFS_FH_TYPE.
  *
  *	4. When "type" is TC_FILE_CURRENT, the "current filehandle" on the NFS
  *	server side is used.  "fd" and "path" are ignored.
@@ -356,12 +360,21 @@ static inline bool tx_removev(tc_file *files, int count)
 	return res.okay;
 }
 
-tc_res tc_mkdirv(tc_file *dir, mode_t *mode, int count, bool is_transaction);
+/**
+ * Create one or more directories.
+ *
+ * @dirs [IN/OUT]: the directories and their attributes (mode, uid, gid) to be
+ * created.  Other attributes (timestamps etc.) of the newly created
+ * directories will be returned on success.
+ * @count [IN]: the count of the preceding "dirs" array
+ * @is_transaction [IN]: whether to execute the compound as a transaction
+ */
+tc_res tc_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction);
 
-static inline bool tx_mkdirv(tc_file *dir, mode_t *mode, int count,
+static inline bool tx_mkdirv(struct tc_attrs *dirs, int count,
 			     bool is_transaction)
 {
-	tc_res res = tc_mkdirv(dir, mode, count, is_transaction);
+	tc_res res = tc_mkdirv(dirs, count, is_transaction);
 	return res.okay;
 }
 

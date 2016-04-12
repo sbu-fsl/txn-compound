@@ -673,24 +673,19 @@ TYPED_TEST_P(TcTest, MakeDirectory)
 	mode_t mode[] = { S_IRWXU, S_IRUSR | S_IRGRP | S_IROTH,
 			  S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH };
 	const char *path[] = { "a", "b", "c" };
-
-	tc_file *file = (tc_file *)calloc(3, sizeof(tc_file));
+	struct tc_attrs dirs[3];
 
 	RemoveDir(path, 3);
 
 	while (i < 3) {
-
-		(file + i)->path = path[i];
-		(file + i)->type = TC_FILE_PATH;
-
+		dirs[i].file.path = path[i];
+		dirs[i].file.type = TC_FILE_PATH;
 		i++;
 	}
 
-	tc_res res = tc_mkdirv(file, mode, 3, false);
+	tc_res res = tc_mkdirv(dirs, 3, false);
 
 	EXPECT_TRUE(res.okay);
-
-	free(file);
 }
 
 /**

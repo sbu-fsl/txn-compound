@@ -117,12 +117,17 @@ tc_res tc_removev(tc_file *files, int count, bool is_transaction)
 	return posix_removev(files, count, is_transaction);
 }
 
-tc_res tc_mkdirv(tc_file *dir, mode_t *mode, int count, bool is_transaction)
+tc_res tc_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)
 {
+	int i;
+
+	for (i = 0; i < count; ++i) {
+		assert(dirs[i].masks.has_mode);
+	}
 	if (TC_IMPL_IS_NFS4) {
-		return nfs4_mkdirv(dir, mode, count, is_transaction);
+		return nfs4_mkdirv(dirs, count, is_transaction);
 	} else {
-		return posix_mkdirv(dir, mode, count, is_transaction);
+		return posix_mkdirv(dirs, count, is_transaction);
 	}
 }
 
