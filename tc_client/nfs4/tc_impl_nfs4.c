@@ -54,7 +54,6 @@ void *nfs4_init(const char *config_path, const char *log_path,
          * Blocks the signals the signal handler will handle.
          */
         sigemptyset(&signals_to_block);
-        sigaddset(&signals_to_block, SIGTERM);
         sigaddset(&signals_to_block, SIGHUP);
         sigaddset(&signals_to_block, SIGPIPE);
         if (pthread_sigmask(SIG_BLOCK, &signals_to_block, NULL) != 0)
