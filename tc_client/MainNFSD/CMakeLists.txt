@@ -111,6 +111,7 @@ target_link_libraries(tc_test_read
   ${PROTOCOLS}
   ${GANESHA_CORE}
   config_parsing
+  path_utils
   ${LIBTIRPC_LIBRARIES}
   ${SYSTEM_LIBRARIES}
   m

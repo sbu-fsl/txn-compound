@@ -9,6 +9,7 @@ set(path_utils_SRC
   path_utils.cpp
 )
 add_library(path_utils STATIC ${path_utils_SRC})
+set_target_properties(path_utils PROPERTIES POSITION_INDEPENDENT_CODE on)
 
 set(util_SRC
   bench.cpp

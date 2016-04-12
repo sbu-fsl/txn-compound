@@ -14,7 +14,7 @@ SET(fsalproxy_LIB_SRCS
 )
 
 add_library(fsalproxy SHARED ${fsalproxy_LIB_SRCS} ${fsal_CORE_SRCS})
-target_link_libraries(fsalproxy ntirpc ${SYSTEM_LIBRARIES})
+target_link_libraries(fsalproxy ntirpc path_utils ${SYSTEM_LIBRARIES})
 set_target_properties(fsalproxy PROPERTIES VERSION 4.2.0 SOVERSION 4)
 set_target_properties(fsalproxy PROPERTIES POSITION_INDEPENDENT_CODE on)
 install(TARGETS fsalproxy COMPONENT fsal DESTINATION  ${FSAL_DESTINATION} )
