@@ -104,13 +104,13 @@ int main(int argc, char *argv[])
 			dirs[n].file = tc_file_from_path(DIR_PATHS[i]);
 		}
 		fprintf(stderr, "prepare mkdir %s\n", dirs[n].file.path);
-		memset(&dirs[n].masks, sizeof(dirs[n].masks), 0);
+		memset(&dirs[n].masks, 0, sizeof(dirs[n].masks));
 		dirs[n].masks.has_mode = true;
-		dirs[n].mode = 0644;
+		dirs[n].mode = 0755;
 		dirs[n].masks.has_uid = true;
-		dirs[n].uid = 0;
+		dirs[n].uid = geteuid();
 		dirs[n].masks.has_gid = true;
-		dirs[n].gid = 0;
+		dirs[n].gid = getegid();
 		++n;
 	}
 	assert(n == N - res.index);
