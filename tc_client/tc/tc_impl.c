@@ -85,7 +85,11 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 
 tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
-	return posix_setattrsv(attrs, count, is_transaction);
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_setattrsv(attrs, count, is_transaction);
+	} else {
+		return posix_setattrsv(attrs, count, is_transaction);
+	}
 }
 
 void tc_free_attrs(struct tc_attrs *attrs, int count, bool free_path)

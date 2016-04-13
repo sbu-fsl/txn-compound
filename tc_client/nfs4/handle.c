@@ -1786,6 +1786,8 @@ static nfsstat4 get_nfs4_op_status(const nfs_resop4 *op_res)
         case NFS4_OP_GETATTR:
                 op_status = op_res->nfs_resop4_u.opgetattr.status;
                 break;
+        case NFS4_OP_SETATTR:
+                op_status = op_res->nfs_resop4_u.opsetattr.status;
         case NFS4_OP_PUTFH:
                 op_status = op_res->nfs_resop4_u.opputfh.status;
                 break;
@@ -2243,6 +2245,23 @@ static inline GETATTR4resok *tc_prepare_getattr(struct nfsoparray *nfsops,
 	nfsops->opcnt = n;
 
         return atok;
+}
+
+/**
+ * Set up the SETATTR operation.
+ */
+static inline SETATTR4res *tc_prepare_setattr(struct nfsoparray *nfsops,
+                                                const fattr4 *fattr)
+{
+        SETATTR4res *res;
+        int n = nfsops->opcnt;
+
+	res = &nfsops->resoparray[n].nfs_resop4_u.opsetattr;
+	nfsops->resoparray[n].nfs_resop4_u.opsetattr.attrsset = empty_bitmap;
+	COMPOUNDV4_ARG_ADD_OP_SETATTR(n, nfsops->argoparray, *fattr);
+        nfsops->opcnt = n;
+
+        return res;
 }
 
 /**
@@ -3236,6 +3255,75 @@ exit:
         return tcres;
 }
 
+static tc_res tc_nfs4_setattrsv(struct tc_attrs *attrs, int count)
+{
+        int rc;
+        tc_res tcres;
+        nfsstat4 cpd_status;
+	nfsstat4 op_status;
+        struct nfsoparray *nfsops;
+	fattr4 *new_fattrs;
+	int i = 0;      /* index of tc_iovec */
+	int j = 0;      /* index of NFS operations */
+        int n;          /* number of path compontents */
+        fattr4 *fattrs; /* input attrs to set */
+	char *fattr_blobs; /* an array of FATTR_BLOB_SZ-sized buffers */
+
+        NFS4_DEBUG("tc_nfs4_setattrsv");
+        nfsops = new_nfs_ops((MAX_DIR_DEPTH + 3) * count);
+        assert(nfsops);
+	fattrs = alloca(count * sizeof(fattr4));           /* on stack */
+        fattr_blobs = alloca(count * FATTR_BLOB_SZ);
+
+        for (i = 0; i < count; ++i) {
+                tc_attrs_to_fattr4(&attrs[i], &fattrs[i]);
+                rc = tc_set_current_fh(&attrs[i].file, nfsops, NULL);
+                if (rc < 0) {
+                        tcres = tc_failure(i, ERR_FSAL_INVAL);
+                        goto exit;
+                }
+                tc_prepare_setattr(nfsops, &fattrs[i]);
+                tc_prepare_getattr(nfsops, fattr_blobs + i * FATTR_BLOB_SZ);
+        }
+
+	rc = fs_nfsv4_call(op_ctx->creds, nfsops->opcnt, nfsops->argoparray,
+			   nfsops->resoparray, &cpd_status);
+        if (rc != RPC_SUCCESS) {
+                NFS4_ERR("rpc failued: %d", rc);
+                tcres = tc_failure(0, rc);
+                goto exit;
+        }
+
+        i = 0;
+        for (j = 0; j < nfsops->opcnt; ++j) {
+                op_status = get_nfs4_op_status(&nfsops->resoparray[j]);
+                if (op_status != NFS4_OK) {
+			NFS4_ERR("NFS operation (%d) failed: %d",
+				 nfsops->resoparray[j].resop, op_status);
+			tcres = tc_failure(i, op_status);
+                        goto exit;
+                }
+                switch (nfsops->resoparray[j].resop) {
+                case NFS4_OP_SETATTR:
+                        NFS4_DEBUG("SETATTR at %d succeeded", j);
+                        break;
+                case NFS4_OP_GETATTR:
+			new_fattrs = &nfsops->resoparray[j]
+					  .nfs_resop4_u.opgetattr.GETATTR4res_u
+					  .resok4.obj_attributes;
+			fattr4_to_tc_attrs(new_fattrs, attrs + i);
+                        ++i;
+                        break;
+                }
+        }
+
+        tcres.okay = true;
+
+exit:
+        del_nfs_ops(nfsops);
+        return tcres;
+}
+
 static struct file_handle *new_file_handle(int size)
 {
 	struct file_handle *fh = malloc(sizeof(*fh) + size);
@@ -3377,6 +3465,7 @@ void fs_handle_ops_init(struct fsal_obj_ops *ops)
 	ops->tc_read = ktcread;
 	ops->tc_write = ktcwrite;
         ops->tc_getattrsv = tc_nfs4_getattrsv;
+        ops->tc_setattrsv = tc_nfs4_setattrsv;
         ops->tc_mkdirv = tc_nfs4_mkdirv;
 	ops->root_lookup = fs_root_lookup;
 }

@@ -324,6 +324,16 @@ tc_res nfs4_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	return res;
 }
 
+tc_res nfs4_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
+{
+	struct gsh_export *exp = op_ctx->export;
+	tc_res res;
+
+	res = exp->fsal_export->obj_ops->tc_setattrsv(attrs, count);
+
+	return res;
+}
+
 tc_res nfs4_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)
 {
 	struct gsh_export *exp = op_ctx->export;

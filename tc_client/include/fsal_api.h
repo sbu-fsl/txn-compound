@@ -1326,6 +1326,8 @@ struct fsal_obj_ops {
 
 	tc_res (*tc_getattrsv)(struct tc_attrs *attrs, int count);
 
+	tc_res (*tc_setattrsv)(struct tc_attrs *attrs, int count);
+
 /**
  * @brief Create a list of directories.
  *
