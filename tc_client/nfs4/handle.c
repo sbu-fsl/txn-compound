@@ -1704,6 +1704,8 @@ static int construct_lookups(slice_t *comps, int compcnt,
         }
 
         for (i = 0; i < compcnt; ++i) {
+                if (comps[i].data[0] == '.' && comps[i].size == 1)
+                        continue;
 		COMPOUNDV4_ARG_ADD_OP_LOOKUPNAME(new_opcnt, argoparray,
 						 comps[i].data, comps[i].size);
 	}
@@ -1740,6 +1742,7 @@ static int tc_set_current_fh(const tc_file *tcf, struct nfsoparray *nfsops,
         int old_opcnt = nfsops->opcnt;
 
 	assert(tcf->type == TC_FILE_PATH); /* FIXME */
+        NFS4_DEBUG("Set current FH to %s", tcf->path);
 	n = tc_path_tokenize(tcf->path, &comps);
 	if (n < 0) {
 		NFS4_ERR("Cannot tokenize path: %s", tcf->path);
@@ -1776,6 +1779,18 @@ static nfsstat4 get_nfs4_op_status(const nfs_resop4 *op_res)
                 break;
         case NFS4_OP_CLOSE:
                 op_status = op_res->nfs_resop4_u.opclose.status;
+                break;
+        case NFS4_OP_CREATE:
+                op_status = op_res->nfs_resop4_u.opcreate.status;
+                break;
+        case NFS4_OP_GETATTR:
+                op_status = op_res->nfs_resop4_u.opgetattr.status;
+                break;
+        case NFS4_OP_PUTFH:
+                op_status = op_res->nfs_resop4_u.opputfh.status;
+                break;
+        case NFS4_OP_LOOKUPP:
+                op_status = op_res->nfs_resop4_u.oplookupp.status;
                 break;
         default:
                 NFS4_ERR("not supported operation: %d", op_res->resop);
@@ -2204,6 +2219,7 @@ static inline CREATE4resok *tc_prepare_mkdir(struct nfsoparray *nfsops,
         CREATE4resok *crok;
         int n = nfsops->opcnt;
 
+        NFS4_DEBUG("op (%d) of compound: mkdir(\"%s\")", n, name);
 	crok = &nfsops->resoparray[n].nfs_resop4_u.opcreate.CREATE4res_u.resok4;
 	crok->attrset = empty_bitmap;
 	COMPOUNDV4_ARG_ADD_OP_MKDIR(n, nfsops->argoparray, (char *)name, *fattr);
@@ -3066,9 +3082,8 @@ static fsal_status_t fs_close(struct fsal_obj_handle *obj_hdl)
 
 void tc_attrs_to_fattr4(const struct tc_attrs *tca, fattr4 *attr4)
 {
-        struct attrlist attrlist;
+        struct attrlist attrlist = {0};
 
-        attrlist.mask = 0;
         if (tca->masks.has_mode) {
                 attrlist.mask |= ATTR_MODE;
                 attrlist.mode = tca->mode;
@@ -3103,7 +3118,7 @@ void tc_attrs_to_fattr4(const struct tc_attrs *tca, fattr4 *attr4)
                 attrlist.ctime = tca->ctime;
         }
 
-        if (fs_fsalattr_to_fattr4(&attrlist, attr4) == 0) {
+        if (fs_fsalattr_to_fattr4(&attrlist, attr4) != 0) {
                 NFS4_ERR("cannot encode NFS attributes");
                 assert(false);
         }
@@ -3173,6 +3188,7 @@ static tc_res tc_nfs4_getattrsv(struct tc_attrs *attrs, int count)
         int n;          /* number of path compontents */
 	char *fattr_blobs; /* an array of FATTR_BLOB_SZ-sized buffers */
 
+        NFS4_DEBUG("tc_nfs4_getattrsv");
         assert(count >= 1);
         nfsops = new_nfs_ops((MAX_DIR_DEPTH + 3) * count);
         assert(nfsops);
@@ -3261,6 +3277,7 @@ static tc_res tc_nfs4_mkdirv(struct tc_attrs *dirs, int count)
         slice_t name;
 
         /* allocate space */
+        NFS4_DEBUG("making %d directories", count);
         assert(count >= 1);
         nfsops = new_nfs_ops((MAX_DIR_DEPTH + 3) * count);
         assert(nfsops);

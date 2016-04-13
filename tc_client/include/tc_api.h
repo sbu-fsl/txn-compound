@@ -205,6 +205,7 @@ typedef struct _tc_res
 static inline tc_res tc_failure(int i, int err) {
 	tc_res res;
 	res.okay = false;
+	res.index = i;
 	res.err_no = err;
 	return res;
 }
