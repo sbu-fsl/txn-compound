@@ -102,6 +102,11 @@ Examples
 A simple example of using TC library is
 [tc_client/MainNFSD/tc_test_read.c](tc_client/MainNFSD/tc_test_read.c)
 
+An example of creating a deep directory and all its ancestor directories is
+[tc_client/MainNFSD/tc_test_mkdir.c](tc_client/MainNFSD/tc_test_mkdir.c).  TC
+enables us to achieves this with only two RPCs.
+
+
 LICENSE
 =======
 Most code in this repo has [LGPL license](tc_client/LICENSE.txt).  However, a
