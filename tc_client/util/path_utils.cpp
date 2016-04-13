@@ -235,6 +235,9 @@ int tc_path_rebase(const char *base, const char *path, char *buf, int buf_size)
 	for (Slice s : relative_comps) {
 		size = tc_path_join_impl(buf, buf_size, Slice(buf, size), s);
 	}
+	if (size == 0) {
+		buf[size++] = '.';
+	}
 	buf[size] = 0;
 	return size;
 }

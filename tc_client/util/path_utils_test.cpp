@@ -136,6 +136,7 @@ TEST(PathUtilsTest, JoinTest) {
 		}
 	};
 
+	Expect("", "/a", "/a");
 	Expect(".", "a", "a");
 	Expect("a", "b", "a/b");
 	Expect("..", "b", "../b");
