@@ -162,3 +162,21 @@ TEST(PathUtilsTest, RebaseTest) {
 	Expect("/a/b/c/d/e", "/a/b/c", "../..");
 	Expect("/a/b/c/d/e", "/a/b/c/d/f", "../f");
 }
+
+TEST(PathUtilsTest, AppendTest) {
+	buf_t *pbuf = new_auto_buf(1024);
+	tc_path_append(pbuf, toslice("a"));
+	EXPECT_STREQ(asstr(pbuf), "a");
+
+	buf_reset(pbuf);
+	tc_path_append(pbuf, toslice("a"));
+	tc_path_append(pbuf, toslice("b"));
+	tc_path_append(pbuf, toslice("c"));
+	EXPECT_STREQ(asstr(pbuf), "a/b/c");
+
+	buf_reset(pbuf);
+	tc_path_append(pbuf, toslice("/a"));
+	EXPECT_STREQ(asstr(pbuf), "/a");
+	tc_path_append(pbuf, toslice("//b"));
+	EXPECT_STREQ(asstr(pbuf), "/a/b");
+}

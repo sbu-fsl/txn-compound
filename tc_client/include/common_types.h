@@ -45,7 +45,7 @@ typedef struct {
 		.capacity = (c), .size = 0ULL, .data = (b),                    \
 	}
 
-static inline buf_t tobuf(char *b, size_t c)
+static inline buf_t mkbuf(char *b, size_t c)
 {
 	buf_t buf = BUF_INITIALIZER(b, c);
 	return buf;
@@ -142,7 +142,7 @@ static inline bool buf_append_null(buf_t *pbuf)
 		--pbuf->size;
 		--res;
 	}
-	return res;
+	return res >= 0;
 }
 
 static inline char *asstr(buf_t *pbuf)

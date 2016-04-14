@@ -138,37 +138,25 @@ int tc_path_distance(const char *src, const char *dst)
 	return tc_path_distance_s(toslice(src), toslice(dst));
 }
 
-static int tc_path_join_impl(buf_t *pbuf, Slice s1, Slice s2)
+static int tc_path_append_impl(buf_t *pbuf, slice_t comp)
 {
-	if (s1.empty()) {
-		buf_append_slice(pbuf, s2.toslice());
-		return s2.size();
+	if (comp.size == 0) {
+		return 0;
 	}
-	if (s2.empty()) {
-		buf_append_slice(pbuf, s1.toslice());
-		return s1.size();
-	}
-
-	s1.rtrim('/');
-	s2.ltrim('/');
-
-	int len = s1.size() + s2.size() + 1;
-	if (len >= buf_remaining(pbuf))
+	if (comp.size > buf_remaining(pbuf)) {
 		return -1;
-
-	buf_append_slice(pbuf, s1.toslice());
-	buf_append_char(pbuf, '/');
-	buf_append_slice(pbuf, s2.toslice());
-
-	return len;
+	}
+	if (pbuf->size != 0) {
+		buf_append_char(pbuf, '/');
+	}
+	buf_append_slice(pbuf, comp);
 }
 
 int tc_path_join_s(slice_t path1, slice_t path2, buf_t *pbuf)
 {
-	int n = tc_path_join_impl(pbuf, path1, path2);
-	slice_t sl = asslice(pbuf);
-	n = tc_path_normalize_s(sl, buf_reset(pbuf));
-	return n;
+	tc_path_append_impl(pbuf, path1);
+	tc_path_append_impl(pbuf, path2);
+	return tc_path_normalize(asstr(pbuf), pbuf->data, pbuf->capacity);
 }
 
 int tc_path_join(const char *path1, const char *path2, char *buf,
@@ -185,6 +173,12 @@ int tc_path_join(const char *path1, const char *path2, char *buf,
 	buf_append_null(&bf);
 
 	return n;
+}
+
+int tc_path_append(buf_t *pbuf, slice_t comp)
+{
+	tc_path_append_impl(pbuf, comp);
+	return tc_path_normalize(asstr(pbuf), pbuf->data, pbuf->capacity);
 }
 
 int tc_path_normalize_s(slice_t path, buf_t *pbuf)
