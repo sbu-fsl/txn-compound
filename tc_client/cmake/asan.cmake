@@ -10,7 +10,7 @@
 #
 
 # uncomment this to use tsan all the time
-SET(USE_ASAN ON)
+#SET(USE_ASAN ON)
 
 if (USE_ASAN)
   execute_process(COMMAND ${CMAKE_C_COMPILER} -dumpversion OUTPUT_VARIABLE
