@@ -24,6 +24,7 @@
                     /* otherwise infinite loop in
                      * std::ostream& operator<<(std::ostream& oss, const Slice& a)
                      */
+#include "common_types.h"
 
 namespace util {
 
@@ -38,6 +39,9 @@ class Slice {
   // Create a slice that refers to the contents of "s"
   // NOLINTNEXTLINE
   Slice(const std::string& s) : data_(s.data()), size_(s.size()) { }
+
+  // NOLINTNEXTLINE
+  Slice(const slice_t& s) : data_(s.data), size_(s.size) { }
 
   // Create a slice that refers to s[0,strlen(s)-1]
   // NOLINTNEXTLINE
@@ -88,6 +92,8 @@ class Slice {
     ltrim(c);
     return *this;
   }
+
+  slice_t toslice() const { return mkslice(data_, size_); }
 
   // Return a string that contains the copy of the referenced data.
   std::string ToString() const { return std::string(data_, size_); }

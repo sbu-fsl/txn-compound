@@ -52,7 +52,8 @@ static std::vector<Slice> tc_get_path_components(Slice path)
 				else
 					components.push_back(comp);
 			}
-		} else if (comp != "/" && comp != ".") { // ignore '/', and "."
+		} else if (!comp.empty() && comp != "/" && comp != ".") {
+			// ignore '/', and "."
 			components.push_back(comp);
 		}
 		beg = ++end;
@@ -61,17 +62,15 @@ static std::vector<Slice> tc_get_path_components(Slice path)
 	return components;
 }
 
-int tc_path_tokenize(const char *path, slice_t **components)
+int tc_path_tokenize_s(slice_t path, slice_t **components)
 {
-	if (path == NULL || strnlen(path, TC_PATH_MAX) >= TC_PATH_MAX)
-		return -1;
 	std::vector<Slice> comps = tc_get_path_components(path);
+	if (components == NULL) {
+		return comps.size();
+	}
 	if (comps.empty()) {
 		*components = NULL;
 		return 0;
-	}
-	if (components == NULL) {
-		return comps.size();
 	}
 	slice_t *sls = (slice_t *)malloc(sizeof(slice_t) * comps.size());
 	if (!sls) {
@@ -85,7 +84,15 @@ int tc_path_tokenize(const char *path, slice_t **components)
 	return comps.size();
 }
 
-int tc_path_depth(const char *path)
+int tc_path_tokenize(const char *path, slice_t **components)
+{
+	size_t n;
+	if (path == NULL || (n = strnlen(path, TC_PATH_MAX)) >= TC_PATH_MAX)
+		return -1;
+	return tc_path_tokenize_s(mkslice(path, n), components);
+}
+
+int tc_path_depth_s(slice_t path)
 {
 	std::vector<Slice> comps = tc_get_path_components(path);
 	int depth;
@@ -97,14 +104,19 @@ int tc_path_depth(const char *path)
 	return depth;
 }
 
-int tc_path_distance(const char *src, const char *dst)
+int tc_path_depth(const char *path)
 {
-	assert(dst);
-	if (dst[0] != '/') {
+	return tc_path_depth_s(toslice(path));
+}
+
+int tc_path_distance_s(slice_t src, slice_t dst)
+{
+	assert(dst.size > 0);
+	if (dst.data[0] != '/') {
 		auto comps = tc_get_path_components(dst);
 		return comps.size();
 	}
-	assert(src && src[0] == '/');
+	assert(src.size > 0 && src.data[0] == '/');
 	std::vector<Slice> src_comps = tc_get_path_components(src);
 	std::vector<Slice> dst_comps = tc_get_path_components(dst);
 	int src_len = src_comps.size();
@@ -121,40 +133,46 @@ int tc_path_distance(const char *src, const char *dst)
 	return src_len - l + dst_len - l;
 }
 
-static inline char *copy_slice(char *buf, Slice s)
+int tc_path_distance(const char *src, const char *dst)
 {
-	if (buf != s.data()) {
-		memmove(buf, s.data(), s.size());
-	}
-	return buf + s.size();
+	return tc_path_distance_s(toslice(src), toslice(dst));
 }
 
-static int tc_path_join_impl(char *buf, int buf_size, Slice s1, Slice s2)
+static int tc_path_join_impl(buf_t *pbuf, Slice s1, Slice s2)
 {
 	if (s1.empty()) {
-		copy_slice(buf, s2);
+		buf_append_slice(pbuf, s2.toslice());
 		return s2.size();
 	}
 	if (s2.empty()) {
-		copy_slice(buf, s1);
+		buf_append_slice(pbuf, s1.toslice());
 		return s1.size();
 	}
 
 	s1.rtrim('/');
 	s2.ltrim('/');
 
-	if (s1.size() + s2.size() + 1 >= buf_size)
+	int len = s1.size() + s2.size() + 1;
+	if (len >= buf_remaining(pbuf))
 		return -1;
 
-	char *p = buf;
-	p = copy_slice(p, s1);
-	*p++ = '/';
-	p = copy_slice(p, s2);
+	buf_append_slice(pbuf, s1.toslice());
+	buf_append_char(pbuf, '/');
+	buf_append_slice(pbuf, s2.toslice());
 
-	return (p - buf);
+	return len;
 }
 
-int tc_path_join(const char *path1, const char *path2, char *buf, int buf_size)
+int tc_path_join_s(slice_t path1, slice_t path2, buf_t *pbuf)
+{
+	int n = tc_path_join_impl(pbuf, path1, path2);
+	slice_t sl = asslice(pbuf);
+	n = tc_path_normalize_s(sl, buf_reset(pbuf));
+	return n;
+}
+
+int tc_path_join(const char *path1, const char *path2, char *buf,
+		 size_t buf_size)
 {
 	int len1 = strnlen(path1, TC_PATH_MAX);
 	int len2 = strnlen(path2, TC_PATH_MAX);
@@ -162,44 +180,47 @@ int tc_path_join(const char *path1, const char *path2, char *buf, int buf_size)
 	if (len1 >= TC_PATH_MAX || len2 >= TC_PATH_MAX)
 		return -1;
 
-	Slice p1(path1, len1);
-	Slice p2(path2, len2);
+	buf_t bf = BUF_INITIALIZER(buf, buf_size);
+	int n = tc_path_join_s(mkslice(path1, len1), mkslice(path2, len2), &bf);
+	buf_append_null(&bf);
 
-	int n = tc_path_join_impl(buf, buf_size, p1, p2);
-	buf[n] = 0;
-
-	n = tc_path_normalize(buf, buf, buf_size);
 	return n;
+}
+
+int tc_path_normalize_s(slice_t path, buf_t *pbuf)
+{
+	std::vector<Slice> components = tc_get_path_components(path);
+	if (components.empty()) {
+		buf_append_char(pbuf, path.data[0] == '/' ? '/' : '.');
+		return 1;
+	}
+
+	int old_size = pbuf->size;
+	if (path.data[0] == '/') {
+		buf_append_char(pbuf, '/');
+	}
+
+	for (int i = 0; i < components.size(); ++i) {
+		if (i > 0) buf_append_char(pbuf, '/');
+		buf_append_slice(pbuf, components[i].toslice());
+	}
+	return pbuf->size - old_size;
 }
 
 int tc_path_normalize(const char *path, char *buf, size_t buf_size)
 {
-	if (!path || strnlen(path, TC_PATH_MAX) >= TC_PATH_MAX || buf_size <= 1)
+	int plen;
+	if (!path || (plen = strnlen(path, TC_PATH_MAX)) >= TC_PATH_MAX ||
+	    buf_size <= 1)
 		return -1;
 
-	std::vector<Slice> components = tc_get_path_components(path);
-	if (components.empty()) {
-		buf[0] = path[0] == '/' ? '/' : '.';
-		buf[1] = 0;
-		return 1;
-	}
-
-	char *p = buf;
-	int plen = 0;
-	if (*path == '/') {
-		*p = '/';
-		++plen;
-	}
-	for (Slice s : components) {
-		//std::cout << "comp: " << s  << ", " << s.size() << std::endl;
-		plen = tc_path_join_impl(p, buf_size, Slice(p, plen), s);
-		//std::cout << "path: " << path << ", " << plen << std::endl;
-	}
-	buf[plen] = 0;
-	return plen;
+	buf_t bf = BUF_INITIALIZER(buf, buf_size);
+	int n = tc_path_normalize_s(mkslice(path, plen), &bf);
+	buf_append_null(&bf);
+	return n;
 }
 
-int tc_path_rebase(const char *base, const char *path, char *buf, int buf_size)
+int tc_path_rebase_s(slice_t base, slice_t path, buf_t *pbuf)
 {
 	std::vector<Slice> base_comps = tc_get_path_components(base);
 	std::vector<Slice> path_comps = tc_get_path_components(path);
@@ -210,10 +231,8 @@ int tc_path_rebase(const char *base, const char *path, char *buf, int buf_size)
 	int dist = base_comps.size() - l + path_comps.size() - l;
 	if (dist >= path_comps.size()) {
 		// No need to rebase
-		if (buf != path) {
-			strncpy(buf, path, buf_size);
-		}
-		return strlen(buf);
+		buf_append_slice(pbuf, path);
+		return path.size;
 	}
 
 	std::vector<Slice> relative_comps;
@@ -227,17 +246,28 @@ int tc_path_rebase(const char *base, const char *path, char *buf, int buf_size)
 		result_size += path_comps[j].size();
 	}
 	result_size += relative_comps.size() - 1;  // count "/"s
-	if (result_size >= buf_size) {
+	if (result_size > buf_remaining(pbuf)) {
 		return -1;  // buffer too small
 	}
 
-	int size = 0;
-	for (Slice s : relative_comps) {
-		size = tc_path_join_impl(buf, buf_size, Slice(buf, size), s);
+	size_t size = 0;
+	for (int i = 0; i < relative_comps.size(); ++i) {
+		if (i > 0) size += buf_append_char(pbuf, '/');
+		size += buf_append_slice(pbuf, relative_comps[i].toslice());
 	}
-	if (size == 0) {
-		buf[size++] = '.';
+	if (size == 0) {  // empty
+		size += buf_append_char(pbuf, '.');
 	}
-	buf[size] = 0;
 	return size;
+}
+
+int tc_path_rebase(const char *base, const char *path, char *buf,
+		   size_t buf_size)
+{
+	buf_t bf = BUF_INITIALIZER(buf, buf_size);
+
+	int n = tc_path_rebase_s(toslice(base), toslice(path), &bf);
+	buf_append_null(&bf);
+
+	return n;
 }

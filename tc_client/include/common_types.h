@@ -21,6 +21,7 @@
 #ifndef __TC_UTIL_TYPES_H__
 #define __TC_UTIL_TYPES_H__
 
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -39,38 +40,36 @@ typedef struct {
 	const char *data;
 } slice_t;
 
+#define BUF_INITIALIZER(b, c)                                                  \
+	{                                                                      \
+		.capacity = (c), .size = 0ULL, .data = (b),                    \
+	}
+
 static inline buf_t tobuf(char *b, size_t c)
 {
-	buf_t buf = {
-		.capacity = c,
-		.size = 0,
-		.data = b,
-	};
+	buf_t buf = BUF_INITIALIZER(b, c);
 	return buf;
+}
+
+static inline buf_t *init_buf(void *rawbuf, size_t c)
+{
+	if (!rawbuf)
+		return NULL;
+	buf_t *pbuf = (buf_t *)rawbuf;
+	*((size_t *)&pbuf->capacity) = c;
+	pbuf->size = 0;
+	pbuf->data = ((char *)rawbuf) + sizeof(buf_t);
+	return pbuf;
 }
 
 static inline buf_t *new_buf(size_t c)
 {
-	char *buf = (char *)malloc(sizeof(buf_t) + c);
-	buf_t *pbuf = (buf_t *)buf;
-	*((size_t *)&pbuf->capacity) = c;
-	pbuf->size = 0;
-	pbuf->data = buf + sizeof(buf_t);
-	return pbuf;
+	return init_buf(malloc(sizeof(buf_t) + c), c);
 }
 
 static void del_buf(buf_t *pbuf)
 {
 	free(pbuf);
-}
-
-static inline buf_t *_init_auto_buf_(void *autobuf, size_t c)
-{
-	buf_t *abuf = (buf_t *)autobuf;
-	*((size_t *)&abuf->capacity) = c;
-	abuf->size = 0;
-	abuf->data = ((char *)autobuf) + sizeof(buf_t);
-	return abuf;
 }
 
 /**
@@ -81,7 +80,7 @@ static inline buf_t *_init_auto_buf_(void *autobuf, size_t c)
  *
  * Note: "c" must NOT be an expression with side-effects like "++i".
  */
-#define new_auto_buf(c) _init_auto_buf_(alloca((c) + sizeof(buf_t)), (c))
+#define new_auto_buf(c) init_buf(alloca((c) + sizeof(buf_t)), (c))
 
 static inline slice_t mkslice(const char *d, size_t s)
 {
@@ -95,11 +94,12 @@ static inline slice_t toslice(const char *d)
 {
 	slice_t sl;
 	sl.data = d;
-	sl.size = strlen(d);
+	sl.size = d ? strlen(d) : 0;
 	return sl;
 }
 
-static inline slice_t asslice(const buf_t *pbuf) {
+static inline slice_t asslice(const buf_t *pbuf)
+{
 	return mkslice(pbuf->data, pbuf->size);
 }
 
@@ -108,7 +108,8 @@ static inline int buf_append_slice(buf_t *pbuf, slice_t sl)
 	if (pbuf->size + sl.size > pbuf->capacity) {
 		return -1;
 	}
-	memmove(pbuf->data + pbuf->size, sl.data, sl.size);
+	if (pbuf->data + pbuf->size != sl.data)
+		memmove(pbuf->data + pbuf->size, sl.data, sl.size);
 	pbuf->size += sl.size;
 	return sl.size;
 }
@@ -121,6 +122,48 @@ static inline int buf_append_str(buf_t *pbuf, const char *s)
 static inline int buf_append_buf(buf_t *dst, const buf_t *src)
 {
 	return buf_append_slice(dst, asslice(src));
+}
+
+static inline int buf_append_char(buf_t *pbuf, char c)
+{
+	if (pbuf->capacity <= pbuf->size) {
+		assert(pbuf->capacity == pbuf->size);
+		return -1;
+	}
+	pbuf->data[pbuf->size++] = c;
+	return 1;
+}
+
+static inline bool buf_append_null(buf_t *pbuf)
+{
+	int res = buf_append_char(pbuf, 0);
+	if (res >= 0) {
+		// The ending '\0' should not be counted.
+		--pbuf->size;
+		--res;
+	}
+	return res;
+}
+
+static inline char *asstr(buf_t *pbuf)
+{
+	return buf_append_null(pbuf) ? pbuf->data : NULL;
+}
+
+static inline char *buf_end(buf_t *pbuf)
+{
+	return pbuf->data + pbuf->size;
+}
+
+static inline int buf_remaining(const buf_t *pbuf)
+{
+	return pbuf->capacity - pbuf->size;
+}
+
+static inline buf_t *buf_reset(buf_t *pbuf)
+{
+	pbuf->size = 0;
+	return pbuf;
 }
 
 #ifdef __cplusplus
