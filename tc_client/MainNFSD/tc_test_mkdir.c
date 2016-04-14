@@ -21,6 +21,9 @@
  * This is an example showing how to create a deep directory with only two NFS
  * RPCs using the TC API (see tc_client/include/tc_api.h).
  *
+ * It has the same effect as bash command "mkdir -p /vfs0/a/b/c/d/e". The TC
+ * API has a helper function that has the same effects: tc_ensure_dir().
+ *
  * @file tc_test_mkdir.c
  * @brief Test creating a deep directoriy and all its ancestory directories.
  *
@@ -35,7 +38,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
-#include <signal.h>		/* for sigaction */
 #include <errno.h>
 #include "../nfs4/nfs4_util.h"
 #include "common_types.h"
@@ -78,7 +80,7 @@ int main(int argc, char *argv[])
 	/* Setup getattrs */
 	for (i = 0; i < N; ++i) {
 		dirs[i].file = tc_file_from_path(DIR_PATHS[i]);
-		memset(&dirs[i].masks, sizeof(dirs[i].masks), 0);
+		memset(&dirs[i].masks, 0, sizeof(dirs[i].masks));
 	}
 
 	res = tc_getattrsv(dirs, N, false);
@@ -99,18 +101,11 @@ int main(int argc, char *argv[])
 			continue;
 		} else if (i == res.index) {
 			tc_path_join(prefix, DIR_PATHS[i], prefix, PATH_MAX);
-			dirs[n].file = tc_file_from_path(prefix);
+			tc_set_up_creation(&dirs[n], prefix, 0755);
 		} else {
-			dirs[n].file = tc_file_from_path(DIR_PATHS[i]);
+			tc_set_up_creation(&dirs[n], DIR_PATHS[i], 0755);
 		}
 		fprintf(stderr, "prepare mkdir %s\n", dirs[n].file.path);
-		memset(&dirs[n].masks, 0, sizeof(dirs[n].masks));
-		dirs[n].masks.has_mode = true;
-		dirs[n].mode = 0755;
-		dirs[n].masks.has_uid = true;
-		dirs[n].uid = geteuid();
-		dirs[n].masks.has_gid = true;
-		dirs[n].gid = getegid();
 		++n;
 	}
 	assert(n == N - res.index);

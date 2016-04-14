@@ -82,6 +82,8 @@ static void del_buf(buf_t *pbuf)
  */
 #define new_auto_buf(c) init_buf(alloca((c) + sizeof(buf_t)), (c))
 
+#define new_auto_str(sl) strndupa(sl.data, sl.size)
+
 static inline slice_t mkslice(const char *d, size_t s)
 {
 	slice_t sl;

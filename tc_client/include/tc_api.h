@@ -30,6 +30,8 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <time.h>
+#include <unistd.h>
+#include "common_types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -279,6 +281,19 @@ struct tc_attrs
 	struct timespec ctime;
 };
 
+static inline void tc_set_up_creation(struct tc_attrs *newobj, const char *name,
+				      mode_t mode)
+{
+	newobj->file = tc_file_from_path(name);
+	memset(&newobj->masks, 0, sizeof(struct tc_attrs_masks));
+	newobj->masks.has_mode = true;
+	newobj->mode = mode;
+	newobj->masks.has_uid = true;
+	newobj->uid = geteuid();
+	newobj->masks.has_gid = true;
+	newobj->gid = getegid();
+}
+
 /**
  * Get attributes of file objects.
  *
@@ -469,6 +484,14 @@ static inline bool tx_write_adb(struct tc_adb *patterns, int count)
 	tc_res res = tc_write_adb(patterns, count, true);
 	return res.okay;
 }
+
+/**
+ * Create the specified directory and all its ancestor directories.
+ * When "leaf" is NULL, "dir" is considered the full path of the target
+ * directory; when "leaf" is not NULL, the parent of "dir" is the target
+ * directory, and leaf will be set to the name of the leaf node.
+ */
+tc_res tc_ensure_dir(const char *dir, mode_t mode, slice_t *leaf);
 
 #ifdef __cplusplus
 }

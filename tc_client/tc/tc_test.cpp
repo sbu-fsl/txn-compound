@@ -80,7 +80,8 @@ static void RemoveDir(const char **path, int count)
 
 	while (i < count) {
 		r = rmdir(path[i]);
-		EXPECT_TRUE(r == 0 || r == ENOENT);
+		EXPECT_TRUE(r == 0 || r == ENOENT)
+		    << "error removing dirs: " << strerror(r);
 		i++;
 	}
 }
@@ -678,8 +679,7 @@ TYPED_TEST_P(TcTest, MakeDirectory)
 	RemoveDir(path, 3);
 
 	while (i < 3) {
-		dirs[i].file.path = path[i];
-		dirs[i].file.type = TC_FILE_PATH;
+		tc_set_up_creation(&dirs[i], path[i], 0755);
 		i++;
 	}
 
@@ -841,5 +841,6 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   SuccesiveReads,
 			   SuccesiveWrites);
 
-typedef ::testing::Types<TcPosixImpl, TcNFS4Impl> TcImpls;
+//typedef ::testing::Types<TcPosixImpl, TcNFS4Impl> TcImpls;
+typedef ::testing::Types<TcPosixImpl> TcImpls;
 INSTANTIATE_TYPED_TEST_CASE_P(TC, TcTest, TcImpls);

@@ -17,6 +17,7 @@
  * 02110-1301 USA
  */
 
+#include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/time.h>
@@ -24,6 +25,7 @@
 #include "tc_api.h"
 #include "posix/tc_impl_posix.h"
 #include "nfs4/tc_impl_nfs4.h"
+#include "path_utils.h"
 
 static tc_res TC_OKAY = { .okay = true, .index = -1, .err_no = 0, };
 
@@ -133,6 +135,71 @@ tc_res tc_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)
 	} else {
 		return posix_mkdirv(dirs, count, is_transaction);
 	}
+}
+
+tc_res tc_ensure_dir(const char *dir, mode_t mode, slice_t *leaf)
+{
+	tc_res tcres = TC_OKAY;
+	slice_t *comps;
+	struct tc_attrs *dirs;
+	buf_t *prefix;
+	int i;
+	int n;
+	int absent;
+
+	n = tc_path_tokenize(dir, &comps);
+	if (n < 0) {
+		return tc_failure(0, -n);
+	}
+
+	if (leaf) {
+		*leaf = comps[--n];
+	}
+
+	if (n == 0) {
+		goto exit;
+	}
+
+	dirs = alloca(n * sizeof(*dirs));
+	for (i = 0; i < n; ++i) {
+		dirs[i].file = tc_file_from_path(new_auto_str(comps[i]));
+	}
+
+	tcres = tc_getattrsv(dirs, n, false);
+	if (!tcres.okay && tcres.err_no != ENOENT) {
+		goto exit;
+	}
+
+	prefix = new_auto_buf(strlen(dir));
+	absent = 0;
+	for (i = 0; i < n; ++i) {
+		if (i < tcres.index) {
+			tc_path_append(prefix, comps[i]);
+			continue;
+		} else if (i == tcres.index) {
+			tc_path_append(prefix, comps[i]);
+			dirs[n].file = tc_file_from_path(asstr(prefix));
+		} else {
+			tc_set_up_creation(&dirs[n], new_auto_str(comps[i]),
+					   mode);
+		}
+		++absent;
+	}
+
+	if (absent == 0)
+		goto exit;
+
+	tcres = tc_mkdirv(dirs, absent, false);
+	for (i = 0; i < absent; ++i) {
+		if (tcres.okay || i < tcres.index) {
+			assert(dirs[i].file.type == TC_FILE_HANDLE);
+			free((void *)dirs[i].file.handle);
+		}
+	}
+
+exit:
+	free(comps);
+	return tcres;
 }
 
 tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
