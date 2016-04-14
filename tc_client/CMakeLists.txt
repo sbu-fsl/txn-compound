@@ -227,6 +227,8 @@ set(MODULES_PATH ${CMAKE_INSTALL_PREFIX}
 # Enable GCC Thread-sanitizer
 option(USE_TSAN "Enable GCC Thread-Sanitizer" OFF)
 
+option(USE_ASAN "Enable GCC Address-Sanitizer" OFF)
+
 # Choose a shortcut build config
 
 IF(BUILD_CONFIG)
@@ -843,6 +845,7 @@ message(STATUS "FSAL_DESTINATION = ${FSAL_DESTINATION}")
 message(STATUS "USE_ADMIN_TOOLS = ${USE_ADMIN_TOOLS}")
 message(STATUS "MODULES_PATH = ${MODULES_PATH}")
 message(STATUS "USE_TSAN = ${USE_TSAN}")
+message(STATUS "USE_ASAN = ${USE_ASAN}")
 
 #force command line options to be stored in cache
 set(USE_FSAL_VFS ${USE_FSAL_VFS}
@@ -960,6 +963,11 @@ set(USE_TSAN ${USE_TSAN}
   "Enable GCC Thread-Sanitizer"
   FORCE)
 
+set(USE_ASAN ${USE_ASAN}
+  CACHE BOOL
+  "Enable GCC Address-Sanitizer"
+  FORCE)
+
 # Now create a useable config.h
 configure_file(
   "${PROJECT_SOURCE_DIR}/include/config-h.in.cmake"
@@ -1055,3 +1063,4 @@ endif(DOXYGEN_FOUND)
 
 # Include thread-sanitizer module
 include(${CMAKE_SOURCE_DIR}/cmake/tsan.cmake)
+include(${CMAKE_SOURCE_DIR}/cmake/asan.cmake)
