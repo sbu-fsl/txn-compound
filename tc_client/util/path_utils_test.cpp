@@ -157,6 +157,7 @@ TEST(PathUtilsTest, RebaseTest) {
 					<< " instead of " << path;
 	};
 	Expect("a", "a", ".");
+	Expect("a", "b", "../b");
 	Expect("a", "a/b", "b");
 	Expect("/a/b/", "/a/b/c/d", "c/d");
 	Expect("/a/b/c/d/e", "/a/b/c", "../..");

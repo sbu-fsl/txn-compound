@@ -222,12 +222,6 @@ int tc_path_rebase_s(slice_t base, slice_t path, buf_t *pbuf)
 	while (l < base_comps.size() && l < path_comps.size() &&
 	       base_comps[l] == path_comps[l])
 		++l;
-	int dist = base_comps.size() - l + path_comps.size() - l;
-	if (dist >= path_comps.size()) {
-		// No need to rebase
-		buf_append_slice(pbuf, path);
-		return path.size;
-	}
 
 	std::vector<Slice> relative_comps;
 	int result_size = 0;

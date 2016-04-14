@@ -92,6 +92,7 @@ int tc_path_rebase_s(slice_t base, slice_t path, buf_t *pbuf);
  */
 int tc_path_join(const char *path1, const char *path2, char *buf, size_t buf_size);
 int tc_path_join_s(slice_t path1, slice_t path2, buf_t *pbuf);
+int tc_path_append(buf_t *pbuf, slice_t comp);
 
 #ifdef __cplusplus
 }
