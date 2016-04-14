@@ -33,6 +33,7 @@
 #include "fsal.h"
 #include <assert.h>
 #include <pthread.h>
+#include <errno.h>
 #include <arpa/inet.h>
 #include <sys/poll.h>
 #include <sys/types.h>
@@ -142,6 +143,24 @@ struct fs_obj_handle {
 static struct fs_obj_handle *fs_alloc_handle(struct fsal_export *exp,
 					       const nfs_fh4 *fh,
 					       const struct attrlist *attr);
+
+static int nfsstat4_to_errno(nfsstat4 nfsstat)
+{
+	if (nfsstat <= NFS4ERR_MLINK) { /* 31 */
+		return nfsstat;
+	} else if (nfsstat == NFS4ERR_NAMETOOLONG) { /* 63 */
+		return ENAMETOOLONG;
+	} else if (nfsstat == NFS4ERR_NOTEMPTY) { /* 66 */
+		return ENOTEMPTY;
+	} else if (nfsstat == NFS4ERR_DQUOT) { /* 69 */
+		return EDQUOT;
+	} else if (nfsstat == NFS4ERR_STALE) { /* 70 */
+		return ESTALE;
+        } else {
+		assert(nfsstat >= NFS4ERR_BADHANDLE); /* 10001 */
+		return EREMOTEIO;
+        }
+}
 
 static fsal_status_t nfsstat4_to_fsal(nfsstat4 nfsstatus)
 {
@@ -1706,8 +1725,13 @@ static int construct_lookups(slice_t *comps, int compcnt,
         for (i = 0; i < compcnt; ++i) {
                 if (comps[i].data[0] == '.' && comps[i].size == 1)
                         continue;
-		COMPOUNDV4_ARG_ADD_OP_LOOKUPNAME(new_opcnt, argoparray,
-						 comps[i].data, comps[i].size);
+		if (strncmp(comps[i].data, "..", comps[i].size) == 0) {
+			COMPOUNDV4_ARG_ADD_OP_LOOKUPP(new_opcnt, argoparray);
+		} else {
+			COMPOUNDV4_ARG_ADD_OP_LOOKUPNAME(new_opcnt, argoparray,
+							 comps[i].data,
+							 comps[i].size);
+		}
 	}
 
         i = new_opcnt - *opcnt;
@@ -1748,9 +1772,15 @@ static int tc_set_current_fh(const tc_file *tcf, struct nfsoparray *nfsops,
 		NFS4_ERR("Cannot tokenize path: %s", tcf->path);
 		return -1;
         }
-	base = tcf->path[0] == '/' ? TC_BASE_PATH_ROOT : TC_BASE_PATH_CURRENT;
         if (leaf) {
                 *leaf = comps[--n];
+        }
+        if (n > 0 && tcf->path[0] == '/') {
+                base = TC_BASE_PATH_ROOT;
+                comps[0].data++;
+                comps[0].size--;
+        } else {
+                base = TC_BASE_PATH_CURRENT;
         }
 	construct_lookups(comps, n, nfsops->argoparray, &nfsops->opcnt, base);
 
@@ -1760,46 +1790,35 @@ static int tc_set_current_fh(const tc_file *tcf, struct nfsoparray *nfsops,
 
 static nfsstat4 get_nfs4_op_status(const nfs_resop4 *op_res)
 {
-        nfsstat4 op_status;
-
         switch (op_res->resop) {
         case NFS4_OP_READ:
-		op_status = op_res->nfs_resop4_u.opread.status;
+		return op_res->nfs_resop4_u.opread.status;
 	case NFS4_OP_WRITE:
-                op_status = op_res->nfs_resop4_u.opwrite.status;
-                break;
+                return op_res->nfs_resop4_u.opwrite.status;
         case NFS4_OP_LOOKUP:
-                op_status = op_res->nfs_resop4_u.oplookup.status;
-                break;
+                return op_res->nfs_resop4_u.oplookup.status;
         case NFS4_OP_OPEN:
-                op_status = op_res->nfs_resop4_u.opopen.status;
-                break;
+                return op_res->nfs_resop4_u.opopen.status;
         case NFS4_OP_PUTROOTFH:
-                op_status = op_res->nfs_resop4_u.opputrootfh.status;
-                break;
+                return op_res->nfs_resop4_u.opputrootfh.status;
         case NFS4_OP_CLOSE:
-                op_status = op_res->nfs_resop4_u.opclose.status;
-                break;
+                return op_res->nfs_resop4_u.opclose.status;
         case NFS4_OP_CREATE:
-                op_status = op_res->nfs_resop4_u.opcreate.status;
-                break;
+                return op_res->nfs_resop4_u.opcreate.status;
         case NFS4_OP_GETATTR:
-                op_status = op_res->nfs_resop4_u.opgetattr.status;
-                break;
+                return op_res->nfs_resop4_u.opgetattr.status;
         case NFS4_OP_SETATTR:
-                op_status = op_res->nfs_resop4_u.opsetattr.status;
+                return op_res->nfs_resop4_u.opsetattr.status;
         case NFS4_OP_PUTFH:
-                op_status = op_res->nfs_resop4_u.opputfh.status;
-                break;
+                return op_res->nfs_resop4_u.opputfh.status;
+        case NFS4_OP_GETFH:
+                return op_res->nfs_resop4_u.opgetfh.status;
         case NFS4_OP_LOOKUPP:
-                op_status = op_res->nfs_resop4_u.oplookupp.status;
-                break;
+                return op_res->nfs_resop4_u.oplookupp.status;
         default:
                 NFS4_ERR("not supported operation: %d", op_res->resop);
-                break;
         }
-
-        return op_status;
+        return NFS4ERR_IO;
 }
 
 /*
@@ -3237,7 +3256,7 @@ static tc_res tc_nfs4_getattrsv(struct tc_attrs *attrs, int count)
                 if (op_status != NFS4_OK) {
 			NFS4_ERR("NFS operation (%d) failed: %d",
 				 nfsops->resoparray[j].resop, op_status);
-			tcres = tc_failure(i, op_status);
+			tcres = tc_failure(i, nfsstat4_to_errno(op_status));
                         goto exit;
                 }
                 if (nfsops->resoparray[j].resop != NFS4_OP_GETATTR)
@@ -3300,7 +3319,7 @@ static tc_res tc_nfs4_setattrsv(struct tc_attrs *attrs, int count)
                 if (op_status != NFS4_OK) {
 			NFS4_ERR("NFS operation (%d) failed: %d",
 				 nfsops->resoparray[j].resop, op_status);
-			tcres = tc_failure(i, op_status);
+			tcres = tc_failure(i, nfsstat4_to_errno(op_status));
                         goto exit;
                 }
                 switch (nfsops->resoparray[j].resop) {
@@ -3406,7 +3425,7 @@ static tc_res tc_nfs4_mkdirv(struct tc_attrs *dirs, int count)
                 if (op_status != NFS4_OK) {
                         NFS4_ERR("NFS operation (%d) failed: %d",
                                  nfsops->resoparray[j].resop, op_status);
-                        tcres = tc_failure(i, op_status);
+                        tcres = tc_failure(i, nfsstat4_to_errno(op_status));
                         goto exit;
                 }
                 switch(nfsops->resoparray[j].resop) {
@@ -3428,6 +3447,9 @@ static tc_res tc_nfs4_mkdirv(struct tc_attrs *dirs, int count)
                         break;
                 }
         }
+
+	if (cpd_status == NFS4_OK)
+		tcres.okay = true;
 
 exit:
         del_nfs_ops(nfsops);

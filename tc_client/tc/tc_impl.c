@@ -142,17 +142,18 @@ tc_res tc_ensure_dir(const char *dir, mode_t mode, slice_t *leaf)
 	tc_res tcres = TC_OKAY;
 	slice_t *comps;
 	struct tc_attrs *dirs;
-	buf_t *prefix;
+	buf_t *path;
 	int i;
 	int n;
 	int absent;
+	bool is_absolute = dir && dir[0] == '/';
 
 	n = tc_path_tokenize(dir, &comps);
 	if (n < 0) {
 		return tc_failure(0, -n);
 	}
 
-	if (leaf) {
+	if (leaf && n > 0) {
 		*leaf = comps[--n];
 	}
 
@@ -170,18 +171,18 @@ tc_res tc_ensure_dir(const char *dir, mode_t mode, slice_t *leaf)
 		goto exit;
 	}
 
-	prefix = new_auto_buf(strlen(dir));
+	path = new_auto_buf(strlen(dir));
 	absent = 0;
 	for (i = 0; i < n; ++i) {
 		if (i < tcres.index) {
-			tc_path_append(prefix, comps[i]);
+			tc_path_append(path, comps[i]);
 			continue;
 		} else if (i == tcres.index) {
-			tc_path_append(prefix, comps[i]);
-			dirs[n].file = tc_file_from_path(asstr(prefix));
+			tc_path_append(path, comps[i]);
+			tc_set_up_creation(&dirs[absent], asstr(path), mode);
 		} else {
-			tc_set_up_creation(&dirs[n], new_auto_str(comps[i]),
-					   mode);
+			tc_set_up_creation(&dirs[absent],
+					   new_auto_str(comps[i]), mode);
 		}
 		++absent;
 	}

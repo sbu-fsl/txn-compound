@@ -34,6 +34,7 @@ static std::vector<Slice> tc_get_path_components(Slice path)
 	assert(!path.empty());
 	std::vector<Slice> components;
 	bool is_absolute = path[0] == '/';
+	const char *start = path.data();
 	path.trim('/');
 	int beg = 0;
 	int end = 0;   // component within [beg, end)
@@ -57,6 +58,15 @@ static std::vector<Slice> tc_get_path_components(Slice path)
 			components.push_back(comp);
 		}
 		beg = ++end;
+	}
+	if (is_absolute) {
+		if (!components.empty()) {
+			components[0] = Slice(components[0].data() - 1,
+					      components[0].size() + 1);
+			assert(*components[0].data() == '/');
+		} else {
+			components.push_back(Slice(start, 1));
+		}
 	}
 
 	return components;
@@ -185,15 +195,12 @@ int tc_path_normalize_s(slice_t path, buf_t *pbuf)
 {
 	std::vector<Slice> components = tc_get_path_components(path);
 	if (components.empty()) {
-		buf_append_char(pbuf, path.data[0] == '/' ? '/' : '.');
+		assert(path.data[0] != '/');
+		buf_append_char(pbuf, '.');
 		return 1;
 	}
 
 	int old_size = pbuf->size;
-	if (path.data[0] == '/') {
-		buf_append_char(pbuf, '/');
-	}
-
 	for (int i = 0; i < components.size(); ++i) {
 		if (i > 0) buf_append_char(pbuf, '/');
 		buf_append_slice(pbuf, components[i].toslice());

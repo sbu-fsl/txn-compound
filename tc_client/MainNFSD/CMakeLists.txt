@@ -94,52 +94,24 @@ target_link_libraries(tc_singlefile
   tc_impl_nfs4
 )
 
-SET(tc_test_read_SRCS
-   tc_test_read.c
-)
+function (add_tc_binary Name)
+  add_executable(${Name} "${Name}.c")
+  target_link_libraries(${Name}
+    tc_impl
+    tc_impl_nfs4
+    tc_impl_posix
+    tc_util
+    MainServices
+    ${PROTOCOLS}
+    ${GANESHA_CORE}
+    config_parsing
+    path_utils
+    ${LIBTIRPC_LIBRARIES}
+    ${SYSTEM_LIBRARIES}
+    m
+  )
+endfunction (add_tc_binary)
 
-add_executable(tc_test_read
-  ${tc_test_read_SRCS}
-)
-
-target_link_libraries(tc_test_read
-  tc_impl
-  tc_impl_nfs4
-  tc_impl_posix
-  tc_util
-  MainServices
-  ${PROTOCOLS}
-  ${GANESHA_CORE}
-  config_parsing
-  path_utils
-  ${LIBTIRPC_LIBRARIES}
-  ${SYSTEM_LIBRARIES}
-  m
-)
-
-SET(tc_test_mkdir_SRCS
-   tc_test_mkdir.c
-)
-
-add_executable(tc_test_mkdir
-  ${tc_test_mkdir_SRCS}
-)
-
-target_link_libraries(tc_test_mkdir
-  tc_impl
-  tc_impl_nfs4
-  tc_impl_posix
-  tc_util
-  MainServices
-  ${PROTOCOLS}
-  ${GANESHA_CORE}
-  config_parsing
-  path_utils
-  ${LIBTIRPC_LIBRARIES}
-  ${SYSTEM_LIBRARIES}
-  m
-)
-
-########### install files ###############
-
-# We are still missing the install of docs and stuff
+add_tc_binary(tc_test_read)
+add_tc_binary(tc_test_mkdir)
+add_tc_binary(tc_test_mkdirs)

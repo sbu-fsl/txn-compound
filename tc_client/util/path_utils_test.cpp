@@ -82,8 +82,10 @@ TEST(PathUtilsTest, TokenizeTest) {
 	};
 
 	Expect(".././a", vector<string>{ "..", "a" });
-	Expect("/a/b/c/d", vector<string>{ "a", "b", "c", "d" });
-	Expect("/", vector<string>{});
+	Expect("/a/b/c/d", vector<string>{ "/a", "b", "c", "d" });
+	Expect("/", vector<string>{"/"});
+	Expect("///a", vector<string>{"/a"});
+	Expect("///a/../b", vector<string>{"/b"});
 	Expect(".", vector<string>{});
 }
 
