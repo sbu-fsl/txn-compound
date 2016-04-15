@@ -44,6 +44,14 @@ struct tcwrite_kargs
 	struct attrlist attrib;
 };
 
+struct tcopen_kargs
+{
+	char *path;
+	OPEN4resok *opok_handle;
+	GETFH4resok *fhok_handle;
+	struct attrlist attrib;
+};
+
 #define MAX_READ_COUNT      10
 #define MAX_WRITE_COUNT     10
 #define MAX_DIR_DEPTH       10
@@ -56,7 +64,6 @@ struct kfd
 		   array index, so this will be used only to check if an fd is
 		   being used. So has to be set to -1 if freed  */
 	nfs_fh4 fh;
-	char *path;
 	/* Export id not needed now, might be needed in future */
 	stateid4 stateid;
 };
@@ -71,7 +78,6 @@ static inline int init_fd()
 	while (i < MAX_FD) {
 		free_fdlist[i] = i;
 		fd_list[i].fd = -1;
-		fd_list[i].path = NULL;
 		i++;
 	}
 
@@ -96,7 +102,7 @@ static inline int get_freecount()
 	return freelist_count;
 }
 
-static inline int get_fd(stateid4 stateid, nfs_fh4 object, char *path)
+static inline int get_fd(stateid4 *stateid, nfs_fh4 *object)
 {
 	int cur_fd = -1;
 
@@ -110,18 +116,24 @@ static inline int get_fd(stateid4 stateid, nfs_fh4 object, char *path)
 	assert(fd_list[cur_fd].fd < 0);
 
 	fd_list[cur_fd].fd = cur_fd;
-	memcpy(&fd_list[cur_fd].stateid, &stateid, sizeof(stateid4));
-	memcpy(&fd_list[cur_fd].fh, &object, sizeof(nfs_fh4));
+	memcpy(&fd_list[cur_fd].stateid, stateid, sizeof(stateid4));
 
-	if (path != NULL) {
-		fd_list[cur_fd].path = malloc(strlen(path) + 1);
-		/* Check malloc failure */
+	fd_list[cur_fd].fh.nfs_fh4_val = malloc(object->nfs_fh4_len);
 
-		strncpy(fd_list[cur_fd].path, path, strlen(path) + 1);
-	}
+	memcpy(fd_list[cur_fd].fh.nfs_fh4_val, object->nfs_fh4_val, object->nfs_fh4_len);
+	fd_list[cur_fd].fh.nfs_fh4_len = object->nfs_fh4_len;
 
 	freelist_count -= 1;
 	return cur_fd;
+}
+
+static inline fd_in_use(int fd)
+{
+	if (fd_list[fd].fd < 0) {
+                return -1;
+        }
+
+	return 0;
 }
 
 static inline int freefd(int fd)
@@ -132,7 +144,7 @@ static inline int freefd(int fd)
 		return -1;
 	}
 
-	if (fd_list[fd].fd < 0) {
+	if (fd_in_use(fd) < 0) {
 		/* Add error logs too */
 		return -1;
 	}
@@ -145,12 +157,8 @@ static inline int freefd(int fd)
 
 	/* We have a valid fd that needs to be closed */
 
-	if (fd_list[fd].path != NULL) {
-		free(fd_list[fd].path);
-	}
-
-	fd_list[fd].path = NULL;
 	fd_list[fd].fd = -1;
+	free(fd_list[fd].fh.nfs_fh4_val);
 
 	freelist_tail %= MAX_FD;
 	free_fdlist[freelist_tail++] = fd;

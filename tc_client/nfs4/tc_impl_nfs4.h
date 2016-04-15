@@ -37,6 +37,10 @@ tc_res nfs4_readv(struct tc_iovec *reads, int read_count, bool is_transaction);
 tc_res nfs4_writev(struct tc_iovec *writes, int write_count,
 		   bool is_transaction);
 
+tc_file nfs4_openv(char *path, int flags);
+int nfs4_closev(tc_file file);
+void nfs4_close_all();
+
 /**
  * Get attributes of files
  *

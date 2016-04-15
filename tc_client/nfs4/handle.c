@@ -58,6 +58,7 @@ extern "C" {
 #define FSAL_PROXY_NFS_V4 4
 
 static clientid4 fs_clientid;
+static seqid4 fs_seqid;
 static pthread_mutex_t fs_clientid_mutex = PTHREAD_MUTEX_INITIALIZER;
 static char fs_hostname[MAXNAMLEN + 1];
 static pthread_t fs_recv_thread;
@@ -1193,7 +1194,7 @@ static fsal_status_t fs_do_close(const struct user_cred *creds,
 		return fsalstat(ERR_FSAL_NO_ERROR, 0);
 
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, *fh4);
-	COMPOUNDV4_ARG_ADD_OP_CLOSE(opcnt, argoparray, sid);
+	COMPOUNDV4_ARG_ADD_OP_TCCLOSE(opcnt, argoparray, fs_seqid, sid);
 
 	rc = fs_nfsv4_call(exp, creds, opcnt, argoparray, resoparray);
 	if (rc != NFS4_OK)
@@ -1638,7 +1639,6 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 	int opcnt = *opcnt_temp;
 	char owner_val[128];
 	unsigned int owner_len = 0;
-	struct fs_obj_handle *ph;
 	clientid4 cid;
 	int marker = 0;
 	bool eof = false;
@@ -1874,6 +1874,7 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 	st = fsalstat(ERR_FSAL_NO_ERROR, 0);
 
 exit:
+	free(input_attr);
 	free(argoparray);
 	free(resoparray);
 	return st;
@@ -1890,8 +1891,6 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 	int opcnt = *opcnt_temp;
 	char owner_val[128];
 	unsigned int owner_len = 0;
-	struct fs_obj_handle *ph;
-	//fattr4 input_attr;
 	XDR xdrs;
 	clientid4 cid;
 	int marker = 0;
@@ -2119,6 +2118,116 @@ exit:
 	free(input_attr);
 	free(argoparray);
 	free(resoparray);
+	return st;
+}
+
+static fsal_status_t do_ktcopen(struct tcopen_kargs *kern_arg, int flags,
+                                nfs_argop4 *argoparray, nfs_resop4 *resoparray,
+                                int *opcnt_temp, fattr4 *input_attr)
+{
+	int opcnt = *opcnt_temp;
+	char owner_val[128];
+	unsigned int owner_len = 0;
+	clientid4 cid;
+	int marker = 0;
+	bool eof = false;
+
+	LogDebug(COMPONENT_FSAL, "do_ktcopen() called: %d\n", opcnt);
+
+	/* Create the owner */
+	snprintf(owner_val, sizeof(owner_val), "GANESHA/PROXY: pid=%u %" PRIu64,
+		 getpid(), atomic_inc_uint64_t(&fcnt));
+	owner_len = strnlen(owner_val, sizeof(owner_val));
+
+	/*
+	 * Parse the file-path and send lookups to set the current
+	 * file-handle
+	 */
+	if (construct_lookup(kern_arg->path, argoparray, &opcnt, &marker) ==
+	    -1) {
+		goto exit_pathinval;
+	}
+
+	LogDebug(COMPONENT_FSAL, "ktcopen name: %s\n", kern_arg->path + marker);
+
+	kern_arg->opok_handle =
+	    &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
+
+	kern_arg->opok_handle->attrset = empty_bitmap;
+	fs_get_clientid(&cid);
+
+	input_attr->attrmask = empty_bitmap;
+
+	COMPOUNDV4_ARG_ADD_OP_TCOPEN(opcnt, argoparray, fs_seqid, cid,
+				     *input_attr, (kern_arg->path + marker),
+				     owner_val, owner_len);
+
+	kern_arg->fhok_handle =
+	    &resoparray[opcnt].nfs_resop4_u.opgetfh.GETFH4res_u.resok4;
+
+	kern_arg->fhok_handle->object.nfs_fh4_val = malloc(NFS4_FHSIZE);
+	kern_arg->fhok_handle->object.nfs_fh4_len = NFS4_FHSIZE;
+	COMPOUNDV4_ARG_ADD_OP_GETFH(opcnt, argoparray);
+
+	*opcnt_temp = opcnt;
+	return fsalstat(ERR_FSAL_NO_ERROR, 0);
+
+exit_pathinval:
+	return fsalstat(ERR_FSAL_INVAL, 0);
+}
+
+static fsal_status_t ktcopen(struct tcopen_kargs *kern_arg, int flags)
+{
+	int rc;
+	fsal_status_t st;
+#define FSAL_TCOPEN_NB_OP_ALLOC (MAX_DIR_DEPTH + 3)
+	nfs_argop4 *argoparray = NULL;
+	nfs_resop4 *resoparray = NULL;
+	fattr4 *input_attr = NULL;
+	int opcnt = 0;
+
+	LogDebug(COMPONENT_FSAL, "ktcopen() called\n");
+
+	argoparray =
+	    malloc(FSAL_TCOPEN_NB_OP_ALLOC * sizeof(struct nfs_argop4));
+	resoparray =
+	    malloc(FSAL_TCOPEN_NB_OP_ALLOC * sizeof(struct nfs_resop4));
+
+	input_attr = malloc(sizeof(fattr4));
+	memset(input_attr, 0, sizeof(fattr4));
+
+	st = do_ktcopen(kern_arg, flags, argoparray, resoparray, &opcnt,
+			input_attr);
+
+	if (FSAL_IS_ERROR(st)) {
+		NFS4_ERR("do_ktcopen failed: major=%d, minor=%d\n", st.major,
+			 st.minor);
+		goto exit;
+	}
+
+	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds, opcnt,
+			   argoparray, resoparray);
+
+	st = fsalstat(ERR_FSAL_NO_ERROR, 0);
+
+	if (rc != NFS4_OK) {
+		NFS4_ERR("fs_nfsv4_call() returned error: %d\n", rc);
+		st = nfsstat4_to_fsal(rc);
+	}
+
+exit:
+	free(input_attr);
+	free(argoparray);
+	free(resoparray);
+	return st;
+}
+
+static fsal_status_t ktcclose(const nfs_fh4 *fh4, stateid4 *sid)
+{
+	fsal_status_t st;
+
+	st = fs_do_close(op_ctx->creds, fh4, sid, op_ctx->fsal_export);
+
 	return st;
 }
 
@@ -2982,6 +3091,8 @@ void fs_handle_ops_init(struct fsal_obj_ops *ops)
 	ops->openread = fs_openread;
 	ops->tc_read = ktcread;
 	ops->tc_write = ktcwrite;
+	ops->tc_open = ktcopen;
+	ops->tc_close = ktcclose;
 	ops->root_lookup = fs_root_lookup;
 }
 
