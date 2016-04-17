@@ -99,13 +99,20 @@ For more information, consult the [project wiki](https://github.com/nfs-ganesha/
 
 Examples
 --------
-A simple example of using TC library is
+The examples show usage of TC APIs, and usually perform FS operations with much
+less RPC than a standard POSIX NFS client.
+
+- Open, read, and close a file in one RPC:
 [tc_client/MainNFSD/tc_test_read.c](tc_client/MainNFSD/tc_test_read.c)
 
-An example of creating a deep directory and all its ancestor directories is
-[tc_client/MainNFSD/tc_test_mkdir.c](tc_client/MainNFSD/tc_test_mkdir.c).  TC
-enables us to achieves this with only two RPCs.
+- Creating a deep directory and all its ancestor directories with only two
+RPCs: [tc_client/MainNFSD/tc_test_mkdir.c](tc_client/MainNFSD/tc_test_mkdir.c)
 
+- Creating multiple directories with only one RPC:
+[tc_client/MainNFSD/tc_test_mkdirs.c](tc_client/MainNFSD/tc_test_mkdirs.c)
+
+- Listing contents of multiple directories with one RPC:
+[tc_client/MainNFSD/tc_test_listdirs.c](tc_client/MainNFSD/tc_test_listdirs.c)
 
 LICENSE
 =======
