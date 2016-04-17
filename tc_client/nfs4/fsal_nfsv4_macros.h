@@ -227,17 +227,21 @@ do { \
 	argcompound.argarray.argarray_len += 1;			\
 } while (0)
 
-#define COMPOUNDV4_ARG_ADD_OP_READDIR(opcnt, args, c4, inbitmap) \
-do { \
-	nfs_argop4 *op = args + opcnt; opcnt++;				\
-	op->argop = NFS4_OP_READDIR;					\
-	op->nfs_argop4_u.opreaddir.cookie = c4;				\
-	memset(&op->nfs_argop4_u.opreaddir.cookieverf, \
-	       0, NFS4_VERIFIER_SIZE);					\
-	op->nfs_argop4_u.opreaddir.dircount = 2048;			\
-	op->nfs_argop4_u.opreaddir.maxcount = 4096;			\
-	op->nfs_argop4_u.opreaddir.attr_request = inbitmap;		\
-} while (0)
+#define MAX_ENTRIES_PER_COMPOUND 4096
+
+#define COMPOUNDV4_ARG_ADD_OP_READDIR(opcnt, args, c4, dircount, inbitmap)     \
+	do {                                                                   \
+		nfs_argop4 *op = args + opcnt;                                 \
+		opcnt++;                                                       \
+		op->argop = NFS4_OP_READDIR;                                   \
+		op->nfs_argop4_u.opreaddir.cookie = c4;                        \
+		memset(&op->nfs_argop4_u.opreaddir.cookieverf, 0,              \
+		       NFS4_VERIFIER_SIZE);                                    \
+		op->nfs_argop4_u.opreaddir.dircount = dircount;                \
+		op->nfs_argop4_u.opreaddir.maxcount =                          \
+		    MAX_ENTRIES_PER_COMPOUND;                                  \
+		op->nfs_argop4_u.opreaddir.attr_request = inbitmap;            \
+	} while (0)
 
 #define COMPOUNDV4_ARG_ADD_OP_OPEN_CREATE(opcnt, args, inname, inattrs, \
 					  inclientid, __owner_val, \

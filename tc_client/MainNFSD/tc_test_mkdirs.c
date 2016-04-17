@@ -25,7 +25,7 @@
  *
  * TC achieves this using only one RPC (see tc_client/include/tc_api.h).
  *
- * @file tc_test_mkdirsc.c
+ * @file tc_test_mkdirs.c
  * @brief Test creating multiple sub-directories.
  *
  */

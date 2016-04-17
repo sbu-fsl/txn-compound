@@ -94,23 +94,22 @@ tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	}
 }
 
-void tc_free_attrs(struct tc_attrs *attrs, int count, bool free_path)
-{
-	int i;
-
-	if (free_path) {
-		for (i = 0; i < count; ++i) {
-			if (attrs[i].file.type == TC_FILE_PATH)
-				free((char *)attrs[i].file.path);
-		}
-	}
-	free(attrs);
-}
-
 tc_res tc_listdir(const char *dir, struct tc_attrs_masks masks, int max_count,
 		  struct tc_attrs **contents, int *count)
 {
-	return posix_listdir(dir, masks, max_count, contents, count);
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_listdir(dir, masks, max_count, contents, count);
+	} else {
+		return posix_listdir(dir, masks, max_count, contents, count);
+	}
+}
+
+tc_res tc_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
+		   int max_entries, tc_listdirv_cb cb, void *cbarg,
+		   bool is_transaction)
+{
+	return nfs4_listdirv(dirs, count, masks, max_entries, cb, cbarg,
+			     is_transaction);
 }
 
 tc_res tc_renamev(tc_file_pair *pairs, int count, bool is_transaction)
@@ -167,7 +166,7 @@ tc_res tc_ensure_dir(const char *dir, mode_t mode, slice_t *leaf)
 	}
 
 	tcres = tc_getattrsv(dirs, n, false);
-	if (!tcres.okay && tcres.err_no != ENOENT) {
+	if (tcres.okay || tcres.err_no != ENOENT) {
 		goto exit;
 	}
 

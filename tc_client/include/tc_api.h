@@ -339,13 +339,51 @@ tc_res tc_listdir(const char *dir, struct tc_attrs_masks masks, int max_count,
 		  struct tc_attrs **contents, int *count);
 
 /**
+ * Callback of tc_listdirv().
+ *
+ * @entry [IN]: the current directory entry listed
+ * @dir [IN]: the parent directory of @entry as provided in the first argument
+ * of tc_listdirv().
+ * @cbarg [IN/OUT]: any extra user arguments or context of the callback.
+ *
+ * Return whether tc_listdirv() should continue the processing or stop.
+ */
+typedef bool (*tc_listdirv_cb)(const struct tc_attrs *entry, const char *dir,
+			       void *cbarg);
+/**
+ * List the content of the specified directories.
+ *
+ * @dirs: the array of directories to list
+ * @count: the length of "dirs"
+ * @masks: the attributes to retrieve for each listed entry
+ * @max_entries: the max number of entry to list; 0 means infinite
+ * @cb: the callback function to be applied to each listed entry
+ */
+tc_res tc_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
+		   int max_entries, tc_listdirv_cb cb, void *cbarg,
+		   bool is_transaction);
+
+/**
  * Free an array of "tc_attrs".
  *
  * @attrs [IN]: the array to be freed
  * @count [IN]: the length of the array
  * @free_path [IN]: whether to free the paths in "tc_attrs" as well.
  */
-void tc_free_attrs(struct tc_attrs *attrs, int count, bool free_path);
+static inline void tc_free_attrs(struct tc_attrs *attrs, int count,
+				 bool free_path)
+{
+	int i;
+	if (free_path) {
+		for (i = 0; i < count; ++i) {
+			if (attrs[i].file.type == TC_FILE_PATH)
+				free((char *)attrs[i].file.path);
+			else if (attrs[i].file.type == TC_FILE_HANDLE)
+				free((char *)attrs[i].file.handle);
+		}
+	}
+	free(attrs);
+}
 
 typedef struct tc_file_pair
 {

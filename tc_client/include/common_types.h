@@ -139,7 +139,7 @@ static inline int buf_append_char(buf_t *pbuf, char c)
 static inline bool buf_append_null(buf_t *pbuf)
 {
 	int res = buf_append_char(pbuf, 0);
-	if (res >= 0) {
+	if (res > 0) {
 		// The ending '\0' should not be counted.
 		--pbuf->size;
 		--res;

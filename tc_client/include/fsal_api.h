@@ -1337,7 +1337,11 @@ struct fsal_obj_ops {
  */
 	tc_res (*tc_mkdirv)(struct tc_attrs *dirs, int count);
 
-	fsal_status_t(*root_lookup) (struct fsal_obj_handle **handle);
+	tc_res (*tc_listdirv)(const char **dirs, int count,
+			      struct tc_attrs_masks masks, int max_entries,
+			      tc_listdirv_cb cb, void *cbarg);
+
+	fsal_status_t (*root_lookup)(struct fsal_obj_handle **handle);
 
 	fsal_status_t (*lookup_plus)(const char *path,
 				     struct fsal_obj_handle **handle);

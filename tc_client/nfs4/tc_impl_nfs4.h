@@ -108,6 +108,13 @@ tc_res nfs4_listdir(const char *dir, struct tc_attrs_masks masks, int max_count,
 
 tc_res nfs4_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction);
 
+tc_res nfs4_listdir(const char *dir, struct tc_attrs_masks masks, int max_count,
+		    struct tc_attrs **contents, int *count);
+
+tc_res nfs4_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
+		     int max_entries, tc_listdirv_cb cb, void *cbarg,
+		     bool is_transaction);
+
 #ifdef __cplusplus
 }
 #endif
