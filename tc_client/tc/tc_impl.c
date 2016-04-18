@@ -170,7 +170,7 @@ tc_res tc_ensure_dir(const char *dir, mode_t mode, slice_t *leaf)
 		goto exit;
 	}
 
-	path = new_auto_buf(strlen(dir));
+	path = new_auto_buf(strlen(dir) + 1);
 	absent = 0;
 	for (i = 0; i < n; ++i) {
 		if (i < tcres.index) {
