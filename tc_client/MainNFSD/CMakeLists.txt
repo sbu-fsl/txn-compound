@@ -113,6 +113,7 @@ function (add_tc_binary Name)
 endfunction (add_tc_binary)
 
 add_tc_binary(tc_test_read)
+add_tc_binary(tc_test_write)
 add_tc_binary(tc_test_mkdir)
 add_tc_binary(tc_test_mkdirs)
 add_tc_binary(tc_test_listdirs)

@@ -105,6 +105,9 @@ less RPC than a standard POSIX NFS client.
 - Open, read, and close a file in one RPC:
 [tc_client/MainNFSD/tc_test_read.c](tc_client/MainNFSD/tc_test_read.c)
 
+- Create, write, and close a file in one RPC:
+[tc_client/MainNFSD/tc_test_write.c](tc_client/MainNFSD/tc_test_write.c)
+
 - Creating a deep directory and all its ancestor directories with only two
 RPCs: [tc_client/MainNFSD/tc_test_mkdir.c](tc_client/MainNFSD/tc_test_mkdir.c)
 
