@@ -1310,12 +1310,6 @@ struct fsal_obj_ops {
 				 const char *name, struct attrlist *attrib,
 				 struct fsal_obj_handle **new_obj);
 
-/* For opening a file followed by reading and closing it */
-	fsal_status_t(*openread) (struct fsal_obj_handle *dir_hdl,
-                                 const char *name, const char *name1,
-				 struct attrlist *attrib, struct attrlist *attribi1,
-                                 struct fsal_obj_handle **new_obj, struct fsal_obj_handle **new_obj1);
-
 /* Multiple open..read..close in a single compound */
 	fsal_status_t (*tc_read)(struct tcread_kargs *arg, int arg_count,
 				 int *fail_index);
