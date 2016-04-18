@@ -119,7 +119,11 @@ tc_res tc_renamev(tc_file_pair *pairs, int count, bool is_transaction)
 
 tc_res tc_removev(tc_file *files, int count, bool is_transaction)
 {
-	return posix_removev(files, count, is_transaction);
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_removev(files, count, is_transaction);
+	} else {
+		return posix_removev(files, count, is_transaction);
+	}
 }
 
 tc_res tc_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)

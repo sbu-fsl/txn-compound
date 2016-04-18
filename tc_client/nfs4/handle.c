@@ -1688,6 +1688,8 @@ static nfsstat4 get_nfs4_op_status(const nfs_resop4 *op_res)
                 return op_res->nfs_resop4_u.oplookupp.status;
         case NFS4_OP_READDIR:
                 return op_res->nfs_resop4_u.opreaddir.status;
+        case NFS4_OP_REMOVE:
+                return op_res->nfs_resop4_u.opremove.status;
         default:
                 NFS4_ERR("not supported operation: %d", op_res->resop);
         }
@@ -2195,6 +2197,18 @@ static inline READDIR4resok *tc_prepare_readdir(struct nfsoparray *nfsops,
 	nfsops->opcnt = n;
 
 	return rdok;
+}
+
+static inline REMOVE4resok *tc_prepare_remove(struct nfsoparray *nfsops,
+                                              char *name)
+{
+        REMOVE4resok *rmok;
+
+	rmok = &nfsops->resoparray[nfsops->opcnt]
+		    .nfs_resop4_u.opremove.REMOVE4res_u.resok4;
+	COMPOUNDV4_ARG_ADD_OP_REMOVE(nfsops->opcnt, nfsops->argoparray, name);
+
+        return rmok;
 }
 
 static fsal_status_t fs_mkdir(struct fsal_obj_handle *dir_hdl, const char *name,
@@ -3201,7 +3215,7 @@ static tc_res tc_nfs4_setattrsv(struct tc_attrs *attrs, int count)
 	rc = fs_nfsv4_call(op_ctx->creds, nfsops->opcnt, nfsops->argoparray,
 			   nfsops->resoparray, &cpd_status);
         if (rc != RPC_SUCCESS) {
-                NFS4_ERR("rpc failued: %d", rc);
+                NFS4_ERR("rpc failed: %d", rc);
                 tcres = tc_failure(0, rc);
                 goto exit;
         }
@@ -3584,6 +3598,59 @@ exit:
         return tcres;
 }
 
+static tc_res tc_nfs4_removev(tc_file *files, int count)
+{
+        int rc;
+        tc_res tcres;
+        nfsstat4 cpd_status;
+	nfsstat4 op_status;
+        struct nfsoparray *nfsops;
+	int i = 0;      /* index of tc_iovec */
+	int j = 0;      /* index of NFS operations */
+        slice_t name;
+
+        NFS4_DEBUG("tc_nfs4_removev");
+        nfsops = new_nfs_ops((MAX_DIR_DEPTH + 3) * count);
+        assert(nfsops);
+
+        for (i = 0; i < count; ++i) {
+                rc = tc_set_current_fh(&files[i], nfsops, &name);
+                if (rc < 0) {
+                        tcres = tc_failure(i, ERR_FSAL_INVAL);
+                        goto exit;
+                }
+                tc_prepare_remove(nfsops, new_auto_str(name));
+        }
+
+	rc = fs_nfsv4_call(op_ctx->creds, nfsops->opcnt, nfsops->argoparray,
+			   nfsops->resoparray, &cpd_status);
+	if (rc != RPC_SUCCESS) {
+                NFS4_ERR("rpc failed: %d", rc);
+                tcres = tc_failure(0, rc);
+                goto exit;
+        }
+
+        i = 0;
+        for (j = 0; j < nfsops->opcnt; ++j) {
+                op_status = get_nfs4_op_status(&nfsops->resoparray[j]);
+                if (op_status != NFS4_OK) {
+			NFS4_ERR("NFS operation (%d) failed: %d",
+				 nfsops->resoparray[j].resop, op_status);
+			tcres = tc_failure(i, nfsstat4_to_errno(op_status));
+                        goto exit;
+                }
+                if (nfsops->resoparray[j].resop == NFS4_OP_REMOVE) {
+                        ++i;
+                }
+        }
+
+        tcres.okay = true;
+
+exit:
+        del_nfs_ops(nfsops);
+        return tcres;
+}
+
 void fs_handle_ops_init(struct fsal_obj_ops *ops)
 {
 	ops->release = fs_hdl_release;
@@ -3617,6 +3684,7 @@ void fs_handle_ops_init(struct fsal_obj_ops *ops)
         ops->tc_setattrsv = tc_nfs4_setattrsv;
         ops->tc_mkdirv = tc_nfs4_mkdirv;
         ops->tc_listdirv = tc_nfs4_listdirv;
+        ops->tc_removev = tc_nfs4_removev;
 	ops->root_lookup = fs_root_lookup;
 }
 

@@ -1335,6 +1335,8 @@ struct fsal_obj_ops {
 			      struct tc_attrs_masks masks, int max_entries,
 			      tc_listdirv_cb cb, void *cbarg);
 
+	tc_res (*tc_removev)(tc_file *files, int count);
+
 	fsal_status_t (*root_lookup)(struct fsal_obj_handle **handle);
 
 	fsal_status_t (*lookup_plus)(const char *path,

@@ -392,3 +392,13 @@ tc_res nfs4_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
 
 	return res;
 }
+
+tc_res nfs4_removev(tc_file *files, int count, bool is_transaction)
+{
+	struct gsh_export *exp = op_ctx->export;
+	tc_res res;
+
+	res = exp->fsal_export->obj_ops->tc_removev(files, count);
+
+	return res;
+}

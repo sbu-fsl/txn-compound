@@ -117,6 +117,9 @@ RPCs: [tc_client/MainNFSD/tc_test_mkdir.c](tc_client/MainNFSD/tc_test_mkdir.c)
 - Listing contents of multiple directories with one RPC:
 [tc_client/MainNFSD/tc_test_listdirs.c](tc_client/MainNFSD/tc_test_listdirs.c)
 
+- Removing multiple files with one RPC:
+[tc_client/MainNFSD/tc_test_remove.c](tc_client/MainNFSD/tc_test_remove.c)
+
 LICENSE
 =======
 Most code in this repo has [LGPL license](tc_client/LICENSE.txt).  However, a
