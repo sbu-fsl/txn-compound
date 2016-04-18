@@ -272,7 +272,7 @@ tc_res nfs4_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 
 	LogDebug(COMPONENT_FSAL, "nfs4_writev() called \n");
 
-	kern_arg = malloc(write_count * (sizeof(struct tcwrite_kargs)));
+	kern_arg = calloc(write_count, (sizeof(struct tcwrite_kargs)));
 
 	while (i < write_count && i < MAX_WRITE_COUNT) {
 		cur_arg = kern_arg + i;
