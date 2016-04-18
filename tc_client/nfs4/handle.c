@@ -58,7 +58,6 @@ extern "C" {
 #define FSAL_PROXY_NFS_V4 4
 
 static clientid4 fs_clientid;
-static seqid4 fs_seqid;
 static pthread_mutex_t fs_clientid_mutex = PTHREAD_MUTEX_INITIALIZER;
 static char fs_hostname[MAXNAMLEN + 1];
 static pthread_t fs_recv_thread;
@@ -1194,7 +1193,33 @@ static fsal_status_t fs_do_close(const struct user_cred *creds,
 		return fsalstat(ERR_FSAL_NO_ERROR, 0);
 
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, *fh4);
-	COMPOUNDV4_ARG_ADD_OP_TCCLOSE(opcnt, argoparray, fs_seqid, sid);
+	COMPOUNDV4_ARG_ADD_OP_CLOSE(opcnt, argoparray, sid);
+
+	rc = fs_nfsv4_call(exp, creds, opcnt, argoparray, resoparray);
+	if (rc != NFS4_OK)
+		return nfsstat4_to_fsal(rc);
+	sid->seqid++;
+	return fsalstat(ERR_FSAL_NO_ERROR, 0);
+}
+
+static fsal_status_t tc_do_close(const struct user_cred *creds,
+				 const nfs_fh4 *fh4, stateid4 *sid,
+				 seqid4 *seqid, struct fsal_export *exp)
+{
+	int rc;
+	int opcnt = 0;
+#define FSAL_CLOSE_NB_OP_ALLOC 2
+	nfs_argop4 argoparray[FSAL_CLOSE_NB_OP_ALLOC];
+	nfs_resop4 resoparray[FSAL_CLOSE_NB_OP_ALLOC];
+	char All_Zero[] = "\0\0\0\0\0\0\0\0\0\0\0\0";	/* 12 times \0 */
+
+	/* Check if this was a "stateless" open,
+	 * then nothing is to be done at close */
+	if (!memcmp(sid->other, All_Zero, 12))
+		return fsalstat(ERR_FSAL_NO_ERROR, 0);
+
+	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, *fh4);
+	COMPOUNDV4_ARG_ADD_OP_TCCLOSE(opcnt, argoparray, *seqid, sid);
 
 	rc = fs_nfsv4_call(exp, creds, opcnt, argoparray, resoparray);
 	if (rc != NFS4_OK)
@@ -2129,6 +2154,7 @@ static fsal_status_t do_ktcopen(struct tcopen_kargs *kern_arg, int flags,
 	char owner_val[128];
 	unsigned int owner_len = 0;
 	clientid4 cid;
+	uint32_t open_type;
 	int marker = 0;
 	bool eof = false;
 
@@ -2148,7 +2174,8 @@ static fsal_status_t do_ktcopen(struct tcopen_kargs *kern_arg, int flags,
 		goto exit_pathinval;
 	}
 
-	LogDebug(COMPONENT_FSAL, "ktcopen name: %s\n", kern_arg->path + marker);
+	LogDebug(COMPONENT_FSAL, "ktcopen name: %s, flags: %x\n",
+		 kern_arg->path + marker, flags);
 
 	kern_arg->opok_handle =
 	    &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
@@ -2158,9 +2185,42 @@ static fsal_status_t do_ktcopen(struct tcopen_kargs *kern_arg, int flags,
 
 	input_attr->attrmask = empty_bitmap;
 
-	COMPOUNDV4_ARG_ADD_OP_TCOPEN(opcnt, argoparray, fs_seqid, cid,
-				     *input_attr, (kern_arg->path + marker),
-				     owner_val, owner_len);
+	if ((flags & O_WRONLY) != 0) {
+		open_type |= OPEN4_SHARE_ACCESS_WRITE;
+	} else if ((flags & O_RDWR) != 0) {
+		open_type |= OPEN4_SHARE_ACCESS_BOTH;
+	} else {
+		open_type |= OPEN4_SHARE_ACCESS_READ;
+	}
+
+	if ((flags & O_CREAT) != 0) {
+		kern_arg->attrib.mode = unix2fsal_mode((mode_t)0644);
+		FSAL_SET_MASK(kern_arg->attrib.mask, ATTR_MODE);
+
+		if (FSAL_TEST_MASK(kern_arg->attrib.mask, ATTR_MODE)) {
+			kern_arg->attrib.mode &=
+			    ~op_ctx->fsal_export->ops->fs_umask(
+				op_ctx->fsal_export);
+		}
+
+		if (fs_fsalattr_to_fattr4(&kern_arg->attrib, input_attr) == -1)
+			return fsalstat(ERR_FSAL_INVAL, -1);
+
+		LogDebug(COMPONENT_FSAL, "do_ktcopen() Bitmap: "
+					 "%d%d%d, len:%u\n",
+			 input_attr->attrmask.map[0],
+			 input_attr->attrmask.map[1],
+			 input_attr->attrmask.map[2],
+			 input_attr->attrmask.bitmap4_len);
+
+		COMPOUNDV4_ARG_ADD_OP_KTCOPEN_CREATE(
+		    opcnt, argoparray, 0, cid, *input_attr,
+		    (kern_arg->path + marker), owner_val, owner_len, open_type);
+	} else {
+		COMPOUNDV4_ARG_ADD_OP_KTCOPEN(opcnt, argoparray, 0, cid,
+					      (kern_arg->path + marker),
+					      owner_val, owner_len, open_type);
+	}
 
 	kern_arg->fhok_handle =
 	    &resoparray[opcnt].nfs_resop4_u.opgetfh.GETFH4res_u.resok4;
@@ -2222,11 +2282,11 @@ exit:
 	return st;
 }
 
-static fsal_status_t ktcclose(const nfs_fh4 *fh4, stateid4 *sid)
+static fsal_status_t ktcclose(const nfs_fh4 *fh4, stateid4 *sid, seqid4 *seqid)
 {
 	fsal_status_t st;
 
-	st = fs_do_close(op_ctx->creds, fh4, sid, op_ctx->fsal_export);
+	st = tc_do_close(op_ctx->creds, fh4, sid, seqid, op_ctx->fsal_export);
 
 	return st;
 }

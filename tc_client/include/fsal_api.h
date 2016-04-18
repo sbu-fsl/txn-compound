@@ -1326,7 +1326,7 @@ struct fsal_obj_ops {
 
 	fsal_status_t (*tc_open)(struct tcopen_kargs *kern_arg, int flags);
 
-	fsal_status_t (*tc_close)(const nfs_fh4 *fh4, stateid4 *sid);
+	fsal_status_t (*tc_close)(const nfs_fh4 *fh4, stateid4 *sid, seqid4 *seqid);
 
 	fsal_status_t(*root_lookup) (struct fsal_obj_handle **handle);
 

@@ -91,22 +91,45 @@ do { \
 		    .utf8string_len = strlen(inname);                          \
 	} while (0)
 
-#define COMPOUNDV4_ARG_ADD_OP_TCOPEN(opcnt, args, __seqid, inclientid,         \
-				     inaccess, inname, __owner_val,            \
-				     __owner_len)                              \
+#define COMPOUNDV4_ARG_ADD_OP_KTCOPEN(opcnt, args, __seqid, inclientid,        \
+				      inname, __owner_val, __owner_len,        \
+				      open_type)                               \
 	do {                                                                   \
 		nfs_argop4 *op = args + opcnt;                                 \
 		opcnt++;                                                       \
 		op->argop = NFS4_OP_OPEN;                                      \
 		op->nfs_argop4_u.opopen.seqid = __seqid;                       \
-		__seqid++;                                                     \
-		op->nfs_argop4_u.opopen.share_access =                         \
-		    OPEN4_SHARE_ACCESS_BOTH;                                   \
+		op->nfs_argop4_u.opopen.share_access = open_type;              \
 		op->nfs_argop4_u.opopen.share_deny = OPEN4_SHARE_DENY_NONE;    \
 		op->nfs_argop4_u.opopen.owner.clientid = inclientid;           \
 		op->nfs_argop4_u.opopen.owner.owner.owner_len = __owner_len;   \
 		op->nfs_argop4_u.opopen.owner.owner.owner_val = __owner_val;   \
 		op->nfs_argop4_u.opopen.openhow.opentype = OPEN4_NOCREATE;     \
+		op->nfs_argop4_u.opopen.claim.claim = CLAIM_NULL;              \
+		op->nfs_argop4_u.opopen.claim.open_claim4_u.file               \
+		    .utf8string_val = inname;                                  \
+		op->nfs_argop4_u.opopen.claim.open_claim4_u.file               \
+		    .utf8string_len = strlen(inname);                          \
+	} while (0)
+
+#define COMPOUNDV4_ARG_ADD_OP_KTCOPEN_CREATE(opcnt, args, __seqid, inclientid, \
+					     inattrs, inname, __owner_val,     \
+					     __owner_len, open_type)           \
+	do {                                                                   \
+		nfs_argop4 *op = args + opcnt;                                 \
+		opcnt++;                                                       \
+		op->argop = NFS4_OP_OPEN;                                      \
+		op->nfs_argop4_u.opopen.seqid = __seqid;                       \
+		op->nfs_argop4_u.opopen.share_access = open_type;              \
+		op->nfs_argop4_u.opopen.share_deny = OPEN4_SHARE_DENY_NONE;    \
+		op->nfs_argop4_u.opopen.owner.clientid = inclientid;           \
+		op->nfs_argop4_u.opopen.owner.owner.owner_len = __owner_len;   \
+		op->nfs_argop4_u.opopen.owner.owner.owner_val = __owner_val;   \
+		op->nfs_argop4_u.opopen.openhow.opentype = OPEN4_CREATE;       \
+		op->nfs_argop4_u.opopen.openhow.openflag4_u.how.mode =         \
+		    UNCHECKED4;                                                \
+		op->nfs_argop4_u.opopen.openhow.openflag4_u.how.createhow4_u   \
+		    .createattrs = inattrs;                                    \
 		op->nfs_argop4_u.opopen.claim.claim = CLAIM_NULL;              \
 		op->nfs_argop4_u.opopen.claim.open_claim4_u.file               \
 		    .utf8string_val = inname;                                  \
@@ -129,11 +152,15 @@ do { \
 		op->nfs_argop4_u.opopen.owner.owner.owner_len = __owner_len;   \
 		op->nfs_argop4_u.opopen.owner.owner.owner_val = __owner_val;   \
 		op->nfs_argop4_u.opopen.openhow.opentype = OPEN4_CREATE;       \
-		op->nfs_argop4_u.opopen.openhow.openflag4_u.how.mode = UNCHECKED4; \
-		op->nfs_argop4_u.opopen.openhow.openflag4_u.how.createhow4_u.createattrs = inattrs; \
-		op->nfs_argop4_u.opopen.claim.claim = CLAIM_NULL; \
-		op->nfs_argop4_u.opopen.claim.open_claim4_u.file.utf8string_val = inname; \
-		op->nfs_argop4_u.opopen.claim.open_claim4_u.file.utf8string_len = strlen(inname); \
+		op->nfs_argop4_u.opopen.openhow.openflag4_u.how.mode =         \
+		    UNCHECKED4;                                                \
+		op->nfs_argop4_u.opopen.openhow.openflag4_u.how.createhow4_u   \
+		    .createattrs = inattrs;                                    \
+		op->nfs_argop4_u.opopen.claim.claim = CLAIM_NULL;              \
+		op->nfs_argop4_u.opopen.claim.open_claim4_u.file               \
+		    .utf8string_val = inname;                                  \
+		op->nfs_argop4_u.opopen.claim.open_claim4_u.file               \
+		    .utf8string_len = strlen(inname);                          \
 	} while (0)
 
 #define COMPOUNDV4_ARG_ADD_OP_CLOSE(opcnt, argarray, __stateid)	\

@@ -5,6 +5,7 @@
 
 #include "export_mgr.h"
 #include "tc_impl_nfs4.h"
+#include<fcntl.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -66,6 +67,10 @@ struct kfd
 	nfs_fh4 fh;
 	/* Export id not needed now, might be needed in future */
 	stateid4 stateid;
+	/* seqid is per lock owner, ktcopen creates a new owner for every open,
+	 * so start with 1 */
+	seqid4 seqid;
+	int offset;
 };
 
 struct kfd fd_list[MAX_FD];
@@ -123,6 +128,9 @@ static inline int get_fd(stateid4 *stateid, nfs_fh4 *object)
 	memcpy(fd_list[cur_fd].fh.nfs_fh4_val, object->nfs_fh4_val, object->nfs_fh4_len);
 	fd_list[cur_fd].fh.nfs_fh4_len = object->nfs_fh4_len;
 
+	fd_list[cur_fd].seqid = 0;
+	fd_list[cur_fd].offset = 0;
+
 	freelist_count -= 1;
 	return cur_fd;
 }
@@ -158,6 +166,8 @@ static inline int freefd(int fd)
 	/* We have a valid fd that needs to be closed */
 
 	fd_list[fd].fd = -1;
+	fd_list[fd].seqid = 0;
+	fd_list[fd].offset = 0;
 	free(fd_list[fd].fh.nfs_fh4_val);
 
 	freelist_tail %= MAX_FD;
@@ -165,6 +175,35 @@ static inline int freefd(int fd)
 	freelist_count += 1;
 
 	return 0;
+}
+
+/*
+ * Caller has performed an operation which changed the state of a lock,
+ * eg:- OPEN, OPEN_CONFIRM, CLOSE, etc.
+ * This should be called after calling the state changing operation to update seq id.
+ * This should be called only if the operation succeeded
+ */
+static inline int incr_seqid(int fd)
+{
+	if (fd < 0 || fd > MAX_FD) {
+		/* Maybe assert()?? */
+		/* Add error logs too */
+		return -1;
+	}
+
+	if (fd_in_use(fd) < 0) {
+		/* Add error logs too */
+		return -1;
+	}
+
+	if (fd_list[fd].fd != fd) {
+		/* Add error logs too */
+		/* Implementation mistake, client has nothing to do with this */
+		assert(0);
+	}
+
+	fd_list[fd].seqid++;
+	return fd_list[fd].seqid;
 }
 
 bool readdir_reply(const char *name, void *dir_state, fsal_cookie_t cookie);

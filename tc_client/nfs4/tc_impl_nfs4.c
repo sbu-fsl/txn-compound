@@ -333,6 +333,7 @@ tc_file nfs4_openv(char *path, int flags)
 	kern_arg.opok_handle = NULL;
 	kern_arg.fhok_handle = NULL;
 	kern_arg.path = path;
+	memset(&kern_arg.attrib, 0, sizeof(struct attrlist));
 
 	if (get_freecount() <= 0) {
 		goto exit;
@@ -350,6 +351,7 @@ tc_file nfs4_openv(char *path, int flags)
 
 	free(kern_arg.fhok_handle->object.nfs_fh4_val);
 
+	incr_seqid(ret_file.fd);
 exit:
 	return ret_file;
 }
@@ -364,11 +366,14 @@ int nfs4_closev(tc_file user_file)
 	}
 
 	fsal_status = export->fsal_export->obj_ops->tc_close(
-	    &fd_list[user_file.fd].fh, &fd_list[user_file.fd].stateid);
+	    &fd_list[user_file.fd].fh, &fd_list[user_file.fd].stateid,
+	    &fd_list[user_file.fd].seqid);
 	if (FSAL_IS_ERROR(fsal_status)) {
 		return (int)EAGAIN;
 	}
 
+	incr_seqid(
+	    user_file.fd); // Not needed, but example of how to use incr_seqid
 	freefd(user_file.fd);
 
 	return 0;
