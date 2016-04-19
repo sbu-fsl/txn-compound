@@ -1202,6 +1202,12 @@ static fsal_status_t fs_do_close(const struct user_cred *creds,
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
+/*
+ * Similar to fs_do_close, only difference being this accepts seqid
+ * This is because for operations which involve modifying the state,
+ * seqid for a lock owner keeps changing.
+ * So caller has to make sure it passes the right seqid from kfd structure
+ */
 static fsal_status_t tc_do_close(const struct user_cred *creds,
 				 const nfs_fh4 *fh4, stateid4 *sid,
 				 seqid4 *seqid, struct fsal_export *exp)
@@ -2236,6 +2242,13 @@ exit_pathinval:
 	return fsalstat(ERR_FSAL_INVAL, 0);
 }
 
+/*
+ * tc version of open system call
+ * Should be called only if new fd can be allocated
+ * Caller has to make sure incr_seqid() is called if this succeeds
+ *
+ * flags currently supports O_RDONLY, O_WRONLY, O_RDWR and O_CREAT
+ */
 static fsal_status_t ktcopen(struct tcopen_kargs *kern_arg, int flags)
 {
 	int rc;
@@ -2282,6 +2295,10 @@ exit:
 	return st;
 }
 
+/*
+ * Close an already opened file
+ * Sets the current fh to fh4 and closes sid, seqid has to be passed from fd
+ */
 static fsal_status_t ktcclose(const nfs_fh4 *fh4, stateid4 *sid, seqid4 *seqid)
 {
 	fsal_status_t st;
