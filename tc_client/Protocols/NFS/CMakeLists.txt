@@ -63,6 +63,7 @@ SET(nfsproto_STAT_SRCS
 )
 
 add_library(nfsproto STATIC ${nfsproto_STAT_SRCS})
+target_link_libraries(nfsproto cache_inode sal)
 
 set(nfs4callbackSRCS
    nfs4_cb_Compound.c
