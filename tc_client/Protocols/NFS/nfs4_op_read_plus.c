@@ -183,11 +183,6 @@ static int fill_contents(contents *io_content, off_t offset, size_t size,
 					   "should not reach here.");
 	}
 
-	if (ret != NFS4_OK) {
-		gsh_free(io_content);
-		return ret;
-	}
-
 	io_content->what = content_type;
 
 	return ret;
