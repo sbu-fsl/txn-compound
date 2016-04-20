@@ -16,17 +16,13 @@ hash -r                                 # clear the command path hash
 DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 
 # got to the root of this git repo
-cd $DIR/../../
+cd $DIR/../
 
 # NFS-ganesha specific
 sudo git submodule update --init --recursive
-sudo rpm -Fvh http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-5.noarch.rpm
+sudo wget http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-6.noarch.rpm
+sudo rpm -ivh epel-release-7-6.noarch.rpm
 
-#sudo wget -P /etc/yum.repos.d http://download.gluster.org/pub/gluster/glusterfs/LATEST/RHEL/glusterfs-epel.repo
-#sudo rpm --import 'https://ceph.com/git/?p=ceph.git;a=blob_plain;f=keys/release.asc'
-#sudo yum install -y snappy leveldb gdisk gperftools-libs
-#sudo rpm -Uvh http://ceph.com/rpm-dumpling/el6/noarch/ceph-release-1-0.el6.noarch.rpm
-#sudo rpm -Uvh http://li.nux.ro/download/nux/dextop/el7/x86_64/nux-dextop-release-0-5.el7.nux.noarch.rpm
 #sudo yum -y update
 
 # clean up the yum cache directory to get rid of
@@ -38,7 +34,7 @@ sudo yum install -y glog-devel gflags-devel libgssglue-devel
 sudo yum install -y openssl-devel
 sudo yum install -y libnfsidmap-devel
 sudo yum install -y doxygen
-sudo yum install -y gperftools-libs
+sudo yum install -y gperftools-devel gperftools-libs  # for tcmalloc
 sudo yum install -y protobuf-devel leveldb-devel snappy-devel opencv-devel boost-devel hdf5-devel
 sudo yum install -y lmdb-devel jemalloc-devel tbb-devel libaio-devel cryptopp-devel
 sudo yum -y groupinstall "Development Tools"
