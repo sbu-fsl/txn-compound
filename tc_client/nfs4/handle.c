@@ -1659,6 +1659,19 @@ static int tc_set_current_fh(const tc_file *tcf, struct nfsoparray *nfsops,
         return nfsops->opcnt - old_opcnt;
 }
 
+static int tc_set_saved_fh(const tc_file *tcf, struct nfsoparray *nfsops,
+			   slice_t *leaf)
+{
+        int rc;
+
+        rc = tc_set_current_fh(tcf, nfsops, leaf);
+        if (rc >= 0) {
+		COMPOUNDV4_ARG_ADD_OP_SAVEFH(nfsops->opcnt, nfsops->argoparray);
+	}
+
+        return rc;
+}
+
 static nfsstat4 get_nfs4_op_status(const nfs_resop4 *op_res)
 {
         switch (op_res->resop) {
@@ -2209,6 +2222,32 @@ static inline REMOVE4resok *tc_prepare_remove(struct nfsoparray *nfsops,
 	COMPOUNDV4_ARG_ADD_OP_REMOVE(nfsops->opcnt, nfsops->argoparray, name);
 
         return rmok;
+}
+
+static inline utf8string slice2ustr(const slice_t *sl) {
+        utf8string ustr = {
+                .utf8string_val = (char *)sl->data;
+                .utf8string_len = sl->size;
+        }
+        return ustr;
+}
+
+static inline RENAME4resok *tc_prepare_rename(struct nfsoparray *nfsops,
+                                              const slice_t *srcname,
+                                              const slice_t *dstname)
+{
+	RENAME4resok *rnok;
+	nfs_argop4 *op;
+
+        op = nfs->argoparray + nfsops->opcnt;
+	rnok = &nfsops->resoparray[nfsops->opcnt]
+		    .nfs_resop4_u.oprename.RENAME4resok;
+	op->argop = NFS4_OP_RENAME;
+	op->nfs_argop4_u.oprename.oldname = slice2ustr(srcname);
+	op->nfs_argop4_u.oprename.newname = slice2ustr(dstname);
+        nfsops->opcnt++;
+
+	return rnok;
 }
 
 static fsal_status_t fs_mkdir(struct fsal_obj_handle *dir_hdl, const char *name,
@@ -3598,6 +3637,65 @@ exit:
         return tcres;
 }
 
+static tc_res tc_nfs4_renamev(tc_file_pair *pairs, int count)
+{
+        int rc;
+        tc_res tcres;
+        nfsstat4 cpd_status;
+	nfsstat4 op_status;
+        struct nfsoparray *nfsops;
+	int i = 0;      /* index of tc_iovec */
+	int j = 0;      /* index of NFS operations */
+        slice_t srcname;
+        slice_t dstname;
+
+        NFS4_DEBUG("tc_nfs4_renamev");
+        nfsops = new_nfs_ops((MAX_DIR_DEPTH + 3) * count);
+        assert(nfsops);
+
+        for (i = 0; i < count; ++i) {
+                rc = tc_set_saved_fh(&pairs[i].src_file, nfsops, &srcname);
+                if (rc < 0) {
+                        tcres = tc_failure(i, ERR_FSAL_INVAL);
+                        goto exit;
+                }
+                rc = tc_set_current_fh(&pairs[i].dst_file, nfsops, &dstname);
+                if (rc < 0) {
+                        tcres = tc_failure(i, ERR_FSAL_INVAL);
+                        goto exit;
+                }
+                tc_prepare_rename(nfsops, &srcname, &dstname);
+        }
+
+        rc = fs_nfsv4_call(op_ctx->creds, nfsops->opcnt, nfsops->argoparray,
+                           nfsops->resoparray, &cpd_status);
+        if (rc != RPC_SUCCESS) {
+                NFS4_ERR("rpc failed: %d", rc);
+                tcres = tc_failure(0, rc);
+                goto exit;
+        }
+
+        i = 0;
+        for (j = 0; j < nfsops->opcnt; ++j) {
+                op_status = get_nfs4_op_status(&nfsops->resoparray[j]);
+                if (op_status != NFS4_OK) {
+			NFS4_ERR("NFS operation (%d) failed: %d",
+				 nfsops->resoparray[j].resop, op_status);
+			tcres = tc_failure(i, nfsstat4_to_errno(op_status));
+                        goto exit;
+                }
+                if (nfsops->resoparray[j].resop == NFS4_OP_RENAME) {
+                        ++i;
+                }
+        }
+
+        tcres.okay = true;
+
+exit:
+        del_nfs_ops(nfsops);
+        return tcres;
+}
+
 static tc_res tc_nfs4_removev(tc_file *files, int count)
 {
         int rc;
@@ -3684,6 +3782,7 @@ void fs_handle_ops_init(struct fsal_obj_ops *ops)
         ops->tc_setattrsv = tc_nfs4_setattrsv;
         ops->tc_mkdirv = tc_nfs4_mkdirv;
         ops->tc_listdirv = tc_nfs4_listdirv;
+        ops->tc_renamev = tc_nfs4_renamev;
         ops->tc_removev = tc_nfs4_removev;
 	ops->root_lookup = fs_root_lookup;
 }
