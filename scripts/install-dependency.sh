@@ -1,3 +1,5 @@
+#!/bin/bash -
+#
 # Setup txn-compound on CentOS7
 #
 # by Garima Gehlot, garima.gehlot@stonybrook.edu
@@ -19,9 +21,9 @@ DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 cd $DIR/../
 
 # NFS-ganesha specific
-sudo git submodule update --init --recursive
-sudo wget http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-6.noarch.rpm
-sudo rpm -ivh epel-release-7-6.noarch.rpm
+git submodule update --init --recursive
+wget http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-6.noarch.rpm
+rpm -ivh epel-release-7-6.noarch.rpm
 
 #sudo yum -y update
 
@@ -29,23 +31,23 @@ sudo rpm -ivh epel-release-7-6.noarch.rpm
 # obsolete headers, if any
 #sudo yum clean all
 
-sudo yum install -y cmake
-sudo yum install -y glog-devel gflags-devel libgssglue-devel
-sudo yum install -y openssl-devel
-sudo yum install -y libnfsidmap-devel
-sudo yum install -y doxygen
-sudo yum install -y gperftools-devel gperftools-libs  # for tcmalloc
-sudo yum install -y protobuf-devel leveldb-devel snappy-devel opencv-devel boost-devel hdf5-devel
-sudo yum install -y lmdb-devel jemalloc-devel tbb-devel libaio-devel cryptopp-devel
-sudo yum -y groupinstall "Development Tools"
-sudo yum install -y glibc-headers
-sudo yum install -y gcc-c++
-sudo yum install -y bison flex
-sudo yum install -y libcurl-devel boost-system boost-filesystem boost-regex
-sudo yum install -y boost-static
-sudo yum install -y glib2-devel glib-devel
-sudo yum install -y automake autoconf libtool
-sudo yum install -y libcap-devel libwbclient-devel libuuid-devel libblkid-devel
+yum install -y cmake
+yum install -y glog-devel gflags-devel libgssglue-devel
+yum install -y openssl-devel
+yum install -y libnfsidmap-devel
+yum install -y doxygen
+yum install -y gperftools-devel gperftools-libs  # for tcmalloc
+yum install -y protobuf-devel leveldb-devel snappy-devel opencv-devel boost-devel hdf5-devel
+yum install -y lmdb-devel jemalloc-devel tbb-devel libaio-devel cryptopp-devel
+yum -y groupinstall "Development Tools"
+yum install -y glibc-headers
+yum install -y gcc-c++
+yum install -y bison flex
+yum install -y libcurl-devel boost-system boost-filesystem boost-regex
+yum install -y boost-static
+yum install -y glib2-devel glib-devel
+yum install -y automake autoconf libtool
+yum install -y libcap-devel libwbclient-devel libuuid-devel libblkid-devel
 
 mkdir -p /opt
 cd /opt
