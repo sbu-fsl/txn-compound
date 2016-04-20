@@ -2226,9 +2226,9 @@ static inline REMOVE4resok *tc_prepare_remove(struct nfsoparray *nfsops,
 
 static inline utf8string slice2ustr(const slice_t *sl) {
         utf8string ustr = {
-                .utf8string_val = (char *)sl->data;
-                .utf8string_len = sl->size;
-        }
+                .utf8string_val = (char *)sl->data,
+                .utf8string_len = sl->size,
+        };
         return ustr;
 }
 
@@ -2239,9 +2239,9 @@ static inline RENAME4resok *tc_prepare_rename(struct nfsoparray *nfsops,
 	RENAME4resok *rnok;
 	nfs_argop4 *op;
 
-        op = nfs->argoparray + nfsops->opcnt;
+        op = nfsops->argoparray + nfsops->opcnt;
 	rnok = &nfsops->resoparray[nfsops->opcnt]
-		    .nfs_resop4_u.oprename.RENAME4resok;
+		    .nfs_resop4_u.oprename.RENAME4res_u.resok4;
 	op->argop = NFS4_OP_RENAME;
 	op->nfs_argop4_u.oprename.oldname = slice2ustr(srcname);
 	op->nfs_argop4_u.oprename.newname = slice2ustr(dstname);
