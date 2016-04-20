@@ -36,7 +36,6 @@
 #define CACHE_INODE_LRU_H
 
 #include "config.h"
-#include "log.h"
 #include "cache_inode.h"
 
 /**

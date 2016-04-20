@@ -52,7 +52,6 @@
 #define CACHE_INODE_AVL_H
 
 #include "config.h"
-#include "log.h"
 #include "cache_inode.h"
 #include "avltree.h"
 

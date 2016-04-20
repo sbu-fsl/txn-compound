@@ -22,7 +22,6 @@
 
 #include <assert.h>
 #include <vector>
-#include <iostream>
 #include "util/slice.h"
 
 #define TC_PATH_MAX 4096
