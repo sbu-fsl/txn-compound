@@ -120,6 +120,9 @@ RPCs: [tc_client/MainNFSD/tc_test_mkdir.c](tc_client/MainNFSD/tc_test_mkdir.c)
 - Removing multiple files with one RPC:
 [tc_client/MainNFSD/tc_test_remove.c](tc_client/MainNFSD/tc_test_remove.c)
 
+- Moving multiple files with one RPC:
+[tc_client/MainNFSD/tc_test_rename.c](tc_client/MainNFSD/tc_test_rename.c)
+
 LICENSE
 =======
 Most code in this repo has [LGPL license](tc_client/LICENSE.txt).  However, a
