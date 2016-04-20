@@ -114,7 +114,11 @@ tc_res tc_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
 
 tc_res tc_renamev(tc_file_pair *pairs, int count, bool is_transaction)
 {
-	return posix_renamev(pairs, count, is_transaction);
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_renamev(pairs, count, is_transaction);
+	} else {
+		return posix_renamev(pairs, count, is_transaction);
+	}
 }
 
 tc_res tc_removev(tc_file *files, int count, bool is_transaction)
