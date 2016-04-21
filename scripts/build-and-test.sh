@@ -28,8 +28,8 @@ git submodule update --init
 echo "using config file at $TC_ROOT/config/tc.ganesha.conf"
 cat "config/tc.ganesha.conf"
 
-ps aux | grep ganesha
-tail -n 50 /var/log/tcserver.ganesha.log
+#ps aux | grep ganesha
+#tail -n 50 /var/log/tcserver.ganesha.log
 
 mkdir tc_client/build
 cd tc_client/build
