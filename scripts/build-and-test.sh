@@ -23,7 +23,7 @@ TC_ROOT="$DIR/../.."
 BUILD_TYPE="${1:-Debug}"
 
 echo "using config file at $DIR/../config/tc.ganesha.conf"
-cat $DIR/../config/tc.ganesha.conf"
+cat "$DIR/../config/tc.ganesha.conf"
 
 ps aux | grep ganesha
 tail -n 50 /var/log/tcserver.ganesha.log
