@@ -20,7 +20,7 @@ before_install:
  - docker pull mingchen/tc-client
  - docker run -d mingchen/tc-client /bin/sh -c "git clone https://github.com/sbu-fsl/tc-server.git; ./tc-server/src/scripts/build-and-run.sh;"
 
-script: docker run mingchen/tc-client /bin/sh "txn-compound/scripts/build-and-test.sh"
+script: docker run mingchen/tc-client /bin/sh -c "git clone https://github.com/sbu-fsl/txn-compound.git tc-latest && tc-latest/scripts/build-and-test.sh"
 
 notifications:
   email:

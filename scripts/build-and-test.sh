@@ -18,18 +18,21 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 ORIGINPWD=$PWD
 
-TC_ROOT="$DIR/../.."
+TC_ROOT="$DIR/../"
 
 BUILD_TYPE="${1:-Debug}"
 
-echo "using config file at $DIR/../config/tc.ganesha.conf"
-cat "$DIR/../config/tc.ganesha.conf"
+cd $TC_ROOT
+git submodule update --init
+
+echo "using config file at $TC_ROOT/config/tc.ganesha.conf"
+cat "config/tc.ganesha.conf"
 
 ps aux | grep ganesha
 tail -n 50 /var/log/tcserver.ganesha.log
 
-mkdir $DIR/../tc_client/build
-cd $DIR/../tc_client/build
+mkdir tc_client/build
+cd tc_client/build
 cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE ..
 make
 make install
