@@ -120,9 +120,9 @@ void *nfs4_init(const char *config_path, const char *log_path,
 
         config_Free(config_struct);
 
-	new_module = lookup_fsal("PROXY");
+	new_module = lookup_fsal("TCNFS");
 	if (new_module == NULL) {
-		LogDebug(COMPONENT_FSAL, "Proxy Module Not found\n");
+		LogDebug(COMPONENT_FSAL, "TCNFS Module Not found\n");
 		return NULL;
 	}
 
