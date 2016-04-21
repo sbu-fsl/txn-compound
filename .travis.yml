@@ -20,7 +20,7 @@ before_install:
  - docker pull mingchen/tc-client
  - docker run -d mingchen/tc-client /bin/sh -c "git clone https://github.com/sbu-fsl/tc-server.git; ./tc-server/src/scripts/build-and-run.sh;"
 
-script: docker run mingchen/tc-client /bin/sh -c "git clone https://github.com/sbu-fsl/txn-compound.git && cd txn-compound && mkdir tc_client/build && cd tc_client/build && cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE .. && make && make install && ./MainNFSD/tc_test_write"
+script: docker run mingchen/tc-client /bin/sh -c "cd txn-compound && mkdir tc_client/build && cd tc_client/build && cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE .. && make && make install && ./MainNFSD/tc_test_write"
 
 notifications:
   email:
