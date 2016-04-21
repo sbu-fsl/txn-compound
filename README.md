@@ -39,7 +39,10 @@ To compile and run the projects, you need CMake, G++, Jemalloc, Google Test,
 Google Mock, ........................... Life will be so much better if we
 have a package manager like Maven in the C/C++ world :-(
 
-So, the simplest way is to create a CentOS VM, and then execute
+So, the simplest way is to use the public Docker image built for this project
+in [Docker Hub](https://hub.docker.com/r/mingchen/tc-client/)
+
+Alternatively, we can create a CentOS VM, and then execute
 [`scripts/install-dependency.sh`](scripts/install-dependency.sh)
 
 Build
