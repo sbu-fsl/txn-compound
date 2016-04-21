@@ -159,6 +159,15 @@ tc_file tc_open_by_handle(int mount_fd, struct file_handle *fh, int flags);
 int tc_close(tc_file file);
 
 /**
+ * A special offset that is the same as the file size.
+ */
+#define TC_OFFSET_END (SIZE_MAX-1)
+/**
+ * A special offset indicates the current offset of the file descriptor.
+ */
+#define TC_OFFSET_CUR (SIZE_MAX-2)
+
+/**
  * Represents an I/O vector of a file.
  *
  * The fields have different meaning depending the operation is read or write.
