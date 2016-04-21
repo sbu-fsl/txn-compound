@@ -35,7 +35,8 @@ mkdir tc_client/build
 cd tc_client/build
 cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE ..
 make
-make install
-./MainNFSD/tc_test_write
+# TODO add local unit test
+#make install
+#./MainNFSD/tc_test_write
 
 cd $ORIGINPWD
