@@ -115,6 +115,10 @@ tc_res nfs4_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
 		     int max_entries, tc_listdirv_cb cb, void *cbarg,
 		     bool is_transaction);
 
+int nfs4_chdir(const char *path);
+
+char *nfs4_getcwd();
+
 #ifdef __cplusplus
 }
 #endif

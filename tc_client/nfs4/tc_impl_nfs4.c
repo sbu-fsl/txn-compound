@@ -149,6 +149,9 @@ void *nfs4_init(const char *config_path, const char *log_path,
         op_ctx->export = export;
         op_ctx->fsal_export = export->fsal_export;
 
+	rc = nfs4_chdir(export->fullpath);
+	assert(rc == 0);
+
 	sleep(1);
 	return (void*)new_module;
 }
@@ -411,4 +414,23 @@ tc_res nfs4_removev(tc_file *files, int count, bool is_transaction)
 	res = exp->fsal_export->obj_ops->tc_removev(files, count);
 
 	return res;
+}
+
+int nfs4_chdir(const char *path)
+{
+	struct gsh_export *exp = op_ctx->export;
+
+	assert(exp->fullpath);
+	if (strncmp(path, exp->fullpath, strlen(exp->fullpath)) != 0) {
+		NFS4_ERR("cannot set TC working directory to %s because it is "
+			 "outside of NFS export %s", path, exp->fullpath);
+		return -EINVAL;
+	}
+
+	return exp->fsal_export->obj_ops->tc_chdir(path);
+}
+
+char *nfs4_getcwd()
+{
+	return op_ctx->fsal_export->obj_ops->tc_getcwd();
 }

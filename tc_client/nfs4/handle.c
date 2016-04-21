@@ -141,6 +141,34 @@ struct fs_obj_handle {
 	struct fs_handle_blob blob;
 };
 
+struct tc_cwd_data {
+        char path[PATH_MAX];
+        char fhbuf[NFS4_FHSIZE];
+        nfs_fh4 fh;
+        int32_t refcount;
+};
+
+static struct tc_cwd_data *tc_cwd = NULL;
+static pthread_mutex_t tc_cwd_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static struct tc_cwd_data *tc_get_cwd()
+{
+        struct tc_cwd *cwd;
+        pthread_mutex_lock(&tc_cwd_lock);
+        assert(tc_cwd);
+        cwd = tc_cwd;
+        pthread_mutex_unlock(&tc_cwd_lock);
+        atomic_inc_int32_t(&cwd->refcount);
+        return cwd;
+}
+
+static void tc_put_cwd(struct tc_cwd_data *cwd)
+{
+        if (atomic_dec_int32_t(&cwd->refcount) == 0) {
+                free(cwd);
+        }
+}
+
 static struct fs_obj_handle *fs_alloc_handle(struct fsal_export *exp,
 					       const nfs_fh4 *fh,
 					       const struct attrlist *attr);
@@ -1577,18 +1605,29 @@ error_after_gsh:
 #define TC_BASE_PATH_CURRENT 1
 #define TC_BASE_PATH_ROOT 2
 #define TC_BASE_PATH_SAVED 3
+#define TC_BASE_PATH_CWD 4
 
 static int construct_lookups(slice_t *comps, int compcnt,
 			     nfs_argop4 *argoparray, int *opcnt, int base)
 {
         int i;
         int new_opcnt = *opcnt;
+        nfs_fh4 cwdfh;
+        struct tc_cwd_data *cwd;
 
         if (base == TC_BASE_PATH_ROOT) {
                 COMPOUNDV4_ARG_ADD_OP_PUTROOTFH(new_opcnt, argoparray);
         } else if (base == TC_BASE_PATH_SAVED) {
                 COMPOUNDV4_ARG_ADD_OP_RESTOREFH(new_opcnt, argoparray);
-        } else {
+        } else if (base == TC_BASE_PATH_CWD) {
+		cwd = tc_get_cwd();
+		cwdfh.nfs_fh4_len = cwd->fh.nfs_fh4_len;
+		cwdfh.nfs_fh4_val = alloca(cwdfh.nfs_fh4_len);
+		memmove(cwdfh.nfs_fh4_val, cwd->fh.nfs_fh4_val,
+			cwdfh.nfs_fh4_len);
+		COMPOUNDV4_ARG_ADD_OP_PUTFH(new_opcnt, argoparray, &cwdfh);
+		tc_put_cwd(cwd);
+	} else {
 		// Nothing need to be done if base is the current file handle
 		assert(base == TC_BASE_PATH_CURRENT);
         }
@@ -1608,6 +1647,38 @@ static int construct_lookups(slice_t *comps, int compcnt,
         i = new_opcnt - *opcnt;
         *opcnt = new_opcnt;
         return i;
+}
+
+static int tc_set_cfh_to_path(const char *path, struct nfsoparray *nfsops,
+			      slice_t *leaf)
+{
+	slice_t *comps = NULL; /* path components */
+	int n;		       /* number of path compontents */
+	int base;
+	int old_opcnt = nfsops->opcnt;
+
+	n = tc_path_tokenize(path, &comps);
+	if (n < 0) {
+		NFS4_ERR("Cannot tokenize path: %s", tcf->path);
+		return -1;
+	}
+	if (leaf) {
+		*leaf = comps[--n];
+	}
+	if (n > 0) {
+		if (tcf->path[0] == '/') {
+			base = TC_BASE_PATH_ROOT;
+			comps[0].data++;
+			comps[0].size--;
+		} else {
+			base = TC_BASE_PATH_CWD;
+		}
+		construct_lookups(comps, n, nfsops->argoparray, &nfsops->opcnt,
+				  base);
+	}
+
+	free(comps);
+	return nfsops->opcnt - old_opcnt;
 }
 
 /**
@@ -1631,32 +1702,11 @@ static int construct_lookups(slice_t *comps, int compcnt,
 static int tc_set_current_fh(const tc_file *tcf, struct nfsoparray *nfsops,
 			     slice_t *leaf)
 {
-        slice_t *comps = NULL;      /* path components */
-        int n;                      /* number of path compontents */
-        int base;
-        int old_opcnt = nfsops->opcnt;
+        int rc;
 
 	assert(tcf->type == TC_FILE_PATH); /* FIXME */
         NFS4_DEBUG("Set current FH to %s", tcf->path);
-	n = tc_path_tokenize(tcf->path, &comps);
-	if (n < 0) {
-		NFS4_ERR("Cannot tokenize path: %s", tcf->path);
-		return -1;
-        }
-        if (leaf) {
-                *leaf = comps[--n];
-        }
-        if (n > 0 && tcf->path[0] == '/') {
-                base = TC_BASE_PATH_ROOT;
-                comps[0].data++;
-                comps[0].size--;
-        } else {
-                base = TC_BASE_PATH_CURRENT;
-        }
-	construct_lookups(comps, n, nfsops->argoparray, &nfsops->opcnt, base);
-
-	free(comps);
-        return nfsops->opcnt - old_opcnt;
+        return tc_set_cfh_to_path(tcf->path, nfsops, leaf);
 }
 
 static int tc_set_saved_fh(const tc_file *tcf, struct nfsoparray *nfsops,
@@ -3749,6 +3799,60 @@ exit:
         return tcres;
 }
 
+int tc_nfs4_chdir(const char *path)
+{
+	int rc;
+	struct nfsoparray *nfsops;
+	struct tc_cwd_data *cwd;
+	GETFH4resok *fhok;
+
+	NFS4_DEBUG("tc_nfs4_chdir");
+	nfsops = new_nfs_ops(MAX_DIR_DEPTH + 2);
+	assert(nfsops);
+
+	cwd = malloc(sizeof(*cwd));
+	if (!cwd) {
+		del_nfs_ops(nfsops);
+		return -ENOMEM;
+	}
+	cwd->refcount = 1; // grap a refcount
+	memmove(cwd->path, path, strlen(path));
+
+	rc = tc_set_cfh_to_path(path, nfsops, NULL);
+	fhok = tc_prepare_getfh(nfsops, cwd->fhbuf);
+
+	rc = fs_nfsv4_call(op_ctx->creds, nfsops->opcnt, nfsops->argoparray,
+			   nfsops->resoparray, NULL);
+	if (rc != RPC_SUCCESS) {
+		NFS4_ERR("rpc failed: %d", rc);
+		free(cwd);
+		del_nfs_ops(nfsops);
+		return -rc;
+	}
+
+	cwd->fh = fhok->object;
+
+	pthread_mutex_lock(&tc_cwd_lock);
+	tc_put_cwd(tc_cwd);
+	tc_cwd = cwd;
+	pthread_mutex_unlock(&tc_cwd_lock);
+
+	del_nfs_ops(nfsops);
+	return 0;
+}
+
+char *tc_nfs4_getcwd()
+{
+	struct tc_cwd *cwd;
+	char *path;
+
+	cwd = tc_get_cwd();
+	path = strdup(cwd->path);
+	tc_put_cwd(cwd);
+
+	return path;
+}
+
 void fs_handle_ops_init(struct fsal_obj_ops *ops)
 {
 	ops->release = fs_hdl_release;
@@ -3784,6 +3888,8 @@ void fs_handle_ops_init(struct fsal_obj_ops *ops)
         ops->tc_listdirv = tc_nfs4_listdirv;
         ops->tc_renamev = tc_nfs4_renamev;
         ops->tc_removev = tc_nfs4_removev;
+        ops->tc_chdir = tc_nfs4_chdir;
+        ops->tc_getcwd = tc_nfs4_getcwd;
 	ops->root_lookup = fs_root_lookup;
 }
 
@@ -4096,4 +4202,6 @@ fsal_status_t fs_extract_handle(struct fsal_export *exp_hdl,
 	fh_desc->len = fh_size;
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
+
+
 

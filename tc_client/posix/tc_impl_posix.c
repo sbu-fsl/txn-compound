@@ -712,3 +712,20 @@ tc_res posix_listdir(const char *dir, struct tc_attrs_masks masks,
 
 	return result;
 }
+
+int posix_chdir(const char *path)
+{
+	int ret;
+
+	ret = chdir(path);
+	if (ret == -1) {
+		ret = -errno;
+	}
+
+	return ret;
+}
+
+char *posix_getcwd()
+{
+	return get_current_dir_name();
+}

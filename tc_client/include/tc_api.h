@@ -159,6 +159,20 @@ tc_file tc_open_by_handle(int mount_fd, struct file_handle *fh, int flags);
 int tc_close(tc_file file);
 
 /**
+ * Change current work directory to "path".
+ *
+ * Return 0 on success and a negative error number in case of failure.
+ */
+int tc_chdir(const char *path);
+
+/**
+ * Returns current working directory.
+ *
+ * The caller owns the returned buffer and is responsible for freeing it.
+ */
+char *tc_getcwd();
+
+/**
  * A special offset that is the same as the file size.
  */
 #define TC_OFFSET_END (SIZE_MAX-1)

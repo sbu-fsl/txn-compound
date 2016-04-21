@@ -1344,6 +1344,9 @@ struct fsal_obj_ops {
 	fsal_status_t (*lookup_plus)(const char *path,
 				     struct fsal_obj_handle **handle);
 
+	int (*tc_chdir)(const char *path);
+	char *(*tc_getcwd)();
+
 /**
  * @brief Create a directory
  *

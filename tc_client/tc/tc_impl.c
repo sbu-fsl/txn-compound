@@ -219,3 +219,22 @@ tc_res tc_write_adb(struct tc_adb *patterns, int count, bool is_transaction)
 {
 	return TC_OKAY;
 }
+
+
+int tc_chdir(const char *path)
+{
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_chdir(path);
+	} else {
+		return posix_chdir(path);
+	}
+}
+
+char *tc_getcwd()
+{
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_getcwd();
+	} else {
+		return posix_getcwd();
+	}
+}
