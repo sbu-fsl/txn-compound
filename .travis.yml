@@ -1,7 +1,12 @@
-language: c
+sudo: required
+
+language: c++
+
+services:
+  - docker
 
 compiler:
-  - gcc
+  - g++
 
 env:
   - BUILD_TYPE=Debug
@@ -9,39 +14,18 @@ env:
 
 branches:
  only:
-  - travis
-  - next
+  - master
 
 before_install:
- - git submodule update --init --recursive
- - sudo apt-get install libnfsidmap2
- - sudo apt-get install libnfsidmap-dev
- - sudo apt-get install libkrb5-3
- - sudo apt-get install libkrb5-dev
- - sudo apt-get install libk5crypto3
- - sudo apt-get install libgssapi-krb5-2
- - sudo apt-get install libgssglue1
- - sudo apt-get install libdbus-1-3
- - sudo apt-get install dbus
- - sudo apt-get install libdbus-1-dev
- - sudo apt-get install libcap-dev
+ - docker pull mingchen/tc-client
+ - docker run -d mingchen/tc-client /bin/sh -c "git clone https://github.com/sbu-fsl/tc-server.git; ./tc-server/src/scripts/build-and-run.sh;"
 
-script: mkdir ../build && cd ../build && cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_CONFIG=everything ../nfs-ganesha/src/ && make
+script: mkdir txn-compound/tc_client/build && cd txn-compound/tc_client/build && cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE .. && make && make install && ./MainNFSD/tc_test_write
 
 notifications:
   email:
     recepients:
-      - sbhamare@panasas.com
+      - v.mingchen@gmail.com
 
     on_success: always
     on_failure: always
-
-  irc:
-    channels:
-      - "irc.panasas.com#pnfs"
-    template:
-      - "%{repository}#%{build_number}  (%{branch} - %{commit}) : %{message}"
-      - "Build details: %{build_url}"
-    use_notice: true
-    skip_join: true
-
