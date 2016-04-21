@@ -49,6 +49,9 @@ yum install -y glib2-devel glib-devel
 yum install -y automake autoconf libtool
 yum install -y libcap-devel libwbclient-devel libuuid-devel libblkid-devel
 
+# To resolve https://github.com/nfs-ganesha/nfs-ganesha/issues/67
+yum install -y libtirpc
+
 mkdir -p /opt
 cd /opt
 
