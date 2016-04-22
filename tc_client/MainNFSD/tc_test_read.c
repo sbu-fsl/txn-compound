@@ -22,19 +22,20 @@ static char tc_config_path[PATH_MAX];
 
 #define DEFAULT_LOG_FILE "/tmp/tc_test_read.log"
 
-#define TC_TEST_NFS_FILE "/vfs0/tcdir/abcd"
+#define TC_TEST_NFS_FILE0 "/vfs0/test/abcd0"
+#define TC_TEST_NFS_FILE1 "/vfs0/test/abcd1"
 
 int main(int argc, char *argv[])
 {
 	void *context = NULL;
-	struct tc_iovec read_iovec;
+	struct tc_iovec read_iovec[4];
 	tc_res res;
 
 	/* Locate and use the default config file.  Please update the config
 	 * file to the correct NFS server. */
 	readlink("/proc/self/exe", exe_path, PATH_MAX);
 	snprintf(tc_config_path, PATH_MAX,
-		 "%s/../../../config/tc.ganesha.conf", dirname(exe_path));
+		 "%s/../../../config/vfs.proxy.conf", dirname(exe_path));
 	fprintf(stderr, "using config file: %s\n", tc_config_path);
 
 	/* Initialize TC services and daemons */
@@ -47,27 +48,43 @@ int main(int argc, char *argv[])
 	}
 
 	/* Setup I/O request */
-	read_iovec.file = tc_file_from_path(TC_TEST_NFS_FILE);
-	read_iovec.offset = 0;
-	read_iovec.length = 4096;
-	read_iovec.data = malloc(4096);
-	assert(read_iovec.data);
+	read_iovec[0].file = tc_file_from_path(TC_TEST_NFS_FILE0);
+	read_iovec[0].offset = 0;
+	read_iovec[0].length = 16384;
+	read_iovec[0].data = malloc(16384);
+	assert(read_iovec[0].data);
+	read_iovec[1].file = tc_file_current();
+	read_iovec[1].offset = 16384;
+	read_iovec[1].length = 16384;
+	read_iovec[1].data = malloc(16384);
+	assert(read_iovec[1].data);
+
+	read_iovec[2].file = tc_file_from_path(TC_TEST_NFS_FILE1);
+	read_iovec[2].offset = 0;
+	read_iovec[2].length = 16384;
+	read_iovec[2].data = malloc(16384);
+	assert(read_iovec[2].data);
+	read_iovec[3].file = tc_file_current();
+	read_iovec[3].offset = 16384;
+	read_iovec[3].length = 16384;
+	read_iovec[3].data = malloc(16384);
+	assert(read_iovec[3].data);
 
 	/* Read the file; nfs4_readv() will open it first if needed. */
-	res = tc_readv(&read_iovec, 1, false);
+	res = tc_readv(read_iovec, 4, false);
 
 	/* Check results. */
 	if (res.okay) {
 		fprintf(stderr,
 			"Successfully read the first %d bytes of file \"%s\" "
 			"via NFS.\n",
-			read_iovec.length, TC_TEST_NFS_FILE);
+			read_iovec[0].length, TC_TEST_NFS_FILE0);
 	} else {
 		fprintf(stderr,
 			"Failed to read file \"%s\" at the %d-th operation "
 			"with error code %d (%s). See log file for details: "
 			"%s\n",
-			TC_TEST_NFS_FILE, res.index, res.err_no,
+			TC_TEST_NFS_FILE0, res.index, res.err_no,
 			strerror(res.err_no),
 			DEFAULT_LOG_FILE);
 	}

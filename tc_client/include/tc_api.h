@@ -112,6 +112,16 @@ static inline tc_file tc_file_from_path(const char *pathname) {
 	return tf;
 }
 
+static inline tc_file tc_file_from_fd(int fd) {
+	tc_file tf;
+
+	tf.type = TC_FILE_DESCRIPTOR;
+	tf.fd = fd;
+	tf.path = NULL;
+
+	return tf;
+}
+
 static inline tc_file tc_file_current() {
 	tc_file tf;
 	

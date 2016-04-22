@@ -20,6 +20,8 @@ struct tcread_kargs
 {
 	struct tc_iovec *user_arg;
 	char *path;
+	stateid4 *sid;
+	nfs_fh4 *fh;
 	union
 	{
 		READ4resok *v4_rok;
@@ -37,6 +39,8 @@ struct tcwrite_kargs
 {
 	struct tc_iovec *user_arg;
 	char *path;
+	stateid4 *sid;
+	nfs_fh4 *fh;
 	union
 	{
 		WRITE4resok *v4_wok;
@@ -137,6 +141,10 @@ static inline int get_fd(stateid4 *stateid, nfs_fh4 *object)
 
 static inline fd_in_use(int fd)
 {
+	if (fd < 0 || fd > MAX_FD) {
+		return -1;
+	}
+
 	if (fd_list[fd].fd < 0) {
                 return -1;
         }
