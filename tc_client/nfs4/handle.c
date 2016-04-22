@@ -153,7 +153,7 @@ static pthread_mutex_t tc_cwd_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static struct tc_cwd_data *tc_get_cwd()
 {
-        struct tc_cwd *cwd;
+        struct tc_cwd_data *cwd;
         pthread_mutex_lock(&tc_cwd_lock);
         assert(tc_cwd);
         cwd = tc_cwd;
@@ -1625,7 +1625,7 @@ static int construct_lookups(slice_t *comps, int compcnt,
 		cwdfh.nfs_fh4_val = alloca(cwdfh.nfs_fh4_len);
 		memmove(cwdfh.nfs_fh4_val, cwd->fh.nfs_fh4_val,
 			cwdfh.nfs_fh4_len);
-		COMPOUNDV4_ARG_ADD_OP_PUTFH(new_opcnt, argoparray, &cwdfh);
+		COMPOUNDV4_ARG_ADD_OP_PUTFH(new_opcnt, argoparray, cwdfh);
 		tc_put_cwd(cwd);
 	} else {
 		// Nothing need to be done if base is the current file handle
@@ -1659,14 +1659,14 @@ static int tc_set_cfh_to_path(const char *path, struct nfsoparray *nfsops,
 
 	n = tc_path_tokenize(path, &comps);
 	if (n < 0) {
-		NFS4_ERR("Cannot tokenize path: %s", tcf->path);
+		NFS4_ERR("Cannot tokenize path: %s", path);
 		return -1;
 	}
 	if (leaf) {
 		*leaf = comps[--n];
 	}
 	if (n > 0) {
-		if (tcf->path[0] == '/') {
+		if (path[0] == '/') {
 			base = TC_BASE_PATH_ROOT;
 			comps[0].data++;
 			comps[0].size--;
@@ -3843,7 +3843,7 @@ int tc_nfs4_chdir(const char *path)
 
 char *tc_nfs4_getcwd()
 {
-	struct tc_cwd *cwd;
+	struct tc_cwd_data *cwd;
 	char *path;
 
 	cwd = tc_get_cwd();
