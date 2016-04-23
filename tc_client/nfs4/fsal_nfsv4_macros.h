@@ -85,9 +85,9 @@ do { \
 		op->nfs_argop4_u.opopen.openhow.opentype = OPEN4_NOCREATE;     \
 		op->nfs_argop4_u.opopen.claim.claim = CLAIM_NULL;              \
 		op->nfs_argop4_u.opopen.claim.open_claim4_u.file               \
-		    .utf8string_val = inname;                                  \
+		    .utf8string_val = (char *)inname.data;                     \
 		op->nfs_argop4_u.opopen.claim.open_claim4_u.file               \
-		    .utf8string_len = strlen(inname);                          \
+		    .utf8string_len = inname.size;                             \
 	} while (0)
 
 #define COMPOUNDV4_ARG_ADD_OP_TCOPEN_CREATE(opcnt, args, __seqid, inclientid,  \
@@ -108,8 +108,8 @@ do { \
 		op->nfs_argop4_u.opopen.openhow.openflag4_u.how.mode = UNCHECKED4; \
 		op->nfs_argop4_u.opopen.openhow.openflag4_u.how.createhow4_u.createattrs = inattrs; \
 		op->nfs_argop4_u.opopen.claim.claim = CLAIM_NULL; \
-		op->nfs_argop4_u.opopen.claim.open_claim4_u.file.utf8string_val = inname; \
-		op->nfs_argop4_u.opopen.claim.open_claim4_u.file.utf8string_len = strlen(inname); \
+		op->nfs_argop4_u.opopen.claim.open_claim4_u.file.utf8string_val = (char *)inname.data; \
+		op->nfs_argop4_u.opopen.claim.open_claim4_u.file.utf8string_len = inname.size; \
 	} while (0)
 
 #define COMPOUNDV4_ARG_ADD_OP_CLOSE(opcnt, argarray, __stateid)	\

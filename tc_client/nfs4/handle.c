@@ -1129,10 +1129,11 @@ int fs_init_rpc(const struct fs_fsal_module *pm)
 }
 
 /* TODO: use thread-local variable and save all allocation */
-/*#define MAX_NUM_OPS_PER_COMPOUND 128*/
+#define MAX_NUM_OPS_PER_COMPOUND 128
 /*static __thread nfs_argop4 argoparray[MAX_NUM_OPS_PER_COMPOUND];*/
 /*static __thread nfs_resop4 resoparray[MAX_NUM_OPS_PER_COMPOUND];*/
 /*static __thread int opcnt;*/
+static __thread char tc_fhbuf[MAX_NUM_OPS_PER_COMPOUND * NFS4_FHSIZE];
 
 struct nfsoparray {
         nfs_argop4 *argoparray;
@@ -1557,49 +1558,49 @@ static fsal_status_t fs_read_state(const nfs_fh4 *fh4, const nfs_fh4 *fh4_1,
 static int construct_lookup(char *path, nfs_argop4 *argoparray, int *opcnt_temp,
 			    int *marker)
 {
-	int opcnt = *opcnt_temp;
-	char *saved;
-	char *pcopy;
-	char *p;
-	char *temp;
-	*marker = 1;
+        int opcnt = *opcnt_temp;
+        char *saved;
+        char *pcopy;
+        char *p;
+        char *temp;
+        *marker = 1;
 
-	pcopy = gsh_strdup(path);
-	temp = malloc(MAX_FILENAME_LENGTH);
-	if (temp == NULL) {
-		goto error_after_gsh;
-	}
-	COMPOUNDV4_ARG_ADD_OP_PUTROOTFH(opcnt, argoparray);
+        pcopy = gsh_strdup(path);
+        temp = malloc(MAX_FILENAME_LENGTH);
+        if (temp == NULL) {
+                goto error_after_gsh;
+        }
+        COMPOUNDV4_ARG_ADD_OP_PUTROOTFH(opcnt, argoparray);
 
-	p = strtok_r(pcopy, "/", &saved);
-	while (p) {
-		if (strcmp(p, "..") == 0) {
-			/* Don't allow lookup of ".." */
-			LogInfo(COMPONENT_FSAL,
-				"Attempt to use \"..\" element in path %s",
-				path);
-			goto error_after_temp;
-		}
-		strncpy(temp, p, MAX_FILENAME_LENGTH);
-		p = strtok_r(NULL, "/", &saved);
-		if (p) {
-			COMPOUNDV4_ARG_ADD_OP_LOOKUPNAME(
-			    opcnt, argoparray, (path + *marker), strlen(temp));
-			*marker += (strlen(temp) + 1);
-		}
-	}
+        p = strtok_r(pcopy, "/", &saved);
+        while (p) {
+                if (strcmp(p, "..") == 0) {
+                        /* Don't allow lookup of ".." */
+                        LogInfo(COMPONENT_FSAL,
+                                "Attempt to use \"..\" element in path %s",
+                                path);
+                        goto error_after_temp;
+                }
+                strncpy(temp, p, MAX_FILENAME_LENGTH);
+                p = strtok_r(NULL, "/", &saved);
+                if (p) {
+                        COMPOUNDV4_ARG_ADD_OP_LOOKUPNAME(
+                            opcnt, argoparray, (path + *marker), strlen(temp));
+                        *marker += (strlen(temp) + 1);
+                }
+        }
 
-	gsh_free(pcopy);
-	free(temp);
-	*opcnt_temp = opcnt;
+        gsh_free(pcopy);
+        free(temp);
+        *opcnt_temp = opcnt;
 
-	return 0;
+        return 0;
 
 error_after_temp:
-	free(temp);
+        free(temp);
 error_after_gsh:
-	gsh_free(pcopy);
-	return -1;
+        gsh_free(pcopy);
+        return -1;
 }
 
 #define TC_BASE_PATH_CURRENT 1
@@ -1621,12 +1622,12 @@ static int construct_lookups(slice_t *comps, int compcnt,
                 COMPOUNDV4_ARG_ADD_OP_RESTOREFH(new_opcnt, argoparray);
         } else if (base == TC_BASE_PATH_CWD) {
 		cwd = tc_get_cwd();
-		cwdfh.nfs_fh4_len = cwd->fh.nfs_fh4_len;
-		cwdfh.nfs_fh4_val = alloca(cwdfh.nfs_fh4_len);
+                cwdfh.nfs_fh4_val = tc_fhbuf + new_opcnt * NFS4_FHSIZE;
+                cwdfh.nfs_fh4_len = cwd->fh.nfs_fh4_len;
 		memmove(cwdfh.nfs_fh4_val, cwd->fh.nfs_fh4_val,
-			cwdfh.nfs_fh4_len);
+			cwd->fh.nfs_fh4_len);
 		COMPOUNDV4_ARG_ADD_OP_PUTFH(new_opcnt, argoparray, cwdfh);
-		tc_put_cwd(cwd);
+                tc_put_cwd(cwd);
 	} else {
 		// Nothing need to be done if base is the current file handle
 		assert(base == TC_BASE_PATH_CURRENT);
@@ -1649,36 +1650,34 @@ static int construct_lookups(slice_t *comps, int compcnt,
         return i;
 }
 
-static int tc_set_cfh_to_path(const char *path, struct nfsoparray *nfsops,
-			      slice_t *leaf)
+static int tc_set_cfh_to_path(const char *path, nfs_argop4 *argoparray,
+			      int *opcnt, slice_t *leaf)
 {
 	slice_t *comps = NULL; /* path components */
 	int n;		       /* number of path compontents */
 	int base;
-	int old_opcnt = nfsops->opcnt;
+	int old_opcnt = *opcnt;
 
+        NFS4_DEBUG("Set current FH to %s", path);
 	n = tc_path_tokenize(path, &comps);
 	if (n < 0) {
 		NFS4_ERR("Cannot tokenize path: %s", path);
 		return -1;
 	}
+        if (path[0] == '/') {
+                base = TC_BASE_PATH_ROOT;
+                comps[0].data++;  // skip the leading '/'
+                comps[0].size--;
+        } else {
+                base = TC_BASE_PATH_CWD;
+        }
 	if (leaf) {
 		*leaf = comps[--n];
 	}
-	if (n > 0) {
-		if (path[0] == '/') {
-			base = TC_BASE_PATH_ROOT;
-			comps[0].data++;
-			comps[0].size--;
-		} else {
-			base = TC_BASE_PATH_CWD;
-		}
-		construct_lookups(comps, n, nfsops->argoparray, &nfsops->opcnt,
-				  base);
-	}
+        construct_lookups(comps, n, argoparray, opcnt, base);
 
 	free(comps);
-	return nfsops->opcnt - old_opcnt;
+	return *opcnt - old_opcnt;
 }
 
 /**
@@ -1703,10 +1702,36 @@ static int tc_set_current_fh(const tc_file *tcf, struct nfsoparray *nfsops,
 			     slice_t *leaf)
 {
         int rc;
+	slice_t *comps = NULL; /* path components */
+	int n;		       /* number of path compontents */
+	int base;
+	int old_opcnt = nfsops->opcnt;
 
-	assert(tcf->type == TC_FILE_PATH); /* FIXME */
-        NFS4_DEBUG("Set current FH to %s", tcf->path);
-        return tc_set_cfh_to_path(tcf->path, nfsops, leaf);
+	n = tc_path_tokenize(tcf->path, &comps);
+	if (n < 0) {
+		NFS4_ERR("Cannot tokenize path: %s", tcf->path);
+		return -1;
+	}
+	if (tcf->type == TC_FILE_PATH) {
+		if (tcf->path[0] == '/') {
+			base = TC_BASE_PATH_ROOT;
+			comps[0].data++;  // skip the leading '/'
+			comps[0].size--;
+		} else {
+			base = TC_BASE_PATH_CWD;
+		}
+        } else {
+                assert(tcf->type == TC_FILE_CURRENT);
+                base = TC_BASE_PATH_CURRENT;
+        }
+	if (leaf) {
+		*leaf = comps[--n];
+	}
+        construct_lookups(comps, n, nfsops->argoparray, &nfsops->opcnt, base);
+
+        free(comps);
+        rc = nfsops->opcnt - old_opcnt;
+        return rc;
 }
 
 static int tc_set_saved_fh(const tc_file *tcf, struct nfsoparray *nfsops,
@@ -1775,6 +1800,7 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 	int marker = 0;
 	bool eof = false;
 	struct glist_head *temp_read;
+        slice_t name;
 
 	LogDebug(COMPONENT_FSAL, "do_ktcread() called: %d\n", opcnt);
 
@@ -1826,8 +1852,9 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 		 * Parse the file-path and send lookups to set the current
 		 * file-handle
 		 */
-		if (construct_lookup(kern_arg->path, argoparray, &opcnt,
-				     &marker) == -1) {
+
+		if (tc_set_cfh_to_path(kern_arg->path, argoparray, &opcnt,
+				       &name) == -1) {
 			goto exit_pathinval;
 		}
 
@@ -1842,7 +1869,7 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 
 		COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(
 		    opcnt, argoparray, 0 /*seq id*/, cid,
-		    (kern_arg->path + marker), owner_val, owner_len);
+                    name, owner_val, owner_len);
 
 		kern_arg->read_ok.v4_rok =
 		    &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
@@ -1972,6 +1999,7 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 	bool eof = false;
 	int i,j,k;
 	struct bitmap4 DEBUG_bm;
+        slice_t name;
 
 	LogDebug(COMPONENT_FSAL, "do_ktcwrite() called: %d\n", opcnt);
 
@@ -2020,8 +2048,8 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 		 * Parse the file-path and send lookups to set the current
 		 * file-handle
 		 */
-		if (construct_lookup(kern_arg->path, argoparray, &opcnt,
-				     &marker) == -1) {
+		if (tc_set_cfh_to_path(kern_arg->path, argoparray, &opcnt,
+				       &name) == -1) {
 			goto error_pathinval;
 		}
 
@@ -2055,14 +2083,16 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 				 input_attr->attrmask.map[2],
 				 input_attr->attrmask.bitmap4_len);
 
+                        NFS4_DEBUG("writing to '%s'", new_auto_str(name));
 			COMPOUNDV4_ARG_ADD_OP_TCOPEN_CREATE(
 			    opcnt, argoparray, 0 /*seq id*/, cid, *input_attr,
-			    (kern_arg->path + marker), owner_val, owner_len);
+                            name, owner_val, owner_len);
 		} else {
 			input_attr->attrmask = empty_bitmap;
+                        NFS4_DEBUG("writing to '%s'", new_auto_str(name));
 			COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(
 			    opcnt, argoparray, 0 /*seq id*/, cid,
-			    (kern_arg->path + marker), owner_val, owner_len);
+			    name, owner_val, owner_len);
 		}
 
 		kern_arg->write_ok.v4_wok =
@@ -3799,7 +3829,7 @@ exit:
         return tcres;
 }
 
-int tc_nfs4_chdir(const char *path)
+static int tc_nfs4_chdir(const char *path)
 {
 	int rc;
 	struct nfsoparray *nfsops;
@@ -3818,7 +3848,7 @@ int tc_nfs4_chdir(const char *path)
 	cwd->refcount = 1; // grap a refcount
 	memmove(cwd->path, path, strlen(path));
 
-	rc = tc_set_cfh_to_path(path, nfsops, NULL);
+	rc = tc_set_cfh_to_path(path, nfsops->argoparray, &nfsops->opcnt, NULL);
 	fhok = tc_prepare_getfh(nfsops, cwd->fhbuf);
 
 	rc = fs_nfsv4_call(op_ctx->creds, nfsops->opcnt, nfsops->argoparray,
@@ -3831,9 +3861,11 @@ int tc_nfs4_chdir(const char *path)
 	}
 
 	cwd->fh = fhok->object;
+        assert(cwd->fh.nfs_fh4_val == cwd->fhbuf);
 
 	pthread_mutex_lock(&tc_cwd_lock);
-	tc_put_cwd(tc_cwd);
+	if (tc_cwd)
+		tc_put_cwd(tc_cwd);
 	tc_cwd = cwd;
 	pthread_mutex_unlock(&tc_cwd_lock);
 
@@ -3841,7 +3873,7 @@ int tc_nfs4_chdir(const char *path)
 	return 0;
 }
 
-char *tc_nfs4_getcwd()
+static char *tc_nfs4_getcwd()
 {
 	struct tc_cwd_data *cwd;
 	char *path;

@@ -99,6 +99,7 @@ int main(int argc, char *argv[])
 			goto exit;
 		}
 		tc_set_up_creation(&dirs[i], path, 0755);
+		dirs[i].file.type = TC_FILE_CURRENT;
 	}
 
 	res = tc_mkdirv(dirs, N, false);

@@ -78,8 +78,9 @@ int main(int argc, char *argv[])
 	}
 
 	/* Setup getattrs */
-	for (i = 0; i < N; ++i) {
-		dirs[i].file = tc_file_from_path(DIR_PATHS[i]);
+	dirs[0].file = tc_file_from_path(DIR_PATHS[0]);
+	for (i = 1; i < N; ++i) {
+		dirs[i].file = tc_file_from_cfh(DIR_PATHS[i]);
 		memset(&dirs[i].masks, 0, sizeof(dirs[i].masks));
 	}
 
@@ -104,6 +105,7 @@ int main(int argc, char *argv[])
 			tc_set_up_creation(&dirs[n], prefix, 0755);
 		} else {
 			tc_set_up_creation(&dirs[n], DIR_PATHS[i], 0755);
+			dirs[n].file.type = TC_FILE_CURRENT;
 		}
 		fprintf(stderr, "prepare mkdir %s\n", dirs[n].file.path);
 		++n;

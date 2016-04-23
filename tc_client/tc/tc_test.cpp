@@ -131,16 +131,17 @@ static tc_iovec *set_iovec_file_paths(const char **PATH, int count,
 
 class TcPosixImpl {
 public:
+	static void *tcdata;
 	static constexpr const char* POSIX_TEST_DIR = "/tmp/tc_posix_test";
 	static void SetUpTestCase() {
-		/* TODO: setup posix impl */
-		tc_init(NULL, "/tmp/tc-posix.log", 0);
+		tcdata = tc_init(NULL, "/tmp/tc-posix.log", 0);
 		TCTEST_WARN("Global SetUp of Posix Impl\n");
 		util::CreateOrUseDir(POSIX_TEST_DIR);
 		chdir(POSIX_TEST_DIR);
 	}
 	static void TearDownTestCase() {
 		TCTEST_WARN("Global TearDown of Posix Impl\n");
+		tc_deinit(tcdata);
 	}
 	static void SetUp() {
 		TCTEST_WARN("SetUp Posix Impl Test\n");
@@ -149,18 +150,22 @@ public:
 		TCTEST_WARN("TearDown Posix Impl Test\n");
 	}
 };
+void *TcPosixImpl::tcdata = NULL;
 
 class TcNFS4Impl {
 public:
+	static void *tcdata;
 	static void SetUpTestCase() {
-		/* TODO: setup NFS4 impl */
-		tc_init("../../../config/tc.ganesha.conf", "/tmp/tc-nfs4.log",
-			0);
+		tcdata = tc_init("../../../config/tc.ganesha.conf",
+				 "/tmp/tc-nfs4.log", 77);
 		TCTEST_WARN("Global SetUp of NFS4 Impl\n");
-		chdir("tc_nfs4_test");  /* change to mnt point */
+		tc_res res = tc_ensure_dir("/vfs0/tc_nfs4_test", 0755, NULL);
+		EXPECT_TRUE(res.okay);
+		tc_chdir("/vfs0/tc_nfs4_test");  /* change to mnt point */
 	}
 	static void TearDownTestCase() {
 		TCTEST_WARN("Global TearDown of NFS4 Impl\n");
+		tc_deinit(tcdata);
 	}
 	static void SetUp() {
 		TCTEST_WARN("SetUp NFS4 Impl Test\n");
@@ -169,6 +174,7 @@ public:
 		TCTEST_WARN("TearDown NFS4 Impl Test\n");
 	}
 };
+void *TcNFS4Impl::tcdata = NULL;
 
 template <typename T>
 class TcTest : public ::testing::Test {

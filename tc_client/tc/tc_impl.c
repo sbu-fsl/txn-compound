@@ -169,8 +169,9 @@ tc_res tc_ensure_dir(const char *dir, mode_t mode, slice_t *leaf)
 	}
 
 	dirs = alloca(n * sizeof(*dirs));
-	for (i = 0; i < n; ++i) {
-		dirs[i].file = tc_file_from_path(new_auto_str(comps[i]));
+	dirs[0].file = tc_file_from_path(new_auto_str(comps[0]));
+	for (i = 1; i < n; ++i) {
+		dirs[i].file = tc_file_from_cfh(new_auto_str(comps[i]));
 	}
 
 	tcres = tc_getattrsv(dirs, n, false);
@@ -190,6 +191,7 @@ tc_res tc_ensure_dir(const char *dir, mode_t mode, slice_t *leaf)
 		} else {
 			tc_set_up_creation(&dirs[absent],
 					   new_auto_str(comps[i]), mode);
+			dirs[absent].file.type = TC_FILE_CURRENT;
 		}
 		++absent;
 	}

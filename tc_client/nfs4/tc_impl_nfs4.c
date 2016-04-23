@@ -149,10 +149,11 @@ void *nfs4_init(const char *config_path, const char *log_path,
         op_ctx->export = export;
         op_ctx->fsal_export = export->fsal_export;
 
+	sleep(1);
+
 	rc = nfs4_chdir(export->fullpath);
 	assert(rc == 0);
 
-	sleep(1);
 	return (void*)new_module;
 }
 

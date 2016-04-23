@@ -123,12 +123,19 @@ static inline tc_file tc_file_from_path(const char *pathname) {
 	return tf;
 }
 
-static inline tc_file tc_file_current() {
+/**
+ * Create a TC file relative to current FH.
+ */
+static inline tc_file tc_file_from_cfh(const char *relpath) {
 	tc_file tf;
+
+	if (relpath && relpath[0] == '/') {
+		return tc_file_from_path(relpath);
+	}
 	
 	tf.type = TC_FILE_CURRENT;
 	tf.fd = -1;	/* poison */
-	tf.path = NULL;	/* poison */
+	tf.path = relpath;
 
 	return tf;
 }
