@@ -123,6 +123,14 @@ static inline tc_file tc_file_from_path(const char *pathname) {
 	return tf;
 }
 
+static inline tc_file tc_file_from_fd(int fd) {
+	tc_file tf = {
+		.type = TC_FILE_DESCRIPTOR,
+		.fd = fd,
+	};
+	return tf;
+}
+
 /**
  * Create a TC file relative to current FH.
  */
@@ -322,6 +330,19 @@ static inline void tc_set_up_creation(struct tc_attrs *newobj, const char *name,
 	newobj->uid = geteuid();
 	newobj->masks.has_gid = true;
 	newobj->gid = getegid();
+}
+
+static inline void tc_attrs_mask_set(struct tc_attrs_masks *masks)
+{
+	masks->has_mode = true;
+	masks->has_size = true;
+	masks->has_nlink = true;
+	masks->has_uid = true;
+	masks->has_gid = true;
+	masks->has_rdev = true;
+	masks->has_atime = true;
+	masks->has_mtime = true;
+	masks->has_ctime = true;
 }
 
 /**
