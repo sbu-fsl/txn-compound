@@ -213,8 +213,10 @@ tc_res nfs4_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 				goto error;
 			}
 
-			sid = cur_arg->sid = &fd_list[cur_arg->user_arg->file.fd].stateid;
-			fh = cur_arg->fh = &fd_list[cur_arg->user_arg->file.fd].fh;
+			sid = cur_arg->sid =
+			    &fd_list[cur_arg->user_arg->file.fd].stateid;
+			fh = cur_arg->fh =
+			    &fd_list[cur_arg->user_arg->file.fd].fh;
 			last_op = TC_FILE_DESCRIPTOR;
 			break;
 		case TC_FILE_PATH:
@@ -281,6 +283,9 @@ tc_res nfs4_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 	struct gsh_export *export = op_ctx->export;
 	tc_res result = { .okay = false, .index = 0, .err_no = (int)ENOENT };
 	const char *file_path = NULL;
+	stateid4 *sid = NULL;
+	nfs_fh4 *fh = NULL;
+	int last_op = TC_FILE_START;
 
 	if (export == NULL) {
 		return result;
@@ -301,10 +306,38 @@ tc_res nfs4_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 		cur_arg->opok_handle = NULL;
 		cur_arg->path = NULL;
 		assert(cur_arg->user_arg->file.type == TC_FILE_PATH ||
-		       cur_arg->user_arg->file.type == TC_FILE_CURRENT);
-		file_path = cur_arg->user_arg->file.path;
-		if (file_path != NULL) {
-			cur_arg->path = strndup(file_path, PATH_MAX);
+                       cur_arg->user_arg->file.type == TC_FILE_DESCRIPTOR ||
+                       cur_arg->user_arg->file.type == TC_FILE_CURRENT);
+
+		switch (cur_arg->user_arg->file.type) {
+		case TC_FILE_DESCRIPTOR:
+			if (fd_in_use(cur_arg->user_arg->file.fd) < 0) {
+                                result.err_no = (int)EINVAL;
+                                goto error;
+                        }
+
+			sid = cur_arg->sid =
+			    &fd_list[cur_arg->user_arg->file.fd].stateid;
+			fh = cur_arg->fh =
+			    &fd_list[cur_arg->user_arg->file.fd].fh;
+			last_op = TC_FILE_DESCRIPTOR;
+
+			break;
+		case TC_FILE_PATH:
+			file_path = cur_arg->user_arg->file.path;
+			if (file_path != NULL) {
+				cur_arg->path = strndup(file_path, PATH_MAX);
+			}
+			sid = NULL;
+			fh = NULL;
+			last_op = TC_FILE_PATH;
+
+			break;
+		case TC_FILE_CURRENT:
+			cur_arg->sid = sid;
+			cur_arg->fh = fh;
+
+			break;
 		}
 		// cur_arg->write_ok = NULL;
 		i++;
@@ -332,6 +365,10 @@ tc_res nfs4_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 	}
 
 	result.okay = true;
+	return result;
+
+error:
+	free(kern_arg);
 	return result;
 }
 

@@ -100,6 +100,10 @@ int main(int argc, char *argv[])
         /* Read the file; nfs4_readv() will open it first if needed. */
         res = tc_readv(read_iovec, 4, false);
 
+	read_iovec[2].is_creation = 1;
+
+        res = tc_writev(read_iovec, 4, false);
+
         /* Check results. */
 	if (res.okay) {
 		fprintf(stderr,

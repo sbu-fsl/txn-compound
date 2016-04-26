@@ -1959,16 +1959,15 @@ exit:
  */
 static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 				 nfs_argop4 *argoparray, nfs_resop4 *resoparray,
-				 int *opcnt_temp, fattr4 *input_attr)
+				 int *opcnt_temp, fattr4 *input_attr,
+				 int *last_op)
 {
 	int opcnt = *opcnt_temp;
 	char owner_val[128];
 	unsigned int owner_len = 0;
-	XDR xdrs;
 	clientid4 cid;
 	int marker = 0;
 	bool eof = false;
-	int i,j,k;
 	struct bitmap4 DEBUG_bm;
 
 	LogDebug(COMPONENT_FSAL, "do_ktcwrite() called: %d\n", opcnt);
@@ -1981,38 +1980,68 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 	kern_arg->user_arg->is_failure = 0;
 	kern_arg->user_arg->is_eof = 0;
 
-	if (kern_arg->path == NULL) {
+	switch (kern_arg->user_arg->file.type) {
+	case TC_FILE_CURRENT:
 		/*
-		 * file path is empty, so no need to send lookups,
-		 * just send write as the current filehandle has the file
-		 */
-		if (opcnt == 0) {
-			/* filepath for the first element should not be empty */
-			return fsalstat(ERR_FSAL_INVAL, -1);
-		}
+                 * Current filehandle is assumed to be set,
+                 * so just send read
+                 */
+                if (*last_op == TC_FILE_START) {
+                        /* path/fd for the first element should not be empty */
+                        return fsalstat(ERR_FSAL_INVAL, -1);
+                }
 
 		kern_arg->write_ok.v4_wok =
 		    &resoparray[opcnt].nfs_resop4_u.opwrite.WRITE4res_u.resok4;
 
-		COMPOUNDV4_ARG_ADD_OP_WRITE(
-		    opcnt, argoparray, kern_arg->user_arg->offset,
-		    kern_arg->user_arg->data, kern_arg->user_arg->length);
-
-	} else {
-		/*
-		 * File path is not empty, so
-		 *  1) Close the already opened file
-		 *  2) Parse the file-path,
-		 *  3) Start from putrootfh and keeping adding lookups,
-		 *  4) Followed by open and write
-		 */
-
-		if (opcnt != 0) {
-			/*
-			 * No need to send close if its the first write request
-			 */
-			COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
+		if (*last_op == TC_FILE_PATH) {
+			COMPOUNDV4_ARG_ADD_OP_WRITE(opcnt, argoparray,
+						    kern_arg->user_arg->offset,
+						    kern_arg->user_arg->data,
+						    kern_arg->user_arg->length);
+		} else if (*last_op == TC_FILE_DESCRIPTOR) {
+			COMPOUNDV4_ARG_ADD_OP_WRITE_STATE(
+			    opcnt, argoparray, kern_arg->user_arg->offset,
+			    kern_arg->user_arg->data,
+			    kern_arg->user_arg->length, kern_arg->sid);
 		}
+
+		break;
+
+	case TC_FILE_DESCRIPTOR:
+
+                if (*last_op == TC_FILE_PATH) {
+                        COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
+                }
+
+		COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, *kern_arg->fh);
+
+		kern_arg->write_ok.v4_wok =
+		    &resoparray[opcnt].nfs_resop4_u.opwrite.WRITE4res_u.resok4;
+
+		COMPOUNDV4_ARG_ADD_OP_WRITE_STATE(
+		    opcnt, argoparray, kern_arg->user_arg->offset,
+		    kern_arg->user_arg->data, kern_arg->user_arg->length,
+		    kern_arg->sid);
+
+		*last_op = TC_FILE_DESCRIPTOR;
+                break;
+
+	case TC_FILE_PATH:
+                /*
+                 * File path is not empty, so
+                 *  1) Close the already opened file
+                 *  2) Parse the file-path,
+                 *  3) Start from putrootfh and keeping adding lookups,
+                 *  4) Followed by open and read
+                 */
+
+                if (*last_op == TC_FILE_PATH) {
+                        /*
+                         * No need to send close if its the first read request
+                         */
+                        COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
+                }
 
 		/*
 		 * Parse the file-path and send lookups to set the current
@@ -2069,6 +2098,12 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 		COMPOUNDV4_ARG_ADD_OP_WRITE(
 		    opcnt, argoparray, kern_arg->user_arg->offset,
 		    kern_arg->user_arg->data, kern_arg->user_arg->length);
+
+		*last_op = TC_FILE_PATH;
+                break;
+        default:
+                return fsalstat(ERR_FSAL_INVAL, -1);
+                break;
 	}
 
 	*opcnt_temp = opcnt;
@@ -2102,6 +2137,7 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
 	nfs_resop4 *temp_res = NULL;
 	fattr4 *input_attr = NULL;
 	int opcnt = 0;
+	int last_op = TC_FILE_START;
 	bool eof = false;
 	int i = 0;
 	int j = 0;
@@ -2118,16 +2154,21 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
 
 	while (i < arg_count) {
 		cur_arg = kern_arg + i;
-		st = do_ktcwrite(cur_arg, argoparray, resoparray, &opcnt, input_attr);
+		st = do_ktcwrite(cur_arg, argoparray, resoparray, &opcnt,
+				 input_attr, &last_op);
 
 		if (FSAL_IS_ERROR(st)) {
+			NFS4_ERR("do_ktcwrite failed: major=%d, minor=%d\n",
+				 st.major, st.minor);
 			goto exit;
 		}
 
 		i++;
 	}
 
-	COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
+	if (last_op == TC_FILE_PATH) {
+		COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
+	}
 
 	rc = fs_nfsv4_call(op_ctx->fsal_export, op_ctx->creds, opcnt,
 			   argoparray, resoparray);
