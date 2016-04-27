@@ -17,6 +17,7 @@
  * 02110-1301 USA
  */
 
+#include <unistd.h>
 #include "tc_impl_nfs4.h"
 #include "nfs4_util.h"
 #include "log.h"
@@ -62,9 +63,10 @@ void *nfs4_init(const char *config_path, const char *log_path,
 
 	/* Parse the configuration file so we all know what is going on. */
 
-	if (config_path == NULL) {
+	if (access(config_path, R_OK) != 0) {
 		LogFatal(COMPONENT_INIT,
-			 "start_fsals: No configuration file named.");
+			 "nfs_init(): cannot read configuration file: %s.",
+			 config_path);
 		return NULL;
 	}
 
