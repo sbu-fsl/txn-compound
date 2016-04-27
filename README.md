@@ -54,7 +54,7 @@ Build
         cd tc_client
         mkdir debug
         cd debug
-        sudo -E cmake -DCMAKE_BUILD_TYPE=Debug ../src
+        sudo -E cmake -DCMAKE_BUILD_TYPE=Debug ../tc_client
         make
 
 Install
