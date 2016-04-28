@@ -185,7 +185,7 @@ int tc_chdir(const char *path);
  *
  * The caller owns the returned buffer and is responsible for freeing it.
  */
-char *tc_getcwd();
+char *tc_getcwd(void);
 
 /**
  * A special offset that is the same as the file size.

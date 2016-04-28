@@ -67,7 +67,7 @@ static inline buf_t *new_buf(size_t c)
 	return init_buf(malloc(sizeof(buf_t) + c), c);
 }
 
-static void del_buf(buf_t *pbuf)
+static inline void del_buf(buf_t *pbuf)
 {
 	free(pbuf);
 }
