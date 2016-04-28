@@ -21,9 +21,10 @@
 #include "tc_impl_nfs4.h"
 #include "nfs4_util.h"
 #include "log.h"
+#include "fsal_types.h"
 #include "../MainNFSD/nfs_init.h"
 
-/* 
+/*
  * Initialize tc_client
  * log_path - Location of the log file
  * config_path - Location of the config file
@@ -42,8 +43,7 @@ void *nfs4_init(const char *config_path, const char *log_path,
 	struct fsal_module *new_module = NULL;
 	sigset_t signals_to_block;
 	struct config_error_type err_type;
-	struct gsh_export *export = NULL;
-	struct req_op_context *req_ctx = NULL;
+	struct gsh_export *exp = NULL;
 	int rc;
 	config_file_t config_struct;
 	nfs_start_info_t my_nfs_start_info = { .dump_default_config = false,
@@ -128,32 +128,31 @@ void *nfs4_init(const char *config_path, const char *log_path,
 		return NULL;
 	}
 
-	export = get_gsh_export(export_id);
-	if (export == NULL) {
+	exp = get_gsh_export(export_id);
+	if (exp == NULL) {
 		LogDebug(COMPONENT_FSAL, "Export Not found\n");
 		return NULL;
 	}
 
 	LogDebug(COMPONENT_FSAL,
-		 "Export %d at pseudo (%s) with path (%s) and tag (%s) \n",
-		 export->export_id, export->pseudopath, export->fullpath,
-		 export->FS_tag);
-
-	req_ctx = malloc(sizeof(struct req_op_context));
-	if (req_ctx == NULL) {
-		LogDebug(COMPONENT_FSAL, "No memory for req_ctx\n");
-		return NULL;
-	}
-
-	memset(req_ctx, 0, sizeof(struct req_op_context));
-        op_ctx = req_ctx;
-        op_ctx->creds = NULL;
-        op_ctx->export = export;
-        op_ctx->fsal_export = export->fsal_export;
+		 "Export %d at pseudo (%s) with path (%s) and tag (%s)",
+		 exp->export_id, exp->pseudopath, exp->fullpath,
+		 exp->FS_tag);
 
 	sleep(1);
 
-	rc = nfs4_chdir(export->fullpath);
+	// op_ctx is a symbol (pointer) from the shared library
+	op_ctx = calloc(1, sizeof(*op_ctx));
+	if (op_ctx == NULL) {
+		LogDebug(COMPONENT_FSAL, "No memory for op_ctx\n");
+		return NULL;
+	}
+
+	op_ctx->creds = NULL;
+	op_ctx->export = exp;
+	op_ctx->fsal_export = exp->fsal_export;
+
+	rc = nfs4_chdir(exp->fullpath);
 	assert(rc == 0);
 
 	return (void*)new_module;
@@ -169,6 +168,7 @@ void nfs4_deinit(void *arg)
 
 	if (op_ctx != NULL) {
 		free(op_ctx);
+		op_ctx = NULL;
 	}
 
 	module = (struct fsal_module*) arg;
@@ -344,7 +344,7 @@ tc_res nfs4_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)
 {
 	struct gsh_export *exp = op_ctx->export;
 	tc_res res;
-	
+
 	res = exp->fsal_export->obj_ops->tc_mkdirv(dirs, count);
 
 	return res;

@@ -187,7 +187,7 @@ struct req_op_context {
  * Test/assert opctx != NULL first (or let the SEGV kill you)
  */
 
-extern __thread struct req_op_context *op_ctx;
+extern struct req_op_context *op_ctx;
 
 /**
  * @brief Ops context for asynch and not protocol tasks that need to use
