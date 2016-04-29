@@ -361,6 +361,7 @@ static bool fill_dir_entries(const struct tc_attrs *entry, const char *dir,
 {
 	struct _tc_attrs_array *parray = (struct _tc_attrs_array *)cbarg;
 	parray->attrs[parray->size++] = *entry;
+	return true;
 }
 
 tc_res nfs4_listdir(const char *dir, struct tc_attrs_masks masks, int max_count,
