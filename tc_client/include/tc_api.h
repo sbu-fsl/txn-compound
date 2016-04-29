@@ -1,4 +1,21 @@
 /**
+ * Copyright (C) Stony Brook University 2016
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA
+ *
  * Client API of NFS Transactional Compounds (TC).
  *
  * Functions with "tc_" are general API, whereas functions with "tx_" are API
@@ -12,23 +29,13 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <time.h>
+#include <unistd.h>
+#include "common_types.h"
 
 #ifdef __cplusplus
-#define CONST const
 extern "C" {
-#else
-#define CONST
 #endif
-
-#define TC_MODULE_NAME_MAX_LEN 16
-
-//struct tc_module {
-	//struct glist_head modules;	[> all TC modules <]
-	//pthread_rwlock_t lock;
-	//struct glist_head fstrees;	[> all FS trees of this module <]
-	//char name[TC_MODULE_NAME_MAX_LEN];
-	//void *dl_handle;		[> handle returned by dlopen() <]
-//};
 
 /* 
  * Initialize tc_client
@@ -64,6 +71,9 @@ enum TC_FILETYPE {
 #define TC_FD_CWD -2
 #define TC_FD_ABS -3
 
+/* See http://lxr.free-electrons.com/source/include/linux/exportfs.h */
+#define FILEID_NFS_FH_TYPE 0x1001
+
 /**
  * "type" is one of the five file types; "fd" and "path_or_handle" depend on
  * the file type:
@@ -78,7 +88,8 @@ enum TC_FILETYPE {
  *	(b) TC_FDABS which means the "path_or_handle" is an absolute path.
  *
  *	3. When "type" is TC_FILE_HANDLE, "fd" is "mount_fd", and
- *	"path_or_handle" points to "struct file_handle".
+ *	"path_or_handle" points to "struct file_handle".  We expand the "type"
+ *	of "struct file_handle" to include FILEID_NFS_FH_TYPE.
  *
  *	4. When "type" is TC_FILE_CURRENT, the "current filehandle" on the NFS
  *	server side is used.  "fd" and "path" are ignored.
@@ -122,12 +133,30 @@ static inline tc_file tc_file_from_fd(int fd) {
 	return tf;
 }
 
-static inline tc_file tc_file_current() {
+static inline tc_file tc_file_current()
+{
 	tc_file tf;
+
+	tf.type = TC_FILE_CURRENT;
+	tf.fd = -1;     /* poison */
+	tf.path = NULL; /* poison */
+
+	return tf;
+}
+
+/**
+ * Create a TC file relative to current FH.
+ */
+static inline tc_file tc_file_from_cfh(const char *relpath) {
+	tc_file tf;
+
+	if (relpath && relpath[0] == '/') {
+		return tc_file_from_path(relpath);
+	}
 	
 	tf.type = TC_FILE_CURRENT;
 	tf.fd = -1;	/* poison */
-	tf.path = NULL;	/* poison */
+	tf.path = relpath;
 
 	return tf;
 }
@@ -156,6 +185,29 @@ tc_file tc_open_by_handle(int mount_fd, struct file_handle *fh, int flags);
  * Close a tc_file if necessary.
  */
 int tc_close(tc_file file);
+
+/**
+ * Change current work directory to "path".
+ *
+ * Return 0 on success and a negative error number in case of failure.
+ */
+int tc_chdir(const char *path);
+
+/**
+ * Returns current working directory.
+ *
+ * The caller owns the returned buffer and is responsible for freeing it.
+ */
+char *tc_getcwd(void);
+
+/**
+ * A special offset that is the same as the file size.
+ */
+#define TC_OFFSET_END (SIZE_MAX-1)
+/**
+ * A special offset indicates the current offset of the file descriptor.
+ */
+#define TC_OFFSET_CUR (SIZE_MAX-2)
 
 /**
  * Represents an I/O vector of a file.
@@ -187,6 +239,7 @@ struct tc_iovec
 	unsigned int is_creation : 1; /* IN: create file if not exist? */
 	unsigned int is_failure : 1;  /* OUT: is this I/O a failure? */
 	unsigned int is_eof : 1;      /* OUT: does this I/O reach EOF? */
+	unsigned int is_write_stable : 1;   /* IN/OUT: stable write? */
 };
 
 /**
@@ -201,6 +254,14 @@ typedef struct _tc_res
 	int index;  /* index of the first failed operation */
 	int err_no; /* error number of the failed operation */
 } tc_res;
+
+static inline tc_res tc_failure(int i, int err) {
+	tc_res res;
+	res.okay = false;
+	res.index = i;
+	res.err_no = err;
+	return res;
+}
 
 /**
  * Read from one or more files.
@@ -266,10 +327,36 @@ struct tc_attrs
 	uid_t uid;
 	gid_t gid;
 	dev_t rdev;
-	time_t atime;
-	time_t mtime;
-	time_t ctime;
+	struct timespec atime;
+	struct timespec mtime;
+	struct timespec ctime;
 };
+
+static inline void tc_set_up_creation(struct tc_attrs *newobj, const char *name,
+				      mode_t mode)
+{
+	newobj->file = tc_file_from_path(name);
+	memset(&newobj->masks, 0, sizeof(struct tc_attrs_masks));
+	newobj->masks.has_mode = true;
+	newobj->mode = mode;
+	newobj->masks.has_uid = true;
+	newobj->uid = geteuid();
+	newobj->masks.has_gid = true;
+	newobj->gid = getegid();
+}
+
+static inline void tc_attrs_mask_set(struct tc_attrs_masks *masks)
+{
+	masks->has_mode = true;
+	masks->has_size = true;
+	masks->has_nlink = true;
+	masks->has_uid = true;
+	masks->has_gid = true;
+	masks->has_rdev = true;
+	masks->has_atime = true;
+	masks->has_mtime = true;
+	masks->has_ctime = true;
+}
 
 /**
  * Get attributes of file objects.
@@ -316,13 +403,51 @@ tc_res tc_listdir(const char *dir, struct tc_attrs_masks masks, int max_count,
 		  struct tc_attrs **contents, int *count);
 
 /**
+ * Callback of tc_listdirv().
+ *
+ * @entry [IN]: the current directory entry listed
+ * @dir [IN]: the parent directory of @entry as provided in the first argument
+ * of tc_listdirv().
+ * @cbarg [IN/OUT]: any extra user arguments or context of the callback.
+ *
+ * Return whether tc_listdirv() should continue the processing or stop.
+ */
+typedef bool (*tc_listdirv_cb)(const struct tc_attrs *entry, const char *dir,
+			       void *cbarg);
+/**
+ * List the content of the specified directories.
+ *
+ * @dirs: the array of directories to list
+ * @count: the length of "dirs"
+ * @masks: the attributes to retrieve for each listed entry
+ * @max_entries: the max number of entry to list; 0 means infinite
+ * @cb: the callback function to be applied to each listed entry
+ */
+tc_res tc_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
+		   int max_entries, tc_listdirv_cb cb, void *cbarg,
+		   bool is_transaction);
+
+/**
  * Free an array of "tc_attrs".
  *
  * @attrs [IN]: the array to be freed
  * @count [IN]: the length of the array
  * @free_path [IN]: whether to free the paths in "tc_attrs" as well.
  */
-void tc_free_attrs(struct tc_attrs *attrs, int count, bool free_path);
+static inline void tc_free_attrs(struct tc_attrs *attrs, int count,
+				 bool free_path)
+{
+	int i;
+	if (free_path) {
+		for (i = 0; i < count; ++i) {
+			if (attrs[i].file.type == TC_FILE_PATH)
+				free((char *)attrs[i].file.path);
+			else if (attrs[i].file.type == TC_FILE_HANDLE)
+				free((char *)attrs[i].file.handle);
+		}
+	}
+	free(attrs);
+}
 
 typedef struct tc_file_pair
 {
@@ -353,12 +478,21 @@ static inline bool tx_removev(tc_file *files, int count)
 	return res.okay;
 }
 
-tc_res tc_mkdirv(tc_file *dir, mode_t *mode, int count, bool is_transaction);
+/**
+ * Create one or more directories.
+ *
+ * @dirs [IN/OUT]: the directories and their attributes (mode, uid, gid) to be
+ * created.  Other attributes (timestamps etc.) of the newly created
+ * directories will be returned on success.
+ * @count [IN]: the count of the preceding "dirs" array
+ * @is_transaction [IN]: whether to execute the compound as a transaction
+ */
+tc_res tc_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction);
 
-static inline bool tx_mkdirv(tc_file *dir, mode_t *mode, int count,
+static inline bool tx_mkdirv(struct tc_attrs *dirs, int count,
 			     bool is_transaction)
 {
-	tc_res res = tc_mkdirv(dir, mode, count, is_transaction);
+	tc_res res = tc_mkdirv(dirs, count, is_transaction);
 	return res.okay;
 }
 
@@ -453,11 +587,16 @@ static inline bool tx_write_adb(struct tc_adb *patterns, int count)
 	return res.okay;
 }
 
+/**
+ * Create the specified directory and all its ancestor directories.
+ * When "leaf" is NULL, "dir" is considered the full path of the target
+ * directory; when "leaf" is not NULL, the parent of "dir" is the target
+ * directory, and leaf will be set to the name of the leaf node.
+ */
+tc_res tc_ensure_dir(const char *dir, mode_t mode, slice_t *leaf);
+
 #ifdef __cplusplus
-#undef CONST
 }
-#else
-#undef CONST
 #endif
 
 #endif // __TC_API_H__

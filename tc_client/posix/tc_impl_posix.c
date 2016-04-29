@@ -1,3 +1,22 @@
+/**
+ * Copyright (C) Stony Brook University 2016
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA
+ */
+
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -250,14 +269,20 @@ void copy_attrs(const struct stat *st, struct tc_attrs *attr_obj)
 	if (attr_obj->masks.has_rdev)
 		attr_obj->rdev = st->st_rdev;
 
-	if (attr_obj->masks.has_atime)
-		attr_obj->atime = st->st_atime;
+	if (attr_obj->masks.has_atime) {
+		attr_obj->atime.tv_sec = st->st_atime;
+		attr_obj->atime.tv_nsec = 0;
+	}
 
-	if (attr_obj->masks.has_mtime)
-		attr_obj->mtime = st->st_mtime;
+	if (attr_obj->masks.has_mtime) {
+		attr_obj->mtime.tv_sec = st->st_mtime;
+		attr_obj->mtime.tv_nsec = 0;
+	}
 
-	if (attr_obj->masks.has_ctime)
-		attr_obj->ctime = st->st_ctime;
+	if (attr_obj->masks.has_ctime) {
+		attr_obj->ctime.tv_sec = st->st_ctime;
+		attr_obj->ctime.tv_nsec = 0;
+	}
 }
 
 /**
@@ -372,10 +397,10 @@ static int helper_set_attrs(struct tc_attrs *attrs)
 		times[1].tv_sec = s.st_mtime;
 
 		if (attrs->masks.has_atime)
-			times[0].tv_sec = attrs->atime;
+			TIMESPEC_TO_TIMEVAL(&times[0], &attrs->atime);
 
 		if (attrs->masks.has_mtime)
-			times[1].tv_sec = attrs->mtime;
+			TIMEVAL_TO_TIMESPEC(&times[1], &attrs->mtime);
 
 		if (attrs->file.type == TC_FILE_PATH)
 			res = utimes(attrs->file.path, times);
@@ -553,18 +578,18 @@ tc_res posix_remove_dirv(tc_file *dir, int count, bool is_transaction)
  * @is_transaction: whether to execute the compound as a transaction
  */
 
-tc_res posix_mkdirv(tc_file *dir, mode_t *mode, int count, bool is_transaction)
+tc_res posix_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)
 {
 	int i = 0;
 	tc_file *cur_dir = NULL;
 	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
 
 	while (i < count) {
-		cur_dir = dir + i;
+		cur_dir = &dirs[i].file;
 
 		assert(cur_dir->path != NULL);
 
-		if (mkdir(cur_dir->path, mode[i]) < 0) {
+		if (mkdir(cur_dir->path, dirs[i].mode) < 0) {
 			perror("");
 			result.okay = false;
 			result.err_no = errno;
@@ -674,16 +699,33 @@ tc_res posix_listdir(const char *dir, struct tc_attrs_masks masks,
 			cur_attr->rdev = st.st_rdev;
 
 		if (masks.has_atime)
-			cur_attr->atime = st.st_atime;
+			cur_attr->atime.tv_sec = st.st_atime;
 
 		if (masks.has_mtime)
-			cur_attr->mtime = st.st_mtime;
+			cur_attr->mtime.tv_sec = st.st_mtime;
 
 		if (masks.has_ctime)
-			cur_attr->ctime = st.st_ctime;
+			cur_attr->ctime.tv_sec = st.st_ctime;
 
 		(*count)++;
 	}
 
 	return result;
+}
+
+int posix_chdir(const char *path)
+{
+	int ret;
+
+	ret = chdir(path);
+	if (ret == -1) {
+		ret = -errno;
+	}
+
+	return ret;
+}
+
+char *posix_getcwd()
+{
+	return get_current_dir_name();
 }

@@ -45,7 +45,6 @@
 #define CACHE_INODE_HASH_H
 
 #include "config.h"
-#include "log.h"
 #include "abstract_atomic.h"
 #include "cache_inode.h"
 #include "gsh_intrinsic.h"

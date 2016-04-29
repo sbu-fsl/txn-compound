@@ -32,7 +32,6 @@
 #ifndef NFS_INIT_H
 #define NFS_INIT_H
 
-#include "log.h"
 #include "nfs_core.h"
 
 typedef struct __nfs_start_info {

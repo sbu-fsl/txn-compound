@@ -55,6 +55,9 @@ set( uid2grp_SRCS
 add_library(uid2grp ${uid2grp_SRCS})
 set_target_properties(uid2grp PROPERTIES POSITION_INDEPENDENT_CODE on)
 
+set(tc_helper_SRCS tc_helper.c)
+add_library(tc_helper STATIC ${tc_helper_SRCS})
+
 ########### next target ###############
 
 SET(support_STAT_SRCS
@@ -88,7 +91,7 @@ if(APPLE)
 endif(APPLE)
 
 add_library(support STATIC ${support_STAT_SRCS})
-target_link_libraries(support hashtable avltree)
+target_link_libraries(support hashtable avltree nfsproto)
 set_target_properties(support PROPERTIES POSITION_INDEPENDENT_CODE on)
 
 ########### install files ###############

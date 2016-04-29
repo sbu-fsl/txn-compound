@@ -1,3 +1,6 @@
+[![Build
+Status](https://travis-ci.org/sbu-fsl/txn-compound.svg?branch=master)](https://travis-ci.org/sbu-fsl/txn-compound)
+
 About
 =====
 This "txn-compound" project is short for "transactional compound".  The goal of
@@ -14,11 +17,11 @@ scary thing, but having the choice for something different is always better
 than "no choice."
 
 The project will be implemented as a user-space file-system library with the
-API defined in <txn-compound>/tc_client/include/tc_api.h  Right now, we are
-implementing two implementations of the API: TC_NFS4 and TC_POSIX.  The TC_NFS4
-will implement the API using NFS4's compound procedures whenever possible,
-whereas TC_POSIX just translates the higher-level functions to lower-level
-POSIX functions.
+API defined in [tc_client/include/tc_api.h](tc_client/include/tc_api.h).  Right
+now, we are implementing two implementations of the API: TC_NFS4 and TC_POSIX.
+The TC_NFS4 will implement the API using NFS4's compound procedures whenever
+possible, whereas TC_POSIX just translates the higher-level functions to
+lower-level POSIX functions.
 
 In theory, transactional compounds can be initiated by applications in storage
 client, then be transfered/translated all the way down (through network, OS, and
@@ -39,16 +42,19 @@ To compile and run the projects, you need CMake, G++, Jemalloc, Google Test,
 Google Mock, ........................... Life will be so much better if we
 have a package manager like Maven in the C/C++ world :-(
 
-So, the simplest way is to create a CentOS VM, and then execute
+So, the simplest way is to use the public Docker image built for this project
+in [Docker Hub](https://hub.docker.com/r/mingchen/tc-client/)
 
-        <txn-compound>/scripts/install-dependency.sh
+Alternatively, we can create a CentOS VM, and then execute
+[`scripts/install-dependency.sh`](scripts/install-dependency.sh)
 
 Build
 -----
 
         cd tc_client
         mkdir debug
-        sudo -E cmake -DCMAKE_BUILD_TYPE=Debug ../src
+        cd debug
+        sudo -E cmake -DCMAKE_BUILD_TYPE=Debug ..
         make
 
 Install
@@ -60,7 +66,7 @@ Assuming staying in the debug directory created above:
 Configure
 ---------
 All configurations are done by editing the config file at
-<txn-compound>/config/tc.ganesha.conf
+"txn-compound/config/tc.ganesha.conf".
 
 1. start an NFS server (e.g., NFS-Ganesha), and update its IP in the config
    file.
@@ -85,7 +91,7 @@ Please check "dmesg" and the log file at "/tmp/tc_test_read.log":
 Code tree
 =========
 
-nfs-ganesha
+NFS-Ganesha
 -----------
 The source code of txn-compound is largely adapted from NFS-Ganesha,
 particularly PROXY_FSAL.  So this repository contains many files from
@@ -99,7 +105,35 @@ For more information, consult the [project wiki](https://github.com/nfs-ganesha/
 
 Examples
 --------
-A good example of using TC library is
+The examples show usage of TC APIs, and usually perform FS operations with much
+less RPC than a standard POSIX NFS client.
+
+- Open, read, and close a file in one RPC:
+[tc_client/MainNFSD/tc_test_read.c](tc_client/MainNFSD/tc_test_read.c)
+
+- Create, write, and close a file in one RPC:
+[tc_client/MainNFSD/tc_test_write.c](tc_client/MainNFSD/tc_test_write.c)
+
+- Creating a deep directory and all its ancestor directories with only two
+RPCs: [tc_client/MainNFSD/tc_test_mkdir.c](tc_client/MainNFSD/tc_test_mkdir.c)
+
+- Creating multiple directories with only one RPC:
+[tc_client/MainNFSD/tc_test_mkdirs.c](tc_client/MainNFSD/tc_test_mkdirs.c)
+
+- Listing contents of multiple directories with one RPC:
+[tc_client/MainNFSD/tc_test_listdirs.c](tc_client/MainNFSD/tc_test_listdirs.c)
+
+- Removing multiple files with one RPC:
+[tc_client/MainNFSD/tc_test_remove.c](tc_client/MainNFSD/tc_test_remove.c)
+
+- Moving multiple files with one RPC:
+[tc_client/MainNFSD/tc_test_rename.c](tc_client/MainNFSD/tc_test_rename.c)
+
+LICENSE
+=======
+Most code in this repo has [LGPL license](tc_client/LICENSE.txt).  However, a
+small number utility files has BSD license, for example,
+[tc_client/util/slice.h](tc_client/util/slice.h).
 
 Contribution
 ============

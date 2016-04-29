@@ -40,6 +40,7 @@
 #ifndef FSAL_API
 #define FSAL_API
 
+#include "tc_api.h"
 #include "fsal_pnfs.h"
 #include "avltree.h"
 #include "abstract_atomic.h"
@@ -1310,12 +1311,6 @@ struct fsal_obj_ops {
 				 const char *name, struct attrlist *attrib,
 				 struct fsal_obj_handle **new_obj);
 
-/* For opening a file followed by reading and closing it */
-	fsal_status_t(*openread) (struct fsal_obj_handle *dir_hdl,
-                                 const char *name, const char *name1,
-				 struct attrlist *attrib, struct attrlist *attribi1,
-                                 struct fsal_obj_handle **new_obj, struct fsal_obj_handle **new_obj1);
-
 /* Multiple open..read..close in a single compound */
 	fsal_status_t (*tc_read)(struct tcread_kargs *arg, int arg_count,
 				 int *fail_index);
@@ -1328,10 +1323,34 @@ struct fsal_obj_ops {
 
 	fsal_status_t (*tc_close)(const nfs_fh4 *fh4, stateid4 *sid, seqid4 *seqid);
 
-	fsal_status_t(*root_lookup) (struct fsal_obj_handle **handle);
+	tc_res (*tc_getattrsv)(struct tc_attrs *attrs, int count);
+
+	tc_res (*tc_setattrsv)(struct tc_attrs *attrs, int count);
+
+/**
+ * @brief Create a list of directories.
+ *
+ * On success, the attributes and file handle of the newly created directories
+ * will be set in "dirs".  Note that the caller is responsible for freeing the
+ * file handles in the returned "dirs".
+ */
+	tc_res (*tc_mkdirv)(struct tc_attrs *dirs, int count);
+
+	tc_res (*tc_listdirv)(const char **dirs, int count,
+			      struct tc_attrs_masks masks, int max_entries,
+			      tc_listdirv_cb cb, void *cbarg);
+
+	tc_res (*tc_renamev)(tc_file_pair *pairs, int count);
+
+	tc_res (*tc_removev)(tc_file *files, int count);
+
+	fsal_status_t (*root_lookup)(struct fsal_obj_handle **handle);
 
 	fsal_status_t (*lookup_plus)(const char *path,
 				     struct fsal_obj_handle **handle);
+
+	int (*tc_chdir)(const char *path);
+	char *(*tc_getcwd)();
 
 /**
  * @brief Create a directory

@@ -18,10 +18,13 @@
  */
 
 /**
- * This is an example showing how tc_client/include/tc_api.h should be used.
+ * This is an example creating and writing to a file with one RPC.
+ * It has the same effect as the bash command:
  *
- * @file tc_test_read.c
- * @brief Test read a small file from NFS using TC.
+ *  $ echo "hello world" > /vfs0/hello.txt
+ *
+ * @file tc_test_write.c
+ * @brief Test create and write to a small file from NFS using TC.
  *
  */
 #include "config.h"
@@ -41,23 +44,23 @@
 static char exe_path[PATH_MAX];
 static char tc_config_path[PATH_MAX];
 
-#define DEFAULT_LOG_FILE "/tmp/tc_test_read.log"
+#define DEFAULT_LOG_FILE "/tmp/tc_test_write.log"
 
-#define TC_TEST_NFS_FILE0 "/vfs0/test/abcd0"
-#define TC_TEST_NFS_FILE1 "/vfs0/test/abcd1"
+#define TC_TEST_NFS_FILE "/vfs0/hello.txt"
 
 int main(int argc, char *argv[])
 {
 	void *context = NULL;
-	struct tc_iovec read_iovec[4];
+	struct tc_iovec write_iovec;
 	tc_res res;
+	const char *data = "hello world";
 
 	/* Locate and use the default config file in the repo.  Before running
 	 * this example, please update the config file to a correct NFS server.
 	 */
 	readlink("/proc/self/exe", exe_path, PATH_MAX);
 	snprintf(tc_config_path, PATH_MAX,
-		 "%s/../../../config/vfs.proxy.conf", dirname(exe_path));
+		 "%s/../../../config/tc.ganesha.conf", dirname(exe_path));
 	fprintf(stderr, "using config file: %s\n", tc_config_path);
 
 	/* Initialize TC services and daemons */
@@ -70,43 +73,28 @@ int main(int argc, char *argv[])
 	}
 
 	/* Setup I/O request */
-	read_iovec[0].file = tc_file_from_path(TC_TEST_NFS_FILE0);
-	read_iovec[0].offset = 0;
-	read_iovec[0].length = 16384;
-	read_iovec[0].data = malloc(16384);
-	assert(read_iovec[0].data);
-	read_iovec[1].file = tc_file_current();
-	read_iovec[1].offset = 16384;
-	read_iovec[1].length = 16384;
-	read_iovec[1].data = malloc(16384);
-	assert(read_iovec[1].data);
+	write_iovec.file = tc_file_from_path(TC_TEST_NFS_FILE);
+	write_iovec.is_creation = true;
+	write_iovec.offset = 0;
+	write_iovec.length = strlen(data);
+	write_iovec.data = (char *)data;
 
-	read_iovec[2].file = tc_file_from_path(TC_TEST_NFS_FILE1);
-	read_iovec[2].offset = 0;
-	read_iovec[2].length = 16384;
-	read_iovec[2].data = malloc(16384);
-	assert(read_iovec[2].data);
-	read_iovec[3].file = tc_file_current();
-	read_iovec[3].offset = 16384;
-	read_iovec[3].length = 16384;
-	read_iovec[3].data = malloc(16384);
-	assert(read_iovec[3].data);
-
-	/* Read the file; nfs4_readv() will open it first if needed. */
-	res = tc_readv(read_iovec, 4, false);
+	/* Write the file using NFS compounds; nfs4_writev() will open the file
+	 * with CREATION flag, write to it, and then close it. */
+	res = tc_writev(&write_iovec, 1, false);
 
 	/* Check results. */
 	if (res.okay) {
 		fprintf(stderr,
-			"Successfully read the first %d bytes of file \"%s\" "
+			"Successfully write the first %d bytes of file \"%s\" "
 			"via NFS.\n",
-			read_iovec[0].length, TC_TEST_NFS_FILE0);
+			write_iovec.length, TC_TEST_NFS_FILE);
 	} else {
 		fprintf(stderr,
-			"Failed to read file \"%s\" at the %d-th operation "
+			"Failed to write file \"%s\" at the %d-th operation "
 			"with error code %d (%s). See log file for details: "
 			"%s\n",
-			TC_TEST_NFS_FILE0, res.index, res.err_no,
+			TC_TEST_NFS_FILE, res.index, res.err_no,
 			strerror(res.err_no),
 			DEFAULT_LOG_FILE);
 	}

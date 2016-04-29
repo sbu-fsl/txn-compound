@@ -56,25 +56,25 @@ static inline void glist_init(struct glist_head *head)
 
 /* Add the new element between left and right */
 static inline void __glist_add(struct glist_head *left,
-			       struct glist_head *right, struct glist_head *new)
+			       struct glist_head *right, struct glist_head *ne)
 {
-	new->prev = left;
-	new->next = right;
-	left->next = new;
-	right->prev = new;
+	ne->prev = left;
+	ne->next = right;
+	left->next = ne;
+	right->prev = ne;
 }
 
 static inline void glist_add_tail(struct glist_head *head,
-				  struct glist_head *new)
+				  struct glist_head *ne)
 {
 
-	__glist_add(head->prev, head, new);
+	__glist_add(head->prev, head, ne);
 }
 
 /* add after the specified entry*/
-static inline void glist_add(struct glist_head *head, struct glist_head *new)
+static inline void glist_add(struct glist_head *head, struct glist_head *ne)
 {
-	__glist_add(head, head->next, new);
+	__glist_add(head, head->next, ne);
 }
 
 static inline void glist_del(struct glist_head *node)
@@ -110,12 +110,12 @@ static inline int glist_null(struct glist_head *head)
 }
 
 static inline void glist_add_list_tail(struct glist_head *list,
-				       struct glist_head *new)
+				       struct glist_head *ne)
 {
-	struct glist_head *first = new->next;
-	struct glist_head *last = new->prev;
+	struct glist_head *first = ne->next;
+	struct glist_head *last = ne->prev;
 
-	if (glist_empty(new)) {
+	if (glist_empty(ne)) {
 		/* nothing to add */
 		return;
 	}
@@ -178,5 +178,66 @@ static inline size_t glist_length(struct glist_head *head)
 	for (node = (start)->next, noden = node->next;	\
 	     node != (head);				\
 	     node = noden, noden = node->next)
+
+/* Copied from linux/list.h */
+
+/**
+ * list_next_entry - get the next element in list
+ * @pos:        the type * to cursor
+ * @member:     the name of the list_head within the struct.
+ */
+#define glist_next_entry(pos, member) \
+	    glist_entry((pos)->member.next, typeof(*(pos)), member)
+
+/**
+ * glist_prev_entry - get the prev element in list
+ * @pos:        the type * to cursor
+ * @member:     the name of the list_head within the struct.
+ */
+#define glist_prev_entry(pos, member)                                           \
+	glist_entry((pos)->member.prev, typeof(*(pos)), member)
+
+/**
+ * glist_last_entry - get the last element from a list
+ * @ptr:        the list head to take the element from.
+ * @type:       the type of the struct this is embedded in.
+ * @member:     the name of the list_head within the struct.
+ *
+ * Note, that list is expected to be not empty.
+ */
+#define glist_last_entry(ptr, type, member)                                    \
+	glist_entry((ptr)->prev, type, member)
+
+/**
+ * glist_for_each_entry_reverse - iterate backwards over list of given type.
+ * @pos:        the type * to use as a loop cursor.
+ * @head:       the head for your list.
+ * @member:     the name of the list_head within the struct.
+ */
+#define glist_for_each_entry_reverse(pos, head, member)                        \
+	for (pos = glist_last_entry(head, typeof(*pos), member);               \
+	     &pos->member != (head); pos = glist_prev_entry(pos, member))
+
+/**
+ * glist_for_each_entry_safe - iterate over list of given type safe against removal of list entry
+ * @pos:        the type * to use as a loop cursor.
+ * @n:          another type * to use as temporary storage
+ * @head:       the head for your list.
+ * @member:     the name of the list_head within the struct.
+ */
+#define glist_for_each_entry_safe(pos, n, head, member)                        \
+	for (pos = glist_first_entry(head, typeof(*pos), member),              \
+	    n = glist_next_entry(pos, member);                                 \
+	     &pos->member != (head); pos = n, n = glist_next_entry(n, member))
+
+/**
+ * glist_for_each_entry  -       iterate over list of given type
+ * @pos:        the type * to use as a loop cursor.
+ * @head:       the head for your list.
+ * @member:     the name of the list_head within the struct.
+ */
+#define glist_for_each_entry(pos, head, member)                                 \
+	for (pos = glist_first_entry(head, typeof(*pos), member);               \
+	     &pos->member != (head); pos = glist_next_entry(pos, member))
 
 #endif				/* _GANESHA_LIST_H */

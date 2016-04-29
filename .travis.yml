@@ -1,7 +1,12 @@
-language: c
+sudo: required
+
+language: c++
+
+services:
+  - docker
 
 compiler:
-  - gcc
+  - g++
 
 env:
   - BUILD_TYPE=Debug
@@ -9,39 +14,22 @@ env:
 
 branches:
  only:
-  - travis
-  - next
+  - master
 
 before_install:
- - git submodule update --init --recursive
- - sudo apt-get install libnfsidmap2
- - sudo apt-get install libnfsidmap-dev
- - sudo apt-get install libkrb5-3
- - sudo apt-get install libkrb5-dev
- - sudo apt-get install libk5crypto3
- - sudo apt-get install libgssapi-krb5-2
- - sudo apt-get install libgssglue1
- - sudo apt-get install libdbus-1-3
- - sudo apt-get install dbus
- - sudo apt-get install libdbus-1-dev
- - sudo apt-get install libcap-dev
+ - docker pull mingchen/tc-client
+ # Because docker drop CAP_DAC_READ_SEARCH, so name_to_handle_at() will fail.
+ # Therefore, we cannot run the Ganesha server in Docker!
+ # - docker run -d mingchen/tc-client /bin/sh -c "git clone https://github.com/sbu-fsl/tc-server.git; ./tc-server/src/scripts/build-and-run.sh;"
 
-script: mkdir ../build && cd ../build && cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_CONFIG=everything ../nfs-ganesha/src/ && make
+script: docker run mingchen/tc-client /bin/sh -c "git clone https://github.com/sbu-fsl/txn-compound.git /tc-latest && /tc-latest/scripts/build-and-test.sh"
+
+#script: docker run mingchen/tc-client /bin/sh -c "git clone https://github.com/sbu-fsl/tc-server.git && ./tc-server/src/scripts/build-and-run.sh && git clone https://github.com/sbu-fsl/txn-compound.git /tc-latest && /tc-latest/scripts/build-and-test.sh"
 
 notifications:
   email:
     recepients:
-      - sbhamare@panasas.com
+      - v.mingchen@gmail.com
 
     on_success: always
     on_failure: always
-
-  irc:
-    channels:
-      - "irc.panasas.com#pnfs"
-    template:
-      - "%{repository}#%{build_number}  (%{branch} - %{commit}) : %{message}"
-      - "Build details: %{build_url}"
-    use_notice: true
-    skip_join: true
-

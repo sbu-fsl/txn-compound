@@ -18,10 +18,13 @@
  */
 
 /**
- * This is an example showing how tc_client/include/tc_api.h should be used.
+ * This is an example removing multiple files in one RPC.
+ * It has the same effect as the bash command:
  *
- * @file tc_test_read.c
- * @brief Test read a small file from NFS using TC.
+ *  $ rm /vfs0/rmdir/{a,b,c,d,e}
+ *
+ * @file tc_test_remove.c
+ * @brief Test removing multiple files.
  *
  */
 #include "config.h"
@@ -41,23 +44,29 @@
 static char exe_path[PATH_MAX];
 static char tc_config_path[PATH_MAX];
 
-#define DEFAULT_LOG_FILE "/tmp/tc_test_read.log"
+#define DEFAULT_LOG_FILE "/tmp/tc_test_remove.log"
 
-#define TC_TEST_NFS_FILE0 "/vfs0/test/abcd0"
-#define TC_TEST_NFS_FILE1 "/vfs0/test/abcd1"
+#define TC_TEST_NFS_DIR "/vfs0/rmdir"
 
 int main(int argc, char *argv[])
 {
 	void *context = NULL;
-	struct tc_iovec read_iovec[4];
+	const int N = 5;
+	int i;
+	tc_file files[N];
+	struct tc_iovec file_iov[N];
 	tc_res res;
+	const char *data = "hello world";
+	const char *file_paths[] = { "/vfs0/rmdir/a", "/vfs0/rmdir/b",
+				     "/vfs0/rmdir/c", "/vfs0/rmdir/d",
+				     "/vfs0/rmdir/e" };
 
 	/* Locate and use the default config file in the repo.  Before running
 	 * this example, please update the config file to a correct NFS server.
 	 */
 	readlink("/proc/self/exe", exe_path, PATH_MAX);
 	snprintf(tc_config_path, PATH_MAX,
-		 "%s/../../../config/vfs.proxy.conf", dirname(exe_path));
+		 "%s/../../../config/tc.ganesha.conf", dirname(exe_path));
 	fprintf(stderr, "using config file: %s\n", tc_config_path);
 
 	/* Initialize TC services and daemons */
@@ -69,48 +78,46 @@ int main(int argc, char *argv[])
 		return EIO;
 	}
 
+	res = tc_ensure_dir(TC_TEST_NFS_DIR, 0755, NULL);
+	if (!res.okay) {
+		NFS4_ERR("failed to create parent directory %s",
+			 TC_TEST_NFS_DIR);
+		goto exit;
+	}
+
 	/* Setup I/O request */
-	read_iovec[0].file = tc_file_from_path(TC_TEST_NFS_FILE0);
-	read_iovec[0].offset = 0;
-	read_iovec[0].length = 16384;
-	read_iovec[0].data = malloc(16384);
-	assert(read_iovec[0].data);
-	read_iovec[1].file = tc_file_current();
-	read_iovec[1].offset = 16384;
-	read_iovec[1].length = 16384;
-	read_iovec[1].data = malloc(16384);
-	assert(read_iovec[1].data);
+	for (i = 0; i < N; ++i) {
+		files[i] = tc_file_from_path(file_paths[i]);
+		file_iov[i].file = files[i];
+		file_iov[i].is_creation = true;
+		file_iov[i].offset = 0;
+		/* The file content is its path */
+		file_iov[i].length = strlen(file_paths[i]);
+		file_iov[i].data = (char *)file_paths[i];
+	}
 
-	read_iovec[2].file = tc_file_from_path(TC_TEST_NFS_FILE1);
-	read_iovec[2].offset = 0;
-	read_iovec[2].length = 16384;
-	read_iovec[2].data = malloc(16384);
-	assert(read_iovec[2].data);
-	read_iovec[3].file = tc_file_current();
-	read_iovec[3].offset = 16384;
-	read_iovec[3].length = 16384;
-	read_iovec[3].data = malloc(16384);
-	assert(read_iovec[3].data);
-
-	/* Read the file; nfs4_readv() will open it first if needed. */
-	res = tc_readv(read_iovec, 4, false);
-
-	/* Check results. */
+	/* Write the file using NFS compounds; nfs4_writev() will open the file
+	 * with CREATION flag, write to it, and then close it. */
+	res = tc_writev(file_iov, N, false);
 	if (res.okay) {
-		fprintf(stderr,
-			"Successfully read the first %d bytes of file \"%s\" "
-			"via NFS.\n",
-			read_iovec[0].length, TC_TEST_NFS_FILE0);
+		fprintf(stderr, "Successfully created %d test files\n", N);
+	} else {
+		fprintf(stderr, "Failed to create test files\n");
+		goto exit;
+	}
+
+	res = tc_removev(files, N, false);
+	if (res.okay) {
+		fprintf(stderr, "Successfully removed %d test files\n", N);
 	} else {
 		fprintf(stderr,
-			"Failed to read file \"%s\" at the %d-th operation "
-			"with error code %d (%s). See log file for details: "
-			"%s\n",
-			TC_TEST_NFS_FILE0, res.index, res.err_no,
-			strerror(res.err_no),
+			"Failed to remove %d-th file with error code %d "
+			"(%s). See log file at %s for details.\n",
+			res.index, res.err_no, strerror(res.err_no),
 			DEFAULT_LOG_FILE);
 	}
 
+exit:
 	tc_deinit(context);
 
 	return res.okay ? 0 : res.err_no;

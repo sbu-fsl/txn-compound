@@ -5,6 +5,12 @@ add_definitions(
 
 add_definitions(-std=c++11)
 
+set(path_utils_SRC
+  path_utils.cpp
+)
+add_library(path_utils STATIC ${path_utils_SRC})
+set_target_properties(path_utils PROPERTIES POSITION_INDEPENDENT_CODE on)
+
 set(util_SRC
   bench.cpp
   fileutil.cpp
@@ -31,6 +37,7 @@ set(test_LIB
   gtest
   gtest_main
   gmock
+  path_utils
 )
 
 function (add_unittest TestName LibName)
@@ -44,3 +51,5 @@ add_library(tc_util STATIC ${util_SRC})
 add_unittest(bench_test tc_util)
 add_unittest(zipf_test tc_util)
 add_unittest(fileutil_test tc_util)
+add_unittest(path_utils_test tc_util)
+add_unittest(common_types_test tc_util)

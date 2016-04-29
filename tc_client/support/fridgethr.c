@@ -509,7 +509,7 @@ static bool fridgethr_freeze(struct fridgethr *fr,
  *    events that call functions that expect a context set up.
  */
 
-__thread struct req_op_context *op_ctx;
+struct req_op_context *op_ctx;
 
 
 /**

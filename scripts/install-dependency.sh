@@ -1,3 +1,5 @@
+#!/bin/bash -
+#
 # Setup txn-compound on CentOS7
 #
 # by Garima Gehlot, garima.gehlot@stonybrook.edu
@@ -16,39 +18,39 @@ hash -r                                 # clear the command path hash
 DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 
 # got to the root of this git repo
-cd $DIR/../../
+cd $DIR/../
 
 # NFS-ganesha specific
-sudo git submodule update --init --recursive
-sudo rpm -Fvh http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-5.noarch.rpm
+git submodule update --init --recursive
+wget http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-6.noarch.rpm
+rpm -ivh epel-release-7-6.noarch.rpm
 
-#sudo wget -P /etc/yum.repos.d http://download.gluster.org/pub/gluster/glusterfs/LATEST/RHEL/glusterfs-epel.repo
-#sudo rpm --import 'https://ceph.com/git/?p=ceph.git;a=blob_plain;f=keys/release.asc'
-#sudo yum install -y snappy leveldb gdisk gperftools-libs
-#sudo rpm -Uvh http://ceph.com/rpm-dumpling/el6/noarch/ceph-release-1-0.el6.noarch.rpm
-#sudo rpm -Uvh http://li.nux.ro/download/nux/dextop/el7/x86_64/nux-dextop-release-0-5.el7.nux.noarch.rpm
 #sudo yum -y update
 
 # clean up the yum cache directory to get rid of
 # obsolete headers, if any
 #sudo yum clean all
 
-sudo yum install -y cmake
-sudo yum install -y glog-devel gflags-devel libgssglue-devel
-sudo yum install -y openssl-devel
-sudo yum install -y libnfsidmap-devel
-sudo yum install -y doxygen
-sudo yum install -y gperftools-libs
-sudo yum install -y protobuf-devel leveldb-devel snappy-devel opencv-devel boost-devel hdf5-devel
-sudo yum install -y lmdb-devel jemalloc-devel tbb-devel libaio-devel cryptopp-devel
-sudo yum -y groupinstall "Development Tools"
-sudo yum install -y glibc-headers
-sudo yum install -y gcc-c++
-sudo yum install -y bison flex
-sudo yum install -y libcurl-devel boost-system boost-filesystem boost-regex
-sudo yum install -y boost-static
-sudo yum install -y glib2-devel glib-devel
-sudo yum install -y automake autoconf libtool
+yum install -y cmake
+yum install -y glog-devel gflags-devel libgssglue-devel
+yum install -y openssl-devel
+yum install -y libnfsidmap-devel
+yum install -y doxygen
+yum install -y gperftools-devel gperftools-libs  # for tcmalloc
+yum install -y protobuf-devel leveldb-devel snappy-devel opencv-devel boost-devel hdf5-devel
+yum install -y lmdb-devel jemalloc-devel tbb-devel libaio-devel cryptopp-devel
+yum -y groupinstall "Development Tools"
+yum install -y glibc-headers
+yum install -y gcc-c++
+yum install -y bison flex
+yum install -y libcurl-devel boost-system boost-filesystem boost-regex
+yum install -y boost-static
+yum install -y glib2-devel glib-devel
+yum install -y automake autoconf libtool
+yum install -y libcap-devel libwbclient-devel libuuid-devel libblkid-devel
+
+# To resolve https://github.com/nfs-ganesha/nfs-ganesha/issues/67
+yum install -y libtirpc
 
 mkdir -p /opt
 cd /opt

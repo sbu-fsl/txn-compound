@@ -32,133 +32,38 @@ add_library(MainServices STATIC ${MainServices_STAT_SRCS})
 # we put them here in the core rather than in a lib so that they are always
 # present and available for runtime linkage.
 
-########### next target ###############
-
-SET(tc_seq_SRCS
-   tc_seq.c
-)
-
-add_executable(tc_seq
-  ${tc_seq_SRCS}
-)
-
-target_link_libraries(tc_seq
-  MainServices
-  ${PROTOCOLS}
-  ${GANESHA_CORE}
-  config_parsing
-  ${LIBTIRPC_LIBRARIES}
-  ${SYSTEM_LIBRARIES}
-  m
-  tc_util
-  tc_impl_nfs4
-)
-
-SET(tcfiledist_SRCS
-   tc_filedist.c
-)
-
-add_executable(tc_filedist
-  ${tcfiledist_SRCS}
-)
-
-target_link_libraries(tc_filedist
-  MainServices
-  ${PROTOCOLS}
-  ${GANESHA_CORE}
-  config_parsing
-  ${LIBTIRPC_LIBRARIES}
-  ${SYSTEM_LIBRARIES}
-  m
-  tc_util
-  tc_impl_nfs4
-)
-
-SET(tc_singlefile_SRCS
-   tc_singlefile.c
-)
-
-add_executable(tc_singlefile
-  ${tc_singlefile_SRCS}
-)
-
-target_link_libraries(tc_singlefile
-  MainServices
-  ${PROTOCOLS}
-  ${GANESHA_CORE}
-  config_parsing
-  ${LIBTIRPC_LIBRARIES}
-  ${SYSTEM_LIBRARIES}
-  m
-  tc_util
-  tc_impl_nfs4
-)
-
-SET(tc_test_read_SRCS
-   tc_test_read.c
-)
-
-add_executable(tc_test_read
-  ${tc_test_read_SRCS}
-)
-
-target_link_libraries(tc_test_read
-  tc_impl
-  tc_impl_nfs4
-  tc_impl_posix
-  tc_util
-  MainServices
-  ${PROTOCOLS}
-  ${GANESHA_CORE}
-  config_parsing
-  ${LIBTIRPC_LIBRARIES}
-  ${SYSTEM_LIBRARIES}
-  m
-)
-
-SET(tc_test_open_SRCS
-   tc_test_open.c
-)
-
-add_executable(tc_test_open
-  ${tc_test_open_SRCS}
-)
-
-target_link_libraries(tc_test_open
-  tc_impl
-  tc_impl_nfs4
-  tc_impl_posix
-  tc_util
-  MainServices
-  ${PROTOCOLS}
-  ${GANESHA_CORE}
-  config_parsing
-  ${LIBTIRPC_LIBRARIES}
-  ${SYSTEM_LIBRARIES}
-  m
-)
-
-SET(tc_test_openread_SRCS
-   tc_test_openread.c
-)
-
-add_executable(tc_test_openread
-  ${tc_test_openread_SRCS}
-)
-
-target_link_libraries(tc_test_openread
-  tc_impl
-  tc_impl_nfs4
-  tc_impl_posix
-  tc_util
-  MainServices
-  ${PROTOCOLS}
-  ${GANESHA_CORE}
-  config_parsing
-  ${LIBTIRPC_LIBRARIES}
-  ${SYSTEM_LIBRARIES}
-  m
-)
 ########### install files ###############
 
 # We are still missing the install of docs and stuff
+function (add_tc_binary Name)
+  add_executable(${Name} "${Name}.c")
+  target_link_libraries(${Name}
+    tc_impl
+    tc_impl_nfs4
+    tc_impl_posix
+    tc_util
+    MainServices
+    ${PROTOCOLS}
+    ${GANESHA_CORE}
+    config_parsing
+    path_utils
+    ${LIBTIRPC_LIBRARIES}
+    ${SYSTEM_LIBRARIES}
+    m
+  )
+endfunction (add_tc_binary)
+
+add_tc_binary(tc_seq)
+add_tc_binary(tc_filedist)
+add_tc_binary(tc_singlefile)
+add_tc_binary(tc_test_open)
+add_tc_binary(tc_test_openread)
+
+add_tc_binary(tc_test_read)
+add_tc_binary(tc_test_write)
+add_tc_binary(tc_test_mkdir)
+add_tc_binary(tc_test_mkdirs)
+add_tc_binary(tc_test_listdirs)
+add_tc_binary(tc_test_remove)
+add_tc_binary(tc_test_rename)
+add_tc_binary(tc_test_append)

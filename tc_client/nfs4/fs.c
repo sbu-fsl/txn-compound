@@ -154,7 +154,7 @@ static struct config_item kern_params[] = {
 
 struct config_block kern_param = {
 	.dbus_interface_name = "org.ganesha.nfsd.config.fsal.kern",
-	.blk_desc.name = "PROXY",
+	.blk_desc.name = "TCNFS",
 	.blk_desc.type = CONFIG_BLOCK,
 	.blk_desc.u.blk.init = noop_conf_init,
 	.blk_desc.u.blk.params = kern_params,
@@ -191,24 +191,24 @@ static fsal_status_t fs_init_config(struct fsal_module *fsal_hdl,
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
-static struct fs_fsal_module PROXY;
+static struct fs_fsal_module TCNFS;
 
 MODULE_INIT void fs_init(void)
 {
-	if (register_fsal(&PROXY.module, "PROXY", FSAL_MAJOR_VERSION,
+	if (register_fsal(&TCNFS.module, "TCNFS", FSAL_MAJOR_VERSION,
 			  FSAL_MINOR_VERSION, FSAL_ID_NO_PNFS) != 0)
 		return;
-	PROXY.module.ops->init_config = fs_init_config;
-	PROXY.module.ops->create_export = fs_create_export;
+	TCNFS.module.ops->init_config = fs_init_config;
+	TCNFS.module.ops->create_export = fs_create_export;
 }
 
 MODULE_FINI void fs_unload(void)
 {
 	int retval;
 
-	retval = unregister_fsal(&PROXY.module);
+	retval = unregister_fsal(&TCNFS.module);
 	if (retval != 0) {
-		fprintf(stderr, "PROXY module failed to unregister");
+		fprintf(stderr, "TCNFS module failed to unregister");
 		return;
 	}
 }

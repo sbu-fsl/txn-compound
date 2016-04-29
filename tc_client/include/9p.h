@@ -33,7 +33,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <sys/select.h>
-#include "fsal.h"
 #include "cache_inode.h"
 
 #ifdef _USE_9P_RDMA

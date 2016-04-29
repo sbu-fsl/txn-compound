@@ -1,4 +1,23 @@
 /**
+ * Copyright (C) Stony Brook University 2016
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA
+ */
+
+/**
  * XXX: To add a new test, don't forget to register the test in
  * REGISTER_TYPED_TEST_CASE_P().
  *
@@ -13,6 +32,7 @@
 #include <gtest/gtest.h>
 
 #include "tc_api.h"
+#include "tc_helper.h"
 #include "util/fileutil.h"
 #include "log.h"
 
@@ -60,25 +80,10 @@ static void RemoveDir(const char **path, int count)
 
 	while (i < count) {
 		r = rmdir(path[i]);
-		EXPECT_TRUE(r == 0 || r == ENOENT);
+		EXPECT_TRUE(r == 0 || r == ENOENT)
+		    << "error removing dirs: " << strerror(r);
 		i++;
 	}
-}
-
-/**
- * Free the tc_iovec
- */
-
-void clear_iovec(tc_iovec *user_arg, int count)
-{
-	int i = 0;
-
-	while (i < count) {
-		free((user_arg + i)->data);
-		i++;
-	}
-
-	free(user_arg);
 }
 
 /**
@@ -124,37 +129,19 @@ static tc_iovec *set_iovec_file_paths(const char **PATH, int count,
 	return user_arg;
 }
 
-/**
- * Verify the data has been
- * written as specified
- */
-bool compare_content(tc_iovec *writev, tc_iovec *readv, int count)
-{
-	int i = 0;
-
-	while (i < count) {
-		if (memcmp((writev + i)->data, (readv + i)->data,
-			   (writev + i)->length))
-			return false;
-
-		i++;
-	}
-
-	return true;
-}
-
 class TcPosixImpl {
 public:
+	static void *tcdata;
 	static constexpr const char* POSIX_TEST_DIR = "/tmp/tc_posix_test";
 	static void SetUpTestCase() {
-		/* TODO: setup posix impl */
-		tc_init("/etc/ganesha/tc.conf", "/tmp/tc.log", 0);
+		tcdata = tc_init(NULL, "/tmp/tc-posix.log", 0);
 		TCTEST_WARN("Global SetUp of Posix Impl\n");
 		util::CreateOrUseDir(POSIX_TEST_DIR);
 		chdir(POSIX_TEST_DIR);
 	}
 	static void TearDownTestCase() {
 		TCTEST_WARN("Global TearDown of Posix Impl\n");
+		tc_deinit(tcdata);
 	}
 	static void SetUp() {
 		TCTEST_WARN("SetUp Posix Impl Test\n");
@@ -163,17 +150,22 @@ public:
 		TCTEST_WARN("TearDown Posix Impl Test\n");
 	}
 };
+void *TcPosixImpl::tcdata = NULL;
 
 class TcNFS4Impl {
 public:
+	static void *tcdata;
 	static void SetUpTestCase() {
-		/* TODO: setup NFS4 impl */
-		tc_init("/etc/ganesha/tc.conf", "/tmp/tc.log", 0);
+		tcdata = tc_init("../../../config/tc.ganesha.conf",
+				 "/tmp/tc-nfs4.log", 77);
 		TCTEST_WARN("Global SetUp of NFS4 Impl\n");
-		chdir("tc_nfs4_test");  /* change to mnt point */
+		tc_res res = tc_ensure_dir("/vfs0/tc_nfs4_test", 0755, NULL);
+		EXPECT_TRUE(res.okay);
+		tc_chdir("/vfs0/tc_nfs4_test");  /* change to mnt point */
 	}
 	static void TearDownTestCase() {
 		TCTEST_WARN("Global TearDown of NFS4 Impl\n");
+		tc_deinit(tcdata);
 	}
 	static void SetUp() {
 		TCTEST_WARN("SetUp NFS4 Impl Test\n");
@@ -182,6 +174,7 @@ public:
 		TCTEST_WARN("TearDown NFS4 Impl Test\n");
 	}
 };
+void *TcNFS4Impl::tcdata = NULL;
 
 template <typename T>
 class TcTest : public ::testing::Test {
@@ -234,8 +227,8 @@ TYPED_TEST_P(TcTest, WritevCanCreateFiles)
 
 	EXPECT_TRUE(compare_content(writev, readv, count));
 
-	clear_iovec(writev, count);
-	clear_iovec(readv, count);
+	free_iovec(writev, count);
+	free_iovec(readv, count);
 }
 
 /**
@@ -318,8 +311,8 @@ TYPED_TEST_P(TcTest, TestFileDesc)
 
 	EXPECT_TRUE(compare_content(writev, readv, count));
 
-	clear_iovec(writev, count);
-	clear_iovec(readv, count);
+	free_iovec(writev, count);
+	free_iovec(readv, count);
 
 	i = 0;
 	while (i < count) {
@@ -469,8 +462,8 @@ static tc_attrs *set_tc_attrs(const char **PATH, int count, bool isPath)
 		(change_attr + i)->size = size[i];
 		(change_attr + i)->uid = uid[i];
 		(change_attr + i)->gid = gid[i];
-		(change_attr + i)->atime = atime[i];
-		(change_attr + i)->mtime = time(NULL);
+		(change_attr + i)->atime.tv_sec = atime[i];
+		(change_attr + i)->mtime.tv_sec = time(NULL);
 
 		masks[i].has_mode = 1;
 		masks[i].has_size = 1;
@@ -687,24 +680,18 @@ TYPED_TEST_P(TcTest, MakeDirectory)
 	mode_t mode[] = { S_IRWXU, S_IRUSR | S_IRGRP | S_IROTH,
 			  S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH };
 	const char *path[] = { "a", "b", "c" };
-
-	tc_file *file = (tc_file *)calloc(3, sizeof(tc_file));
+	struct tc_attrs dirs[3];
 
 	RemoveDir(path, 3);
 
 	while (i < 3) {
-
-		(file + i)->path = path[i];
-		(file + i)->type = TC_FILE_PATH;
-
+		tc_set_up_creation(&dirs[i], path[i], 0755);
 		i++;
 	}
 
-	tc_res res = tc_mkdirv(file, mode, 3, false);
+	tc_res res = tc_mkdirv(dirs, 3, false);
 
 	EXPECT_TRUE(res.okay);
-
-	free(file);
 }
 
 /**
@@ -744,7 +731,7 @@ TYPED_TEST_P(TcTest, Append)
 	}
 
 	free(data);
-	clear_iovec(writev, 1);
+	free_iovec(writev, 1);
 }
 
 /**
@@ -789,7 +776,7 @@ TYPED_TEST_P(TcTest, SuccesiveReads)
 	}
 
 	free(data);
-	clear_iovec(readv, 1);
+	free_iovec(readv, 1);
 
 	RemoveFile(path);
 }
@@ -842,7 +829,7 @@ TYPED_TEST_P(TcTest, SuccesiveWrites)
 	}
 
 	free(data);
-	clear_iovec(writev, 1);
+	free_iovec(writev, 1);
 
 	RemoveFile(path);
 }
@@ -860,5 +847,6 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   SuccesiveReads,
 			   SuccesiveWrites);
 
-typedef ::testing::Types<TcPosixImpl, TcNFS4Impl> TcImpls;
+//typedef ::testing::Types<TcPosixImpl, TcNFS4Impl> TcImpls;
+typedef ::testing::Types<TcPosixImpl> TcImpls;
 INSTANTIATE_TYPED_TEST_CASE_P(TC, TcTest, TcImpls);

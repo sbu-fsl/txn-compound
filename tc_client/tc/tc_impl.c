@@ -1,3 +1,23 @@
+/**
+ * Copyright (C) Stony Brook University 2016
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA
+ */
+
+#include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/time.h>
@@ -5,6 +25,7 @@
 #include "tc_api.h"
 #include "posix/tc_impl_posix.h"
 #include "nfs4/tc_impl_nfs4.h"
+#include "path_utils.h"
 
 static tc_res TC_OKAY = { .okay = true, .index = -1, .err_no = 0, };
 
@@ -57,46 +78,138 @@ tc_res tc_writev(struct tc_iovec *writes, int count, bool is_transaction)
 
 tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
-	return posix_getattrsv(attrs, count, is_transaction);
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_getattrsv(attrs, count, is_transaction);
+	} else {
+		return posix_getattrsv(attrs, count, is_transaction);
+	}
 }
 
 tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
-	return posix_setattrsv(attrs, count, is_transaction);
-}
-
-void tc_free_attrs(struct tc_attrs *attrs, int count, bool free_path)
-{
-	int i;
-
-	if (free_path) {
-		for (i = 0; i < count; ++i) {
-			if (attrs[i].file.type == TC_FILE_PATH)
-				free((char *)attrs[i].file.path);
-		}
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_setattrsv(attrs, count, is_transaction);
+	} else {
+		return posix_setattrsv(attrs, count, is_transaction);
 	}
-	free(attrs);
 }
 
 tc_res tc_listdir(const char *dir, struct tc_attrs_masks masks, int max_count,
 		  struct tc_attrs **contents, int *count)
 {
-	return posix_listdir(dir, masks, max_count, contents, count);
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_listdir(dir, masks, max_count, contents, count);
+	} else {
+		return posix_listdir(dir, masks, max_count, contents, count);
+	}
+}
+
+tc_res tc_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
+		   int max_entries, tc_listdirv_cb cb, void *cbarg,
+		   bool is_transaction)
+{
+	return nfs4_listdirv(dirs, count, masks, max_entries, cb, cbarg,
+			     is_transaction);
 }
 
 tc_res tc_renamev(tc_file_pair *pairs, int count, bool is_transaction)
 {
-	return posix_renamev(pairs, count, is_transaction);
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_renamev(pairs, count, is_transaction);
+	} else {
+		return posix_renamev(pairs, count, is_transaction);
+	}
 }
 
 tc_res tc_removev(tc_file *files, int count, bool is_transaction)
 {
-	return posix_removev(files, count, is_transaction);
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_removev(files, count, is_transaction);
+	} else {
+		return posix_removev(files, count, is_transaction);
+	}
 }
 
-tc_res tc_mkdirv(tc_file *dir, mode_t *mode, int count, bool is_transaction)
+tc_res tc_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)
 {
-	return posix_mkdirv(dir, mode, count, is_transaction);
+	int i;
+
+	for (i = 0; i < count; ++i) {
+		assert(dirs[i].masks.has_mode);
+	}
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_mkdirv(dirs, count, is_transaction);
+	} else {
+		return posix_mkdirv(dirs, count, is_transaction);
+	}
+}
+
+tc_res tc_ensure_dir(const char *dir, mode_t mode, slice_t *leaf)
+{
+	tc_res tcres = TC_OKAY;
+	slice_t *comps;
+	struct tc_attrs *dirs;
+	buf_t *path;
+	int i;
+	int n;
+	int absent;
+	bool is_absolute = dir && dir[0] == '/';
+
+	n = tc_path_tokenize(dir, &comps);
+	if (n < 0) {
+		return tc_failure(0, -n);
+	}
+
+	if (leaf && n > 0) {
+		*leaf = comps[--n];
+	}
+
+	if (n == 0) {
+		goto exit;
+	}
+
+	dirs = alloca(n * sizeof(*dirs));
+	dirs[0].file = tc_file_from_path(new_auto_str(comps[0]));
+	for (i = 1; i < n; ++i) {
+		dirs[i].file = tc_file_from_cfh(new_auto_str(comps[i]));
+	}
+
+	tcres = tc_getattrsv(dirs, n, false);
+	if (tcres.okay || tcres.err_no != ENOENT) {
+		goto exit;
+	}
+
+	path = new_auto_buf(strlen(dir) + 1);
+	absent = 0;
+	for (i = 0; i < n; ++i) {
+		if (i < tcres.index) {
+			tc_path_append(path, comps[i]);
+			continue;
+		} else if (i == tcres.index) {
+			tc_path_append(path, comps[i]);
+			tc_set_up_creation(&dirs[absent], asstr(path), mode);
+		} else {
+			tc_set_up_creation(&dirs[absent],
+					   new_auto_str(comps[i]), mode);
+			dirs[absent].file.type = TC_FILE_CURRENT;
+		}
+		++absent;
+	}
+
+	if (absent == 0)
+		goto exit;
+
+	tcres = tc_mkdirv(dirs, absent, false);
+	for (i = 0; i < absent; ++i) {
+		if (tcres.okay || i < tcres.index) {
+			assert(dirs[i].file.type == TC_FILE_HANDLE);
+			free((void *)dirs[i].file.handle);
+		}
+	}
+
+exit:
+	free(comps);
+	return tcres;
 }
 
 tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
@@ -107,4 +220,23 @@ tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 tc_res tc_write_adb(struct tc_adb *patterns, int count, bool is_transaction)
 {
 	return TC_OKAY;
+}
+
+
+int tc_chdir(const char *path)
+{
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_chdir(path);
+	} else {
+		return posix_chdir(path);
+	}
+}
+
+char *tc_getcwd()
+{
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_getcwd();
+	} else {
+		return posix_getcwd();
+	}
 }
