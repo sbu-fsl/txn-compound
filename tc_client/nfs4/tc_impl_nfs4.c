@@ -242,6 +242,7 @@ tc_res nfs4_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 			    &fd_list[cur_arg->user_arg->file.fd].stateid;
 			fh = cur_arg->fh =
 			    &fd_list[cur_arg->user_arg->file.fd].fh;
+
 			last_op = TC_FILE_DESCRIPTOR;
 			break;
 		case TC_FILE_PATH:
@@ -252,6 +253,7 @@ tc_res nfs4_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 
 			sid = NULL;
 			fh = NULL;
+
 			last_op = TC_FILE_PATH;
 			break;
 		case TC_FILE_CURRENT:
