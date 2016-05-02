@@ -48,6 +48,7 @@
 #include "nfs_proto_tools.h"
 #include "export_mgr.h"
 #include "nfs4_util.h"
+#include <sys/stat.h>
 
 #include "path_utils.h"
 
@@ -3237,6 +3238,16 @@ void fattr4_to_tc_attrs(const fattr4 *attr4, struct tc_attrs *tca)
                 tca->masks.has_ctime = true;
                 tca->ctime = attrlist.ctime;
         }
+	switch (attrlist.type) {
+	case REGULAR_FILE:
+		tca->mode &= ~S_IFMT;
+		tca->mode |= S_IFREG;
+		break;
+	case DIRECTORY:
+		tca->mode &= ~S_IFMT;
+		tca->mode |= S_IFDIR;
+		break;
+	}
 }
 
 static tc_res tc_nfs4_getattrsv(struct tc_attrs *attrs, int count)
