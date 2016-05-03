@@ -108,6 +108,9 @@ tc_res posix_listdir(const char *dir, struct tc_attrs_masks masks,
 
 tc_res posix_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction);
 
+tc_res posix_copyv(struct tc_extent_pair *pairs, int count,
+		   bool is_transaction);
+
 int posix_chdir(const char *path);
 
 char *posix_getcwd();

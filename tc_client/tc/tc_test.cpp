@@ -834,6 +834,117 @@ TYPED_TEST_P(TcTest, SuccesiveWrites)
 	RemoveFile(path);
 }
 
+static char *getRandomBytes(int N)
+{
+	int fd;
+	char *buf;
+	ssize_t ret;
+	ssize_t n;
+
+	buf = (char *)malloc(N);
+	if (!buf) {
+		return NULL;
+	}
+
+	fd = open("/dev/urandom", O_RDONLY);
+	if (fd < 0) {
+		free(buf);
+		return NULL;
+	}
+
+	n = 0;
+	while (n < N) {
+		ret = read(fd, buf + n, MIN(16384, N - n));
+		if (ret < 0) {
+			free(buf);
+			close(fd);
+			return NULL;
+		}
+		n += ret;
+	}
+
+	close(fd);
+	return buf;
+}
+
+TYPED_TEST_P(TcTest, CopyFiles)
+{
+	const int N = 1024 * 1024;
+	struct tc_extent_pair pairs[2];
+	struct tc_iovec iov[2];
+	struct tc_iovec read_iov[2];
+	tc_res tcres;
+
+	pairs[0].src_path = "SourceFile1.txt";
+	pairs[0].src_offset = 0;
+	pairs[0].dst_path = "DestinationFile1.txt";
+	pairs[0].dst_offset = 0;
+	pairs[0].length = N;
+
+	pairs[1].src_path = "SourceFile2.txt";
+	pairs[1].src_offset = 0;
+	pairs[1].dst_path = "DestinationFile2.txt";
+	pairs[1].dst_offset = 0;
+	pairs[1].length = N;
+
+	// create source files
+	iov[0].file = tc_file_from_path(pairs[0].src_path);
+	iov[0].is_creation = true;
+	iov[0].offset = 0;
+	iov[0].length = N;
+	iov[0].data = getRandomBytes(N);
+	EXPECT_TRUE(iov[0].data);
+	iov[1].file = tc_file_from_path(pairs[1].src_path);
+	iov[1].is_creation = true;
+	iov[1].offset = 0;
+	iov[1].length = N;
+	iov[1].data = getRandomBytes(N);
+	EXPECT_TRUE(iov[1].data);
+	tcres = tc_writev(iov, 2, false);
+	EXPECT_TRUE(tcres.okay);
+
+	// create empty dest files
+	iov[0].file = tc_file_from_path(pairs[0].dst_path);
+	iov[0].is_creation = true;
+	iov[0].offset = 0;
+	iov[0].length = 0;
+	iov[0].data = NULL;
+	iov[1].file = tc_file_from_path(pairs[1].dst_path);
+	iov[1].is_creation = true;
+	iov[1].offset = 0;
+	iov[1].length = 0;
+	iov[1].data = NULL;
+	tcres = tc_writev(iov, 2, false);
+	EXPECT_TRUE(tcres.okay);
+
+	// copy files
+	tcres = tc_copyv(pairs, 2, false);
+	EXPECT_TRUE(tcres.okay);
+
+	read_iov[0].file = tc_file_from_path(pairs[0].dst_path);
+	read_iov[0].is_creation = false;
+	read_iov[0].offset = 0;
+	read_iov[0].length = N;
+	read_iov[0].data = malloc(N);
+	EXPECT_TRUE(read_iov[0].data);
+	read_iov[1].file = tc_file_from_path(pairs[1].dst_path);
+	read_iov[1].is_creation = false;
+	read_iov[1].offset = 0;
+	read_iov[1].length = N;
+	read_iov[1].data = malloc(N);
+	EXPECT_TRUE(read_iov[1].data);
+
+	tcres = tc_readv(read_iov, 2, false);
+	EXPECT_TRUE(tcres.okay);
+
+	compare_content(iov, read_iov, 2);
+
+	free(iov[0].data);
+	free(iov[1].data);
+	free(read_iov[0].data);
+	free(read_iov[1].data);
+}
+
 REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   WritevCanCreateFiles,
 			   TestFileDesc,
@@ -845,7 +956,8 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   MakeDirectory,
 			   Append,
 			   SuccesiveReads,
-			   SuccesiveWrites);
+			   SuccesiveWrites,
+			   CopyFiles);
 
 //typedef ::testing::Types<TcPosixImpl, TcNFS4Impl> TcImpls;
 typedef ::testing::Types<TcPosixImpl> TcImpls;

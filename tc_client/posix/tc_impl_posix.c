@@ -25,9 +25,11 @@
 #include <stdio.h>
 #include <dirent.h>
 #include <string.h>
+#include <sys/types.h>
 
 #include "tc_impl_posix.h"
 #include "log.h"
+#include "splice_copy.h"
 
 /*
  * open routine for POSIX files
@@ -711,6 +713,28 @@ tc_res posix_listdir(const char *dir, struct tc_attrs_masks masks,
 	}
 
 	return result;
+}
+
+tc_res posix_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
+{
+	int i;
+	ssize_t ret;
+	tc_res tcres;
+
+	for (i = 0; i < count; ++i) {
+		ret = splice_copy(pairs[i].src_path, pairs[i].src_offset,
+				  pairs[i].dst_path, pairs[i].dst_offset,
+				  pairs[i].length);
+		if (ret < 0) {
+			tcres.okay = false;
+			tcres.index = i;
+			tcres.err_no = -ret;
+			return tcres;
+		}
+		pairs[i].length = ret;
+	}
+
+	return tcres;
 }
 
 int posix_chdir(const char *path)

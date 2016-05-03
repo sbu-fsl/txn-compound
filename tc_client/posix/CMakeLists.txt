@@ -7,6 +7,7 @@ add_definitions(
 
 set(tc_posix_SRC
   tc_impl_posix.c
+  splice_copy.c
 )
 
 include_directories(

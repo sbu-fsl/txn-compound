@@ -214,7 +214,11 @@ exit:
 
 tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 {
-	return TC_OKAY;
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_copyv(pairs, count, is_transaction);
+	} else {
+		return posix_copyv(pairs, count, is_transaction);
+	}
 }
 
 tc_res tc_write_adb(struct tc_adb *patterns, int count, bool is_transaction)

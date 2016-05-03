@@ -420,6 +420,13 @@ tc_res nfs4_removev(tc_file *files, int count, bool is_transaction)
 	return res;
 }
 
+tc_res nfs4_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
+{
+	tc_res res;
+
+	return res;
+}
+
 int nfs4_chdir(const char *path)
 {
 	struct gsh_export *exp = op_ctx->export;
