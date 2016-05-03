@@ -1327,6 +1327,7 @@ struct fsal_obj_ops {
 
 	tc_res (*tc_setattrsv)(struct tc_attrs *attrs, int count);
 
+	fsal_status_t (*tc_destroysession)();
 /**
  * @brief Create a list of directories.
  *

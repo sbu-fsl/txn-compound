@@ -51,7 +51,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* Read the file; nfs4_readv() will open it first if needed. */
-	file0 = nfs4_openv(TC_TEST_NFS_FILE0, O_RDWR);
+	file0 = nfs4_openv(TC_TEST_NFS_FILE0, O_RDONLY);
 	if (file0.fd < 0) {
 		NFS4_DEBUG("Cannot open %s", TC_TEST_NFS_FILE0);
 	}

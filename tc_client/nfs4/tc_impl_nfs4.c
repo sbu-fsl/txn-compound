@@ -170,9 +170,13 @@ void *nfs4_init(const char *config_path, const char *log_path,
 void nfs4_deinit(void *arg)
 {
 	struct fsal_module *module = NULL;
+	fsal_status_t fsal_status = { 0, 0 };
+	struct gsh_export *export = op_ctx->export;
 
 	/* Close all open fds, client might have forgot to close them */
 	nfs4_close_all();
+
+	fsal_status = export->fsal_export->obj_ops->tc_destroysession();
 
 	if (op_ctx != NULL) {
 		free(op_ctx);
@@ -450,11 +454,10 @@ tc_file nfs4_openv(char *path, int flags)
 	free(kern_arg.fhok_handle->object.nfs_fh4_val);
 
 	/*
-	 * Need to increment seqid because tc_open calls both OPEN and
-	 * OPEN_CONFIRM
+	 * Need to increment seqid only once because tc_open calls only OPEN
 	 */
 	incr_seqid(ret_file.fd);
-	incr_seqid(ret_file.fd);
+	//incr_seqid(ret_file.fd);
 exit:
 	return ret_file;
 }
