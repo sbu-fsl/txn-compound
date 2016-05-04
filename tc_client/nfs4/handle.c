@@ -1779,6 +1779,12 @@ static nfsstat4 get_nfs4_op_status(const nfs_resop4 *op_res)
                 return op_res->nfs_resop4_u.opreaddir.status;
         case NFS4_OP_REMOVE:
                 return op_res->nfs_resop4_u.opremove.status;
+        case NFS4_OP_RESTOREFH:
+                return op_res->nfs_resop4_u.oprestorefh.status;
+        case NFS4_OP_SAVEFH:
+                return op_res->nfs_resop4_u.opsavefh.status;
+        case NFS4_OP_COPY:
+                return op_res->nfs_resop4_u.opcopy.cr_status;
         default:
                 NFS4_ERR("not supported operation: %d", op_res->resop);
         }
@@ -2274,6 +2280,28 @@ static inline GETFH4resok *tc_prepare_getfh(struct nfsoparray *nfsops, char *fh)
         return fhok;
 }
 
+static inline OPEN4resok *tc_prepare_open(struct nfsoparray *nfsops,
+					  slice_t name)
+{
+	OPEN4resok *opok;
+	int n = nfsops->opcnt;
+	clientid4 cid;
+	char owner_val[128];
+	unsigned int owner_len = 0;
+
+	snprintf(owner_val, sizeof(owner_val), "GANESHA/PROXY: pid=%u %" PRIu64,
+		 getpid(), atomic_inc_uint64_t(&fcnt));
+	owner_len = strnlen(owner_val, sizeof(owner_val));
+	fs_get_clientid(&cid);
+
+	opok = &nfsops->resoparray[n].nfs_resop4_u.opopen.OPEN4res_u.resok4;
+	COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(n, nfsops->argoparray, 0 /*seq id*/,
+					    cid, name, owner_val, owner_len);
+	nfsops->opcnt = n;
+
+	return opok;
+}
+
 /* The caller should release "rdok->reply.entries" */
 static inline READDIR4resok *tc_prepare_readdir(struct nfsoparray *nfsops,
 						nfs_cookie4 *cookie,
@@ -2303,6 +2331,19 @@ static inline REMOVE4resok *tc_prepare_remove(struct nfsoparray *nfsops,
 	COMPOUNDV4_ARG_ADD_OP_REMOVE(nfsops->opcnt, nfsops->argoparray, name);
 
         return rmok;
+}
+
+static inline COPY4res *tc_prepare_copy(struct nfsoparray *nfsops,
+					size_t src_offset, size_t dst_offset,
+					size_t count)
+{
+	COPY4res *cpres;
+
+	cpres = &nfsops->resoparray[nfsops->opcnt].nfs_resop4_u.opcopy;
+	COMPOUNDV4_ARG_ADD_OP_COPY(nfsops->opcnt, nfsops->argoparray,
+				   src_offset, dst_offset, count);
+
+	return cpres;
 }
 
 static inline utf8string slice2ustr(const slice_t *sl) {
@@ -3840,6 +3881,76 @@ exit:
         return tcres;
 }
 
+static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
+{
+	int rc;
+	tc_res tcres;
+	nfsstat4 cpd_status;
+	nfsstat4 op_status;
+	struct nfsoparray *nfsops;
+	int i = 0; /* index of tc_iovec */
+	int j = 0; /* index of NFS operations */
+	tc_file tcf;
+	slice_t srcname;
+	slice_t dstname;
+
+	NFS4_DEBUG("tc_nfs4_removev");
+	nfsops = new_nfs_ops((MAX_DIR_DEPTH + 3) * count);
+	assert(nfsops);
+
+	for (i = 0; i < count; ++i) {
+		tc_set_cfh_to_path(pairs[i].src_path, nfsops->argoparray,
+				   &nfsops->opcnt, &srcname);
+		tc_prepare_open(nfsops, srcname);
+		COMPOUNDV4_ARG_ADD_OP_SAVEFH(nfsops->opcnt, nfsops->argoparray);
+
+		tc_set_cfh_to_path(pairs[i].dst_path, nfsops->argoparray,
+				   &nfsops->opcnt, &dstname);
+		tc_prepare_open(nfsops, dstname);
+
+		tc_prepare_copy(nfsops, pairs[i].src_offset,
+				pairs[i].dst_offset, pairs[i].length);
+
+		COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(nfsops->opcnt,
+						    nfsops->argoparray);
+		COMPOUNDV4_ARG_ADD_OP_RESTOREFH(nfsops->opcnt,
+						nfsops->argoparray);
+		COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(nfsops->opcnt,
+						    nfsops->argoparray);
+	}
+
+	rc = fs_nfsv4_call(op_ctx->creds, nfsops->opcnt, nfsops->argoparray,
+			   nfsops->resoparray, &cpd_status);
+	if (rc != RPC_SUCCESS) {
+                NFS4_ERR("rpc failed: %d", rc);
+                tcres = tc_failure(0, rc);
+                goto exit;
+        }
+
+	i = 0;
+	for (j = 0; j < nfsops->opcnt; ++j) {
+		op_status = get_nfs4_op_status(&nfsops->resoparray[j]);
+		if (op_status != NFS4_OK) {
+			NFS4_ERR("NFS operation (%d) failed: %d",
+				 nfsops->resoparray[j].resop, op_status);
+			tcres = tc_failure(i, nfsstat4_to_errno(op_status));
+			goto exit;
+		}
+		if (nfsops->resoparray[j].resop == NFS4_OP_COPY) {
+			pairs[i].length =
+			    nfsops->resoparray[j]
+				.nfs_resop4_u.opcopy.COPY4res_u.cr_bytes_copied;
+			++i;
+		}
+	}
+
+	tcres.okay = true;
+
+exit:
+	del_nfs_ops(nfsops);
+	return tcres;
+}
+
 static int tc_nfs4_chdir(const char *path)
 {
 	int rc;
@@ -3931,6 +4042,7 @@ void fs_handle_ops_init(struct fsal_obj_ops *ops)
         ops->tc_listdirv = tc_nfs4_listdirv;
         ops->tc_renamev = tc_nfs4_renamev;
         ops->tc_removev = tc_nfs4_removev;
+        ops->tc_copyv = tc_nfs4_copyv;
         ops->tc_chdir = tc_nfs4_chdir;
         ops->tc_getcwd = tc_nfs4_getcwd;
 	ops->root_lookup = fs_root_lookup;

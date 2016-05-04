@@ -148,6 +148,21 @@ do { \
 	op->nfs_argop4_u.opsetattr.obj_attributes = inattr;		\
 } while (0)
 
+#define COMPOUNDV4_ARG_ADD_OP_COPY(opcnt, argarray, src_offset, dst_offset,    \
+				   count)                                      \
+	do {                                                                   \
+		nfs_argop4 *op = argarray + opcnt;                             \
+		opcnt++;                                                       \
+		op->argop = NFS4_OP_COPY;                                      \
+		memset(&op->nfs_argop4_u.opcopy.ca_src_stateid, 0,             \
+		       sizeof(stateid4));                                      \
+		memset(&op->nfs_argop4_u.opcopy.ca_dst_stateid, 0,             \
+		       sizeof(stateid4));                                      \
+		op->nfs_argop4_u.opcopy.ca_src_offset = src_offset;            \
+		op->nfs_argop4_u.opcopy.ca_dst_offset = dst_offset;            \
+		op->nfs_argop4_u.opcopy.ca_count = count;                      \
+	} while (0)
+
 #define COMPOUNDV4_ARG_ADD_OP_GETFH(opcnt, argarray) \
 do { \
 	argarray[opcnt].argop = NFS4_OP_GETFH;	     \

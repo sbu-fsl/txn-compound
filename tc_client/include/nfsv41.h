@@ -2757,6 +2757,30 @@ extern "C" {
 	};
 	typedef struct READ_PLUS4res READ_PLUS4res;
 
+	struct ALLOCATE4args {
+		stateid4        aa_stateid;
+		offset4         aa_offset;
+		length4         aa_length;
+	};
+	typedef struct ALLOCATE4args ALLOCATE4args;
+
+	struct ALLOCATE4res {
+		nfsstat4 ar_status;
+	};
+	typedef struct ALLOCATE4res ALLOCATE4res;
+
+	struct DEALLOCATE4args {
+		stateid4        da_stateid;
+		offset4         da_offset;
+		length4         da_length;
+	};
+	typedef struct DEALLOCATE4args DEALLOCATE4args;
+
+	struct DEALLOCATE4res {
+		nfsstat4 dr_status;
+	};
+	typedef struct DEALLOCATE4res DEALLOCATE4res;
+
 	struct SEEK4args {
 		stateid4        sa_stateid;
 		offset4         sa_offset;
@@ -2863,15 +2887,16 @@ extern "C" {
 		NFS4_OP_RECLAIM_COMPLETE = 58,
 
 		/* NFSv4.2 */
-		NFS4_OP_COPY = 59,
-		NFS4_OP_OFFLOAD_ABORT = 60,
-		NFS4_OP_COPY_NOTIFY = 61,
-		NFS4_OP_OFFLOAD_REVOKE = 62,
-		NFS4_OP_OFFLOAD_STATUS = 63,
-		NFS4_OP_WRITE_PLUS = 64,
-		NFS4_OP_READ_PLUS = 65,
-		NFS4_OP_SEEK = 66,
-		NFS4_OP_IO_ADVISE = 67,
+		NFS4_OP_ALLOCATE = 59,
+		NFS4_OP_COPY = 60,
+		NFS4_OP_OFFLOAD_ABORT = 61,
+		NFS4_OP_COPY_NOTIFY = 62,
+		NFS4_OP_OFFLOAD_REVOKE = 63,
+		NFS4_OP_OFFLOAD_STATUS = 64,
+		NFS4_OP_WRITE_PLUS = 65,
+		NFS4_OP_READ_PLUS = 66,
+		NFS4_OP_SEEK = 67,
+		NFS4_OP_IO_ADVISE = 68,
 
 		NFS4_OP_ILLEGAL = 10044,
 	};

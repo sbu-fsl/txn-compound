@@ -1339,6 +1339,8 @@ struct fsal_obj_ops {
 
 	tc_res (*tc_removev)(tc_file *files, int count);
 
+	tc_res (*tc_copyv)(struct tc_extent_pair *pairs, int count);
+
 	fsal_status_t (*root_lookup)(struct fsal_obj_handle **handle);
 
 	fsal_status_t (*lookup_plus)(const char *path,

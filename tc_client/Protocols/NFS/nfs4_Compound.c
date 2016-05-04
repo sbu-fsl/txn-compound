@@ -350,6 +350,11 @@ static const struct nfs4_op_desc optabv4[] = {
 		.exp_perm_flags = 0},
 
 	/* NFSv4.2 */
+	[NFS4_OP_ALLOCATE] = {
+				.name = "OP_ALLOCATE",
+				.funct = nfs4_op_notsupp,
+				.free_res = nfs4_op_notsupp_Free,
+				.exp_perm_flags = 0},
 	[NFS4_OP_COPY] = {
 				.name = "OP_COPY",
 				.funct = nfs4_op_notsupp,

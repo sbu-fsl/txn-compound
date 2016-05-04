@@ -422,7 +422,10 @@ tc_res nfs4_removev(tc_file *files, int count, bool is_transaction)
 
 tc_res nfs4_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 {
+	struct gsh_export *exp = op_ctx->export;
 	tc_res res;
+
+	res = exp->fsal_export->obj_ops->tc_copyv(pairs, count);
 
 	return res;
 }
