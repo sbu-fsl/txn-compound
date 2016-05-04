@@ -26,6 +26,15 @@ SET(MainServices_STAT_SRCS
 
 add_library(MainServices STATIC ${MainServices_STAT_SRCS})
 
+# FSAL core sources
+# fsal_manager and fsal_destroyer are the only objects referenced by the
+# core server all the rest are for the common support of fsal plugins.
+# we put them here in the core rather than in a lib so that they are always
+# present and available for runtime linkage.
+
+########### install files ###############
+
+# We are still missing the install of docs and stuff
 function (add_tc_binary Name)
   add_executable(${Name} "${Name}.c")
   target_link_libraries(${Name}
@@ -47,6 +56,8 @@ endfunction (add_tc_binary)
 add_tc_binary(tc_seq)
 add_tc_binary(tc_filedist)
 add_tc_binary(tc_singlefile)
+add_tc_binary(tc_test_open)
+add_tc_binary(tc_test_openread)
 
 add_tc_binary(tc_test_read)
 add_tc_binary(tc_test_write)

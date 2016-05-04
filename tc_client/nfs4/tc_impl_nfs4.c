@@ -24,6 +24,8 @@
 #include "fsal_types.h"
 #include "../MainNFSD/nfs_init.h"
 
+#define TC_FILE_START 0
+
 /*
  * Initialize tc_client
  * log_path - Location of the log file
@@ -155,6 +157,9 @@ void *nfs4_init(const char *config_path, const char *log_path,
 	rc = nfs4_chdir(exp->fullpath);
 	assert(rc == 0);
 
+	sleep(1);
+
+	init_fd();
 	return (void*)new_module;
 }
 
@@ -165,6 +170,9 @@ void *nfs4_init(const char *config_path, const char *log_path,
 void nfs4_deinit(void *arg)
 {
 	struct fsal_module *module = NULL;
+
+	/* Close all open fds, client might have forgot to close them */
+	nfs4_close_all();
 
 	if (op_ctx != NULL) {
 		free(op_ctx);
@@ -197,6 +205,9 @@ tc_res nfs4_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 	struct gsh_export *export = op_ctx->export;
 	tc_res result = { .okay = false, .index = 0, .err_no = (int)ENOENT };
 	const char *file_path = NULL;
+	stateid4 *sid = NULL;
+	nfs_fh4 *fh = NULL;
+	int last_op = TC_FILE_START;
 
 	if (export == NULL) {
 		return result;
@@ -217,11 +228,40 @@ tc_res nfs4_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 		cur_arg->opok_handle = NULL;
 		cur_arg->path = NULL;
 		assert(cur_arg->user_arg->file.type == TC_FILE_PATH ||
+		       cur_arg->user_arg->file.type == TC_FILE_DESCRIPTOR ||
 		       cur_arg->user_arg->file.type == TC_FILE_CURRENT);
-		file_path = cur_arg->user_arg->file.path;
-		if (file_path != NULL) {
-			cur_arg->path = strndup(file_path, PATH_MAX);
+
+		switch (cur_arg->user_arg->file.type) {
+		case TC_FILE_DESCRIPTOR:
+			if (fd_in_use(cur_arg->user_arg->file.fd) < 0) {
+				result.err_no = (int)EINVAL;
+				goto error;
+			}
+
+			sid = cur_arg->sid =
+			    &fd_list[cur_arg->user_arg->file.fd].stateid;
+			fh = cur_arg->fh =
+			    &fd_list[cur_arg->user_arg->file.fd].fh;
+
+			last_op = TC_FILE_DESCRIPTOR;
+			break;
+		case TC_FILE_PATH:
+			file_path = cur_arg->user_arg->file.path;
+			if (file_path != NULL) {
+				cur_arg->path = strndup(file_path, PATH_MAX);
+			}
+
+			sid = NULL;
+			fh = NULL;
+
+			last_op = TC_FILE_PATH;
+			break;
+		case TC_FILE_CURRENT:
+			cur_arg->sid = sid;
+			cur_arg->fh = fh;
+			break;
 		}
+
 		// cur_arg->read_ok = NULL;
 		i++;
 	}
@@ -249,6 +289,10 @@ tc_res nfs4_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 
 	result.okay = true;
 	return result;
+
+error:
+	free(kern_arg);
+	return result;
 }
 
 /*
@@ -266,6 +310,9 @@ tc_res nfs4_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 	struct gsh_export *export = op_ctx->export;
 	tc_res result = { .okay = false, .index = 0, .err_no = (int)ENOENT };
 	const char *file_path = NULL;
+	stateid4 *sid = NULL;
+	nfs_fh4 *fh = NULL;
+	int last_op = TC_FILE_START;
 
 	if (export == NULL) {
 		return result;
@@ -286,10 +333,38 @@ tc_res nfs4_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 		cur_arg->opok_handle = NULL;
 		cur_arg->path = NULL;
 		assert(cur_arg->user_arg->file.type == TC_FILE_PATH ||
-		       cur_arg->user_arg->file.type == TC_FILE_CURRENT);
-		file_path = cur_arg->user_arg->file.path;
-		if (file_path != NULL) {
-			cur_arg->path = strndup(file_path, PATH_MAX);
+                       cur_arg->user_arg->file.type == TC_FILE_DESCRIPTOR ||
+                       cur_arg->user_arg->file.type == TC_FILE_CURRENT);
+
+		switch (cur_arg->user_arg->file.type) {
+		case TC_FILE_DESCRIPTOR:
+			if (fd_in_use(cur_arg->user_arg->file.fd) < 0) {
+                                result.err_no = (int)EINVAL;
+                                goto error;
+                        }
+
+			sid = cur_arg->sid =
+			    &fd_list[cur_arg->user_arg->file.fd].stateid;
+			fh = cur_arg->fh =
+			    &fd_list[cur_arg->user_arg->file.fd].fh;
+			last_op = TC_FILE_DESCRIPTOR;
+
+			break;
+		case TC_FILE_PATH:
+			file_path = cur_arg->user_arg->file.path;
+			if (file_path != NULL) {
+				cur_arg->path = strndup(file_path, PATH_MAX);
+			}
+			sid = NULL;
+			fh = NULL;
+			last_op = TC_FILE_PATH;
+
+			break;
+		case TC_FILE_CURRENT:
+			cur_arg->sid = sid;
+			cur_arg->fh = fh;
+
+			break;
 		}
 		// cur_arg->write_ok = NULL;
 		i++;
@@ -318,6 +393,107 @@ tc_res nfs4_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 
 	result.okay = true;
 	return result;
+
+error:
+	free(kern_arg);
+	return result;
+}
+
+/*
+ * arg - Array of writes for one or more files
+ *       Contains file-path, write length, offset, etc.
+ * read_count - Length of the above array
+ *              (Or number of reads)
+ */
+tc_file nfs4_openv(char *path, int flags)
+{
+	struct tcopen_kargs kern_arg;
+	tc_file ret_file = { .fd = -1, .type = TC_FILE_DESCRIPTOR};
+	fsal_status_t fsal_status = { 0, 0 };
+	int i = 0;
+	struct gsh_export *export = op_ctx->export;
+	const char *file_path = NULL;
+
+	if (export == NULL) {
+		goto exit;
+	}
+
+	if (export->fsal_export->obj_ops->tc_open == NULL) {
+		goto exit;
+	}
+
+	if (path == NULL) {
+		goto exit;
+	}
+
+	LogDebug(COMPONENT_FSAL, "nfs4_openv() called \n");
+
+	kern_arg.opok_handle = NULL;
+	kern_arg.fhok_handle = NULL;
+	kern_arg.path = path;
+	memset(&kern_arg.attrib, 0, sizeof(struct attrlist));
+
+	if (get_freecount() <= 0) {
+		goto exit;
+	}
+
+	fsal_status = export->fsal_export->obj_ops->tc_open(&kern_arg, flags);
+
+	if (FSAL_IS_ERROR(fsal_status)) {
+		goto exit;
+	}
+
+	ret_file.fd =
+	    get_fd(&kern_arg.opok_handle->stateid, &kern_arg.fhok_handle->object);
+	ret_file.type = TC_FILE_DESCRIPTOR;
+
+	free(kern_arg.fhok_handle->object.nfs_fh4_val);
+
+	/*
+	 * Need to increment seqid because tc_open calls both OPEN and
+	 * OPEN_CONFIRM
+	 */
+	incr_seqid(ret_file.fd);
+	incr_seqid(ret_file.fd);
+exit:
+	return ret_file;
+}
+
+int nfs4_closev(tc_file user_file)
+{
+	fsal_status_t fsal_status = { 0, 0 };
+	struct gsh_export *export = op_ctx->export;
+
+	if (fd_in_use(user_file.fd) < 0) {
+		return -1;
+	}
+
+	fsal_status = export->fsal_export->obj_ops->tc_close(
+	    &fd_list[user_file.fd].fh, &fd_list[user_file.fd].stateid,
+	    &fd_list[user_file.fd].seqid);
+	if (FSAL_IS_ERROR(fsal_status)) {
+		return (int)EAGAIN;
+	}
+
+	incr_seqid(
+	    user_file.fd); // Not needed, but example of how to use incr_seqid
+	freefd(user_file.fd);
+
+	return 0;
+}
+
+void nfs4_close_all()
+{
+	int i = 0;
+	tc_file file = {.fd = -1, .type = TC_FILE_DESCRIPTOR};
+
+	while (i < MAX_FD) {
+		if (fd_list[i].fd >= 0) {
+			file.fd = i;
+			nfs4_closev(file);
+		}
+		i++;
+	}
 }
 
 tc_res nfs4_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)

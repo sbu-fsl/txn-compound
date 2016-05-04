@@ -324,6 +324,7 @@ struct fsal_ds_handle;
 struct fsal_ds_ops;
 struct tcread_kargs;
 struct tcwrite_kargs;
+struct tcopen_kargs;
 
 struct fsal_up_vector;		/* From fsal_up.h */
 struct fsal_xattrent;
@@ -1317,6 +1318,10 @@ struct fsal_obj_ops {
 /* Multiple open..write..close in a single compound */
 	fsal_status_t (*tc_write)(struct tcwrite_kargs *arg, int arg_count,
 				  int *fail_index);
+
+	fsal_status_t (*tc_open)(struct tcopen_kargs *kern_arg, int flags);
+
+	fsal_status_t (*tc_close)(const nfs_fh4 *fh4, stateid4 *sid, seqid4 *seqid);
 
 	tc_res (*tc_getattrsv)(struct tc_attrs *attrs, int count);
 

@@ -50,11 +50,33 @@ tc_res nfs4_readv(struct tc_iovec *reads, int read_count, bool is_transaction);
 /**
  * @writes - Array of writes for one or more files
  *          Contains file-path, write length, offset, etc.
- * r@ead_count - Length of the above array
+ * @read_count - Length of the above array
  *              (Or number of reads)
  */
 tc_res nfs4_writev(struct tc_iovec *writes, int write_count,
 		   bool is_transaction);
+
+/*
+ * @path - Full path of the file to be opened
+ * @flags - Currently supports O_RDONLY, O_WRONLY, O_RDWR, O_CREAT
+ *
+ * Returns tc_file with fd set
+ */
+tc_file nfs4_openv(char *path, int flags);
+
+/*
+ * @file - File that has to be closed
+ *
+ * Calls ktcclose with the right fh-stateid-seqid
+ * If server is unreachable, might return failure
+ */
+int nfs4_closev(tc_file file);
+
+/*
+ * Close all open files which user might have forgot to close
+ * To be called during tc_deinit()
+ */
+void nfs4_close_all();
 
 /**
  * Get attributes of files
