@@ -59,16 +59,23 @@ void *nfs4_init(const char *config_path, const char *log_path,
         sigemptyset(&signals_to_block);
         sigaddset(&signals_to_block, SIGHUP);
         sigaddset(&signals_to_block, SIGPIPE);
-        if (pthread_sigmask(SIG_BLOCK, &signals_to_block, NULL) != 0)
-                LogFatal(COMPONENT_MAIN,
-                         "Could not start nfs daemon, pthread_sigmask failed");
+	rc = pthread_sigmask(SIG_BLOCK, &signals_to_block, NULL);
+	if (rc != 0) {
+		fprintf(
+		    stderr,
+		    "Could not start nfs daemon, pthread_sigmask failed: %s",
+		    strerror(errno));
+		return NULL;
+	}
 
 	/* Parse the configuration file so we all know what is going on. */
 
-	if (access(config_path, R_OK) != 0) {
-		LogFatal(COMPONENT_INIT,
-			 "nfs_init(): cannot read configuration file: %s.",
-			 config_path);
+	rc = access(config_path, R_OK);
+	if (rc != 0) {
+		fprintf(stderr, "Could not access config file %s: %s; "
+				"current working directory is: %s.\n",
+			config_path, strerror(errno),
+			getcwd(alloca(PATH_MAX), PATH_MAX));
 		return NULL;
 	}
 
