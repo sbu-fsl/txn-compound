@@ -16,9 +16,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
  * 02110-1301 USA
  */
-
-#include "tc_api.h"
 #include "tc_helper.h"
+
+#include <stdio.h>
+#include <linux/limits.h>
+#include <libgen.h>
+#include "tc_api.h"
 
 void free_iovec(struct tc_iovec *iovec, int count)
 {
@@ -30,6 +33,15 @@ void free_iovec(struct tc_iovec *iovec, int count)
 	}
 
 	free(iovec);
+}
+
+char *get_tc_config_file(char *buf, int buf_size)
+{
+	char path[PATH_MAX];
+	readlink("/proc/self/exe", path, PATH_MAX);
+	snprintf(buf, buf_size,
+		 "%s/../../../config/tc.ganesha.conf", dirname(path));
+	return buf;
 }
 
 bool compare_content(struct tc_iovec *iovec1, struct tc_iovec *iovec2,

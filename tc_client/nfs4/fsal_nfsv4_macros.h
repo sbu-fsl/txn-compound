@@ -70,14 +70,14 @@ do { \
 } while (0)
 
 #define COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(opcnt, args, __seqid, inclientid,  \
-					    inname, __owner_val, __owner_len)  \
+					    inname, __owner_val, __owner_len,  \
+					    openflags)                         \
 	do {                                                                   \
 		nfs_argop4 *op = args + opcnt;                                 \
 		opcnt++;                                                       \
 		op->argop = NFS4_OP_OPEN;                                      \
 		op->nfs_argop4_u.opopen.seqid = __seqid;                       \
-		op->nfs_argop4_u.opopen.share_access =                         \
-		    OPEN4_SHARE_ACCESS_BOTH;                                   \
+		op->nfs_argop4_u.opopen.share_access = openflags;              \
 		op->nfs_argop4_u.opopen.share_deny = OPEN4_SHARE_DENY_NONE;    \
 		op->nfs_argop4_u.opopen.owner.clientid = inclientid;           \
 		op->nfs_argop4_u.opopen.owner.owner.owner_len = __owner_len;   \
@@ -92,13 +92,13 @@ do { \
 
 #define COMPOUNDV4_ARG_ADD_OP_KTCOPEN(opcnt, args, __seqid, inclientid,        \
 				      inname, __owner_val, __owner_len,        \
-				      open_type)                               \
+				      openflags)                               \
 	do {                                                                   \
 		nfs_argop4 *op = args + opcnt;                                 \
 		opcnt++;                                                       \
 		op->argop = NFS4_OP_OPEN;                                      \
 		op->nfs_argop4_u.opopen.seqid = __seqid;                       \
-		op->nfs_argop4_u.opopen.share_access = open_type;              \
+		op->nfs_argop4_u.opopen.share_access = openflags;              \
 		op->nfs_argop4_u.opopen.share_deny = OPEN4_SHARE_DENY_NONE;    \
 		op->nfs_argop4_u.opopen.owner.clientid = inclientid;           \
 		op->nfs_argop4_u.opopen.owner.owner.owner_len = __owner_len;   \
@@ -113,13 +113,13 @@ do { \
 
 #define COMPOUNDV4_ARG_ADD_OP_KTCOPEN_CREATE(opcnt, args, __seqid, inclientid, \
 					     inattrs, inname, __owner_val,     \
-					     __owner_len, open_type)           \
+					     __owner_len, openflags)           \
 	do {                                                                   \
 		nfs_argop4 *op = args + opcnt;                                 \
 		opcnt++;                                                       \
 		op->argop = NFS4_OP_OPEN;                                      \
 		op->nfs_argop4_u.opopen.seqid = __seqid;                       \
-		op->nfs_argop4_u.opopen.share_access = open_type;              \
+		op->nfs_argop4_u.opopen.share_access = openflags;              \
 		op->nfs_argop4_u.opopen.share_deny = OPEN4_SHARE_DENY_NONE;    \
 		op->nfs_argop4_u.opopen.owner.clientid = inclientid;           \
 		op->nfs_argop4_u.opopen.owner.owner.owner_len = __owner_len;   \

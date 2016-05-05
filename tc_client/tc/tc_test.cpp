@@ -36,9 +36,6 @@
 #include "util/fileutil.h"
 #include "log.h"
 
-#define APPEND -1
-#define CURRENT -2
-
 #define TCTEST_ERR(fmt, args...) LogCrit(COMPONENT_TC_TEST, fmt, ##args)
 #define TCTEST_WARN(fmt, args...) LogWarn(COMPONENT_TC_TEST, fmt, ##args)
 #define TCTEST_INFO(fmt, args...) LogInfo(COMPONENT_TC_TEST, fmt, ##args)
@@ -49,25 +46,26 @@
  * Ensure the file does not exist
  * before test.
  */
-static void RemoveFile(const char *path)
-{
-	int r = unlink(path);
-	EXPECT_TRUE(r == 0 || errno == ENOENT);
-}
 
 /**
  * Ensure files does not exist
  * before test.
  */
-static void RemoveFiles(const char **path, int count)
+static void RemoveFiles(const char **paths, int count)
 {
 	int i = 0, r = 0;
+	tc_file *files;
 
-	while (i < count) {
-		r = unlink(path[i]);
-		EXPECT_TRUE(r == 0 || errno == ENOENT);
-		i++;
+	files = (tc_file *)alloca(count * sizeof(tc_file));
+	for (i = 0; i < count; ++i) {
+		files[i] = tc_file_from_path(paths[i]);
 	}
+
+	/**
+	 * FIXME: the compound may fail if files[i] does not exist whereas
+	 * files[j] exists where i < j. So we ended up not deleting files[j].
+	 */
+	tc_removev(files, count, false);
 }
 
 /**
@@ -76,21 +74,35 @@ static void RemoveFiles(const char **path, int count)
  */
 static void RemoveDir(const char **path, int count)
 {
-	int i = 0, r = 0;
+	RemoveFiles(path, count);
+}
+
+/**
+ * Set the TC I/O vector
+ */
+static tc_iovec *build_iovec(tc_file *files, int count, int offset)
+{
+	int i = 0, N = 4096;
+	tc_iovec *iov = NULL;
+
+	iov = (tc_iovec *)calloc(count, sizeof(tc_iovec));
 
 	while (i < count) {
-		r = rmdir(path[i]);
-		EXPECT_TRUE(r == 0 || r == ENOENT)
-		    << "error removing dirs: " << strerror(r);
+		iov[i].file = files[i];
+		iov[i].offset = offset;
+		iov[i].length = N;
+		iov[i].data = (void *)malloc(N);
 		i++;
 	}
+
+	return iov;
 }
 
 /**
  * Set the tc_iovec
  */
-static tc_iovec *set_iovec_file_paths(const char **PATH, int count,
-				      int is_write, int offset)
+static tc_iovec *set_iovec_file_paths(const char **paths, int count,
+				      int is_write, size_t offset)
 {
 	int i = 0;
 	tc_iovec *user_arg = NULL;
@@ -99,10 +111,10 @@ static tc_iovec *set_iovec_file_paths(const char **PATH, int count,
 	user_arg = (tc_iovec *)calloc(count, sizeof(tc_iovec));
 
 	while (i < count) {
-		if (PATH[i] == NULL) {
+		if (paths[i] == NULL) {
 			TCTEST_WARN(
 			    "set_iovec_FilePath() failed for file : %s\n",
-			    PATH[i]);
+			    paths[i]);
 
 			int indx = 0;
 			while (indx < i) {
@@ -114,7 +126,7 @@ static tc_iovec *set_iovec_file_paths(const char **PATH, int count,
 			return NULL;
 		}
 
-		(user_arg + i)->file = tc_file_from_path(PATH[i]);
+		(user_arg + i)->file = tc_file_from_path(paths[i]);
 		(user_arg + i)->offset = offset;
 
 		(user_arg + i)->length = N;
@@ -156,8 +168,9 @@ class TcNFS4Impl {
 public:
 	static void *tcdata;
 	static void SetUpTestCase() {
-		tcdata = tc_init("../../../config/tc.ganesha.conf",
-				 "/tmp/tc-nfs4.log", 77);
+		tcdata = tc_init(
+		    get_tc_config_file((char *)alloca(PATH_MAX), PATH_MAX),
+		    "/tmp/tc-nfs4.log", 77);
 		TCTEST_WARN("Global SetUp of NFS4 Impl\n");
 		tc_res res = tc_ensure_dir("/vfs0/tc_nfs4_test", 0755, NULL);
 		EXPECT_TRUE(res.okay);
@@ -232,93 +245,50 @@ TYPED_TEST_P(TcTest, WritevCanCreateFiles)
 }
 
 /**
- * Set the TC I/O vector
- */
-static tc_iovec *set_iovec_fd(int *fd, int count, int offset)
-{
-	int i = 0, N = 4096;
-	tc_iovec *user_arg = NULL;
-
-	user_arg = (tc_iovec *)calloc(count, sizeof(tc_iovec));
-
-	while (i < count) {
-		if (fd[i] < 0) {
-			TCTEST_WARN(
-			    "set_iovec_fd() failed for fd at index : %d\n",
-			    fd[i]);
-
-			int indx = 0;
-			while (indx < i) {
-				free((user_arg + indx)->data);
-				indx++;
-			}
-			free(user_arg);
-
-			return NULL;
-		}
-
-		(user_arg + i)->file.type = TC_FILE_DESCRIPTOR;
-		(user_arg + i)->file.fd = fd[i];
-		(user_arg + i)->offset = offset;
-		(user_arg + i)->length = N;
-		(user_arg + i)->data = (void *)malloc(N);
-
-		i++;
-	}
-
-	return user_arg;
-}
-
-/**
  * TC-Read and Write test using
  * File Descriptor
  */
 TYPED_TEST_P(TcTest, TestFileDesc)
 {
-	const char *PATH[] = { "WritevCanCreateFiles1.txt",
-			       "WritevCanCreateFiles2.txt",
-			       "WritevCanCreateFiles3.txt",
-			       "WritevCanCreateFiles4.txt" };
-	const int N = 7;
+	const int N = 4;
+	const char *PATHS[] = { "TcTest-TestFileDesc1.txt",
+				"TcTest-TestFileDesc2.txt",
+				"TcTest-TestFileDesc3.txt",
+				"TcTest-TestFileDesc4.txt" };
 	char data[] = "abcd123";
 	tc_res res;
-	int i = 0, count = 4;
-	int fd[count];
+	int i = 0;
+	tc_file files[N];
 	int open_flags = O_RDWR | O_CREAT;
 
-	RemoveFiles(PATH, 4);
+	RemoveFiles(PATHS, 4);
 
-	while (i < count) {
-		fd[i] = open(PATH[i], open_flags);
-		if (fd[i] < 0)
-			TCTEST_WARN("open failed for file %s\n", PATH[i]);
-		i++;
+	for (i = 0; i < N; ++i) {
+		files[i] = tc_open(PATHS[i], open_flags, 0);
+		EXPECT_GT(files[i].fd, 0);
 	}
 
 	struct tc_iovec *writev = NULL;
-	writev = set_iovec_fd(fd, count, 0);
+	writev = build_iovec(files, N, 0);
 	EXPECT_FALSE(writev == NULL);
 
-	res = tc_writev(writev, count, false);
+	res = tc_writev(writev, N, false);
 	EXPECT_TRUE(res.okay);
 
 	struct tc_iovec *readv = NULL;
-	readv = set_iovec_fd(fd, count, 0);
+	readv = build_iovec(files, N, 0);
 	EXPECT_FALSE(readv == NULL);
 
-	res = tc_readv(readv, count, false);
+	res = tc_readv(readv, N, false);
 	EXPECT_TRUE(res.okay);
 
-	EXPECT_TRUE(compare_content(writev, readv, count));
+	EXPECT_TRUE(compare_content(writev, readv, N));
 
-	free_iovec(writev, count);
-	free_iovec(readv, count);
-
-	i = 0;
-	while (i < count) {
-		close(fd[i]);
-		i++;
+	for (i = 0; i < N; ++i) {
+		tc_close(files[i]);
 	}
+	free_iovec(writev, N);
+	free_iovec(readv, N);
 }
 
 /**
@@ -706,7 +676,7 @@ TYPED_TEST_P(TcTest, Append)
 	tc_res res;
 
 	struct tc_iovec *writev = NULL;
-	writev = set_iovec_file_paths(PATH, 1, 1, APPEND);
+	writev = set_iovec_file_paths(PATH, 1, 1, TC_OFFSET_END);
 	EXPECT_FALSE(writev == NULL);
 
 	int fd = open(PATH[0], O_RDONLY);
@@ -739,46 +709,47 @@ TYPED_TEST_P(TcTest, Append)
  */
 TYPED_TEST_P(TcTest, SuccesiveReads)
 {
-	const char *path = "WritevCanCreateFiles6.txt";
-	int fd[2], i = 0, N = 4096;
-	fd[0] = open(path, O_RDONLY);
-	fd[1] = open(path, O_RDONLY);
-	tc_res res;
-	off_t offset = 0;
+	//const char *path = "WritevCanCreateFiles6.txt";
+	//tc_file tcf;
+	//int fd[2], i = 0, N = 4096;
+	//fd[0] = open(path, O_RDONLY);
+	//fd[1] = open(path, O_RDONLY);
+	//tc_res res;
+	//off_t offset = 0;
+	//void *data = calloc(1, N);
+	//struct tc_iovec *readv = NULL;
 
-	void *data = calloc(1, N);
+	//tcf = tc_open(path, O_RDONLY);
+	//readv = build_iovec(fd, 1, TC_OFFSET_CUR);
+	//EXPECT_FALSE(readv == NULL);
 
-	struct tc_iovec *readv = NULL;
-	readv = set_iovec_fd(fd, 1, CURRENT);
-	EXPECT_FALSE(readv == NULL);
+	//[> move th current pointer by 10 bytes <]
+	//lseek(fd[0], 10, SEEK_CUR);
 
-	/* move th current pointer by 10 bytes */
-	lseek(fd[0], 10, SEEK_CUR);
+	//while (i < 4) {
+		//[> get the current offset of the file <]
+		//offset = lseek(fd[0], 0, SEEK_CUR);
 
-	while (i < 4) {
-		/* get the current offset of the file */
-		offset = lseek(fd[0], 0, SEEK_CUR);
+		//res = tc_readv(readv, 1, false);
+		//EXPECT_TRUE(res.okay);
 
-		res = tc_readv(readv, 1, false);
-		EXPECT_TRUE(res.okay);
+		//TCTEST_WARN("Test reading from offset : %d\n", offset);
 
-		TCTEST_WARN("Test reading from offset : %d\n", offset);
+		//[> read from the file to compare the data <]
+		//int error = pread(fd[1], data, readv->length, offset);
+		//EXPECT_FALSE(error < 0);
 
-		/* read from the file to compare the data */
-		int error = pread(fd[1], data, readv->length, offset);
-		EXPECT_FALSE(error < 0);
+		//[> compare the content read <]
+		//error = memcmp(data, readv->data, readv->length);
+		//EXPECT_TRUE(error == 0);
 
-		/* compare the content read */
-		error = memcmp(data, readv->data, readv->length);
-		EXPECT_TRUE(error == 0);
+		//i++;
+	//}
 
-		i++;
-	}
+	//free(data);
+	//free_iovec(readv, 1);
 
-	free(data);
-	free_iovec(readv, 1);
-
-	RemoveFile(path);
+	//RemoveFiles(&path, 1);
 }
 
 /**
@@ -786,52 +757,52 @@ TYPED_TEST_P(TcTest, SuccesiveReads)
  */
 TYPED_TEST_P(TcTest, SuccesiveWrites)
 {
-	const char *path = "WritevCanCreateFiles10.txt";
-	int fd[2], i = 0, N = 4096;
-	off_t offset = 0;
-	void *data = calloc(1, N);
-	tc_res res;
+	//const char *path = "WritevCanCreateFiles10.txt";
+	//int fd[2], i = 0, N = 4096;
+	//off_t offset = 0;
+	//void *data = calloc(1, N);
+	//tc_res res;
 
 	/*
 	 * open file one for actual writing
 	 * other descriptor to verify
 	 */
-	fd[0] = open(path, O_WRONLY | O_CREAT);
-	fd[1] = open(path, O_RDONLY);
-	EXPECT_FALSE(fd[0] < 0);
-	EXPECT_FALSE(fd[1] < 0);
+	//fd[0] = open(path, O_WRONLY | O_CREAT);
+	//fd[1] = open(path, O_RDONLY);
+	//EXPECT_FALSE(fd[0] < 0);
+	//EXPECT_FALSE(fd[1] < 0);
 
-	struct tc_iovec *writev = NULL;
-	writev = set_iovec_fd(fd, 1, CURRENT);
-	EXPECT_FALSE(writev == NULL);
+	//struct tc_iovec *writev = NULL;
+	//writev = build_iovec(fd, 1, TC_OFFSET_CUR);
+	//EXPECT_FALSE(writev == NULL);
 
-	while (i < 4) {
-		/* get the current offset of the file */
-		offset = lseek(fd[0], 0, SEEK_CUR);
+	//while (i < 4) {
+		//[> get the current offset of the file <]
+		//offset = lseek(fd[0], 0, SEEK_CUR);
 
-		free(writev->data);
-		writev->data = (void *)malloc(N);
+		//free(writev->data);
+		//writev->data = (void *)malloc(N);
 
-		res = tc_writev(writev, 1, false);
-		EXPECT_TRUE(res.okay);
+		//res = tc_writev(writev, 1, false);
+		//EXPECT_TRUE(res.okay);
 
-		TCTEST_WARN("Test read from offset : %d\n", offset);
+		//TCTEST_WARN("Test read from offset : %d\n", offset);
 
-		/* read the data from the file from the same offset */
-		int error = pread(fd[1], data, writev->length, offset);
-		EXPECT_FALSE(error < 0);
+		//[> read the data from the file from the same offset <]
+		//int error = pread(fd[1], data, writev->length, offset);
+		//EXPECT_FALSE(error < 0);
 
-		/* compare data written with just read data from the file */
-		error = memcmp(data, writev->data, writev->length);
-		EXPECT_TRUE(error == 0);
+		//[> compare data written with just read data from the file <]
+		//error = memcmp(data, writev->data, writev->length);
+		//EXPECT_TRUE(error == 0);
 
-		i++;
-	}
+		//i++;
+	//}
 
-	free(data);
-	free_iovec(writev, 1);
+	//free(data);
+	//free_iovec(writev, 1);
 
-	RemoveFile(path);
+	//RemoveFile(&path, 1);
 }
 
 static char *getRandomBytes(int N)
@@ -959,6 +930,6 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   SuccesiveWrites,
 			   CopyFiles);
 
-//typedef ::testing::Types<TcPosixImpl, TcNFS4Impl> TcImpls;
-typedef ::testing::Types<TcPosixImpl> TcImpls;
+typedef ::testing::Types<TcPosixImpl, TcNFS4Impl> TcImpls;
+//typedef ::testing::Types<TcPosixImpl> TcImpls;
 INSTANTIATE_TYPED_TEST_CASE_P(TC, TcTest, TcImpls);

@@ -31,6 +31,8 @@ extern "C" {
  */
 void free_iovec(struct tc_iovec *iovec, int count);
 
+char *get_tc_config_file(char *buf, int buf_size);
+
 /**
  * Compare the data contents of two arrays of tc_iovec.
  *

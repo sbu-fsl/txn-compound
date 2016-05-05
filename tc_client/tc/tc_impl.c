@@ -51,7 +51,20 @@ void tc_deinit(void *module)
 
 tc_file tc_open_by_path(int dirfd, const char *pathname, int flags, mode_t mode)
 {
-        return posix_open(pathname, flags);
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_openv(pathname, flags);
+	} else {
+		return posix_open(pathname, flags);
+	}
+}
+
+int tc_close(tc_file tcf)
+{
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_closev(tcf);
+	} else {
+		return posix_close(&tcf);
+	}
 }
 
 tc_res tc_readv(struct tc_iovec *reads, int count, bool is_transaction)

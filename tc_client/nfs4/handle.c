@@ -55,12 +55,6 @@
 #include <stdlib.h>
 /*#include <sys/param.h>*/
 
-#ifdef __cplusplus
-#define CONST const
-extern "C" {
-#else
-#define CONST
-#endif
 #define FSAL_PROXY_NFS_V4 4
 
 #define TC_FILE_START 0
@@ -1972,7 +1966,7 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 			input_attr->attrmask = empty_bitmap;
 			COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(
 			    opcnt, argoparray, 0 /*seq id*/, cid, name,
-			    owner_val, owner_len);
+			    owner_val, owner_len, OPEN4_SHARE_ACCESS_READ);
 		}
 
 		kern_arg->read_ok.v4_rok =
@@ -2240,7 +2234,8 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
                         NFS4_DEBUG("writing to '%s'", new_auto_str(name));
 			COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(
 			    opcnt, argoparray, 0 /*seq id*/, cid,
-			    name, owner_val, owner_len);
+			    name, owner_val, owner_len,
+                            OPEN4_SHARE_ACCESS_BOTH);
 		}
 
 		kern_arg->write_ok.v4_wok =
@@ -2373,6 +2368,7 @@ static fsal_status_t do_ktcopen(struct tcopen_kargs *kern_arg, int flags,
 	uint32_t open_type;
 	int marker = 0;
 	bool eof = false;
+        slice_t name;
 
 	LogDebug(COMPONENT_FSAL, "do_ktcopen() called: %d\n", opcnt);
 
@@ -2381,12 +2377,7 @@ static fsal_status_t do_ktcopen(struct tcopen_kargs *kern_arg, int flags,
 		 getpid(), atomic_inc_uint64_t(&fcnt));
 	owner_len = strnlen(owner_val, sizeof(owner_val));
 
-	/*
-	 * Parse the file-path and send lookups to set the current
-	 * file-handle
-	 */
-	if (construct_lookup(kern_arg->path, argoparray, &opcnt, &marker) ==
-	    -1) {
+	if (tc_set_cfh_to_path(kern_arg->path, argoparray, &opcnt, &name) < 0) {
 		goto exit_pathinval;
 	}
 
@@ -2429,13 +2420,13 @@ static fsal_status_t do_ktcopen(struct tcopen_kargs *kern_arg, int flags,
 			 input_attr->attrmask.map[2],
 			 input_attr->attrmask.bitmap4_len);
 
-		COMPOUNDV4_ARG_ADD_OP_KTCOPEN_CREATE(
-		    opcnt, argoparray, 0, cid, *input_attr,
-		    (kern_arg->path + marker), owner_val, owner_len, open_type);
+		COMPOUNDV4_ARG_ADD_OP_TCOPEN_CREATE(opcnt, argoparray, 0, cid,
+						    *input_attr, name,
+						    owner_val, owner_len);
 	} else {
-		COMPOUNDV4_ARG_ADD_OP_KTCOPEN(opcnt, argoparray, 0, cid,
-					      (kern_arg->path + marker),
-					      owner_val, owner_len, open_type);
+		COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(opcnt, argoparray, 0, cid,
+						    name, owner_val, owner_len,
+						    open_type);
 	}
 
 	kern_arg->fhok_handle =
@@ -2599,7 +2590,7 @@ static inline GETFH4resok *tc_prepare_getfh(struct nfsoparray *nfsops, char *fh)
 }
 
 static inline OPEN4resok *tc_prepare_open(struct nfsoparray *nfsops,
-					  slice_t name)
+					  slice_t name, int opentype)
 {
 	OPEN4resok *opok;
 	int n = nfsops->opcnt;
@@ -2614,7 +2605,8 @@ static inline OPEN4resok *tc_prepare_open(struct nfsoparray *nfsops,
 
 	opok = &nfsops->resoparray[n].nfs_resop4_u.opopen.OPEN4res_u.resok4;
 	COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(n, nfsops->argoparray, 0 /*seq id*/,
-					    cid, name, owner_val, owner_len);
+					    cid, name, owner_val, owner_len,
+					    opentype);
 	nfsops->opcnt = n;
 
 	return opok;
@@ -4219,12 +4211,12 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 	for (i = 0; i < count; ++i) {
 		tc_set_cfh_to_path(pairs[i].src_path, nfsops->argoparray,
 				   &nfsops->opcnt, &srcname);
-		tc_prepare_open(nfsops, srcname);
+		tc_prepare_open(nfsops, srcname, OPEN4_SHARE_ACCESS_READ);
 		COMPOUNDV4_ARG_ADD_OP_SAVEFH(nfsops->opcnt, nfsops->argoparray);
 
 		tc_set_cfh_to_path(pairs[i].dst_path, nfsops->argoparray,
 				   &nfsops->opcnt, &dstname);
-		tc_prepare_open(nfsops, dstname);
+		tc_prepare_open(nfsops, dstname, OPEN4_SHARE_ACCESS_WRITE);
 
 		tc_prepare_copy(nfsops, pairs[i].src_offset,
 				pairs[i].dst_offset, pairs[i].length);
