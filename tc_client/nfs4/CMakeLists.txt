@@ -22,6 +22,7 @@ install(TARGETS fsaltcnfs COMPONENT fsal DESTINATION  ${FSAL_DESTINATION} )
 
 SET(tc_impl_nfs4_SRCS
    tc_impl_nfs4.c
+   nfs4_util.c
 )
 
 add_library(tc_impl_nfs4 STATIC ${tc_impl_nfs4_SRCS})

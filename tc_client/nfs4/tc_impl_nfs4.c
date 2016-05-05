@@ -215,6 +215,7 @@ tc_res nfs4_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 	stateid4 *sid = NULL;
 	nfs_fh4 *fh = NULL;
 	int last_op = TC_FILE_START;
+	struct tc_kfd *tcfd = NULL;
 
 	if (export == NULL) {
 		return result;
@@ -245,10 +246,9 @@ tc_res nfs4_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 				goto error;
 			}
 
-			sid = cur_arg->sid =
-			    &fd_list[cur_arg->user_arg->file.fd].stateid;
-			fh = cur_arg->fh =
-			    &fd_list[cur_arg->user_arg->file.fd].fh;
+			tcfd = get_fd_struct(cur_arg->user_arg->file.fd);
+			sid = cur_arg->sid = &tcfd->stateid;
+			fh = cur_arg->fh = &tcfd->fh;
 
 			last_op = TC_FILE_DESCRIPTOR;
 			break;
@@ -320,6 +320,7 @@ tc_res nfs4_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 	stateid4 *sid = NULL;
 	nfs_fh4 *fh = NULL;
 	int last_op = TC_FILE_START;
+	struct tc_kfd *tcfd = NULL;
 
 	if (export == NULL) {
 		return result;
@@ -350,10 +351,10 @@ tc_res nfs4_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
                                 goto error;
                         }
 
-			sid = cur_arg->sid =
-			    &fd_list[cur_arg->user_arg->file.fd].stateid;
-			fh = cur_arg->fh =
-			    &fd_list[cur_arg->user_arg->file.fd].fh;
+			tcfd = get_fd_struct(cur_arg->user_arg->file.fd);
+			sid = cur_arg->sid = &tcfd->stateid;
+			fh = cur_arg->fh = &tcfd->fh;
+
 			last_op = TC_FILE_DESCRIPTOR;
 
 			break;
@@ -412,7 +413,7 @@ error:
  * read_count - Length of the above array
  *              (Or number of reads)
  */
-tc_file nfs4_openv(char *path, int flags)
+tc_file nfs4_openv(const char *path, int flags)
 {
 	struct tcopen_kargs kern_arg;
 	tc_file ret_file = { .fd = -1, .type = TC_FILE_DESCRIPTOR};
@@ -437,7 +438,7 @@ tc_file nfs4_openv(char *path, int flags)
 
 	kern_arg.opok_handle = NULL;
 	kern_arg.fhok_handle = NULL;
-	kern_arg.path = path;
+	kern_arg.path = (char *)path;
 	memset(&kern_arg.attrib, 0, sizeof(struct attrlist));
 
 	if (get_freecount() <= 0) {
@@ -466,41 +467,34 @@ exit:
 	return ret_file;
 }
 
-int nfs4_closev(tc_file user_file)
+static int nfs4_close_impl(struct tc_kfd *tcfd, void *args)
 {
-	fsal_status_t fsal_status = { 0, 0 };
 	struct gsh_export *export = op_ctx->export;
-
-	if (fd_in_use(user_file.fd) < 0) {
-		return -1;
-	}
+	fsal_status_t fsal_status = { 0, 0 };
 
 	fsal_status = export->fsal_export->obj_ops->tc_close(
-	    &fd_list[user_file.fd].fh, &fd_list[user_file.fd].stateid,
-	    &fd_list[user_file.fd].seqid);
+	    &tcfd->fh, &tcfd->stateid, &tcfd->seqid);
 	if (FSAL_IS_ERROR(fsal_status)) {
 		return (int)EAGAIN;
 	}
 
-	incr_seqid(
-	    user_file.fd); // Not needed, but example of how to use incr_seqid
-	freefd(user_file.fd);
-
+	freefd(tcfd->fd);
 	return 0;
+}
+
+
+int nfs4_closev(tc_file user_file)
+{
+	if (fd_in_use(user_file.fd) < 0) {
+		return -1;
+	}
+
+	return nfs4_close_impl(get_fd_struct(user_file.fd), NULL);
 }
 
 void nfs4_close_all()
 {
-	int i = 0;
-	tc_file file = {.fd = -1, .type = TC_FILE_DESCRIPTOR};
-
-	while (i < MAX_FD) {
-		if (fd_list[i].fd >= 0) {
-			file.fd = i;
-			nfs4_closev(file);
-		}
-		i++;
-	}
+	tc_for_each_fd(nfs4_close_impl, NULL);
 }
 
 tc_res nfs4_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)

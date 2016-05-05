@@ -62,7 +62,7 @@ tc_res nfs4_writev(struct tc_iovec *writes, int write_count,
  *
  * Returns tc_file with fd set
  */
-tc_file nfs4_openv(char *path, int flags);
+tc_file nfs4_openv(const char *path, int flags);
 
 /*
  * @file - File that has to be closed
