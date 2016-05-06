@@ -1801,6 +1801,8 @@ static nfsstat4 get_nfs4_op_status(const nfs_resop4 *op_res)
                 return op_res->nfs_resop4_u.opreaddir.status;
         case NFS4_OP_REMOVE:
                 return op_res->nfs_resop4_u.opremove.status;
+        case NFS4_OP_RENAME:
+                return op_res->nfs_resop4_u.oprename.status;
         case NFS4_OP_RESTOREFH:
                 return op_res->nfs_resop4_u.oprestorefh.status;
         case NFS4_OP_SAVEFH:

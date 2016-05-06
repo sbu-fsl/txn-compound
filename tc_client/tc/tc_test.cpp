@@ -583,20 +583,19 @@ TYPED_TEST_P(TcTest, RenameFile)
 	const char *dest_path[] = { "rename1.txt", "rename2.txt",
 				    "rename3.txt", "rename4.txt" };
 
-	tc_file_pair *file = (tc_file_pair *)calloc(4, sizeof(tc_file_pair));
+	tc_file_pair *files = (tc_file_pair *)calloc(4, sizeof(tc_file_pair));
 
-	while (i < 4) {
-		file[i].src_file = tc_file_from_path(src_path[i]);
-		file[i].dst_file = tc_file_from_path(dest_path[i]);
-
-		i++;
+	for (i = 0; i < 4; ++i) {
+		files[i].src_file = tc_file_from_path(src_path[i]);
+		files[i].dst_file = tc_file_from_path(dest_path[i]);
 	}
 
-	tc_res res = tc_renamev(file, 4, false);
-
+	tc_res res = tc_renamev(files, 4, false);
 	EXPECT_TRUE(res.okay);
 
-	free(file);
+	/* TODO use listdir to check src files no longer exist */
+
+	free(files);
 }
 
 /**
