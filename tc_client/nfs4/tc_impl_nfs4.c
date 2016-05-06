@@ -497,12 +497,72 @@ void nfs4_close_all()
 	tc_for_each_fd(nfs4_close_impl, NULL);
 }
 
+static int *nfs4_fd_to_fh(struct tc_attrs *attrs, int count)
+{
+	int i;
+	int *saved_fds;
+	struct tc_kfd *tcfd;
+	struct file_handle *h;
+	tc_file *tcf;
+
+	saved_fds = calloc(count, sizeof(int));
+	if (!saved_fds) {
+		return NULL;
+	}
+
+	for (i = 0; i < count; ++i) {
+		tcf = &attrs[i].file;
+		if (tcf->type == TC_FILE_DESCRIPTOR) {
+			/* TODO: check threading */
+			tcfd = get_fd_struct(tcf->fd);
+			h = malloc(sizeof(*h) + tcfd->fh.nfs_fh4_len);
+			if (!h) {
+				while (--i >= 0) {
+					free((void *)attrs[i].file.handle);
+				}
+				free(saved_fds);
+				return NULL;
+			}
+			h->handle_bytes = tcfd->fh.nfs_fh4_len;
+			h->handle_type = FILEID_NFS_FH_TYPE;
+			memmove(h->f_handle, tcfd->fh.nfs_fh4_val,
+				h->handle_bytes);
+			tcf->type = TC_FILE_HANDLE;
+			tcf->handle = h;
+		}
+	}
+
+	return saved_fds;
+}
+
+static void nfs4_fh_to_fd(struct tc_attrs *attrs, int count, int *saved_fds)
+{
+	int i;
+
+	for (i = 0; i < count; ++i) {
+		if (saved_fds[i] > 0) {
+			free((void *)attrs[i].file.handle);
+			attrs[i].file.handle = NULL;
+			attrs[i].file.fd = saved_fds[i];
+			attrs[i].file.type = TC_FILE_DESCRIPTOR;
+		}
+	}
+	free(saved_fds);
+}
+
 tc_res nfs4_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	struct gsh_export *exp = op_ctx->export;
 	tc_res res;
+	int *saved_fds;
+
+	saved_fds = nfs4_fd_to_fh(attrs, count);
+	if (!saved_fds) {
+		return tc_failure(0, ENOMEM);
+	}
 
 	res = exp->fsal_export->obj_ops->tc_getattrsv(attrs, count);
+	nfs4_fh_to_fd(attrs, count, saved_fds);
 
 	return res;
 }
@@ -511,8 +571,15 @@ tc_res nfs4_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	struct gsh_export *exp = op_ctx->export;
 	tc_res res;
+	int *saved_fds;
+
+	saved_fds = nfs4_fd_to_fh(attrs, count);
+	if (!saved_fds) {
+		return tc_failure(0, ENOMEM);
+	}
 
 	res = exp->fsal_export->obj_ops->tc_setattrsv(attrs, count);
+	nfs4_fh_to_fd(attrs, count, saved_fds);
 
 	return res;
 }
@@ -521,8 +588,15 @@ tc_res nfs4_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)
 {
 	struct gsh_export *exp = op_ctx->export;
 	tc_res res;
+	int *saved_fds;
+
+	saved_fds = nfs4_fd_to_fh(dirs, count);
+	if (!saved_fds) {
+		return tc_failure(0, ENOMEM);
+	}
 
 	res = exp->fsal_export->obj_ops->tc_mkdirv(dirs, count);
+	nfs4_fh_to_fd(dirs, count, saved_fds);
 
 	return res;
 }

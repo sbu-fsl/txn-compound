@@ -75,7 +75,8 @@ int get_fd(stateid4 *stateid, nfs_fh4 *object)
 
 	fd_list[cur_fd].fh.nfs_fh4_val = malloc(object->nfs_fh4_len);
 
-	memcpy(fd_list[cur_fd].fh.nfs_fh4_val, object->nfs_fh4_val, object->nfs_fh4_len);
+	memcpy(fd_list[cur_fd].fh.nfs_fh4_val, object->nfs_fh4_val,
+	       object->nfs_fh4_len);
 	fd_list[cur_fd].fh.nfs_fh4_len = object->nfs_fh4_len;
 
 	fd_list[cur_fd].seqid = 0;

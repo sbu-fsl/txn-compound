@@ -1709,6 +1709,18 @@ static int tc_set_cfh_to_path(const char *path, nfs_argop4 *argoparray,
 	return *opcnt - old_opcnt;
 }
 
+static int tc_set_cfh_to_handle(const struct file_handle *h,
+				struct nfsoparray *nfsops)
+{
+	nfs_fh4 fh4;
+
+	fh4.nfs_fh4_len = h->handle_bytes;
+	fh4.nfs_fh4_val = (char *)h->f_handle;
+	COMPOUNDV4_ARG_ADD_OP_PUTFH(nfsops->opcnt, nfsops->argoparray, fh4);
+
+	return 1;
+}
+
 /**
  * Construct NFS lookups that will set current FH properly on the server side.
  * This is necessary before executing almost all operations.
@@ -1731,36 +1743,18 @@ static int tc_set_current_fh(const tc_file *tcf, struct nfsoparray *nfsops,
 			     slice_t *leaf)
 {
         int rc;
-	slice_t *comps = NULL; /* path components */
-	int n;		       /* number of path compontents */
-	int base;
-	int old_opcnt = nfsops->opcnt;
 
-	n = tc_path_tokenize(tcf->path, &comps);
-	if (n < 0) {
-		NFS4_ERR("Cannot tokenize path: %s", tcf->path);
-		return -1;
+	if (tcf->type == TC_FILE_PATH || tcf->type == TC_FILE_CURRENT) {
+		rc = tc_set_cfh_to_path(tcf->path, nfsops->argoparray,
+					&nfsops->opcnt, leaf);
+	} else if (tcf->type == TC_FILE_HANDLE) {
+                rc = tc_set_cfh_to_handle(tcf->handle, nfsops);
+	} else {
+		NFS4_ERR("unsupported type: %d", tcf->type);
+		rc = -1;
 	}
-	if (tcf->type == TC_FILE_PATH) {
-		if (tcf->path[0] == '/') {
-			base = TC_BASE_PATH_ROOT;
-			comps[0].data++;  // skip the leading '/'
-			comps[0].size--;
-		} else {
-			base = TC_BASE_PATH_CWD;
-		}
-        } else {
-                assert(tcf->type == TC_FILE_CURRENT);
-                base = TC_BASE_PATH_CURRENT;
-        }
-	if (leaf) {
-		*leaf = comps[--n];
-	}
-        construct_lookups(comps, n, nfsops->argoparray, &nfsops->opcnt, base);
 
-        free(comps);
-        rc = nfsops->opcnt - old_opcnt;
-        return rc;
+	return rc;
 }
 
 static int tc_set_saved_fh(const tc_file *tcf, struct nfsoparray *nfsops,

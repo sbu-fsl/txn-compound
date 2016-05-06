@@ -25,6 +25,7 @@
  * which is documented at
  * https://github.com/google/googletest/blob/master/googletest/docs/V1_7_AdvancedGuide.md
  */
+#include <sys/types.h>
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -40,6 +41,8 @@
 #define TCTEST_WARN(fmt, args...) LogWarn(COMPONENT_TC_TEST, fmt, ##args)
 #define TCTEST_INFO(fmt, args...) LogInfo(COMPONENT_TC_TEST, fmt, ##args)
 #define TCTEST_DEBUG(fmt, args...) LogDebug(COMPONENT_TC_TEST, fmt, ##args)
+
+#define EXPECT_NOTNULL(x) EXPECT_TRUE(x != NULL) << #x << " is NULL"
 
 /**
  * TODO(mchen): move to fileutil.h
@@ -385,20 +388,21 @@ bool compare(tc_attrs *usr, tc_attrs *check, int count)
 	return true;
 }
 
-/**
- * Set the TC Attributes
- */
-static tc_attrs *set_tc_attrs(const char **PATH, int count, bool isPath)
+static inline struct timespec totimespec(long sec, long nsec)
 {
-	if (count > 3) {
-		TCTEST_WARN("count should be less than 4\n");
-		return NULL;
-	}
+	struct timespec tm = {
+		.tv_sec = sec,
+		.tv_nsec = nsec,
+	};
+	return tm;
+}
 
-	tc_attrs *change_attr = (tc_attrs *)calloc(count, sizeof(tc_attrs));
-	tc_attrs_masks masks[3] = { 0 };
+/**
+ * Set the TC test Attributes
+ */
+static tc_attrs *set_tc_attrs(struct tc_attrs *attrs, int count)
+{
 	int i = 0;
-
 	uid_t uid[] = { 2711, 456, 789 };
 	gid_t gid[] = { 87, 4566, 2311 };
 	mode_t mode[] = { S_IRUSR | S_IRGRP | S_IROTH,
@@ -406,51 +410,21 @@ static tc_attrs *set_tc_attrs(const char **PATH, int count, bool isPath)
 	size_t size[] = { 256, 56, 125 };
 	time_t atime[] = { time(NULL), 1234, 567 };
 
-	while (i < count) {
-
-		if (PATH[i] == NULL) {
-			free(change_attr);
-			return NULL;
-		}
-
-		if (isPath) {
-			(change_attr + i)->file.type = TC_FILE_PATH;
-			(change_attr + i)->file.path = PATH[i];
-
-		} else {
-			(change_attr + i)->file.type = TC_FILE_DESCRIPTOR;
-			(change_attr + i)->file.fd =
-			    open(PATH[i], O_RDWR | O_CREAT);
-
-			if ((change_attr + i)->file.fd < 0) {
-				free(change_attr);
-				return NULL;
-			}
-		}
-
-		(change_attr + i)->mode = mode[i];
-		(change_attr + i)->size = size[i];
-		(change_attr + i)->uid = uid[i];
-		(change_attr + i)->gid = gid[i];
-		(change_attr + i)->atime.tv_sec = atime[i];
-		(change_attr + i)->mtime.tv_sec = time(NULL);
-
-		masks[i].has_mode = 1;
-		masks[i].has_size = 1;
-		masks[i].has_atime = 1;
-		masks[i].has_mtime = 1;
-		masks[i].has_uid = 1;
-		masks[i].has_gid = 1;
-		masks[i].has_rdev = 0;
-		masks[i].has_nlink = 0;
-		masks[i].has_ctime = 0;
-
-		change_attr[i].masks = masks[i];
-
-		i++;
+	if (count > 3) {
+		TCTEST_WARN("count should be less than 4\n");
+		return NULL;
 	}
 
-	return change_attr;
+	for (i = 0; i < count; ++i) {
+		tc_attrs_set_mode(attrs + i, mode[i]);
+		tc_attrs_set_size(attrs + i, size[i]);
+		tc_attrs_set_uid(attrs + i, uid[i]);
+		tc_attrs_set_gid(attrs + i, gid[i]);
+		tc_attrs_set_atime(attrs + i, totimespec(atime[i], 0));
+		tc_attrs_set_atime(attrs + i, totimespec(time(NULL), 0));
+	}
+
+	return attrs;
 }
 
 /* Set the TC attributes masks */
@@ -468,15 +442,7 @@ static void set_attr_masks(tc_attrs *write, tc_attrs *read, int count)
 		read_attr->file = write_attr->file;
 
 		/* set masks */
-		read_attr->masks.has_mode = write_attr->masks.has_mode;
-		read_attr->masks.has_size = write_attr->masks.has_size;
-		read_attr->masks.has_atime = write_attr->masks.has_atime;
-		read_attr->masks.has_mtime = write_attr->masks.has_mtime;
-		read_attr->masks.has_uid = write_attr->masks.has_uid;
-		read_attr->masks.has_gid = write_attr->masks.has_gid;
-		read_attr->masks.has_rdev = write_attr->masks.has_rdev;
-		read_attr->masks.has_nlink = write_attr->masks.has_nlink;
-		read_attr->masks.has_ctime = write_attr->masks.has_ctime;
+		read_attr->masks = write_attr->masks;
 
 		i++;
 	}
@@ -492,25 +458,33 @@ TYPED_TEST_P(TcTest, AttrsTestPath)
 			       "WritevCanCreateFiles2.txt",
 			       "WritevCanCreateFiles3.txt" };
 	tc_res res = { 0 };
-	int count = 3;
+	int i;
+	const int count = 3;
+	struct tc_attrs *attrs1 = (tc_attrs *)calloc(count, sizeof(tc_attrs));
+	struct tc_attrs *attrs2 = (tc_attrs *)calloc(count, sizeof(tc_attrs));
 
-	tc_attrs *write_attrs = NULL;
-	write_attrs = set_tc_attrs(PATH, count, true);
-	EXPECT_FALSE(write_attrs == NULL);
+	EXPECT_NOTNULL(attrs1);
+	EXPECT_NOTNULL(attrs2);
 
-	res = tc_setattrsv(write_attrs, count, false);
+	for (i = 0; i < count; ++i) {
+		attrs1[i].file = tc_file_from_path(PATH[i]);
+		attrs2[i].file = attrs1[i].file;
+	}
+
+	attrs1 = set_tc_attrs(attrs1, count);
+	res = tc_setattrsv(attrs1, count, false);
 	EXPECT_TRUE(res.okay);
 
-	tc_attrs *read_attrs = (tc_attrs *)calloc(count, sizeof(tc_attrs));
-	set_attr_masks(write_attrs, read_attrs, count);
-
-	res = tc_getattrsv(read_attrs, count, false);
+	for (i = 0; i < count; ++i) {
+		attrs2[i].masks = attrs1[i].masks;
+	}
+	res = tc_getattrsv(attrs2, count, false);
 	EXPECT_TRUE(res.okay);
 
-	EXPECT_TRUE(compare(write_attrs, read_attrs, count));
+	EXPECT_TRUE(compare(attrs1, attrs2, count));
 
-	free(write_attrs);
-	free(read_attrs);
+	free(attrs1);
+	free(attrs2);
 }
 
 /*
@@ -523,32 +497,40 @@ TYPED_TEST_P(TcTest, AttrsTestFileDesc)
 			       "WritevCanCreateFiles5.txt",
 			       "WritevCanCreateFiles6.txt" };
 	tc_res res = { 0 };
-	int i = 0, count = 3;
+	int i = 0;
+	const int count = 3;
+	struct tc_attrs *attrs1 = (tc_attrs *)calloc(count, sizeof(tc_attrs));
+	struct tc_attrs *attrs2 = (tc_attrs *)calloc(count, sizeof(tc_attrs));
+
+	EXPECT_NOTNULL(attrs1);
+	EXPECT_NOTNULL(attrs2);
 
 	RemoveFiles(PATH, count);
 
-	tc_attrs *write_attrs = NULL;
-	write_attrs = set_tc_attrs(PATH, count, false);
-	EXPECT_FALSE(write_attrs == NULL);
-
-	res = tc_setattrsv(write_attrs, count, false);
-	EXPECT_TRUE(res.okay);
-
-	tc_attrs *read_attrs = (tc_attrs *)calloc(count, sizeof(tc_attrs));
-	set_attr_masks(write_attrs, read_attrs, count);
-
-	res = tc_getattrsv(read_attrs, count, false);
-	EXPECT_TRUE(res.okay);
-
-	EXPECT_TRUE(compare(write_attrs, read_attrs, count));
-
-	while (i < count) {
-		close((read_attrs + i)->file.fd);
-		i++;
+	for (int i = 0; i < count; ++i) {
+		attrs1[i].file = tc_open(PATH[i], O_RDWR | O_CREAT, 0);
+		assert(attrs1[i].file.fd > 0);
+		attrs2[i].file = attrs1[i].file;
 	}
 
-	free(write_attrs);
-	free(read_attrs);
+	set_tc_attrs(attrs1, count);
+	res = tc_setattrsv(attrs1, count, false);
+	EXPECT_TRUE(res.okay);
+
+	for (i = 0; i < count; ++i) {
+		attrs2[i].masks = attrs1[i].masks;
+	}
+	res = tc_getattrsv(attrs2, count, false);
+	EXPECT_TRUE(res.okay);
+
+	EXPECT_TRUE(compare(attrs1, attrs2, count));
+
+	for (i = 0; i < count; ++i) {
+		tc_close(attrs1[i].file);
+	}
+
+	free(attrs1);
+	free(attrs2);
 }
 
 /**
@@ -930,6 +912,6 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   SuccesiveWrites,
 			   CopyFiles);
 
-typedef ::testing::Types<TcPosixImpl, TcNFS4Impl> TcImpls;
-//typedef ::testing::Types<TcPosixImpl> TcImpls;
+//typedef ::testing::Types<TcPosixImpl, TcNFS4Impl> TcImpls;
+typedef ::testing::Types<TcNFS4Impl> TcImpls;
 INSTANTIATE_TYPED_TEST_CASE_P(TC, TcTest, TcImpls);

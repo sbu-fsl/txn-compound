@@ -515,7 +515,7 @@ tc_res posix_removev(tc_file *files, int count, bool is_transaction)
 
 		assert(cur_file->path != NULL);
 
-		if (unlink(cur_file->path) < 0) {
+		if (remove(cur_file->path) < 0) {
 			result.okay = false;
 			result.err_no = errno;
 			result.index = i;
