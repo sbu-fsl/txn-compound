@@ -101,6 +101,8 @@ static tc_iovec *build_iovec(tc_file *files, int count, int offset)
 	return iov;
 }
 
+static char *getRandomBytes(int N);
+
 /**
  * Set the tc_iovec
  */
@@ -650,39 +652,48 @@ TYPED_TEST_P(TcTest, MakeDirectory)
  */
 TYPED_TEST_P(TcTest, Append)
 {
-	const char *PATH[] = { "WritevCanCreateFiles6.txt" };
-	int i = 0, count = 4, N = 4096;
+	const char *PATH = "TcTest-Append.txt";
+	int i = 0;
+	const int N = 4096;
 	struct stat st;
-	void *data = calloc(1, N);
+	char *data;
+	char *data_read;
 	tc_res res;
+	struct tc_iovec iov;
 
-	struct tc_iovec *writev = NULL;
-	writev = set_iovec_file_paths(PATH, 1, 1, TC_OFFSET_END);
-	EXPECT_FALSE(writev == NULL);
+	data = (char *)getRandomBytes(3 * N);
+	data_read = (char *)malloc(3 * N);
+	EXPECT_NOTNULL(data);
+	EXPECT_NOTNULL(data_read);
 
-	int fd = open(PATH[0], O_RDONLY);
-	EXPECT_FALSE(fd < 0);
+	iov.file = tc_file_from_path(PATH);
+	iov.offset = 0;
+	iov.length = N;
+	iov.data = data;
+	iov.is_creation = true;
 
-	while (i < 4) {
-		fstat(fd, &st);
-		free(writev->data);
-		writev->data = (void *)malloc(N);
-		res = tc_writev(writev, 1, false);
+	res = tc_writev(&iov, 1, false);
+	EXPECT_TRUE(res.okay);
+
+	for (i = 0; i < 2; ++i) {
+		iov.offset = TC_OFFSET_END;
+		iov.data = data + N * (i + 1);
+		iov.is_creation = false;
+		res = tc_writev(&iov, 1, false);
 		EXPECT_TRUE(res.okay);
-
-		/* read the data from the file from the same offset */
-		int error = pread(fd, data, writev->length, st.st_size);
-		EXPECT_FALSE(error < 0);
-
-		/* compare data written with just read data from the file */
-		error = memcmp(data, writev->data, writev->length);
-		EXPECT_TRUE(error == 0);
-
-		i++;
 	}
 
+	iov.offset = 0;
+	iov.length = 3 * N;
+	iov.data = data_read;
+	res = tc_readv(&iov, 1, false);
+	EXPECT_TRUE(res.okay);
+	EXPECT_TRUE(iov.is_eof);
+	EXPECT_EQ(3 * N, iov.length);
+	EXPECT_EQ(0, memcmp(data, data_read, 3 * N));
+
 	free(data);
-	free_iovec(writev, 1);
+	free(data_read);
 }
 
 /**
