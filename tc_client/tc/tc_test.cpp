@@ -915,6 +915,5 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   SuccesiveWrites,
 			   CopyFiles);
 
-//typedef ::testing::Types<TcPosixImpl, TcNFS4Impl> TcImpls;
-typedef ::testing::Types<TcNFS4Impl> TcImpls;
+typedef ::testing::Types<TcNFS4Impl, TcPosixImpl> TcImpls;
 INSTANTIATE_TYPED_TEST_CASE_P(TC, TcTest, TcImpls);

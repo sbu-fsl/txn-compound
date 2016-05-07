@@ -75,6 +75,19 @@ int posix_close(const tc_file *file)
 	return err;
 }
 
+static int posix_stat(const tc_file *tcf, struct stat *st)
+{
+	int rc;
+	if (tcf->type == TC_FILE_PATH) {
+		rc = stat(tcf->path, st);
+	} else if (tcf->type == TC_FILE_DESCRIPTOR) {
+		rc = fstat(tcf->fd, st);
+	} else {
+		rc = -1;
+	}
+	return rc;
+}
+
 /*
  * arg - Array of reads for one or more files
  *       Contains file-path, read length, offset, etc.
@@ -87,6 +100,7 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 	tc_file file = { 0 };
 	struct tc_iovec *cur_arg = NULL;
 	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
+	struct stat st;
 
 	POSIX_WARN("posix_readv() called \n");
 
@@ -111,7 +125,7 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 		}
 
 		/* Read data */
-		if (cur_arg->offset == -2) {
+		if (cur_arg->offset == TC_OFFSET_CUR) {
 			off_t offset = lseek(fd, 0, SEEK_CUR);
 			POSIX_WARN("Posix read from offset : %d\n", offset);
 
@@ -128,6 +142,13 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 
 		/* set the length to number of bytes successfully read */
 		cur_arg->length = amount_read;
+
+		if (posix_stat(&cur_arg->file, &st) == 0) {
+			cur_arg->is_eof =
+			    (cur_arg->offset + cur_arg->length) == st.st_size;
+		} else {
+			POSIX_ERR("failed to stat file");
+		}
 
 		if (cur_arg->file.type == TC_FILE_PATH &&
 		    posix_close(&file) < 0) {
@@ -190,7 +211,7 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 		off_t offset = cur_arg->offset;
 
 		/* append */
-		if (offset == -1) {
+		if (offset == TC_OFFSET_END) {
 			offset = lseek(fd, 0, SEEK_END);
 
 			if (offset == (off_t) - 1) {
