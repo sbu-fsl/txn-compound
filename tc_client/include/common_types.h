@@ -24,6 +24,8 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
+#include <stdio.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -166,6 +168,23 @@ static inline buf_t *buf_reset(buf_t *pbuf)
 {
 	pbuf->size = 0;
 	return pbuf;
+}
+
+/**
+ * Append a string to pbuf, return the number of bytes appended.
+ */
+static inline int buf_appendf(buf_t *pbuf, const char *format, ...)
+{
+	int n;
+	va_list args;
+
+	va_start(args, format);
+	n = vsnprintf(buf_end(pbuf), buf_remaining(pbuf), format, args);
+	va_end(args);
+
+	pbuf->size += n;
+
+	return n;
 }
 
 #ifdef __cplusplus

@@ -133,7 +133,7 @@ static inline tc_file tc_file_from_fd(int fd) {
 	return tf;
 }
 
-static inline tc_file tc_file_current()
+static inline tc_file tc_file_current(void)
 {
 	tc_file tf;
 
@@ -332,43 +332,39 @@ struct tc_attrs
 	struct timespec ctime;
 };
 
-static inline struct tc_attrs *tc_attrs_set_mode(struct tc_attrs *attrs,
-						 mode_t mode)
+static inline void tc_attrs_set_mode(struct tc_attrs *attrs, mode_t mode)
 {
 	attrs->mode = mode;
 	attrs->masks.has_mode = true;
 }
 
-static inline struct tc_attrs *tc_attrs_set_size(struct tc_attrs *attrs,
-						 size_t size)
+static inline void tc_attrs_set_size(struct tc_attrs *attrs, size_t size)
 {
 	attrs->size = size;
 	attrs->masks.has_size = true;
 }
 
-static inline struct tc_attrs *tc_attrs_set_uid(struct tc_attrs *attrs,
-						size_t uid)
+static inline void tc_attrs_set_uid(struct tc_attrs *attrs, size_t uid)
 {
 	attrs->uid = uid;
 	attrs->masks.has_uid = true;
 }
 
-static inline struct tc_attrs *tc_attrs_set_gid(struct tc_attrs *attrs,
-						size_t gid)
+static inline void tc_attrs_set_gid(struct tc_attrs *attrs, size_t gid)
 {
 	attrs->gid = gid;
 	attrs->masks.has_gid = true;
 }
 
-static inline struct tc_attrs *tc_attrs_set_atime(struct tc_attrs *attrs,
-						  struct timespec atime)
+static inline void tc_attrs_set_atime(struct tc_attrs *attrs,
+				      struct timespec atime)
 {
 	attrs->atime = atime;
 	attrs->masks.has_atime = true;
 }
 
-static inline struct tc_attrs *tc_attrs_set_mtime(struct tc_attrs *attrs,
-						  struct timespec mtime)
+static inline void tc_attrs_set_mtime(struct tc_attrs *attrs,
+				      struct timespec mtime)
 {
 	attrs->mtime = mtime;
 	attrs->masks.has_mtime = true;

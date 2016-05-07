@@ -832,7 +832,7 @@ static char *getRandomBytes(int N)
 
 TYPED_TEST_P(TcTest, CopyFiles)
 {
-	const int N = 1024 * 1024;
+	const int N = 16 * 1024;
 	struct tc_extent_pair pairs[2];
 	struct tc_iovec iov[2];
 	struct tc_iovec read_iov[2];
@@ -856,13 +856,13 @@ TYPED_TEST_P(TcTest, CopyFiles)
 	iov[0].offset = 0;
 	iov[0].length = N;
 	iov[0].data = getRandomBytes(N);
-	EXPECT_TRUE(iov[0].data);
+	EXPECT_NOTNULL(iov[0].data);
 	iov[1].file = tc_file_from_path(pairs[1].src_path);
 	iov[1].is_creation = true;
 	iov[1].offset = 0;
 	iov[1].length = N;
 	iov[1].data = getRandomBytes(N);
-	EXPECT_TRUE(iov[1].data);
+	EXPECT_NOTNULL(iov[1].data);
 	tcres = tc_writev(iov, 2, false);
 	EXPECT_TRUE(tcres.okay);
 

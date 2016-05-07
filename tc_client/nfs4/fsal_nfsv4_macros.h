@@ -186,15 +186,15 @@ do { \
 		       __stateid->other, 12);                                  \
 	} while (0)
 
-#define COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argarray) \
-do { \
-        nfs_argop4 *op = argarray + opcnt; opcnt++;             \
-        op->argop = NFS4_OP_CLOSE;                              \
-        op->nfs_argop4_u.opclose.seqid = 1;                     \
-	memset(&op->nfs_argop4_u.opclose.open_stateid.other, 0, 12);\
-        op->nfs_argop4_u.opclose.open_stateid.seqid             \
-                = 1;                                            \
-} while (0)
+#define COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argarray)                   \
+	do {                                                                   \
+		nfs_argop4 *op = argarray + opcnt;                             \
+		opcnt++;                                                       \
+		op->argop = NFS4_OP_CLOSE;                                     \
+		op->nfs_argop4_u.opclose.seqid = 1;                            \
+		memset(&op->nfs_argop4_u.opclose.open_stateid.other, 0, 12);   \
+		op->nfs_argop4_u.opclose.open_stateid.seqid = 1;               \
+	} while (0)
 
 #define COMPOUNDV4_ARG_ADD_OP_GETATTR(opcnt, argarray, bitmap) \
 do { \

@@ -50,6 +50,9 @@
 #include "nfs4_util.h"
 #include <sys/stat.h>
 
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+
 #include "path_utils.h"
 
 #include <stdlib.h>
@@ -1426,6 +1429,21 @@ static fsal_status_t fs_open_confirm(const struct user_cred *cred,
 /* TODO: make this per-export */
 static uint64_t fcnt;
 
+static inline unsigned tc_new_state_owner(buf_t *pbuf)
+{
+	return buf_appendf(buf_reset(pbuf), "TC-State: pid=%d %" PRIu64,
+			   getpid(), atomic_inc_uint64_t(&fcnt));
+}
+
+static inline unsigned tc_create_state_owner(char owner_val[128])
+{
+	int n =  snprintf(owner_val, 128,
+			"TC-State: pid=%d %" PRIu64, getpid(),
+			atomic_inc_uint64_t(&fcnt));
+        NFS4_DEBUG("state_owner: %s; len: %d", owner_val, n);
+        return n;
+}
+
 static fsal_status_t fs_create(struct fsal_obj_handle *dir_hdl,
 				const char *name, struct attrlist *attrib,
 				struct fsal_obj_handle **handle)
@@ -1447,10 +1465,7 @@ static fsal_status_t fs_create(struct fsal_obj_handle *dir_hdl,
 	fsal_status_t st;
 	clientid4 cid;
 
-	/* Create the owner */
-	snprintf(owner_val, sizeof(owner_val), "GANESHA/PROXY: pid=%u %" PRIu64,
-		 getpid(), atomic_inc_uint64_t(&fcnt));
-	owner_len = strnlen(owner_val, sizeof(owner_val));
+        owner_len = tc_create_state_owner(owner_val);
 
 	attrib->mask &= ATTR_MODE | ATTR_OWNER | ATTR_GROUP;
 	if (fs_fsalattr_to_fattr4(attrib, &input_attr) == -1)
@@ -1835,10 +1850,7 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 
 	LogDebug(COMPONENT_FSAL, "do_ktcread() called: %d\n", opcnt);
 
-	/* Create the owner */
-	snprintf(owner_val, sizeof(owner_val), "GANESHA/PROXY: pid=%u %" PRIu64,
-		 getpid(), atomic_inc_uint64_t(&fcnt));
-	owner_len = strnlen(owner_val, sizeof(owner_val));
+        owner_len = tc_create_state_owner(owner_val);
 
 	kern_arg->user_arg->is_failure = 0;
 	kern_arg->user_arg->is_eof = 0;
@@ -2111,9 +2123,7 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 	LogDebug(COMPONENT_FSAL, "do_ktcwrite() called: %d\n", opcnt);
 
 	/* Create the owner */
-	snprintf(owner_val, sizeof(owner_val), "GANESHA/PROXY: pid=%u %" PRIu64,
-		 getpid(), atomic_inc_uint64_t(&fcnt));
-	owner_len = strnlen(owner_val, sizeof(owner_val));
+        owner_len = tc_create_state_owner(owner_val);
 
 	kern_arg->user_arg->is_failure = 0;
 	kern_arg->user_arg->is_eof = 0;
@@ -2368,10 +2378,7 @@ static fsal_status_t do_ktcopen(struct tcopen_kargs *kern_arg, int flags,
 
 	LogDebug(COMPONENT_FSAL, "do_ktcopen() called: %d\n", opcnt);
 
-	/* Create the owner */
-	snprintf(owner_val, sizeof(owner_val), "GANESHA/PROXY: pid=%u %" PRIu64,
-		 getpid(), atomic_inc_uint64_t(&fcnt));
-	owner_len = strnlen(owner_val, sizeof(owner_val));
+        owner_len = tc_create_state_owner(owner_val);
 
 	if (tc_set_cfh_to_path(kern_arg->path, argoparray, &opcnt, &name) < 0) {
 		goto exit_pathinval;
@@ -2586,22 +2593,19 @@ static inline GETFH4resok *tc_prepare_getfh(struct nfsoparray *nfsops, char *fh)
 }
 
 static inline OPEN4resok *tc_prepare_open(struct nfsoparray *nfsops,
-					  slice_t name, int opentype)
+					  slice_t name, int opentype,
+                                          buf_t *pbuf)
 {
 	OPEN4resok *opok;
 	int n = nfsops->opcnt;
 	clientid4 cid;
-	char owner_val[128];
-	unsigned int owner_len = 0;
 
-	snprintf(owner_val, sizeof(owner_val), "GANESHA/PROXY: pid=%u %" PRIu64,
-		 getpid(), atomic_inc_uint64_t(&fcnt));
-	owner_len = strnlen(owner_val, sizeof(owner_val));
+        tc_new_state_owner(pbuf);
 	fs_get_clientid(&cid);
 
 	opok = &nfsops->resoparray[n].nfs_resop4_u.opopen.OPEN4res_u.resok4;
 	COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(n, nfsops->argoparray, 0 /*seq id*/,
-					    cid, name, owner_val, owner_len,
+					    cid, name, asstr(pbuf), pbuf->size,
 					    opentype);
 	nfsops->opcnt = n;
 
@@ -4207,12 +4211,14 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 	for (i = 0; i < count; ++i) {
 		tc_set_cfh_to_path(pairs[i].src_path, nfsops->argoparray,
 				   &nfsops->opcnt, &srcname);
-		tc_prepare_open(nfsops, srcname, OPEN4_SHARE_ACCESS_READ);
+		tc_prepare_open(nfsops, srcname, OPEN4_SHARE_ACCESS_READ,
+				new_auto_buf(64));
 		COMPOUNDV4_ARG_ADD_OP_SAVEFH(nfsops->opcnt, nfsops->argoparray);
 
 		tc_set_cfh_to_path(pairs[i].dst_path, nfsops->argoparray,
 				   &nfsops->opcnt, &dstname);
-		tc_prepare_open(nfsops, dstname, OPEN4_SHARE_ACCESS_WRITE);
+		tc_prepare_open(nfsops, dstname, OPEN4_SHARE_ACCESS_WRITE,
+				new_auto_buf(64));
 
 		tc_prepare_copy(nfsops, pairs[i].src_offset,
 				pairs[i].dst_offset, pairs[i].length);
