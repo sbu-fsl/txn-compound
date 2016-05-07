@@ -2027,7 +2027,6 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 	fattr4 *input_attr = NULL;
 	int opcnt = 0;
 	int last_op = TC_FILE_START;
-	bool eof = false;
 	int i = 0;      /* index of tc_iovec */
 	int j = 0;      /* index of NFS operations */
 
@@ -2116,7 +2115,6 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 	unsigned int owner_len = 0;
 	clientid4 cid;
 	int marker = 0;
-	bool eof = false;
 	struct bitmap4 DEBUG_bm;
         slice_t name;
 
@@ -2291,7 +2289,6 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
 	fattr4 *input_attr = NULL;
 	int opcnt = 0;
 	int last_op = TC_FILE_START;
-	bool eof = false;
 	int i = 0;      /* index of tc_iovec */
 	int j = 0;      /* index of NFS operations */
 
@@ -2373,7 +2370,6 @@ static fsal_status_t do_ktcopen(struct tcopen_kargs *kern_arg, int flags,
 	clientid4 cid;
 	uint32_t open_type;
 	int marker = 0;
-	bool eof = false;
         slice_t name;
 
 	LogDebug(COMPONENT_FSAL, "do_ktcopen() called: %d\n", opcnt);

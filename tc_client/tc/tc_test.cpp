@@ -51,10 +51,10 @@
  */
 
 /**
- * Ensure files does not exist
+ * Ensure files or directories do not exist
  * before test.
  */
-static void RemoveFiles(const char **paths, int count)
+static void Removev(const char **paths, int count)
 {
 	int i = 0, r = 0;
 	tc_file *files;
@@ -69,15 +69,6 @@ static void RemoveFiles(const char **paths, int count)
 	 * files[j] exists where i < j. So we ended up not deleting files[j].
 	 */
 	tc_removev(files, count, false);
-}
-
-/**
- * Ensure Directory does not exist
- * before test.
- */
-static void RemoveDir(const char **path, int count)
-{
-	RemoveFiles(path, count);
 }
 
 /**
@@ -227,7 +218,7 @@ TYPED_TEST_P(TcTest, WritevCanCreateFiles)
 	tc_res res;
 	int count = 4;
 
-	RemoveFiles(PATH, count);
+	Removev(PATH, count);
 
 	struct tc_iovec *writev = NULL;
 	writev = set_iovec_file_paths(PATH, count, 1, 0);
@@ -266,7 +257,7 @@ TYPED_TEST_P(TcTest, TestFileDesc)
 	tc_file files[N];
 	int open_flags = O_RDWR | O_CREAT;
 
-	RemoveFiles(PATHS, 4);
+	Removev(PATHS, 4);
 
 	for (i = 0; i < N; ++i) {
 		files[i] = tc_open(PATHS[i], open_flags, 0);
@@ -507,7 +498,7 @@ TYPED_TEST_P(TcTest, AttrsTestFileDesc)
 	EXPECT_NOTNULL(attrs1);
 	EXPECT_NOTNULL(attrs2);
 
-	RemoveFiles(PATH, count);
+	Removev(PATH, count);
 
 	for (int i = 0; i < count; ++i) {
 		attrs1[i].file = tc_open(PATH[i], O_RDWR | O_CREAT, 0);
@@ -635,7 +626,7 @@ TYPED_TEST_P(TcTest, MakeDirectory)
 	const char *path[] = { "a", "b", "c" };
 	struct tc_attrs dirs[3];
 
-	RemoveDir(path, 3);
+	Removev(path, 3);
 
 	while (i < 3) {
 		tc_set_up_creation(&dirs[i], path[i], 0755);
@@ -660,6 +651,8 @@ TYPED_TEST_P(TcTest, Append)
 	char *data_read;
 	tc_res res;
 	struct tc_iovec iov;
+
+	Removev(&PATH, 1);
 
 	data = (char *)getRandomBytes(3 * N);
 	data_read = (char *)malloc(3 * N);
@@ -741,7 +734,7 @@ TYPED_TEST_P(TcTest, SuccesiveReads)
 	//free(data);
 	//free_iovec(readv, 1);
 
-	//RemoveFiles(&path, 1);
+	//Removev(&path, 1);
 }
 
 /**
