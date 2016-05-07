@@ -3536,6 +3536,42 @@ void tc_attrs_to_fattr4(const struct tc_attrs *tca, fattr4 *attr4)
         }
 }
 
+/**
+ * Set mode bits about file type.
+ *
+ * See http://lxr.free-electrons.com/source/include/uapi/linux/stat.h
+ *     stat(2)
+ */
+static void set_mode_type(mode_t *mode, object_file_type_t type)
+{
+        *mode &= ~S_IFMT;
+	switch (type) {
+	case REGULAR_FILE:
+		*mode |= S_IFREG;
+		break;
+	case DIRECTORY:
+		*mode |= S_IFDIR;
+		break;
+        case CHARACTER_FILE:
+                *mode |= S_IFCHR;
+                break;
+        case BLOCK_FILE:
+                *mode |= S_IFBLK;
+                break;
+        case SYMBOLIC_LINK:
+                *mode |= S_IFLNK;
+                break;
+        case SOCKET_FILE:
+                *mode |= S_IFSOCK;
+                break;
+        case FIFO_FILE:
+                *mode |= S_IFIFO;
+                break;
+        default:
+                NFS4_ERR("unsupported type: %d", type);
+	}
+}
+
 void fattr4_to_tc_attrs(const fattr4 *attr4, struct tc_attrs *tca)
 {
         struct attrlist attrlist;
@@ -3585,16 +3621,8 @@ void fattr4_to_tc_attrs(const fattr4 *attr4, struct tc_attrs *tca)
                 tca->masks.has_ctime = true;
                 tca->ctime = attrlist.ctime;
         }
-	switch (attrlist.type) {
-	case REGULAR_FILE:
-		tca->mode &= ~S_IFMT;
-		tca->mode |= S_IFREG;
-		break;
-	case DIRECTORY:
-		tca->mode &= ~S_IFMT;
-		tca->mode |= S_IFDIR;
-		break;
-	}
+
+        set_mode_type(&tca->mode, attrlist.type);
 }
 
 static tc_res tc_nfs4_getattrsv(struct tc_attrs *attrs, int count)
