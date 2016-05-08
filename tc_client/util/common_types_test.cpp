@@ -23,6 +23,8 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <random>
+#include <string>
 
 #include "common_types.h"
 
@@ -65,4 +67,39 @@ TEST(SliceTest, Basics) {
 	slice_t s2 = toslice(msg);
 	EXPECT_EQ(s1.size, s2.size);
 	EXPECT_EQ(0, strcmp(s1.data, s2.data));
+}
+
+static void test_bitset(bitset_t *bs, const std::string& tag)
+{
+	for (int i = 0; i < bs->size; ++i) {
+		EXPECT_FALSE(bs_get(bs, i));
+	}
+	std::uniform_int_distribution<int> dist(0, bs->size - 1);
+	std::mt19937 rng;
+	rng.seed(8887);
+	std::vector<bool> expected(bs->size, 0);
+	const int M = bs->size * 3 / 4;
+	for (int i = 0; i < M; ++i) {
+		int pos = dist(rng);
+		bs_set(bs, pos);
+		expected[pos] = true;
+	}
+	for (int i = 0; i < bs->size; ++i) {
+		EXPECT_EQ(bs_get(bs, i), expected[i])
+		    << tag << " mismatch at position " << i;
+	}
+}
+
+TEST(BitsetTest, Basics) {
+	for (int N = 1; N <= 64; ++N) {
+		bitset_t *bs = new_bitset(N);
+		test_bitset(bs, string("basic-bitset-") + std::to_string(N));
+		del_bitset(bs);
+	}
+}
+
+TEST(BitsetTest, AutoBitsetTest) {
+	bitset_t *bs = new_auto_bitset(8887);
+	EXPECT_EQ(8887, bs->size);
+	test_bitset(bs, "auto-bitset-8887");
 }

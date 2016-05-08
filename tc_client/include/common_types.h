@@ -42,6 +42,53 @@ typedef struct {
 	const char *data;
 } slice_t;
 
+typedef struct {
+	size_t size;
+	unsigned char bits[0];
+} bitset_t;
+
+static inline bitset_t *new_bitset(size_t s)
+{
+	bitset_t *bs = (bitset_t *)calloc(1, sizeof(bitset_t) + ((s + 7) / 8));
+	bs->size = s;
+	return bs;
+}
+
+static inline void del_bitset(bitset_t *bs)
+{
+	free(bs);
+}
+
+static inline void bs_set(bitset_t *bs, size_t pos)
+{
+	if (pos < bs->size) {
+		bs->bits[pos / 8] |= (1 << (pos % 8));
+	}
+}
+
+static inline bool bs_get(bitset_t *bs, size_t pos)
+{
+	return pos < bs->size ? (bs->bits[pos / 8] & (1 << (pos % 8))) : 0;
+}
+
+static inline void bs_reset(bitset_t *bs, size_t pos)
+{
+	if (pos < bs->size) {
+		bs->bits[pos / 8] &= ~(1 << (pos % 8));
+	}
+}
+
+static inline bitset_t *init_bitset(void *buf, size_t s)
+{
+	bitset_t *bs = (bitset_t *)(buf);
+	bs->size = s;
+	memset(bs->bits, 0, (s + 7) / 8);
+	return bs;
+}
+
+#define new_auto_bitset(s)                                                     \
+	init_bitset(alloca(sizeof(bitset_t) + ((s + 7) / 8)), s)
+
 #define BUF_INITIALIZER(b, c)                                                  \
 	{                                                                      \
 		.capacity = (c), .size = 0ULL, .data = (b),                    \
