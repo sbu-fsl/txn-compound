@@ -88,6 +88,13 @@ static void test_bitset(bitset_t *bs, const std::string& tag)
 		EXPECT_EQ(bs_get(bs, i), expected[i])
 		    << tag << " mismatch at position " << i;
 	}
+	rng.seed(8887);
+	for (int i = 0; i < M; ++i) {
+		bs_reset(bs, dist(rng));
+	}
+	for (int i = 0; i < bs->size; ++i) {
+		EXPECT_FALSE(bs_get(bs, i));
+	}
 }
 
 TEST(BitsetTest, Basics) {
