@@ -35,6 +35,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include <arpa/inet.h>
+#include <sys/stat.h>
 #include <sys/poll.h>
 #include <sys/types.h>
 #include "ganesha_list.h"
@@ -48,7 +49,7 @@
 #include "nfs_proto_tools.h"
 #include "export_mgr.h"
 #include "nfs4_util.h"
-#include <sys/stat.h>
+#include "tc_helper.h"
 
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
@@ -1375,13 +1376,38 @@ static fsal_status_t tc_do_close(const struct user_cred *creds,
 		return fsalstat(ERR_FSAL_NO_ERROR, 0);
 
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, *fh4);
-	COMPOUNDV4_ARG_ADD_OP_TCCLOSE(opcnt, argoparray, *seqid, sid);
+	COMPOUNDV4_ARG_ADD_OP_TCCLOSE(opcnt, argoparray, *seqid, (*sid));
 
 	rc = fs_nfsv4_call(creds, opcnt, argoparray, resoparray, NULL);
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
 	sid->seqid++;
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
+}
+
+static inline void copy_stateid4(stateid4 *dstid, const stateid4 *srcid)
+{
+        dstid->seqid = srcid->seqid;
+        memmove(dstid->other, srcid->other, 12);
+}
+
+static inline OPEN_CONFIRM4resok *
+tc_prepare_open_confirm(struct nfsoparray *nfsops, stateid4 *stateid)
+{
+	OPEN_CONFIRM4args *ocargs;
+	OPEN_CONFIRM4resok *ocok;
+	int n = nfsops->opcnt;
+
+	ocargs = &nfsops->argoparray[n].nfs_argop4_u.opopen_confirm;
+	ocok = &nfsops->resoparray[n]
+		    .nfs_resop4_u.opopen_confirm.OPEN_CONFIRM4res_u.resok4;
+
+	nfsops->argoparray[n].argop = NFS4_OP_OPEN_CONFIRM;
+	copy_stateid4(&ocargs->open_stateid, stateid);
+	ocargs->seqid = 1;
+	nfsops->opcnt = n + 1;
+
+	return ocok;
 }
 
 static fsal_status_t fs_open_confirm(const struct user_cred *cred,
@@ -1404,9 +1430,7 @@ static fsal_status_t fs_open_confirm(const struct user_cred *cred,
 
 	op = argoparray + opcnt++;
 	op->argop = NFS4_OP_OPEN_CONFIRM;
-	op->nfs_argop4_u.opopen_confirm.open_stateid.seqid = stateid->seqid;
-	memcpy(op->nfs_argop4_u.opopen_confirm.open_stateid.other,
-	       stateid->other, 12);
+	copy_stateid4(&op->nfs_argop4_u.opopen_confirm.open_stateid, stateid);
 	/*
 	 * According to RFC3530 14.2.18:
 	 *	"The sequence id passed to the OPEN_CONFIRM must be 1 (one)
@@ -1421,8 +1445,7 @@ static fsal_status_t fs_open_confirm(const struct user_cred *cred,
 	if (rc != NFS4_OK)
 		return nfsstat4_to_fsal(rc);
 
-	stateid->seqid = conok->open_stateid.seqid;
-	memcpy(stateid->other, conok->open_stateid.other, 12);
+	copy_stateid4(stateid, &conok->open_stateid);
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
@@ -1787,47 +1810,85 @@ static int tc_set_saved_fh(const tc_file *tcf, struct nfsoparray *nfsops,
 
 static nfsstat4 get_nfs4_op_status(const nfs_resop4 *op_res)
 {
-        switch (op_res->resop) {
-        case NFS4_OP_READ:
+	switch (op_res->resop) {
+	case NFS4_OP_ACCESS: /* 3 */
+		return op_res->nfs_resop4_u.opaccess.status;
+	case NFS4_OP_CLOSE: /* 4 */
+		return op_res->nfs_resop4_u.opclose.status;
+	case NFS4_OP_COMMIT: /* 5 */
+		return op_res->nfs_resop4_u.opcommit.status;
+	case NFS4_OP_CREATE: /* 6 */
+		return op_res->nfs_resop4_u.opcreate.status;
+	case NFS4_OP_DELEGPURGE: /* 7 */
+		return op_res->nfs_resop4_u.opdelegpurge.status;
+	case NFS4_OP_DELEGRETURN: /* 8 */
+		return op_res->nfs_resop4_u.opdelegreturn.status;
+	case NFS4_OP_GETATTR: /* 9 */
+		return op_res->nfs_resop4_u.opgetattr.status;
+	case NFS4_OP_GETFH: /* 10 */
+		return op_res->nfs_resop4_u.opgetfh.status;
+	case NFS4_OP_LINK: /* 11 */
+		return op_res->nfs_resop4_u.oplink.status;
+	case NFS4_OP_LOCK: /* 12 */
+		return op_res->nfs_resop4_u.oplock.status;
+	case NFS4_OP_LOCKT: /* 13 */
+		return op_res->nfs_resop4_u.oplockt.status;
+	case NFS4_OP_LOCKU: /* 14 */
+		return op_res->nfs_resop4_u.oplocku.status;
+	case NFS4_OP_LOOKUP: /* 15 */
+		return op_res->nfs_resop4_u.oplookup.status;
+	case NFS4_OP_LOOKUPP: /* 16 */
+		return op_res->nfs_resop4_u.oplookupp.status;
+	case NFS4_OP_NVERIFY: /* 17 */
+		return op_res->nfs_resop4_u.opnverify.status;
+	case NFS4_OP_OPEN: /* 18 */
+		return op_res->nfs_resop4_u.opopen.status;
+	case NFS4_OP_OPENATTR: /* 19 */
+		return op_res->nfs_resop4_u.opopenattr.status;
+	case NFS4_OP_OPEN_CONFIRM: /* 20 */
+		return op_res->nfs_resop4_u.opopen_confirm.status;
+	case NFS4_OP_OPEN_DOWNGRADE: /* 21 */
+		return op_res->nfs_resop4_u.opopen_downgrade.status;
+	case NFS4_OP_PUTFH: /* 22 */
+		return op_res->nfs_resop4_u.opputfh.status;
+	case NFS4_OP_PUTPUBFH: /* 23 */
+		return op_res->nfs_resop4_u.opputpubfh.status;
+	case NFS4_OP_PUTROOTFH: /* 24 */
+		return op_res->nfs_resop4_u.opputrootfh.status;
+	case NFS4_OP_READ: /* 25 */
 		return op_res->nfs_resop4_u.opread.status;
-	case NFS4_OP_WRITE:
-                return op_res->nfs_resop4_u.opwrite.status;
-        case NFS4_OP_LOOKUP:
-                return op_res->nfs_resop4_u.oplookup.status;
-        case NFS4_OP_OPEN:
-                return op_res->nfs_resop4_u.opopen.status;
-        case NFS4_OP_PUTROOTFH:
-                return op_res->nfs_resop4_u.opputrootfh.status;
-        case NFS4_OP_CLOSE:
-                return op_res->nfs_resop4_u.opclose.status;
-        case NFS4_OP_CREATE:
-                return op_res->nfs_resop4_u.opcreate.status;
-        case NFS4_OP_GETATTR:
-                return op_res->nfs_resop4_u.opgetattr.status;
-        case NFS4_OP_SETATTR:
-                return op_res->nfs_resop4_u.opsetattr.status;
-        case NFS4_OP_PUTFH:
-                return op_res->nfs_resop4_u.opputfh.status;
-        case NFS4_OP_GETFH:
-                return op_res->nfs_resop4_u.opgetfh.status;
-        case NFS4_OP_LOOKUPP:
-                return op_res->nfs_resop4_u.oplookupp.status;
-        case NFS4_OP_READDIR:
-                return op_res->nfs_resop4_u.opreaddir.status;
-        case NFS4_OP_REMOVE:
-                return op_res->nfs_resop4_u.opremove.status;
-        case NFS4_OP_RENAME:
-                return op_res->nfs_resop4_u.oprename.status;
-        case NFS4_OP_RESTOREFH:
-                return op_res->nfs_resop4_u.oprestorefh.status;
-        case NFS4_OP_SAVEFH:
-                return op_res->nfs_resop4_u.opsavefh.status;
-        case NFS4_OP_COPY:
-                return op_res->nfs_resop4_u.opcopy.cr_status;
-        default:
-                NFS4_ERR("not supported operation: %d", op_res->resop);
-        }
-        return NFS4ERR_IO;
+	case NFS4_OP_READDIR: /* 26 */
+		return op_res->nfs_resop4_u.opreaddir.status;
+	case NFS4_OP_READLINK: /* 27 */
+		return op_res->nfs_resop4_u.opreadlink.status;
+	case NFS4_OP_REMOVE: /* 28 */
+		return op_res->nfs_resop4_u.opremove.status;
+	case NFS4_OP_RENAME: /* 29 */
+		return op_res->nfs_resop4_u.oprename.status;
+	case NFS4_OP_RENEW: /* 30 */
+		return op_res->nfs_resop4_u.oprenew.status;
+	case NFS4_OP_RESTOREFH: /* 31 */
+		return op_res->nfs_resop4_u.oprestorefh.status;
+	case NFS4_OP_SAVEFH: /* 32 */
+		return op_res->nfs_resop4_u.opsavefh.status;
+	case NFS4_OP_SECINFO: /* 33 */
+		return op_res->nfs_resop4_u.opsecinfo.status;
+	case NFS4_OP_SETATTR: /* 34 */
+		return op_res->nfs_resop4_u.opsetattr.status;
+	case NFS4_OP_SETCLIENTID: /* 35 */
+		return op_res->nfs_resop4_u.opsetclientid.status;
+	case NFS4_OP_SETCLIENTID_CONFIRM: /* 36 */
+		return op_res->nfs_resop4_u.opsetclientid_confirm.status;
+	case NFS4_OP_VERIFY: /* 37 */
+		return op_res->nfs_resop4_u.opverify.status;
+	case NFS4_OP_WRITE: /* 38 */
+		return op_res->nfs_resop4_u.opwrite.status;
+	case NFS4_OP_COPY: /* 60 */
+		return op_res->nfs_resop4_u.opcopy.cr_status;
+	default:
+		NFS4_ERR("not supported operation: %d", op_res->resop);
+	}
+	return NFS4ERR_IO;
 }
 
 /*
@@ -1962,10 +2023,6 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 				 input_attr->attrmask.map[2],
 				 input_attr->attrmask.bitmap4_len);
 
-			//COMPOUNDV4_ARG_ADD_OP_TCOPEN_CREATE(
-			//    opcnt, argoparray, 0 /*seq id*/, cid, *input_attr,
-			//   (kern_arg->path + marker), owner_val, owner_len);
-                        
 			NFS4_DEBUG("writing to '%s'", new_auto_str(name));
 			COMPOUNDV4_ARG_ADD_OP_TCOPEN_CREATE(
 			    opcnt, argoparray, 0 /*seq id*/, cid, *input_attr,
@@ -2360,6 +2417,17 @@ exit:
 	return st;
 }
 
+static inline uint32_t tc_open_flags_to_access(int flags)
+{
+	if ((flags & O_WRONLY) != 0) {
+		return OPEN4_SHARE_ACCESS_WRITE;
+	} else if ((flags & O_RDWR) != 0) {
+		return OPEN4_SHARE_ACCESS_BOTH;
+	} else {
+		return OPEN4_SHARE_ACCESS_READ;
+	}
+}
+
 static fsal_status_t do_ktcopen(struct tcopen_kargs *kern_arg, int flags,
                                 nfs_argop4 *argoparray, nfs_resop4 *resoparray,
                                 int *opcnt_temp, fattr4 *input_attr)
@@ -2368,7 +2436,7 @@ static fsal_status_t do_ktcopen(struct tcopen_kargs *kern_arg, int flags,
 	char owner_val[128];
 	unsigned int owner_len = 0;
 	clientid4 cid;
-	uint32_t open_type;
+	uint32_t open_type = 0;
 	int marker = 0;
         slice_t name;
 
@@ -2391,13 +2459,7 @@ static fsal_status_t do_ktcopen(struct tcopen_kargs *kern_arg, int flags,
 
 	input_attr->attrmask = empty_bitmap;
 
-	if ((flags & O_WRONLY) != 0) {
-		open_type |= OPEN4_SHARE_ACCESS_WRITE;
-	} else if ((flags & O_RDWR) != 0) {
-		open_type |= OPEN4_SHARE_ACCESS_BOTH;
-	} else {
-		open_type |= OPEN4_SHARE_ACCESS_READ;
-	}
+        open_type = tc_open_flags_to_access(flags);
 
 	if ((flags & O_CREAT) != 0) {
 		kern_arg->attrib.mode = unix2fsal_mode((mode_t)0644);
@@ -2558,7 +2620,7 @@ static inline GETATTR4resok *tc_prepare_getattr(struct nfsoparray *nfsops,
  * Set up the SETATTR operation.
  */
 static inline SETATTR4res *tc_prepare_setattr(struct nfsoparray *nfsops,
-                                                const fattr4 *fattr)
+					      const fattr4 *fattr)
 {
         SETATTR4res *res;
         int n = nfsops->opcnt;
@@ -2588,22 +2650,47 @@ static inline GETFH4resok *tc_prepare_getfh(struct nfsoparray *nfsops, char *fh)
         return fhok;
 }
 
+/**
+ * @owner_pbuf: pbuf for owner
+ * @attrs: initial attributes for file creation.
+ */
 static inline OPEN4resok *tc_prepare_open(struct nfsoparray *nfsops,
-					  slice_t name, int opentype,
-                                          buf_t *pbuf)
+					  slice_t name, int flags,
+                                          buf_t *owner_pbuf, fattr4 *attrs)
 {
 	OPEN4resok *opok;
 	int n = nfsops->opcnt;
 	clientid4 cid;
+	OPEN4args *args;
 
-        tc_new_state_owner(pbuf);
+	tc_new_state_owner(owner_pbuf);
 	fs_get_clientid(&cid);
 
+	nfsops->argoparray[n].argop = NFS4_OP_OPEN;
+	args = &nfsops->argoparray[n].nfs_argop4_u.opopen;
+	args->seqid = 0;
+	args->share_access = tc_open_flags_to_access(flags);
+	args->share_deny = OPEN4_SHARE_DENY_NONE;
+
+	args->owner.clientid = cid;
+	args->owner.owner.owner_val = owner_pbuf->data;
+	args->owner.owner.owner_len = owner_pbuf->size;
+
+	if (attrs) {
+		args->openhow.opentype = OPEN4_CREATE;
+		args->openhow.openflag4_u.how.mode =
+		    (flags & O_EXCL) ? GUARDED4 : UNCHECKED4;
+		args->openhow.openflag4_u.how.createhow4_u.createattrs = *attrs;
+	} else {
+		args->openhow.opentype = OPEN4_NOCREATE;
+	}
+
+	args->claim.claim = CLAIM_NULL;
+	args->claim.open_claim4_u.file.utf8string_val = (char *)name.data;
+	args->claim.open_claim4_u.file.utf8string_len = name.size;
+
 	opok = &nfsops->resoparray[n].nfs_resop4_u.opopen.OPEN4res_u.resok4;
-	COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(n, nfsops->argoparray, 0 /*seq id*/,
-					    cid, name, asstr(pbuf), pbuf->size,
-					    opentype);
-	nfsops->opcnt = n;
+	nfsops->opcnt = n + 1;
 
 	return opok;
 }
@@ -2676,6 +2763,12 @@ static inline RENAME4resok *tc_prepare_rename(struct nfsoparray *nfsops,
         nfsops->opcnt++;
 
 	return rnok;
+}
+
+static inline void tc_file_set_handle(tc_file *tcf, const nfs_fh4 *fh4)
+{
+        tcf->type = TC_FILE_HANDLE;
+        tcf->handle = new_file_handle(fh4->nfs_fh4_len, fh4->nfs_fh4_val);
 }
 
 static fsal_status_t fs_mkdir(struct fsal_obj_handle *dir_hdl, const char *name,
@@ -3625,6 +3718,175 @@ void fattr4_to_tc_attrs(const fattr4 *attr4, struct tc_attrs *tca)
         set_mode_type(&tca->mode, attrlist.type);
 }
 
+static tc_res tc_nfs4_openv(struct tc_attrs *attrs, int count, int *flags,
+			    stateid4 *sids)
+{
+	int rc;
+	tc_res tcres;
+	nfsstat4 cpd_status;
+	nfsstat4 op_status;
+	struct nfsoparray *nfsops;
+	int i = 0; /* index of tc_iovec */
+	int j = 0; /* index of NFS operations */
+	slice_t name;
+	fattr4 *fattrs;
+	char *fattr_blobs; /* an array of FATTR_BLOB_SZ-sized buffers */
+	char *fh_buffers;
+	nfs_fh4 fh;
+	OPEN4resok *opok;
+
+	NFS4_DEBUG("tc_nfs4_openv");
+	assert(count >= 1);
+	nfsops = new_nfs_ops((MAX_DIR_DEPTH + 3) * count);
+	assert(nfsops);
+	fattrs = alloca(count * sizeof(fattr4));
+	memset(fattrs, 0, count * sizeof(fattr4));
+	fattr_blobs = (char *)alloca(count * FATTR_BLOB_SZ);
+	fh_buffers = alloca(count * NFS4_FHSIZE); /* on stack */
+
+	for (i = 0; i < count; ++i) {
+		rc = tc_set_current_fh(&attrs[i].file, nfsops, &name);
+		if (rc < 0) {
+                        tcres = tc_failure(i, ERR_FSAL_INVAL);
+                        goto exit;
+                }
+		tc_attrs_to_fattr4(&attrs[i], &fattrs[i]);
+		tc_prepare_open(nfsops, name, flags[i], new_auto_buf(64),
+				&fattrs[i]);
+		tc_prepare_getfh(nfsops, fh_buffers + i * NFS4_FHSIZE);
+		tc_prepare_getattr(nfsops, fattr_blobs + i * FATTR_BLOB_SZ);
+	}
+
+	rc = fs_nfsv4_call(op_ctx->creds, nfsops->opcnt, nfsops->argoparray,
+			   nfsops->resoparray, &cpd_status);
+        if (rc != RPC_SUCCESS) {
+                NFS4_ERR("rpc failed: %d", rc);
+                tcres = tc_failure(0, rc);
+                goto exit;
+        }
+
+        i = 0;
+        for (j = 0; j < nfsops->opcnt; ++j) {
+                op_status = get_nfs4_op_status(nfsops->resoparray + j);
+                if (op_status != NFS4_OK) {
+                        NFS4_ERR("NFS operation (%d) failed: %d",
+                                 nfsops->resoparray[j].resop, op_status);
+                        tcres = tc_failure(i, nfsstat4_to_errno(op_status));
+                        goto exit;
+                }
+                switch(nfsops->resoparray[j].resop) {
+                case NFS4_OP_OPEN:
+			opok = &nfsops->resoparray[j]
+				    .nfs_resop4_u.opopen.OPEN4res_u.resok4;
+			flags[i] = opok->rflags;
+                        copy_stateid4(&sids[i], &opok->stateid);
+			break;
+                case NFS4_OP_GETFH:
+			tc_file_set_handle(&attrs[i].file,
+					   &nfsops->resoparray[j]
+						.nfs_resop4_u.opgetfh
+						.GETFH4res_u.resok4.object);
+			break;
+                case NFS4_OP_GETATTR:
+			fattr4_to_tc_attrs(
+			    &nfsops->resoparray[j]
+				 .nfs_resop4_u.opgetattr.GETATTR4res_u.resok4
+				 .obj_attributes,
+			    attrs + i);
+                        ++i;
+			break;
+                }
+        }
+
+        /* TODO: remove this once switched to NFSv4.1 */
+        nfsops->opcnt = 0;
+        for (i = 0; i < count; ++i) {
+                fh.nfs_fh4_len = attrs[i].file.handle->handle_bytes;
+                fh.nfs_fh4_val = (char *)attrs[i].file.handle->f_handle;
+		tc_prepare_putfh(nfsops, &fh);
+		tc_prepare_open_confirm(nfsops, sids + i);
+        }
+
+	rc = fs_nfsv4_call(op_ctx->creds, nfsops->opcnt, nfsops->argoparray,
+			   nfsops->resoparray, &cpd_status);
+        if (rc != RPC_SUCCESS) {
+                NFS4_ERR("open_confirm rpc failed: %d", rc);
+                tcres = tc_failure(0, rc);
+                goto exit;
+        }
+
+        i = 0;
+        for (j = 0; j < nfsops->opcnt; ++j) {
+                op_status = get_nfs4_op_status(nfsops->resoparray + j);
+                if (op_status != NFS4_OK) {
+                        NFS4_ERR("NFS operation (%d) failed: %d",
+                                 nfsops->resoparray[j].resop, op_status);
+                        tcres = tc_failure(i, nfsstat4_to_errno(op_status));
+                        goto exit;
+                }
+                if (nfsops->resoparray[j].resop == NFS4_OP_OPEN_CONFIRM) {
+			copy_stateid4(
+			    &sids[i],
+			    &nfsops->resoparray[j]
+				 .nfs_resop4_u.opopen_confirm.OPEN_CONFIRM4res_u
+				 .resok4.open_stateid);
+			++i;
+                }
+	}
+
+	if (cpd_status == NFS4_OK)
+		tcres.okay = true;
+
+exit:
+        for (i = 0; i < count; ++i) {
+                nfs4_Fattr_Free(&fattrs[i]);
+        }
+        del_nfs_ops(nfsops);
+        return tcres;
+}
+
+static tc_res tc_nfs4_closev(const nfs_fh4 *fh4s, int count, stateid4 *sids,
+			     seqid4 *seqs)
+{
+        int i;
+	int rc;
+	tc_res tcres;
+	struct nfsoparray *nfsops;
+	const static char All_Zero[] = "\0\0\0\0\0\0\0\0\0\0\0\0"; /* 12 0s */
+
+	NFS4_DEBUG("tc_nfs4_closev");
+	assert(count >= 1);
+	nfsops = new_nfs_ops((MAX_DIR_DEPTH + 3) * count);
+	assert(nfsops);
+
+	for (i = 0; i < count; ++i) {
+		// ignore stateless open
+                if (memcmp(sids[i].other, All_Zero, 12)) {
+			COMPOUNDV4_ARG_ADD_OP_PUTFH(
+			    nfsops->opcnt, nfsops->argoparray, fh4s[i]);
+			COMPOUNDV4_ARG_ADD_OP_TCCLOSE(nfsops->opcnt,
+						      nfsops->argoparray,
+						      seqs[i], sids[i]);
+		}
+        }
+
+	rc = fs_nfsv4_call(op_ctx->creds, nfsops->opcnt, nfsops->argoparray,
+			   nfsops->resoparray, NULL);
+	if (rc != NFS4_OK) {
+                NFS4_ERR("rpc failed: %d", rc);
+                tcres = tc_failure(0, rc);
+                goto exit;
+        }
+
+        for (i = 0; i < count; ++i) {
+                sids[i].seqid++;
+        }
+
+exit:
+        del_nfs_ops(nfsops);
+        return tcres;
+}
+
 static tc_res tc_nfs4_getattrsv(struct tc_attrs *attrs, int count)
 {
         int rc;
@@ -3635,7 +3897,6 @@ static tc_res tc_nfs4_getattrsv(struct tc_attrs *attrs, int count)
 	GETATTR4resok *atok;
 	int i = 0;      /* index of tc_iovec */
 	int j = 0;      /* index of NFS operations */
-        int n;          /* number of path compontents */
 	char *fattr_blobs; /* an array of FATTR_BLOB_SZ-sized buffers */
 
         NFS4_DEBUG("tc_nfs4_getattrsv");
@@ -3696,7 +3957,6 @@ static tc_res tc_nfs4_setattrsv(struct tc_attrs *attrs, int count)
 	fattr4 *new_fattrs;
 	int i = 0;      /* index of tc_iovec */
 	int j = 0;      /* index of NFS operations */
-        int n;          /* number of path compontents */
         fattr4 *fattrs; /* input attrs to set */
 	char *fattr_blobs; /* an array of FATTR_BLOB_SZ-sized buffers */
 
@@ -3755,27 +4015,6 @@ exit:
         return tcres;
 }
 
-static struct file_handle *new_file_handle(int size)
-{
-	struct file_handle *fh = malloc(sizeof(*fh) + size);
-	if (fh) {
-		fh->handle_bytes = size;
-                fh->handle_type = FILEID_NFS_FH_TYPE;
-        }
-	return fh;
-}
-
-static struct file_handle *nfs4fh_to_file_handle(const nfs_fh4 *fh4)
-{
-        struct file_handle *fh = new_file_handle(fh4->nfs_fh4_len);
-
-        if (fh) {
-                memcpy(fh->f_handle, fh4->nfs_fh4_val, fh4->nfs_fh4_len);
-        }
-
-        return fh;
-}
-
 /**
  * In case of partial failure the file_handle of succeeded files should be
  * freed by callers.
@@ -3800,7 +4039,8 @@ static tc_res tc_nfs4_mkdirv(struct tc_attrs *dirs, int count)
         assert(count >= 1);
         nfsops = new_nfs_ops((MAX_DIR_DEPTH + 3) * count);
         assert(nfsops);
-	input_attrs = alloca(count * sizeof(fattr4));           /* on stack */
+	input_attrs = alloca(count * sizeof(fattr4));   /* on stack */
+        memset(input_attrs, 0, count * sizeof(fattr4));
 	fattr_blobs = alloca(count * FATTR_BLOB_SZ);    /* on stack */
         fh_buffers = alloca(count * NFS4_FHSIZE);       /* on stack */
 
@@ -3822,9 +4062,6 @@ static tc_res tc_nfs4_mkdirv(struct tc_attrs *dirs, int count)
 
 	rc = fs_nfsv4_call(op_ctx->creds, nfsops->opcnt, nfsops->argoparray,
 			   nfsops->resoparray, &cpd_status);
-        for (i = 0; i < count; ++i) {
-                nfs4_Fattr_Free(input_attrs + i);
-        }
         if (rc != RPC_SUCCESS) {
                 NFS4_ERR("rpc failed: %d", rc);
                 tcres = tc_failure(0, rc);
@@ -3845,11 +4082,10 @@ static tc_res tc_nfs4_mkdirv(struct tc_attrs *dirs, int count)
                         ++i;
                         break;
                 case NFS4_OP_GETFH:
-			dirs[i - 1].file.type = TC_FILE_HANDLE;
-			dirs[i - 1].file.handle = nfs4fh_to_file_handle(
-			    &nfsops->resoparray[j]
-				 .nfs_resop4_u.opgetfh.GETFH4res_u.resok4
-				 .object);
+			tc_file_set_handle(&dirs[i - 1].file,
+					   &nfsops->resoparray[j]
+						.nfs_resop4_u.opgetfh
+						.GETFH4res_u.resok4.object);
 			break;
                 case NFS4_OP_GETATTR:
 			atok =
@@ -3864,6 +4100,9 @@ static tc_res tc_nfs4_mkdirv(struct tc_attrs *dirs, int count)
 		tcres.okay = true;
 
 exit:
+        for (i = 0; i < count; ++i) {
+                nfs4_Fattr_Free(input_attrs + i);
+        }
         del_nfs_ops(nfsops);
         return tcres;
 }
@@ -4235,14 +4474,14 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 	for (i = 0; i < count; ++i) {
 		tc_set_cfh_to_path(pairs[i].src_path, nfsops->argoparray,
 				   &nfsops->opcnt, &srcname);
-		tc_prepare_open(nfsops, srcname, OPEN4_SHARE_ACCESS_READ,
-				new_auto_buf(64));
+		tc_prepare_open(nfsops, srcname, O_RDONLY, new_auto_buf(64),
+				NULL);
 		COMPOUNDV4_ARG_ADD_OP_SAVEFH(nfsops->opcnt, nfsops->argoparray);
 
 		tc_set_cfh_to_path(pairs[i].dst_path, nfsops->argoparray,
 				   &nfsops->opcnt, &dstname);
-		tc_prepare_open(nfsops, dstname, OPEN4_SHARE_ACCESS_WRITE,
-				new_auto_buf(64));
+		tc_prepare_open(nfsops, dstname, O_WRONLY, new_auto_buf(64),
+				NULL);
 
 		tc_prepare_copy(nfsops, pairs[i].src_offset,
 				pairs[i].dst_offset, pairs[i].length);
@@ -4384,6 +4623,8 @@ void fs_handle_ops_init(struct fsal_obj_ops *ops)
         ops->tc_chdir = tc_nfs4_chdir;
         ops->tc_getcwd = tc_nfs4_getcwd;
 	ops->root_lookup = fs_root_lookup;
+        ops->tc_openv = tc_nfs4_openv;
+        ops->tc_closev = tc_nfs4_closev;
 }
 
 #ifdef PROXY_HANDLE_MAPPING

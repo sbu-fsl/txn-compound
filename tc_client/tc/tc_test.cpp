@@ -254,15 +254,12 @@ TYPED_TEST_P(TcTest, TestFileDesc)
 	char data[] = "abcd123";
 	tc_res res;
 	int i = 0;
-	tc_file files[N];
-	int open_flags = O_RDWR | O_CREAT;
+	tc_file *files;
 
 	Removev(PATHS, 4);
 
-	for (i = 0; i < N; ++i) {
-		files[i] = tc_open(PATHS[i], open_flags, 0);
-		EXPECT_GT(files[i].fd, 0);
-	}
+	files = tc_openv_simple(PATHS, N, O_RDWR | O_CREAT, 0);
+	EXPECT_NOTNULL(files);
 
 	struct tc_iovec *writev = NULL;
 	writev = build_iovec(files, N, 0);
@@ -280,9 +277,7 @@ TYPED_TEST_P(TcTest, TestFileDesc)
 
 	EXPECT_TRUE(compare_content(writev, readv, N));
 
-	for (i = 0; i < N; ++i) {
-		tc_close(files[i]);
-	}
+	tc_closev(files, N);
 	free_iovec(writev, N);
 	free_iovec(readv, N);
 }
@@ -492,6 +487,7 @@ TYPED_TEST_P(TcTest, AttrsTestFileDesc)
 	tc_res res = { 0 };
 	int i = 0;
 	const int count = 3;
+	tc_file *tcfs;
 	struct tc_attrs *attrs1 = (tc_attrs *)calloc(count, sizeof(tc_attrs));
 	struct tc_attrs *attrs2 = (tc_attrs *)calloc(count, sizeof(tc_attrs));
 
@@ -499,11 +495,11 @@ TYPED_TEST_P(TcTest, AttrsTestFileDesc)
 	EXPECT_NOTNULL(attrs2);
 
 	Removev(PATH, count);
+	tcfs = tc_openv_simple(PATH, count, O_RDWR | O_CREAT, 0);
+	EXPECT_NOTNULL(tcfs);
 
 	for (int i = 0; i < count; ++i) {
-		attrs1[i].file = tc_open(PATH[i], O_RDWR | O_CREAT, 0);
-		assert(attrs1[i].file.fd > 0);
-		attrs2[i].file = attrs1[i].file;
+		attrs2[i].file = attrs1[i].file = tcfs[i];
 	}
 
 	set_tc_attrs(attrs1, count);
@@ -518,9 +514,7 @@ TYPED_TEST_P(TcTest, AttrsTestFileDesc)
 
 	EXPECT_TRUE(compare(attrs1, attrs2, count));
 
-	for (i = 0; i < count; ++i) {
-		tc_close(attrs1[i].file);
-	}
+	tc_closev(tcfs, count);
 
 	free(attrs1);
 	free(attrs2);

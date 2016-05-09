@@ -96,6 +96,7 @@ struct tc_kfd
 	 * so start with 1 */
 	seqid4 seqid;
 	int offset;
+        size_t filesize;
 };
 
 int init_fd();

@@ -88,8 +88,16 @@ int get_fd(stateid4 *stateid, nfs_fh4 *object)
 
 struct tc_kfd *get_fd_struct(int fd)
 {
-	assert(fd >= TC_FD_OFFSET);
-	return fd_list + (fd - TC_FD_OFFSET);
+	fd -= TC_FD_OFFSET;
+	if (fd < 0 || fd > MAX_FD) {
+		return NULL;
+	}
+
+	if (fd_list[fd].fd < 0) {
+                return NULL;
+        }
+
+	return fd_list + fd;
 }
 
 int fd_in_use(int fd)

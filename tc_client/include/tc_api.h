@@ -168,10 +168,10 @@ static inline tc_file tc_file_from_cfh(const char *relpath) {
  * from/writing to it.  We recommend using tc_readv() and tc_writev() to
  * implicitly open a file when necessary.
  */
-tc_file tc_open_by_path(int dirfd, const char *pathname, int flags,
+tc_file* tc_open_by_path(int dirfd, const char *pathname, int flags,
 			mode_t mode);
 
-static inline tc_file tc_open(const char *pathname, int flags, mode_t mode)
+static inline tc_file* tc_open(const char *pathname, int flags, mode_t mode)
 {
 	return tc_open_by_path(AT_FDCWD, pathname, flags, mode);
 }
@@ -184,7 +184,7 @@ tc_file tc_open_by_handle(int mount_fd, struct file_handle *fh, int flags);
 /**
  * Close a tc_file if necessary.
  */
-int tc_close(tc_file file);
+int tc_close(tc_file *tcf);
 
 /**
  * Change current work directory to "path".
@@ -207,7 +207,7 @@ char *tc_getcwd(void);
 /**
  * A special offset indicates the current offset of the file descriptor.
  */
-#define TC_OFFSET_CUR (SIZE_MAX-2)
+#define TC_OFFSET_CUR (SIZE_MAX)
 
 /**
  * Represents an I/O vector of a file.
@@ -262,6 +262,12 @@ static inline tc_res tc_failure(int i, int err) {
 	res.err_no = err;
 	return res;
 }
+
+tc_file *tc_openv(const char **paths, int count, int *flags, mode_t *modes);
+
+tc_file *tc_openv_simple(const char **paths, int count, int flags, mode_t mode);
+
+tc_res tc_closev(tc_file *files, int count);
 
 /**
  * Read from one or more files.

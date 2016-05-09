@@ -45,15 +45,52 @@ void* posix_init(const char* config_file, const char* log_file) {
 	return NULL;
 }
 
-tc_file posix_open(const char *path, int flags)
+tc_file *posix_openv(const char **paths, int count, int *flags, mode_t *modes)
 {
-	tc_file file;
-	int fd = open(path, flags);
+	tc_file *tcfs;
+	int fd;
+	int i;
 
-	file.type = TC_FILE_DESCRIPTOR;
-	file.fd = fd;
+	tcfs = calloc(count, sizeof(*tcfs));
+	if (tcfs) {
+		for (i = 0; i < count; ++i) {
+			tcfs[i].type = TC_FILE_DESCRIPTOR;
+			fd = open(paths[i], flags[i], modes[i]);
+			tcfs[i].fd = fd >= 0 ? fd : -errno;
+		}
+	}
 
-	return file;
+	return tcfs;
+}
+
+tc_file *posix_open(const char *path, int flags, mode_t mode)
+{
+	return posix_openv(&path, 1, &flags, &mode);
+}
+
+tc_res posix_closev(tc_file *tcfs, int count)
+{
+	int i;
+	tc_res tcres = { .okay = true };
+
+	for (i = 0; i < count; ++i) {
+		assert(tcfs[i].type == TC_FILE_DESCRIPTOR);
+		/* return error no in case of failure */
+		if (close(tcfs[i].fd) < 0) {
+			tcres.okay = false;
+			tcres.index = i;
+			tcres.err_no = errno;
+			break;
+		} else {
+			tcfs[i].fd = INT_MIN;
+		}
+	}
+
+	if (tcres.okay) {
+		free(tcfs);
+	}
+
+	return tcres;
 }
 
 /*
@@ -61,18 +98,16 @@ tc_file posix_open(const char *path, int flags)
  * file - tc_file structure with file
  * descriptor value.
  */
-
-int posix_close(const tc_file *file)
+int posix_close(tc_file *tcf)
 {
-	int err = 0;
-
-	assert(file->type == TC_FILE_DESCRIPTOR);
-
-	/* return error no in case of failure */
-	if (close(file->fd) < 0)
-		err = errno;
-
-	return err;
+	tc_res tcres;
+	tcres = posix_closev(tcf, 1);
+	if (tcres.okay) {
+		free(tcf);
+		return 0;
+	} else {
+		return -tcres.err_no;
+	}
 }
 
 static int posix_stat(const tc_file *tcf, struct stat *st)
@@ -96,28 +131,30 @@ static int posix_stat(const tc_file *tcf, struct stat *st)
  */
 tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 {
-	int fd, amount_read, i = 0;
+	int fd, i = 0;
+	ssize_t amount_read;
 	tc_file file = { 0 };
-	struct tc_iovec *cur_arg = NULL;
+	struct tc_iovec *iov = NULL;
 	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
 	struct stat st;
 
 	POSIX_WARN("posix_readv() called \n");
 
-	while (i < read_count) {
-		cur_arg = arg + i;
-
+	for (i = 0; i < read_count; ++i) {
+		iov = arg + i;
 		/*
 		 * if the user specified the path and not file descriptor
 		 * then call open to obtain the file descriptor else
 		 * go ahead with the file descriptor specified by the user
 		 */
-		if (cur_arg->file.type == TC_FILE_PATH)
-			file = posix_open(cur_arg->file.path, O_RDONLY);
-		else
-			file = cur_arg->file;
+		if (iov->file.type == TC_FILE_PATH) {
+			fd = open(iov->file.path, O_RDONLY);
+		} else if (iov->file.type == TC_FILE_DESCRIPTOR) {
+			fd = iov->file.fd;
+		} else {
+			POSIX_ERR("unsupported type: %d", iov->file.type);
+		}
 
-		fd = file.fd;
 		if (fd < 0) {
 			result.okay = false;
 			POSIX_ERR("failed in readv: %s\n", strerror(errno));
@@ -125,38 +162,33 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 		}
 
 		/* Read data */
-		if (cur_arg->offset == TC_OFFSET_CUR) {
-			off_t offset = lseek(fd, 0, SEEK_CUR);
-			POSIX_WARN("Posix read from offset : %d\n", offset);
-
-			amount_read = read(fd, cur_arg->data, cur_arg->length);
-		} else
-			amount_read = pread(fd, cur_arg->data, cur_arg->length,
-					    cur_arg->offset);
+		if (iov->offset == TC_OFFSET_CUR) {
+			amount_read = read(fd, iov->data, iov->length);
+		} else {
+			amount_read =
+			    pread(fd, iov->data, iov->length, iov->offset);
+		}
 		if (amount_read < 0) {
-			if (cur_arg->file.type == TC_FILE_PATH)
-				posix_close(&file);
+			if (iov->file.type == TC_FILE_PATH) {
+				close(fd);
+			}
 			result.okay = false;
 			break;
 		}
 
 		/* set the length to number of bytes successfully read */
-		cur_arg->length = amount_read;
+		iov->length = amount_read;
 
-		if (posix_stat(&cur_arg->file, &st) == 0) {
-			cur_arg->is_eof =
-			    (cur_arg->offset + cur_arg->length) == st.st_size;
+		if (fstat(fd, &st) == 0) {
+			iov->is_eof = (iov->offset + iov->length) == st.st_size;
 		} else {
 			POSIX_ERR("failed to stat file");
 		}
 
-		if (cur_arg->file.type == TC_FILE_PATH &&
-		    posix_close(&file) < 0) {
+		if (iov->file.type == TC_FILE_PATH && close(fd) < 0) {
 			result.okay = false;
 			break;
 		}
-
-		i++;
 	}
 
 	/* No error encountered */
@@ -180,75 +212,66 @@ exit:
  */
 tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 {
-	int fd, amount_written, i = 0;
-	tc_file file = { 0 };
-	struct tc_iovec *cur_arg = NULL;
+	int fd, i = 0;
+	ssize_t amount_written;
+	struct tc_iovec *iov = NULL;
 	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
 	int flags;
+	off_t offset;
 
 	POSIX_WARN("posix_writev() called \n");
 
-	while (i < write_count) {
-		cur_arg = arg + i;
+	for (i = 0; i < write_count; ++i) {
+		iov = arg + i;
 
 		/* open the requested file */
 		flags = O_WRONLY;
-		if (cur_arg->is_creation) {
+		if (iov->is_creation) {	/* create */
 			flags |= O_CREAT;
 		}
 
-		if (cur_arg->file.type == TC_FILE_PATH)
-			file = posix_open(cur_arg->file.path, flags);
-		else
-			file = cur_arg->file;
+		if (iov->file.type == TC_FILE_PATH) {
+			fd = open(iov->file.path, flags);
+		} else if (iov->file.type == TC_FILE_DESCRIPTOR) {
+			fd = iov->file.fd;
+		} else {
+			POSIX_ERR("unsupported type: %d", iov->file.type);
+		}
 
-		fd = file.fd;
 		if (fd < 0) {
 			result.okay = false;
+			result.err_no = errno;
 			break;
 		}
 
-		off_t offset = cur_arg->offset;
-
+		offset = iov->offset;
 		/* append */
 		if (offset == TC_OFFSET_END) {
 			offset = lseek(fd, 0, SEEK_END);
-
-			if (offset == (off_t) - 1) {
-				result.okay = false;
-				break;
-			}
 		}
 
 		/* Write data */
-		if (offset == -2) {
-			offset = lseek(fd, 0, SEEK_CUR);
-
-			POSIX_WARN("Posix write at offset : %d\n", offset);
-
+		if (offset == TC_OFFSET_CUR) {
+			amount_written = write(fd, iov->data, iov->length);
+		} else {
 			amount_written =
-			    write(fd, cur_arg->data, cur_arg->length);
-		} else
-			amount_written =
-			    pwrite(fd, cur_arg->data, cur_arg->length, offset);
+			    pwrite(fd, iov->data, iov->length, offset);
+		}
 
 		if (amount_written < 0) {
-			if (cur_arg->file.type == TC_FILE_PATH)
-				posix_close(&file);
+			if (iov->file.type == TC_FILE_PATH) {
+				close(fd);
+			}
 			result.okay = false;
 			break;
 		}
 
 		/* set the length to number of bytes successfully written */
-		cur_arg->length = amount_written;
-
-		if (cur_arg->file.type == TC_FILE_PATH &&
-		    posix_close(&file) < 0) {
+		iov->length = amount_written;
+		if (iov->file.type == TC_FILE_PATH && close(fd) < 0) {
 			result.okay = false;
 			break;
 		}
-
-		i++;
 	}
 
 	/* No errors encountered */
@@ -740,7 +763,7 @@ tc_res posix_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 {
 	int i;
 	ssize_t ret;
-	tc_res tcres;
+	tc_res tcres = { .okay = true };
 
 	for (i = 0; i < count; ++i) {
 		ret = splice_copy(pairs[i].src_path, pairs[i].src_offset,

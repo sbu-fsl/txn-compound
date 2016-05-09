@@ -37,7 +37,13 @@ extern "C" {
 
 void* posix_init(const char* config_file, const char* log_file);
 
-tc_file posix_open(const char *path, int flags);
+tc_file* posix_open(const char *path, int flags, mode_t mode);
+
+int posix_close(tc_file *file);
+
+tc_file *posix_openv(const char **paths, int count, int *flags, mode_t *modes);
+
+tc_res posix_closev(tc_file *files, int count);
 
 /**
  * @reads - Array of reads for one or more files

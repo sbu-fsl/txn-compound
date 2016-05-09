@@ -20,6 +20,13 @@
 #ifndef __TC_HELPER_H__
 #define __TC_HELPER_H__
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #include "tc_api.h"
 
 #ifdef __cplusplus
@@ -40,6 +47,10 @@ char *get_tc_config_file(char *buf, int buf_size);
  */
 bool compare_content(struct tc_iovec *iovec1, struct tc_iovec *iovec2,
 		     int count);
+
+struct file_handle *new_file_handle(size_t fh_len, char *fh_val);
+
+void del_file_handle(struct file_handle *fh);
 
 #ifdef __cplusplus
 }

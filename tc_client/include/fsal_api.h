@@ -1323,6 +1323,12 @@ struct fsal_obj_ops {
 
 	fsal_status_t (*tc_close)(const nfs_fh4 *fh4, stateid4 *sid, seqid4 *seqid);
 
+	tc_res (*tc_openv)(struct tc_attrs *attrs, int count, int *flags,
+			   stateid4 *sids);
+
+	tc_res (*tc_closev)(const nfs_fh4 *fh4s, int count, stateid4 *sids,
+			    seqid4 *seqs);
+
 	tc_res (*tc_getattrsv)(struct tc_attrs *attrs, int count);
 
 	tc_res (*tc_setattrsv)(struct tc_attrs *attrs, int count);

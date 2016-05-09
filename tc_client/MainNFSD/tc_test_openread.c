@@ -1,6 +1,23 @@
 /**
- * @file tc_test_read.c
- * @brief Test read a small file from NFS using TC.
+ * Copyright (C) Stony Brook University 2016
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA
+ *
+ * @file tc_test_openread.c
+ * @brief Test mixing read using FD and Path.
  *
  */
 #include "config.h"
@@ -13,7 +30,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
-#include <signal.h>		/* for sigaction */
 #include <errno.h>
 #include "../nfs4/nfs4_util.h"
 
@@ -31,14 +47,13 @@ int main(int argc, char *argv[])
 	int rc = -1;
 	struct tc_iovec read_iovec[4];
 	tc_res res;
-	tc_file file0;
-	tc_file file1;
+	tc_file *file1;
 
 	/* Locate and use the default config file.  Please update the config
 	 * file to the correct NFS server. */
 	readlink("/proc/self/exe", exe_path, PATH_MAX);
 	snprintf(tc_config_path, PATH_MAX,
-		 "%s/../../../config/vfs.proxy.conf", dirname(exe_path));
+		 "%s/../../../config/tc.proxy.conf", dirname(exe_path));
 	fprintf(stderr, "using config file: %s\n", tc_config_path);
 
 	/* Initialize TC services and daemons */
@@ -50,31 +65,15 @@ int main(int argc, char *argv[])
 		return EIO;
 	}
 
-	/* Read the file; nfs4_readv() will open it first if needed. */
-	file0 = nfs4_openv(TC_TEST_NFS_FILE0, O_RDWR);
-	if (file0.fd < 0) {
-		NFS4_DEBUG("Cannot open %s", TC_TEST_NFS_FILE0);
-	}
-
-	NFS4_DEBUG("Opened %s, %d\n", TC_TEST_NFS_FILE0, file0.fd);
-	//rc = nfs4_closev(file0);
-	//if (rc < 0) {
-	//	NFS4_DEBUG("Cannot close %d", file0.fd);
-	//}
-
-	file1 = nfs4_openv(TC_TEST_NFS_FILE1, O_RDWR);
-	if (file1.fd < 0) {
+	file1 = nfs4_open(TC_TEST_NFS_FILE1, O_RDWR, 0);
+	if (file1->fd < 0) {
 		NFS4_DEBUG("Cannot open %s", TC_TEST_NFS_FILE1);
 	}
 
-	NFS4_DEBUG("Opened %s, %d\n", TC_TEST_NFS_FILE1, file1.fd);
-	//rc = nfs4_closev(file1);
-	//if (rc < 0) {
-	//	NFS4_DEBUG("Cannot close %d", file1.fd);
-	//}
+	NFS4_DEBUG("Opened %s, %d\n", TC_TEST_NFS_FILE1, file1->fd);
 
 	/* Setup I/O request */
-        read_iovec[0].file = file1;
+        read_iovec[0].file = *file1;
         read_iovec[0].offset = 0;
         read_iovec[0].length = 16384;
         read_iovec[0].data = malloc(16384);
@@ -85,7 +84,6 @@ int main(int argc, char *argv[])
         read_iovec[1].data = malloc(16384);
         assert(read_iovec[1].data);
 
-        //read_iovec[2].file = file0;
         read_iovec[2].file = tc_file_from_path(TC_TEST_NFS_FILE0);
         read_iovec[2].offset = 0;
         read_iovec[2].length = 16384;
@@ -97,12 +95,12 @@ int main(int argc, char *argv[])
         read_iovec[3].data = malloc(16384);
         assert(read_iovec[3].data);
 
+	read_iovec[2].is_creation = 1;
+        res = tc_writev(read_iovec, 4, false);
+
         /* Read the file; nfs4_readv() will open it first if needed. */
         res = tc_readv(read_iovec, 4, false);
 
-	read_iovec[2].is_creation = 1;
-
-        res = tc_writev(read_iovec, 4, false);
 
         /* Check results. */
 	if (res.okay) {
@@ -119,6 +117,10 @@ int main(int argc, char *argv[])
 			strerror(res.err_no), DEFAULT_LOG_FILE);
 	}
 
+	rc = nfs4_close(file1);
+	if (rc < 0) {
+		NFS4_DEBUG("Cannot close %d", file1->fd);
+	}
 	tc_deinit(context);
 
 	return res.okay ? 0 : res.err_no;

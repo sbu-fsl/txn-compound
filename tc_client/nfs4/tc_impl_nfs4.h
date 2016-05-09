@@ -62,7 +62,14 @@ tc_res nfs4_writev(struct tc_iovec *writes, int write_count,
  *
  * Returns tc_file with fd set
  */
-tc_file nfs4_openv(const char *path, int flags);
+tc_file* nfs4_open(const char *path, int flags, mode_t mode);
+
+/**
+ * Open a list of files specified by paths
+ *
+ * Returns a list of tc_file that the caller is responsible for freeing.
+ */
+tc_file *nfs4_openv(const char **paths, int count, int *flags, mode_t *modes);
 
 /*
  * @file - File that has to be closed
@@ -70,7 +77,13 @@ tc_file nfs4_openv(const char *path, int flags);
  * Calls ktcclose with the right fh-stateid-seqid
  * If server is unreachable, might return failure
  */
-int nfs4_closev(tc_file file);
+int nfs4_close(tc_file *tcf);
+
+/**
+ *
+ * On success, "tcfs" will be freed.
+ */
+tc_res nfs4_closev(tc_file *tcfs, int count);
 
 /*
  * Close all open files which user might have forgot to close

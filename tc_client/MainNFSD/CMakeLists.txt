@@ -47,6 +47,7 @@ function (add_tc_binary Name)
     ${GANESHA_CORE}
     config_parsing
     path_utils
+    tc_helper
     ${LIBTIRPC_LIBRARIES}
     ${SYSTEM_LIBRARIES}
     m

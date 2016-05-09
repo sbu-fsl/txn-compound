@@ -49,22 +49,45 @@ void tc_deinit(void *module)
 	}
 }
 
-tc_file tc_open_by_path(int dirfd, const char *pathname, int flags, mode_t mode)
+tc_file *tc_openv(const char **paths, int count, int *flags, mode_t *modes)
 {
 	if (TC_IMPL_IS_NFS4) {
-		return nfs4_openv(pathname, flags);
+		return nfs4_openv(paths, count, flags, modes);
 	} else {
-		return posix_open(pathname, flags);
+		return posix_openv(paths, count, flags, modes);
 	}
 }
 
-int tc_close(tc_file tcf)
+tc_file *tc_openv_simple(const char **paths, int count, int flags, mode_t mode)
+{
+	int i;
+	int *flag_array = alloca(count * sizeof(int));
+	mode_t *mode_array = alloca(count * sizeof(mode_t));
+	for (i = 0; i < count; ++i) {
+		flag_array[i] = flags;
+		mode_array[i] = mode;
+	}
+	return tc_openv(paths, count, flag_array, mode_array);
+}
+
+tc_res tc_closev(tc_file *tcfs, int count)
 {
 	if (TC_IMPL_IS_NFS4) {
-		return nfs4_closev(tcf);
+		return nfs4_closev(tcfs, count);
 	} else {
-		return posix_close(&tcf);
+		return posix_closev(tcfs, count);
 	}
+}
+
+tc_file* tc_open_by_path(int dirfd, const char *pathname, int flags, mode_t mode)
+{
+	return tc_openv(&pathname, 1, &flags, &mode);
+}
+
+int tc_close(tc_file *tcf)
+{
+	tc_res tcres = tc_closev(tcf, 1);
+	return tcres.okay ? 0 : -tcres.err_no;
 }
 
 tc_res tc_readv(struct tc_iovec *reads, int count, bool is_transaction)

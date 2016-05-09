@@ -30,7 +30,7 @@ int main(int argc, char *argv[])
 	void *context = NULL;
 	int rc = -1;
 	tc_res res;
-	tc_file file1;
+	tc_file *tcf;
 
 	/* Locate and use the default config file.  Please update the config
 	 * file to the correct NFS server. */
@@ -49,29 +49,25 @@ int main(int argc, char *argv[])
 	}
 
 	/* Read the file; nfs4_readv() will open it first if needed. */
-	file1 = nfs4_openv(TC_TEST_NFS_FILE0, O_RDWR);
-	if (file1.fd < 0) {
+	tcf = tc_open(TC_TEST_NFS_FILE0, O_RDWR, 0);
+	if (tcf->fd < 0) {
 		NFS4_DEBUG("Cannot open %s", TC_TEST_NFS_FILE0);
 	}
 
-	//rc = nfs4_closev(file1);
-	//if (rc < 0) {
-	//	NFS4_DEBUG("Cannot close %d", file1.fd);
-	//}
+	rc = tc_close(tcf);
+	if (rc < 0) {
+		NFS4_DEBUG("Cannot close %d", tcf->fd);
+	}
 
-	NFS4_DEBUG("Closed %d", file1.fd);
-
-	file1 = nfs4_openv(TC_TEST_NFS_FILE1, O_WRONLY | O_CREAT);
-	if (file1.fd < 0) {
+	tcf = tc_open(TC_TEST_NFS_FILE1, O_WRONLY | O_CREAT, 0);
+	if (tcf->fd < 0) {
 		NFS4_DEBUG("Cannot open %s", TC_TEST_NFS_FILE1);
 	}
 
-	//rc = nfs4_closev(file1);
-	//if (rc < 0) {
-	//	NFS4_DEBUG("Cannot close %d", file1.fd);
-	//}
-
-	NFS4_DEBUG("Closed %d", file1.fd);
+	rc = tc_close(tcf);
+	if (rc < 0) {
+		NFS4_DEBUG("Cannot close %d", tcf->fd);
+	}
 
 	tc_deinit(context);
 

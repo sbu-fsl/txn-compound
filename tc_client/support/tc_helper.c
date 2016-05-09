@@ -59,3 +59,19 @@ bool compare_content(struct tc_iovec *iovec1, struct tc_iovec *iovec2,
 
 	return true;
 }
+
+struct file_handle *new_file_handle(size_t fh_len, char *fh_val)
+{
+	struct file_handle *fh = malloc(sizeof(*fh) + fh_len);
+	if (fh) {
+		fh->handle_bytes = fh_len;
+                fh->handle_type = FILEID_NFS_FH_TYPE;
+                memmove(fh->f_handle, fh_val, fh_len);
+        }
+	return fh;
+}
+
+void del_file_handle(struct file_handle *fh)
+{
+	free(fh);
+}
