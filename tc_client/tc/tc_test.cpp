@@ -688,47 +688,63 @@ TYPED_TEST_P(TcTest, Append)
  */
 TYPED_TEST_P(TcTest, SuccesiveReads)
 {
-	//const char *path = "WritevCanCreateFiles6.txt";
-	//tc_file tcf;
-	//int fd[2], i = 0, N = 4096;
-	//fd[0] = open(path, O_RDONLY);
-	//fd[1] = open(path, O_RDONLY);
-	//tc_res res;
-	//off_t offset = 0;
-	//void *data = calloc(1, N);
-	//struct tc_iovec *readv = NULL;
+	const char *path = "TcTest-SuccesiveReads.txt";
+	struct tc_iovec iov;
+	const int N = 4096;
+	char *data;
+	char *read;
+	tc_res tcres;
+	tc_file *tcf;
 
-	//tcf = tc_open(path, O_RDONLY);
-	//readv = build_iovec(fd, 1, TC_OFFSET_CUR);
-	//EXPECT_FALSE(readv == NULL);
+	Removev(&path, 1);
 
-	//[> move th current pointer by 10 bytes <]
-	//lseek(fd[0], 10, SEEK_CUR);
+	data = (char *)getRandomBytes(5 * N);
+	iov.file = tc_file_from_path(path);
+	iov.offset = 0;
+	iov.length = 5 * N;
+	iov.data = data;
+	iov.is_creation = true;
 
-	//while (i < 4) {
-		//[> get the current offset of the file <]
-		//offset = lseek(fd[0], 0, SEEK_CUR);
+	tcres = tc_writev(&iov, 1, false);
+	EXPECT_TRUE(tcres.okay);
 
-		//res = tc_readv(readv, 1, false);
-		//EXPECT_TRUE(res.okay);
+	read = (char *)malloc(5 * N);
+	EXPECT_NOTNULL(read);
 
-		//TCTEST_WARN("Test reading from offset : %d\n", offset);
+	tcf = tc_open(path, O_RDONLY, 0);
+	EXPECT_NOTNULL(tcf);
+	iov.file = *tcf;
+	iov.offset = TC_OFFSET_CUR;
+	iov.length = N;
+	iov.data = read;
+	tcres = tc_readv(&iov, 1, false);
+	EXPECT_TRUE(tcres.okay);
 
-		//[> read from the file to compare the data <]
-		//int error = pread(fd[1], data, readv->length, offset);
-		//EXPECT_FALSE(error < 0);
+	iov.data = read + N;
+	tcres = tc_readv(&iov, 1, false);
+	EXPECT_TRUE(tcres.okay);
 
-		//[> compare the content read <]
-		//error = memcmp(data, readv->data, readv->length);
-		//EXPECT_TRUE(error == 0);
+	EXPECT_EQ(3 * N, tc_fseek(tcf, N, SEEK_CUR));
+	iov.data = read + 3 * N;
+	tcres = tc_readv(&iov, 1, false);
+	EXPECT_TRUE(tcres.okay);
 
-		//i++;
-	//}
+	EXPECT_EQ(2 * N, tc_fseek(tcf, 2 * N, SEEK_SET));
+	iov.data = read + 2 * N;
+	tcres = tc_readv(&iov, 1, false);
+	EXPECT_TRUE(tcres.okay);
 
-	//free(data);
-	//free_iovec(readv, 1);
+	EXPECT_EQ(4 * N, tc_fseek(tcf, -N, SEEK_END));
+	iov.data = read + 4 * N;
+	tcres = tc_readv(&iov, 1, false);
+	EXPECT_TRUE(tcres.okay);
+	EXPECT_TRUE(iov.is_eof);
 
-	//Removev(&path, 1);
+	EXPECT_EQ(0, memcmp(data, read, 5 * N));
+
+	free(data);
+	free(read);
+	tc_close(tcf);
 }
 
 /**

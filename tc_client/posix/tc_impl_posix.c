@@ -110,6 +110,12 @@ int posix_close(tc_file *tcf)
 	}
 }
 
+off_t posix_fseek(tc_file *tcf, off_t offset, int whence)
+{
+	assert(tcf->type == TC_FILE_DESCRIPTOR);
+	return lseek(tcf->fd, offset, whence);
+}
+
 static int posix_stat(const tc_file *tcf, struct stat *st)
 {
 	int rc;
@@ -179,10 +185,16 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 		/* set the length to number of bytes successfully read */
 		iov->length = amount_read;
 
-		if (fstat(fd, &st) == 0) {
-			iov->is_eof = (iov->offset + iov->length) == st.st_size;
-		} else {
+		if (fstat(fd, &st) != 0) {
 			POSIX_ERR("failed to stat file");
+			result = tc_failure(i, errno);
+			break;
+		}
+
+		if (iov->offset == TC_OFFSET_CUR) {
+			iov->is_eof = lseek(fd, 0, SEEK_CUR) == st.st_size;
+		} else {
+			iov->is_eof = (iov->offset + iov->length) == st.st_size;
 		}
 
 		if (iov->file.type == TC_FILE_PATH && close(fd) < 0) {

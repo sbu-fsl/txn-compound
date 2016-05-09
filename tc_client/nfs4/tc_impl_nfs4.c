@@ -215,7 +215,6 @@ tc_res nfs4_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 	const char *file_path = NULL;
 	stateid4 *sid = NULL;
 	nfs_fh4 *fh = NULL;
-	int last_op = TC_FILE_START;
 	struct tc_kfd *tcfd = NULL;
 	bitset_t *cur_offset_bs = new_auto_bitset(read_count);
 
@@ -237,9 +236,6 @@ tc_res nfs4_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 		cur_arg->user_arg = arg + i;
 		cur_arg->opok_handle = NULL;
 		cur_arg->path = NULL;
-		assert(cur_arg->user_arg->file.type == TC_FILE_PATH ||
-		       cur_arg->user_arg->file.type == TC_FILE_DESCRIPTOR ||
-		       cur_arg->user_arg->file.type == TC_FILE_CURRENT);
 
 		switch (cur_arg->user_arg->file.type) {
 		case TC_FILE_DESCRIPTOR:
@@ -248,31 +244,32 @@ tc_res nfs4_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 				result.err_no = (int)EINVAL;
 				goto error;
 			}
-
 			if (cur_arg->user_arg->offset == TC_OFFSET_CUR) {
 				cur_arg->user_arg->offset = tcfd->offset;
 				bs_set(cur_offset_bs, i);
 			}
 			sid = cur_arg->sid = &tcfd->stateid;
 			fh = cur_arg->fh = &tcfd->fh;
-
-			last_op = TC_FILE_DESCRIPTOR;
 			break;
+
 		case TC_FILE_PATH:
 			file_path = cur_arg->user_arg->file.path;
 			if (file_path != NULL) {
 				cur_arg->path = strndup(file_path, PATH_MAX);
 			}
-
 			sid = NULL;
 			fh = NULL;
-
-			last_op = TC_FILE_PATH;
 			break;
+
 		case TC_FILE_CURRENT:
 			cur_arg->sid = sid;
 			cur_arg->fh = fh;
 			break;
+
+		default:
+			NFS4_ERR("unsupported file type: %d",
+				 cur_arg->user_arg->file.type);
+			assert(false);
 		}
 
 		// cur_arg->read_ok = NULL;
@@ -290,6 +287,7 @@ tc_res nfs4_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 			if (bs_get(cur_offset_bs, i)) {
 				tcfd->offset = cur_arg->user_arg->offset +
 					       cur_arg->user_arg->length;
+				cur_arg->user_arg->offset = TC_OFFSET_CUR;
 			}
 		case TC_FILE_PATH:
 			if (cur_arg->path != NULL) {
@@ -317,6 +315,22 @@ error:
 	return result;
 }
 
+static void tc_update_file_cursor(struct tc_kfd *tcfd, struct tc_iovec *write)
+{
+	if (write->offset == TC_OFFSET_CUR) {
+		tcfd->offset += write->length;
+		if (tcfd->offset > tcfd->filesize) {
+			tcfd->filesize = tcfd->offset;
+		}
+	} else if (write->offset == TC_OFFSET_END) {
+		tcfd->filesize += write->length;
+	} else {
+		if (write->offset + write->length > tcfd->filesize) {
+			tcfd->filesize = write->offset + write->length;
+		}
+	}
+}
+
 /*
  * arg - Array of writes for one or more files
  *       Contains file-path, write length, offset, etc.
@@ -334,8 +348,8 @@ tc_res nfs4_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 	const char *file_path = NULL;
 	stateid4 *sid = NULL;
 	nfs_fh4 *fh = NULL;
-	int last_op = TC_FILE_START;
 	struct tc_kfd *tcfd = NULL;
+	bitset_t *cur_offset_bs = new_auto_bitset(write_count);
 
 	if (export == NULL) {
 		return result;
@@ -350,7 +364,7 @@ tc_res nfs4_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 
 	kern_arg = calloc(write_count, (sizeof(struct tcwrite_kargs)));
 
-	while (i < write_count && i < MAX_WRITE_COUNT) {
+	for (i = 0; i < write_count && i < MAX_WRITE_COUNT; ++i) {
 		cur_arg = kern_arg + i;
 		cur_arg->user_arg = arg + i;
 		cur_arg->opok_handle = NULL;
@@ -366,12 +380,14 @@ tc_res nfs4_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
                                 result.err_no = (int)EINVAL;
                                 goto error;
 			}
+			if (cur_arg->user_arg->offset == TC_OFFSET_CUR) {
+				cur_arg->user_arg->offset = tcfd->offset;
+				bs_set(cur_offset_bs, i);
+			}
 			sid = cur_arg->sid = &tcfd->stateid;
 			fh = cur_arg->fh = &tcfd->fh;
-
-			last_op = TC_FILE_DESCRIPTOR;
-
 			break;
+
 		case TC_FILE_PATH:
 			file_path = cur_arg->user_arg->file.path;
 			if (file_path != NULL) {
@@ -379,38 +395,33 @@ tc_res nfs4_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 			}
 			sid = NULL;
 			fh = NULL;
-			last_op = TC_FILE_PATH;
-
 			break;
+
 		case TC_FILE_CURRENT:
 			cur_arg->sid = sid;
 			cur_arg->fh = fh;
-
 			break;
 		}
-		// cur_arg->write_ok = NULL;
-		i++;
 	}
 
 	fsal_status = export->fsal_export->obj_ops->tc_write(
 	    kern_arg, write_count, &result.index);
 
-	i = 0;
-	while (i < write_count && i < MAX_WRITE_COUNT) {
+	for (i = 0; i < write_count && i < MAX_WRITE_COUNT; ++i) {
 		cur_arg = kern_arg + i;
 		if (cur_arg->path != NULL) {
 			free(cur_arg->path);
 		}
 		switch (cur_arg->user_arg->file.type) {
 		case TC_FILE_DESCRIPTOR:
+			if (bs_get(cur_offset_bs, i)) {
+				cur_arg->user_arg->offset = TC_OFFSET_CUR;
+			}
 			tcfd = get_fd_struct(cur_arg->user_arg->file.fd);
 			assert(tcfd);
-			if (arg[i].offset + arg[i].length > tcfd->filesize) {
-				tcfd->filesize = arg[i].offset + arg[i].length;
-			}
+			tc_update_file_cursor(tcfd, cur_arg->user_arg);
 			break;
 		}
-		i++;
 	}
 
 	free(kern_arg);
@@ -581,13 +592,14 @@ tc_res nfs4_closev(tc_file *files, int count)
 	stateid4 *sids;
 	seqid4 *seqs;
 	int i;
+	struct tc_kfd *tcfd;
 
 	fh4s = alloca(count * sizeof(*fh4s));
 	sids = alloca(count * sizeof(*sids));
 	seqs = alloca(count * sizeof(*seqs));
 
 	for (i = 0; i < count; ++i) {
-		struct tc_kfd *tcfd = get_fd_struct(files[i].fd);
+		tcfd = get_fd_struct(files[i].fd);
 		fh4s[i] = tcfd->fh;
 		sids[i] = tcfd->stateid;
 		seqs[i] = tcfd->seqid;
@@ -603,6 +615,24 @@ tc_res nfs4_closev(tc_file *files, int count)
 	}
 
 	return tcres;
+}
+
+off_t nfs4_fseek(tc_file *tcf, off_t offset, int whence)
+{
+	struct tc_kfd *tcfd;
+	assert(tcf->type == TC_FILE_DESCRIPTOR);
+	tcfd = get_fd_struct(tcf->fd);
+	assert(tcfd);
+	if (whence == SEEK_SET) {
+		tcfd->offset = offset;
+	} else if (whence == SEEK_CUR) {
+		tcfd->offset += offset;
+	} else if (whence == SEEK_END) {
+		tcfd->offset = tcfd->filesize + offset;
+	} else {
+		assert(false);
+	}
+	return tcfd->offset;
 }
 
 void nfs4_close_all()

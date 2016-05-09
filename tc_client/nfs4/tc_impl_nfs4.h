@@ -85,6 +85,8 @@ int nfs4_close(tc_file *tcf);
  */
 tc_res nfs4_closev(tc_file *tcfs, int count);
 
+off_t nfs4_fseek(tc_file *tcf, off_t offset, int whence);
+
 /*
  * Close all open files which user might have forgot to close
  * To be called during tc_deinit()

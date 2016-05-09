@@ -79,6 +79,15 @@ tc_res tc_closev(tc_file *tcfs, int count)
 	}
 }
 
+off_t tc_fseek(tc_file *tcf, off_t offset, int whence)
+{
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_fseek(tcf, offset, whence);
+	} else {
+		return posix_fseek(tcf, offset, whence);
+	}
+}
+
 tc_file* tc_open_by_path(int dirfd, const char *pathname, int flags, mode_t mode)
 {
 	return tc_openv(&pathname, 1, &flags, &mode);

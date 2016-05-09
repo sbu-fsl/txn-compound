@@ -45,6 +45,8 @@ tc_file *posix_openv(const char **paths, int count, int *flags, mode_t *modes);
 
 tc_res posix_closev(tc_file *files, int count);
 
+off_t posix_fseek(tc_file *tcf, off_t offset, int whence);
+
 /**
  * @reads - Array of reads for one or more files
  *         Contains file-path, read length, offset, etc.

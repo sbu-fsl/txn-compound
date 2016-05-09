@@ -270,6 +270,12 @@ tc_file *tc_openv_simple(const char **paths, int count, int flags, mode_t mode);
 tc_res tc_closev(tc_file *files, int count);
 
 /**
+ * Reposition read/write file offset.
+ * REQUIRE: tcf->type == TC_FILE_DESCRIPTOR
+ */
+off_t tc_fseek(tc_file *tcf, off_t offset, int whence);
+
+/**
  * Read from one or more files.
  *
  * @reads: the tc_iovec array of read operations.  "path" of the first array
