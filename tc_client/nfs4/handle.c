@@ -64,6 +64,9 @@
 #define TC_FILE_START 0
 
 static clientid4 fs_clientid;
+static clientid4 tc_clientid;
+static sessionid4 fs_sessionid;
+static sequenceid4 fs_sequenceid;
 static pthread_mutex_t fs_clientid_mutex = PTHREAD_MUTEX_INITIALIZER;
 static char fs_hostname[MAXNAMLEN + 1];
 static pthread_t fs_recv_thread;
@@ -880,6 +883,7 @@ static int fs_compoundv4_execute(const char *caller,
 	enum clnt_stat rc;
 	struct fs_rpc_io_context *ctx;
 	COMPOUND4args arg = {
+		.minorversion = 1,
 		.argarray.argarray_val = argoparray,
 		.argarray.argarray_len = cnt
 	};
@@ -927,6 +931,13 @@ void fs_get_clientid(clientid4 *ret)
 {
 	pthread_mutex_lock(&fs_clientid_mutex);
 	*ret = fs_clientid;
+	pthread_mutex_unlock(&fs_clientid_mutex);
+}
+
+void tc_get_clientid(clientid4 *ret)
+{
+	pthread_mutex_lock(&fs_clientid_mutex);
+	*ret = tc_clientid;
 	pthread_mutex_unlock(&fs_clientid_mutex);
 }
 
@@ -1013,6 +1024,179 @@ static int fs_setclientid(clientid4 *resultclientid, uint32_t *lease_time)
 		*lease_time = ntohl(*lease_time);
 */
 	*lease_time = 60;
+
+	return 0;
+}
+
+static int fs_sequence(nfs_argop4 *arg, nfs_resop4 *res)
+{
+
+	arg->argop = NFS4_OP_SEQUENCE;
+        memcpy(&arg->nfs_argop4_u.opsequence.sa_sessionid, &fs_sessionid,
+               NFS4_SESSIONID_SIZE);
+        arg->nfs_argop4_u.opsequence.sa_sequenceid = fs_sequenceid++;
+        arg->nfs_argop4_u.opsequence.sa_slotid = 0;
+        arg->nfs_argop4_u.opsequence.sa_highest_slotid = 0;
+        arg->nfs_argop4_u.opsequence.sa_cachethis = false;
+
+        return 0;
+}
+
+static fsal_status_t fs_destroy_session()
+{
+        int rc;
+#define FSAL_DESTROY_SESSION_NB_OP_ALLOC 1
+        nfs_argop4 arg;
+        nfs_resop4 res;
+
+        arg.argop = NFS4_OP_DESTROY_SESSION;
+        memcpy(&arg.nfs_argop4_u.opdestroy_session.dsa_sessionid,
+               &fs_sessionid, NFS4_SESSIONID_SIZE);
+
+        rc = fs_nfsv4_call(NULL, 1, &arg, &res, NULL);
+        if (rc != NFS4_OK) {
+		nfsstat4_to_fsal(rc);
+	}
+
+	return fsalstat(ERR_FSAL_NO_ERROR, 0);
+}
+
+static int fs_reclaim_complete()
+{
+        int rc;
+#define FSAL_RECLAIM_COMPLETE_NB_OP_ALLOC 2
+	nfs_argop4 arg[FSAL_RECLAIM_COMPLETE_NB_OP_ALLOC];
+        nfs_resop4 res[FSAL_RECLAIM_COMPLETE_NB_OP_ALLOC];
+	int opcnt = 0;
+
+	fs_sequence(arg, res);
+	opcnt++;
+
+	arg[1].argop = NFS4_OP_RECLAIM_COMPLETE;
+	arg[1].nfs_argop4_u.opreclaim_complete.rca_one_fs = false;
+	opcnt++;
+
+        rc = fs_nfsv4_call(NULL, opcnt, arg, res, NULL);
+        if (rc != NFS4_OK) {
+		return -1;
+	}
+
+	return 0;
+}
+
+static int fs_create_session()
+{
+	int rc;
+#define FSAL_CREATE_SESSION_NB_OP_ALLOC 1
+	nfs_argop4 arg;
+	nfs_resop4 res;
+	char machname[MAXHOSTNAMELEN + 1];
+	client_owner4 nfsclientowner;
+	uint32_t eia_flags;
+	channel_attrs4 csa_fore_chan_attrs = { .ca_headerpadsize = 0,
+					       .ca_maxrequestsize = 1049620,
+					       .ca_maxresponsesize = 1049480,
+					       .ca_maxresponsesize_cached =
+						   4616,
+					       .ca_maxoperations = 64,
+					       .ca_maxrequests = 128 };
+
+	channel_attrs4 csa_back_chan_attrs = { .ca_headerpadsize = 0,
+					       .ca_maxrequestsize = 4096,
+					       .ca_maxresponsesize = 4096,
+					       .ca_maxresponsesize_cached = 0,
+					       .ca_maxoperations = 2,
+					       .ca_maxrequests = 1 };
+	char clientid_name[MAXNAMLEN + 1];
+	struct timespec now;
+	callback_sec_parms4 csa_sec_parms_val;
+        EXCHANGE_ID4resok *eok;
+	uint32_t csa_flags;
+        struct sockaddr_in sin;
+        struct netbuf nb;
+        struct netconfig *ncp;
+        socklen_t slen = sizeof(sin);
+        char addrbuf[sizeof("255.255.255.255")];
+        char *buf;
+
+        LogEvent(COMPONENT_FSAL,
+                 "Negotiating a new v4.1 session with the remote server");
+
+        if (getsockname(rpc_sock, &sin, &slen))
+                return -errno;
+
+        snprintf(clientid_name, MAXNAMLEN, "%s(%d) - GANESHA NFSv4 Proxy",
+                 inet_ntop(AF_INET, &sin.sin_addr, addrbuf, sizeof(addrbuf)),
+                 getpid());
+	nfsclientowner.co_ownerid.co_ownerid_len = strlen(clientid_name);
+	nfsclientowner.co_ownerid.co_ownerid_val = clientid_name;
+	if (sizeof(ServerBootTime.tv_sec) == NFS4_VERIFIER_SIZE)
+                memcpy(&nfsclientowner.co_verifier, &ServerBootTime.tv_sec,
+                       sizeof(nfsclientowner.co_verifier));
+        else
+                snprintf(nfsclientowner.co_verifier, NFS4_VERIFIER_SIZE, "%08x",
+                         (int)ServerBootTime.tv_sec);
+
+	eia_flags |=
+	    (EXCHGID4_FLAG_SUPP_MOVED_REFER | EXCHGID4_FLAG_BIND_PRINC_STATEID);
+
+	eok = &res.nfs_resop4_u.opexchange_id.EXCHANGE_ID4res_u.eir_resok4;
+	arg.argop = NFS4_OP_EXCHANGE_ID;
+	arg.nfs_argop4_u.opexchange_id.eia_clientowner = nfsclientowner;
+	arg.nfs_argop4_u.opexchange_id.eia_flags = eia_flags;
+	arg.nfs_argop4_u.opexchange_id.eia_state_protect.spa_how = SP4_NONE;
+	arg.nfs_argop4_u.opexchange_id.eia_client_impl_id.eia_client_impl_id_len = 0;
+
+	rc = fs_nfsv4_call(NULL, 1, &arg, &res, NULL);
+	if (rc != NFS4_OK) {
+		LogEvent(COMPONENT_FSAL, "exchange id failure: %d", rc);
+		return -1;
+	}
+
+	memcpy(&tc_clientid, &eok->eir_clientid, sizeof(clientid4));
+
+	if (gethostname(machname, sizeof(machname)) == -1) {
+		rpc_createerr.cf_error.re_errno = errno;
+		return -1;
+	}
+	machname[sizeof(machname) - 1] = 0;
+	(void)clock_gettime(CLOCK_MONOTONIC_FAST, &now);
+
+	csa_sec_parms_val.cb_secflavor = AUTH_UNIX;
+	csa_sec_parms_val.callback_sec_parms4_u.cbsp_sys_cred.aup_time = now.tv_sec;
+	csa_sec_parms_val.callback_sec_parms4_u.cbsp_sys_cred.aup_machname = machname;
+	csa_sec_parms_val.callback_sec_parms4_u.cbsp_sys_cred.aup_uid = 0;
+	csa_sec_parms_val.callback_sec_parms4_u.cbsp_sys_cred.aup_gid = 0;
+	csa_sec_parms_val.callback_sec_parms4_u.cbsp_sys_cred.aup_len = 0;
+
+	csa_flags |= CREATE_SESSION4_FLAG_PERSIST;
+
+	arg.argop = NFS4_OP_CREATE_SESSION;
+	arg.nfs_argop4_u.opcreate_session.csa_clientid = eok->eir_clientid;
+	arg.nfs_argop4_u.opcreate_session.csa_sequence = eok->eir_sequenceid;
+	arg.nfs_argop4_u.opcreate_session.csa_flags = 1;
+	arg.nfs_argop4_u.opcreate_session.csa_fore_chan_attrs = csa_fore_chan_attrs;
+	arg.nfs_argop4_u.opcreate_session.csa_back_chan_attrs = csa_back_chan_attrs;
+	arg.nfs_argop4_u.opcreate_session.csa_cb_program = 0x40000000;
+	arg.nfs_argop4_u.opcreate_session.csa_sec_parms.csa_sec_parms_val = &csa_sec_parms_val;
+	arg.nfs_argop4_u.opcreate_session.csa_sec_parms.csa_sec_parms_len = 1;
+
+	LogEvent(COMPONENT_FSAL, "create session called");
+	rc = fs_nfsv4_call(NULL, 1, &arg, &res, NULL);
+	if (rc != NFS4_OK) {
+		LogEvent(COMPONENT_FSAL, "create session failed: %d", rc);
+		return -1;
+	}
+
+	memcpy(&fs_sessionid,
+	       res.nfs_resop4_u.opcreate_session.CREATE_SESSION4res_u.csr_resok4
+		   .csr_sessionid,
+	       NFS4_SESSIONID_SIZE);
+	fs_sequenceid = res.nfs_resop4_u.opcreate_session.CREATE_SESSION4res_u
+			    .csr_resok4.csr_sequence;
+
+	//fs_destroy_session();
+	fs_reclaim_complete();
 
 	return 0;
 }
@@ -1118,8 +1302,9 @@ int fs_init_rpc(const struct fs_fsal_module *pm)
 		return rc;
 	}
 
-	rc = pthread_create(&fs_renewer_thread, NULL, fs_clientid_renewer,
-			    NULL);
+	//rc = pthread_create(&fs_renewer_thread, NULL, fs_clientid_renewer,
+	//		    NULL);
+	rc = fs_create_session();
 	if (rc) {
 		LogCrit(COMPONENT_FSAL,
 			"Cannot create kern clientid renewer thread - %s",
@@ -1249,10 +1434,10 @@ static fsal_status_t fs_lookup_impl(struct fsal_obj_handle *parent,
 				     struct fsal_obj_handle **handle)
 {
 	int rc;
-	uint32_t opcnt = 0;
+	uint32_t opcnt = 1;
 	GETATTR4resok *atok;
 	GETFH4resok *fhok;
-#define FSAL_LOOKUP_NB_OP_ALLOC 4
+#define FSAL_LOOKUP_NB_OP_ALLOC 5
 	nfs_argop4 argoparray[FSAL_LOOKUP_NB_OP_ALLOC];
 	nfs_resop4 resoparray[FSAL_LOOKUP_NB_OP_ALLOC];
 	char fattr_blob[FATTR_BLOB_SZ];
@@ -1262,6 +1447,8 @@ static fsal_status_t fs_lookup_impl(struct fsal_obj_handle *parent,
 
 	if (!handle)
 		return fsalstat(ERR_FSAL_INVAL, 0);
+
+	fs_sequence(argoparray, resoparray);
 
 	if (!parent) {
 		COMPOUNDV4_ARG_ADD_OP_PUTROOTFH(opcnt, argoparray);
@@ -1365,15 +1552,18 @@ static fsal_status_t tc_do_close(const struct user_cred *creds,
 {
 	int rc;
 	int opcnt = 0;
-#define FSAL_CLOSE_NB_OP_ALLOC 2
-	nfs_argop4 argoparray[FSAL_CLOSE_NB_OP_ALLOC];
-	nfs_resop4 resoparray[FSAL_CLOSE_NB_OP_ALLOC];
+#define FSAL_TCCLOSE_NB_OP_ALLOC 3
+	nfs_argop4 argoparray[FSAL_TCCLOSE_NB_OP_ALLOC];
+	nfs_resop4 resoparray[FSAL_TCCLOSE_NB_OP_ALLOC];
 	char All_Zero[] = "\0\0\0\0\0\0\0\0\0\0\0\0";	/* 12 times \0 */
 
 	/* Check if this was a "stateless" open,
 	 * then nothing is to be done at close */
 	if (!memcmp(sid->other, All_Zero, 12))
 		return fsalstat(ERR_FSAL_NO_ERROR, 0);
+
+	fs_sequence(argoparray, resoparray);
+	opcnt++;
 
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, *fh4);
 	COMPOUNDV4_ARG_ADD_OP_TCCLOSE(opcnt, argoparray, *seqid, (*sid));
@@ -1416,11 +1606,14 @@ static fsal_status_t fs_open_confirm(const struct user_cred *cred,
 {
 	int rc;
 	int opcnt = 0;
-#define FSAL_PROXY_OPEN_CONFIRM_NB_OP_ALLOC 2
+#define FSAL_PROXY_OPEN_CONFIRM_NB_OP_ALLOC 3
 	nfs_argop4 argoparray[FSAL_PROXY_OPEN_CONFIRM_NB_OP_ALLOC];
 	nfs_resop4 resoparray[FSAL_PROXY_OPEN_CONFIRM_NB_OP_ALLOC];
 	nfs_argop4 *op;
 	OPEN_CONFIRM4resok *conok;
+
+	fs_sequence(argoparray, resoparray);
+	opcnt++;
 
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, *fh4);
 
@@ -2002,7 +2195,7 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 		    &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
 
 		kern_arg->opok_handle->attrset = empty_bitmap;
-		fs_get_clientid(&cid);
+		tc_get_clientid(&cid);
 
 		if (kern_arg->user_arg->is_creation & 1) {
 			kern_arg->attrib.mode = unix2fsal_mode((mode_t)0644);
@@ -2096,6 +2289,9 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 	resoparray = malloc(NB_OP_ALLOC * sizeof(struct nfs_resop4));
         assert(argoparray);
         assert(resoparray);
+
+	fs_sequence(argoparray, resoparray);
+	opcnt++;
 
 	input_attr = malloc(sizeof(fattr4));
 	memset(input_attr, 0, sizeof(fattr4));
@@ -2265,7 +2461,7 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 		    &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
 
 		kern_arg->opok_handle->attrset = empty_bitmap;
-		fs_get_clientid(&cid);
+		tc_get_clientid(&cid);
 
 		if (kern_arg->user_arg->is_creation) {
 			kern_arg->attrib.mode = unix2fsal_mode((mode_t)0644);
@@ -2358,6 +2554,9 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
 	resoparray = malloc(NB_OP_ALLOC * sizeof(struct nfs_resop4));
         assert(argoparray);
         assert(resoparray);
+
+	fs_sequence(argoparray, resoparray);
+	opcnt++;
 
 	input_attr = malloc(sizeof(fattr4));
 	memset(input_attr, 0, sizeof(fattr4));
@@ -2459,7 +2658,7 @@ static fsal_status_t do_ktcopen(struct tcopen_kargs *kern_arg, int flags,
 	    &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
 
 	kern_arg->opok_handle->attrset = empty_bitmap;
-	fs_get_clientid(&cid);
+	tc_get_clientid(&cid);
 
 	input_attr->attrmask = empty_bitmap;
 
@@ -2519,7 +2718,7 @@ static fsal_status_t ktcopen(struct tcopen_kargs *kern_arg, int flags)
 {
 	int rc;
 	fsal_status_t st;
-#define FSAL_TCOPEN_NB_OP_ALLOC (MAX_DIR_DEPTH + 3)
+#define FSAL_TCOPEN_NB_OP_ALLOC (MAX_DIR_DEPTH + 4)
 	nfs_argop4 *argoparray = NULL;
 	nfs_resop4 *resoparray = NULL;
 	fattr4 *input_attr = NULL;
@@ -2531,6 +2730,9 @@ static fsal_status_t ktcopen(struct tcopen_kargs *kern_arg, int flags)
 	    malloc(FSAL_TCOPEN_NB_OP_ALLOC * sizeof(struct nfs_argop4));
 	resoparray =
 	    malloc(FSAL_TCOPEN_NB_OP_ALLOC * sizeof(struct nfs_resop4));
+
+	fs_sequence(argoparray, resoparray);
+	opcnt++;
 
 	input_attr = malloc(sizeof(fattr4));
 	memset(input_attr, 0, sizeof(fattr4));
@@ -2552,15 +2754,6 @@ static fsal_status_t ktcopen(struct tcopen_kargs *kern_arg, int flags)
 		NFS4_ERR("fs_nfsv4_call() returned error: %d\n", rc);
 		st = nfsstat4_to_fsal(rc);
 		goto exit;
-	}
-
-	st = fs_open_confirm(op_ctx->creds, &kern_arg->fhok_handle->object,
-			     &kern_arg->opok_handle->stateid,
-			     op_ctx->fsal_export);
-	if (FSAL_IS_ERROR(st)) {
-		LogDebug(COMPONENT_FSAL, "fs_open_confirm failed: status %d",
-			 st);
-		return st;
 	}
 
 exit:
@@ -4555,6 +4748,9 @@ static int tc_nfs4_chdir(const char *path)
 	cwd->refcount = 1; // grap a refcount
 	memmove(cwd->path, path, strlen(path));
 
+	fs_sequence(nfsops->argoparray, nfsops->resoparray);
+	nfsops->opcnt++;
+
 	rc = tc_set_cfh_to_path(path, nfsops->argoparray, &nfsops->opcnt, NULL,
 				false);
 	fhok = tc_prepare_getfh(nfsops, cwd->fhbuf);
@@ -4633,6 +4829,7 @@ void fs_handle_ops_init(struct fsal_obj_ops *ops)
         ops->tc_copyv = tc_nfs4_copyv;
         ops->tc_chdir = tc_nfs4_chdir;
         ops->tc_getcwd = tc_nfs4_getcwd;
+	ops->tc_destroysession = fs_destroy_session;
 	ops->root_lookup = fs_root_lookup;
         ops->tc_openv = tc_nfs4_openv;
         ops->tc_closev = tc_nfs4_closev;

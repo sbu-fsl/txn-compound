@@ -58,6 +58,7 @@ add_tc_binary(tc_seq)
 add_tc_binary(tc_filedist)
 add_tc_binary(tc_singlefile)
 add_tc_binary(tc_test_open)
+add_tc_binary(tc_test_v41)
 add_tc_binary(tc_test_openread)
 
 add_tc_binary(tc_test_read)
