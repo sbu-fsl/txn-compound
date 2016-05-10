@@ -4033,42 +4033,6 @@ static tc_res tc_nfs4_openv(struct tc_attrs *attrs, int count, int *flags,
                 }
         }
 
-        /* TODO: remove this once switched to NFSv4.1 */
-        nfsops->opcnt = 0;
-        for (i = 0; i < count; ++i) {
-                fh.nfs_fh4_len = attrs[i].file.handle->handle_bytes;
-                fh.nfs_fh4_val = (char *)attrs[i].file.handle->f_handle;
-		tc_prepare_putfh(nfsops, &fh);
-		tc_prepare_open_confirm(nfsops, sids + i);
-        }
-
-	rc = fs_nfsv4_call(op_ctx->creds, nfsops->opcnt, nfsops->argoparray,
-			   nfsops->resoparray, &cpd_status);
-        if (rc != RPC_SUCCESS) {
-                NFS4_ERR("open_confirm rpc failed: %d", rc);
-                tcres = tc_failure(0, rc);
-                goto exit;
-        }
-
-        i = 0;
-        for (j = 0; j < nfsops->opcnt; ++j) {
-                op_status = get_nfs4_op_status(nfsops->resoparray + j);
-                if (op_status != NFS4_OK) {
-                        NFS4_ERR("NFS operation (%d) failed: %d",
-                                 nfsops->resoparray[j].resop, op_status);
-                        tcres = tc_failure(i, nfsstat4_to_errno(op_status));
-                        goto exit;
-                }
-                if (nfsops->resoparray[j].resop == NFS4_OP_OPEN_CONFIRM) {
-			copy_stateid4(
-			    &sids[i],
-			    &nfsops->resoparray[j]
-				 .nfs_resop4_u.opopen_confirm.OPEN_CONFIRM4res_u
-				 .resok4.open_stateid);
-			++i;
-                }
-	}
-
 	if (cpd_status == NFS4_OK)
 		tcres.okay = true;
 
