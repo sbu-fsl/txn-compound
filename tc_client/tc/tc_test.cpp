@@ -94,6 +94,20 @@ static tc_iovec *build_iovec(tc_file *files, int count, int offset)
 
 static char *getRandomBytes(int N);
 
+void tc_touch(const char *path, int size)
+{
+	tc_iovec iov;
+	tc_res tcres;
+
+	iov.file = tc_file_from_path(path);
+	iov.is_creation = true;
+	iov.offset = 0;
+	iov.length = size;
+	iov.data = size ? getRandomBytes(size) : NULL;
+	tcres = tc_writev(&iov, 1, false);
+	EXPECT_TRUE(tcres.okay) << "failed to create " << path;
+}
+
 /**
  * Set the tc_iovec
  */
@@ -906,12 +920,28 @@ TYPED_TEST_P(TcTest, ListAnEmptyDirectory)
 	const char *PATH = "TcTest-EmptyDir";
 	tc_attrs *contents;
 	int count;
-	tc_attrs_masks masks = TC_ATTRS_MASK_ALL;
 	tc_res tcres;
 
 	tc_ensure_dir(PATH, 0755, NULL);
-	tcres = tc_listdir(PATH, masks, 1, &contents, &count);
+	tcres = tc_listdir(PATH, TC_ATTRS_MASK_ALL, 1, &contents, &count);
 	EXPECT_EQ(0, count);
+	free(contents);
+}
+
+/* Get "cannot access" error when listing 2nd-level dir.  */
+TYPED_TEST_P(TcTest, List2ndLevelDir)
+{
+	const char *DIR_PATH = "TcTest-Dir/nested-dir";
+	const char *FILE_PATH = "TcTest-Dir/nested-dir/foo";
+	tc_res tcres;
+	tc_attrs *attrs;
+	int count;
+
+	//tc_ensure_dir(DIR_PATH, 0755, NULL);
+	//tc_touch(FILE_PATH, 0);
+	tcres = tc_listdir(DIR_PATH, TC_ATTRS_MASK_ALL, 1, &attrs, &count);
+	EXPECT_EQ(1, count);
+	EXPECT_EQ(0, attrs->size);
 }
 
 REGISTER_TYPED_TEST_CASE_P(TcTest,
@@ -927,7 +957,8 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   SuccesiveReads,
 			   SuccesiveWrites,
 			   CopyFiles,
-			   ListAnEmptyDirectory);
+			   ListAnEmptyDirectory,
+			   List2ndLevelDir);
 
 typedef ::testing::Types<TcNFS4Impl, TcPosixImpl> TcImpls;
 INSTANTIATE_TYPED_TEST_CASE_P(TC, TcTest, TcImpls);

@@ -368,6 +368,12 @@ static inline void tc_attrs_set_gid(struct tc_attrs *attrs, size_t gid)
 	attrs->masks.has_gid = true;
 }
 
+static inline void tc_attrs_set_nlink(struct tc_attrs *attrs, size_t nlink)
+{
+	attrs->nlink = nlink;
+	attrs->masks.has_nlink = true;
+}
+
 static inline void tc_attrs_set_atime(struct tc_attrs *attrs,
 				      struct timespec atime)
 {
@@ -380,6 +386,19 @@ static inline void tc_attrs_set_mtime(struct tc_attrs *attrs,
 {
 	attrs->mtime = mtime;
 	attrs->masks.has_mtime = true;
+}
+
+static inline void tc_attrs_set_ctime(struct tc_attrs *attrs,
+				      struct timespec ctime)
+{
+	attrs->ctime = ctime;
+	attrs->masks.has_ctime = true;
+}
+
+static inline void tc_attrs_set_rdev(struct tc_attrs *attrs, dev_t rdev)
+{
+	attrs->rdev = rdev;
+	attrs->masks.has_rdev = true;
 }
 
 static inline void tc_set_up_creation(struct tc_attrs *newobj, const char *name,
@@ -408,14 +427,17 @@ static inline void tc_attrs_mask_set(struct tc_attrs_masks *masks)
 	masks->has_ctime = true;
 }
 
-#define TC_ATTRS_MASK_ALL                                                      \
+extern const struct tc_attrs_masks TC_ATTRS_MASK_ALL;
+extern const struct tc_attrs_masks TC_ATTRS_MASK_NONE;
+
+#define TC_MASK_INIT_ALL                                                       \
 	{                                                                      \
 		.has_mode = true, .has_size = true, .has_nlink = true,         \
 		.has_uid = true, .has_gid = true, .has_rdev = true,            \
 		.has_atime = true, .has_mtime = true, .has_ctime = true,       \
 	}
 
-#define TC_ATTRS_MASK_NONE                                                     \
+#define TC_MASK_INIT_NONE                                                      \
 	{                                                                      \
 		.has_mode = false, .has_size = false, .has_nlink = false,      \
 		.has_uid = false, .has_gid = false, .has_rdev = false,         \

@@ -28,6 +28,7 @@
 #include <sys/types.h>
 
 #include "tc_impl_posix.h"
+#include "tc_helper.h"
 #include "log.h"
 #include "splice_copy.h"
 
@@ -225,7 +226,7 @@ exit:
 tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 {
 	int fd, i = 0;
-	ssize_t amount_written;
+	ssize_t written = 0;
 	struct tc_iovec *iov = NULL;
 	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
 	int flags;
@@ -263,23 +264,25 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 		}
 
 		/* Write data */
-		if (offset == TC_OFFSET_CUR) {
-			amount_written = write(fd, iov->data, iov->length);
-		} else {
-			amount_written =
-			    pwrite(fd, iov->data, iov->length, offset);
-		}
-
-		if (amount_written < 0) {
-			if (iov->file.type == TC_FILE_PATH) {
-				close(fd);
+		if (iov->length > 0) {
+			if (offset == TC_OFFSET_CUR) {
+				written = write(fd, iov->data, iov->length);
+			} else {
+				written =
+				    pwrite(fd, iov->data, iov->length, offset);
 			}
-			result.okay = false;
-			break;
+
+			if (written < 0) {
+				if (iov->file.type == TC_FILE_PATH) {
+					close(fd);
+				}
+				result.okay = false;
+				break;
+			}
 		}
 
 		/* set the length to number of bytes successfully written */
-		iov->length = amount_written;
+		iov->length = written;
 		if (iov->file.type == TC_FILE_PATH && close(fd) < 0) {
 			result.okay = false;
 			break;
@@ -463,7 +466,7 @@ static int helper_set_attrs(struct tc_attrs *attrs)
 		if (attrs->file.type == TC_FILE_PATH)
 			res = utimes(attrs->file.path, times);
 		else
-			res = futimens(attrs->file.fd, times);
+			res = futimes(attrs->file.fd, times);
 
 		if (res < 0)
 			goto exit;
@@ -684,22 +687,23 @@ tc_res posix_listdir(const char *dir, struct tc_attrs_masks masks,
 	struct tc_attrs *cur_attr = NULL;
 	struct dirent *dp;
 	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
+	char file_name[PATH_MAX];
 
 	assert(dir != NULL);
+	*contents = calloc(max_count, sizeof(struct tc_attrs));
 
 	dir_fd = opendir(dir);
 
-	if (dir_fd < 0) {
+	if (!dir_fd) {
 		result.okay = false;
 		result.err_no = errno;
 
 		return result;
 	}
 
+	*count = 0;
 	while ((dp = readdir(dir_fd)) != NULL && *count < max_count) {
-
 		cur_attr = (*contents) + *count;
-
 		/* copy the file name */
 		cur_attr->file.type = TC_FILE_PATH;
 
@@ -717,12 +721,8 @@ tc_res posix_listdir(const char *dir, struct tc_attrs_masks masks,
 		strncat(file_path, dp->d_name, strlen(dp->d_name));
 		cur_attr->file.path = file_path;
 
-		/* copy the masks */
-		cur_attr->masks = masks;
-
 		struct stat st;
-		char *file_name =
-		    (char *)calloc(1, sizeof(dir) + sizeof(dp->d_name));
+		file_name[0] = 0;
 		strcpy(file_name, dir);
 		strcat(file_name, "/");
 		strcat(file_name, dp->d_name);
@@ -738,32 +738,7 @@ tc_res posix_listdir(const char *dir, struct tc_attrs_masks masks,
 		}
 
 		/* copy the attributes */
-		if (masks.has_mode)
-			cur_attr->mode = st.st_mode;
-
-		if (masks.has_size)
-			cur_attr->size = st.st_size;
-
-		if (masks.has_nlink)
-			cur_attr->nlink = st.st_nlink;
-
-		if (masks.has_uid)
-			cur_attr->uid = st.st_uid;
-
-		if (masks.has_gid)
-			cur_attr->gid = st.st_gid;
-
-		if (masks.has_rdev)
-			cur_attr->rdev = st.st_rdev;
-
-		if (masks.has_atime)
-			cur_attr->atime.tv_sec = st.st_atime;
-
-		if (masks.has_mtime)
-			cur_attr->mtime.tv_sec = st.st_mtime;
-
-		if (masks.has_ctime)
-			cur_attr->ctime.tv_sec = st.st_ctime;
+		tc_get_attrs_from_stat(&st, cur_attr);
 
 		(*count)++;
 	}

@@ -21,6 +21,9 @@
 #include <stdio.h>
 #include <linux/limits.h>
 #include <libgen.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include "tc_api.h"
 
 void free_iovec(struct tc_iovec *iovec, int count)
@@ -74,4 +77,48 @@ struct file_handle *new_file_handle(size_t fh_len, char *fh_val)
 void del_file_handle(struct file_handle *fh)
 {
 	free(fh);
+}
+
+void tc_get_attrs_from_stat(const struct stat *st, struct tc_attrs *attrs)
+{
+	if (attrs->masks.has_mode)
+		attrs->mode = st->st_mode;
+	if (attrs->masks.has_size)
+		attrs->size = st->st_size;
+	if (attrs->masks.has_nlink)
+		attrs->nlink = st->st_nlink;
+	if (attrs->masks.has_uid)
+		attrs->uid = st->st_uid;
+	if (attrs->masks.has_gid)
+		attrs->gid = st->st_gid;
+	if (attrs->masks.has_rdev)
+		attrs->rdev = st->st_rdev;
+	if (attrs->masks.has_atime)
+		attrs->atime.tv_sec = st->st_atime;
+	if (attrs->masks.has_mtime)
+		attrs->mtime.tv_sec = st->st_mtime;
+	if (attrs->masks.has_ctime)
+		attrs->ctime.tv_sec = st->st_ctime;
+}
+
+void tc_copy_attrs(const struct tc_attrs *src, struct tc_attrs *dst)
+{
+	if (src->masks.has_mode)
+		tc_attrs_set_mode(dst, src->mode);
+	if (src->masks.has_size)
+		tc_attrs_set_size(dst, src->size);
+	if (src->masks.has_nlink)
+		tc_attrs_set_nlink(dst, src->nlink);
+	if (src->masks.has_uid)
+		tc_attrs_set_uid(dst, src->uid);
+	if (src->masks.has_gid)
+		tc_attrs_set_gid(dst, src->gid);
+	if (src->masks.has_rdev)
+		tc_attrs_set_rdev(dst, src->rdev);
+	if (src->masks.has_atime)
+		tc_attrs_set_atime(dst, src->atime);
+	if (src->masks.has_mtime)
+		tc_attrs_set_mtime(dst, src->mtime);
+	if (src->masks.has_ctime)
+		tc_attrs_set_ctime(dst, src->ctime);
 }

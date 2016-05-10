@@ -21,15 +21,21 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/time.h>
+#include <linux/limits.h>
 #include <assert.h>
 #include "tc_api.h"
 #include "posix/tc_impl_posix.h"
 #include "nfs4/tc_impl_nfs4.h"
 #include "path_utils.h"
+#include "common_types.h"
 
 static tc_res TC_OKAY = { .okay = true, .index = -1, .err_no = 0, };
 
 static bool TC_IMPL_IS_NFS4 = false;
+
+
+const struct tc_attrs_masks TC_ATTRS_MASK_ALL = TC_MASK_INIT_ALL;
+const struct tc_attrs_masks TC_ATTRS_MASK_NONE = TC_MASK_INIT_NONE;
 
 /* Not thread-safe */
 void *tc_init(const char *config_path, const char *log_path, uint16_t export_id)
@@ -189,29 +195,43 @@ tc_res tc_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)
 	}
 }
 
-tc_res tc_ensure_dir(const char *dir, mode_t mode, slice_t *leaf)
+static tc_res posix_ensure_dir(slice_t *comps, int n, mode_t mode)
 {
 	tc_res tcres = TC_OKAY;
-	slice_t *comps;
-	struct tc_attrs *dirs;
+	struct tc_attrs attrs;
 	buf_t *path;
 	int i;
-	int n;
+
+	path = new_auto_buf(PATH_MAX + 1);
+	for (i = 0; i < n; ++i) {
+		tc_path_append(path, comps[i]);
+		attrs.file = tc_file_from_path(asstr(path));
+		tcres = posix_getattrsv(&attrs, 1, false);
+		if (tcres.okay) {
+			continue;
+		}
+		if (tcres.err_no != ENOENT) {
+			/*POSIX_ERR("failed to stat %s", path->data);*/
+			return tcres;
+		}
+		tc_set_up_creation(&attrs, path->data, mode);
+		tcres = posix_mkdirv(&attrs, 1, false);
+		if (!tcres.okay) {
+			/*POSIX_ERR("failed to create %s", path->data);*/
+			return tcres;
+		}
+	}
+
+	return tcres;
+}
+
+static tc_res nfs4_ensure_dir(slice_t *comps, int n, mode_t mode)
+{
+	tc_res tcres = TC_OKAY;
+	struct tc_attrs *dirs;
+	buf_t *path;
 	int absent;
-	bool is_absolute = dir && dir[0] == '/';
-
-	n = tc_path_tokenize(dir, &comps);
-	if (n < 0) {
-		return tc_failure(0, -n);
-	}
-
-	if (leaf && n > 0) {
-		*leaf = comps[--n];
-	}
-
-	if (n == 0) {
-		goto exit;
-	}
+	int i;
 
 	dirs = alloca(n * sizeof(*dirs));
 	dirs[0].file = tc_file_from_path(new_auto_str(comps[0]));
@@ -221,10 +241,10 @@ tc_res tc_ensure_dir(const char *dir, mode_t mode, slice_t *leaf)
 
 	tcres = tc_getattrsv(dirs, n, false);
 	if (tcres.okay || tcres.err_no != ENOENT) {
-		goto exit;
+		return tcres;
 	}
 
-	path = new_auto_buf(strlen(dir) + 1);
+	path = new_auto_buf(PATH_MAX + 1);
 	absent = 0;
 	for (i = 0; i < n; ++i) {
 		if (i < tcres.index) {
@@ -242,14 +262,42 @@ tc_res tc_ensure_dir(const char *dir, mode_t mode, slice_t *leaf)
 	}
 
 	if (absent == 0)
-		goto exit;
+		return tcres;
 
 	tcres = tc_mkdirv(dirs, absent, false);
 	for (i = 0; i < absent; ++i) {
-		if (TC_IMPL_IS_NFS4 && (tcres.okay || i < tcres.index)) {
+		if (tcres.okay || i < tcres.index) {
 			assert(dirs[i].file.type == TC_FILE_HANDLE);
 			free((void *)dirs[i].file.handle);
 		}
+	}
+
+	return tcres;
+}
+
+tc_res tc_ensure_dir(const char *dir, mode_t mode, slice_t *leaf)
+{
+	tc_res tcres = TC_OKAY;
+	slice_t *comps;
+	int n;
+
+	n = tc_path_tokenize(dir, &comps);
+	if (n < 0) {
+		return tc_failure(0, -n);
+	}
+
+	if (leaf && n > 0) {
+		*leaf = comps[--n];
+	}
+
+	if (n == 0) {
+		goto exit;
+	}
+
+	if (TC_IMPL_IS_NFS4) {
+		tcres = nfs4_ensure_dir(comps, n, mode);
+	} else {
+		tcres = posix_ensure_dir(comps, n, mode);
 	}
 
 exit:
