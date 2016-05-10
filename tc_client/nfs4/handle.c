@@ -2104,6 +2104,18 @@ static nfsstat4 get_nfs4_op_status(const nfs_resop4 *op_res)
 		return op_res->nfs_resop4_u.opverify.status;
 	case NFS4_OP_WRITE: /* 38 */
 		return op_res->nfs_resop4_u.opwrite.status;
+        case NFS4_OP_EXCHANGE_ID: /* 43 */
+                return op_res->nfs_resop4_u.opexchange_id.eir_status;
+        case NFS4_OP_CREATE_SESSION: /* 43 */
+                return op_res->nfs_resop4_u.opcreate_session.csr_status;
+        case NFS4_OP_DESTROY_SESSION: /* 44 */
+                return op_res->nfs_resop4_u.opdestroy_session.dsr_status;
+        case NFS4_OP_FREE_STATEID: /* 45 */
+                return op_res->nfs_resop4_u.opfree_stateid.fsr_status;
+        case NFS4_OP_SEQUENCE: /* 53 */
+                return op_res->nfs_resop4_u.opsequence.sr_status;
+        case NFS4_OP_DESTROY_CLIENTID: /* 57 */
+                return op_res->nfs_resop4_u.opdestroy_clientid.dcr_status;
 	case NFS4_OP_COPY: /* 60 */
 		return op_res->nfs_resop4_u.opcopy.cr_status;
 	default:
