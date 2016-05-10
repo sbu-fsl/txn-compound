@@ -433,20 +433,9 @@ static tc_attrs *set_tc_attrs(struct tc_attrs *attrs, int count)
 static void set_attr_masks(tc_attrs *write, tc_attrs *read, int count)
 {
 	int i = 0;
-	tc_attrs *write_attr = NULL;
-	tc_attrs *read_attr = NULL;
-
-	while (i < count) {
-		write_attr = write + i;
-		read_attr = read + i;
-
-		/* set tc_file */
-		read_attr->file = write_attr->file;
-
-		/* set masks */
-		read_attr->masks = write_attr->masks;
-
-		i++;
+	for (i = 0; i < count; ++i) {
+		read[i].file = write[i].file;
+		read[i].masks = write[i].masks;
 	}
 }
 
@@ -539,18 +528,26 @@ TYPED_TEST_P(TcTest, AttrsTestFileDesc)
  */
 TYPED_TEST_P(TcTest, ListDirContents)
 {
-	tc_attrs *contents = (tc_attrs *)calloc(5, sizeof(tc_attrs));
-	tc_attrs_masks masks = TC_ATTRS_MASK_ALL;
+	const char *DIR_PATH = "TcTest-ListDir";
+	tc_attrs *contents;
 	int count = 0;
 
-	contents->masks = masks;
+	EXPECT_TRUE(tc_ensure_dir(DIR_PATH, 0755, 0).okay);
+	tc_touch("TcTest-ListDir/file1.txt", 1);
+	tc_touch("TcTest-ListDir/file2.txt", 2);
+	tc_touch("TcTest-ListDir/file3.txt", 3);
 
-	tc_res res = tc_listdir(".", masks, 5, &contents, &count);
+	tc_res res =
+	    tc_listdir(DIR_PATH, TC_ATTRS_MASK_ALL, 3, &contents, &count);
 	EXPECT_TRUE(res.okay);
+	EXPECT_EQ(3, count);
 
 	tc_attrs *read_attrs = (tc_attrs *)calloc(count, sizeof(tc_attrs));
-	set_attr_masks(contents, read_attrs, count);
-
+	read_attrs[0].file = tc_file_from_path("TcTest-ListDir/file1.txt");
+	read_attrs[1].file = tc_file_from_path("TcTest-ListDir/file2.txt");
+	read_attrs[2].file = tc_file_from_path("TcTest-ListDir/file3.txt");
+	read_attrs[0].masks = read_attrs[1].masks = read_attrs[2].masks =
+	    TC_ATTRS_MASK_ALL;
 	res = tc_getattrsv(read_attrs, count, false);
 	EXPECT_TRUE(res.okay);
 
