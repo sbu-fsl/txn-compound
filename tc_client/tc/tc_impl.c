@@ -246,7 +246,7 @@ tc_res tc_ensure_dir(const char *dir, mode_t mode, slice_t *leaf)
 
 	tcres = tc_mkdirv(dirs, absent, false);
 	for (i = 0; i < absent; ++i) {
-		if (tcres.okay || i < tcres.index) {
+		if (TC_IMPL_IS_NFS4 && (tcres.okay || i < tcres.index)) {
 			assert(dirs[i].file.type == TC_FILE_HANDLE);
 			free((void *)dirs[i].file.handle);
 		}

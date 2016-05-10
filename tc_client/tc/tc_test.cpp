@@ -526,18 +526,8 @@ TYPED_TEST_P(TcTest, AttrsTestFileDesc)
 TYPED_TEST_P(TcTest, ListDirContents)
 {
 	tc_attrs *contents = (tc_attrs *)calloc(5, sizeof(tc_attrs));
-	tc_attrs_masks masks = { 0 };
+	tc_attrs_masks masks = TC_ATTRS_MASK_ALL;
 	int count = 0;
-
-	masks.has_mode = 1;
-	masks.has_size = 1;
-	masks.has_atime = 1;
-	masks.has_mtime = 1;
-	masks.has_uid = 1;
-	masks.has_gid = 1;
-	masks.has_rdev = 1;
-	masks.has_nlink = 1;
-	masks.has_ctime = 1;
 
 	contents->masks = masks;
 
@@ -911,6 +901,19 @@ TYPED_TEST_P(TcTest, CopyFiles)
 	free(read_iov[1].data);
 }
 
+TYPED_TEST_P(TcTest, ListAnEmptyDirectory)
+{
+	const char *PATH = "TcTest-EmptyDir";
+	tc_attrs *contents;
+	int count;
+	tc_attrs_masks masks = TC_ATTRS_MASK_ALL;
+	tc_res tcres;
+
+	tc_ensure_dir(PATH, 0755, NULL);
+	tcres = tc_listdir(PATH, masks, 1, &contents, &count);
+	EXPECT_EQ(0, count);
+}
+
 REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   WritevCanCreateFiles,
 			   TestFileDesc,
@@ -923,7 +926,8 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   Append,
 			   SuccesiveReads,
 			   SuccesiveWrites,
-			   CopyFiles);
+			   CopyFiles,
+			   ListAnEmptyDirectory);
 
 typedef ::testing::Types<TcNFS4Impl, TcPosixImpl> TcImpls;
 INSTANTIATE_TYPED_TEST_CASE_P(TC, TcTest, TcImpls);

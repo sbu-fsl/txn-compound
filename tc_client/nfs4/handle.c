@@ -4318,11 +4318,14 @@ tc_res tc_nfs4_listdirv(const char **dirs, int count,
 
         for (i = 0; i < count; ++i) {
                 dle = &alldirs[i];
-                glist_for_each_entry(dentry, &dle->children, siblings) {
-                        if (!cb(&dentry->attrs, dle->name, cbarg)) {
-                                goto exit;
-                        }
-                }
+		if (!glist_empty(&dle->children)) {
+			glist_for_each_entry(dentry, &dle->children, siblings)
+			{
+				if (!cb(&dentry->attrs, dle->name, cbarg)) {
+					goto exit;
+				}
+			}
+		}
                 if (!dle->eof) {
                         break;
                 }
@@ -4330,6 +4333,9 @@ tc_res tc_nfs4_listdirv(const char **dirs, int count,
 
 exit:
         for (i = 0; i < count; ++i) {
+                if (glist_empty(&alldirs[i].children)) {
+                        continue;
+                }
 		glist_for_each_entry_safe(dentry, dentry_next,
 					  &alldirs[i].children, siblings) {
                         if (!tcres.okay && dentry->attrs.file.path) {

@@ -408,6 +408,20 @@ static inline void tc_attrs_mask_set(struct tc_attrs_masks *masks)
 	masks->has_ctime = true;
 }
 
+#define TC_ATTRS_MASK_ALL                                                      \
+	{                                                                      \
+		.has_mode = true, .has_size = true, .has_nlink = true,         \
+		.has_uid = true, .has_gid = true, .has_rdev = true,            \
+		.has_atime = true, .has_mtime = true, .has_ctime = true,       \
+	}
+
+#define TC_ATTRS_MASK_NONE                                                     \
+	{                                                                      \
+		.has_mode = false, .has_size = false, .has_nlink = false,      \
+		.has_uid = false, .has_gid = false, .has_rdev = false,         \
+		.has_atime = false, .has_mtime = false, .has_ctime = false,    \
+	}
+
 /**
  * Get attributes of file objects.
  *
