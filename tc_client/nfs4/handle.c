@@ -1034,6 +1034,7 @@ static int fs_sequence(nfs_argop4 *arg, nfs_resop4 *res)
 	arg->argop = NFS4_OP_SEQUENCE;
         memcpy(&arg->nfs_argop4_u.opsequence.sa_sessionid, &fs_sessionid,
                NFS4_SESSIONID_SIZE);
+        /* TODO: use atomic operation on fs_sequenceid */
         arg->nfs_argop4_u.opsequence.sa_sequenceid = fs_sequenceid++;
         arg->nfs_argop4_u.opsequence.sa_slotid = 0;
         arg->nfs_argop4_u.opsequence.sa_highest_slotid = 0;
@@ -1045,7 +1046,6 @@ static int fs_sequence(nfs_argop4 *arg, nfs_resop4 *res)
 static fsal_status_t fs_destroy_session()
 {
         int rc;
-#define FSAL_DESTROY_SESSION_NB_OP_ALLOC 1
         nfs_argop4 arg;
         nfs_resop4 res;
 
@@ -1110,9 +1110,15 @@ static int fs_create_session()
 	char clientid_name[MAXNAMLEN + 1];
 	struct timespec now;
 	callback_sec_parms4 csa_sec_parms_val;
-        EXCHANGE_ID4resok *eok;
+        EXCHANGE_ID4args *eia;
+        EXCHANGE_ID4resok *eir;
+        CREATE_SESSION4args *csa;
+        CREATE_SESSION4resok *csr;
 	uint32_t csa_flags;
         struct sockaddr_in sin;
+        char server_major_id_buf[NFS4_OPAQUE_LIMIT];
+        char server_scope_buf[NFS4_OPAQUE_LIMIT];
+        nfs_impl_id4 server_impl_id;
         struct netbuf nb;
         struct netconfig *ncp;
         socklen_t slen = sizeof(sin);
@@ -1140,12 +1146,17 @@ static int fs_create_session()
 	eia_flags |=
 	    (EXCHGID4_FLAG_SUPP_MOVED_REFER | EXCHGID4_FLAG_BIND_PRINC_STATEID);
 
-	eok = &res.nfs_resop4_u.opexchange_id.EXCHANGE_ID4res_u.eir_resok4;
 	arg.argop = NFS4_OP_EXCHANGE_ID;
-	arg.nfs_argop4_u.opexchange_id.eia_clientowner = nfsclientowner;
-	arg.nfs_argop4_u.opexchange_id.eia_flags = eia_flags;
-	arg.nfs_argop4_u.opexchange_id.eia_state_protect.spa_how = SP4_NONE;
-	arg.nfs_argop4_u.opexchange_id.eia_client_impl_id.eia_client_impl_id_len = 0;
+	eia = &arg.nfs_argop4_u.opexchange_id;
+	eia->eia_clientowner = nfsclientowner;
+	eia->eia_flags = eia_flags;
+	eia->eia_state_protect.spa_how = SP4_NONE;
+	eia->eia_client_impl_id.eia_client_impl_id_len = 0;
+
+	eir = &res.nfs_resop4_u.opexchange_id.EXCHANGE_ID4res_u.eir_resok4;
+	eir->eir_server_owner.so_major_id.so_major_id_val = server_major_id_buf;
+	eir->eir_server_scope.eir_server_scope_val = server_scope_buf;
+	eir->eir_server_impl_id.eir_server_impl_id_val = &server_impl_id;
 
 	rc = fs_nfsv4_call(NULL, 1, &arg, &res, NULL);
 	if (rc != NFS4_OK) {
@@ -1153,7 +1164,7 @@ static int fs_create_session()
 		return -1;
 	}
 
-	memcpy(&tc_clientid, &eok->eir_clientid, sizeof(clientid4));
+	memcpy(&tc_clientid, &eir->eir_clientid, sizeof(clientid4));
 
 	if (gethostname(machname, sizeof(machname)) == -1) {
 		rpc_createerr.cf_error.re_errno = errno;
@@ -1172,14 +1183,15 @@ static int fs_create_session()
 	csa_flags |= CREATE_SESSION4_FLAG_PERSIST;
 
 	arg.argop = NFS4_OP_CREATE_SESSION;
-	arg.nfs_argop4_u.opcreate_session.csa_clientid = eok->eir_clientid;
-	arg.nfs_argop4_u.opcreate_session.csa_sequence = eok->eir_sequenceid;
-	arg.nfs_argop4_u.opcreate_session.csa_flags = 1;
-	arg.nfs_argop4_u.opcreate_session.csa_fore_chan_attrs = csa_fore_chan_attrs;
-	arg.nfs_argop4_u.opcreate_session.csa_back_chan_attrs = csa_back_chan_attrs;
-	arg.nfs_argop4_u.opcreate_session.csa_cb_program = 0x40000000;
-	arg.nfs_argop4_u.opcreate_session.csa_sec_parms.csa_sec_parms_val = &csa_sec_parms_val;
-	arg.nfs_argop4_u.opcreate_session.csa_sec_parms.csa_sec_parms_len = 1;
+	csa = &arg.nfs_argop4_u.opcreate_session;
+	csa->csa_clientid = eir->eir_clientid;
+	csa->csa_sequence = eir->eir_sequenceid;
+	csa->csa_flags = 1;
+	csa->csa_fore_chan_attrs = csa_fore_chan_attrs;
+	csa->csa_back_chan_attrs = csa_back_chan_attrs;
+	csa->csa_cb_program = 0x40000000;
+	csa->csa_sec_parms.csa_sec_parms_val = &csa_sec_parms_val;
+	csa->csa_sec_parms.csa_sec_parms_len = 1;
 
 	LogEvent(COMPONENT_FSAL, "create session called");
 	rc = fs_nfsv4_call(NULL, 1, &arg, &res, NULL);
@@ -1188,12 +1200,9 @@ static int fs_create_session()
 		return -1;
 	}
 
-	memcpy(&fs_sessionid,
-	       res.nfs_resop4_u.opcreate_session.CREATE_SESSION4res_u.csr_resok4
-		   .csr_sessionid,
-	       NFS4_SESSIONID_SIZE);
-	fs_sequenceid = res.nfs_resop4_u.opcreate_session.CREATE_SESSION4res_u
-			    .csr_resok4.csr_sequence;
+	csr = &res.nfs_resop4_u.opcreate_session.CREATE_SESSION4res_u.csr_resok4;
+	memcpy(&fs_sessionid, csr->csr_sessionid, NFS4_SESSIONID_SIZE);
+	fs_sequenceid = csr->csr_sequence;
 
 	//fs_destroy_session();
 	fs_reclaim_complete();
@@ -1270,8 +1279,7 @@ int fs_init_rpc(const struct fs_fsal_module *pm)
 		rpc_xid = getpid() ^ time(NULL);
 	pthread_mutex_unlock(&listlock);
 	if (gethostname(fs_hostname, sizeof(fs_hostname)))
-		strncpy(fs_hostname, "NFS-GANESHA/Proxy",
-			sizeof(fs_hostname));
+		strncpy(fs_hostname, "NFS-TC", sizeof(fs_hostname));
 
 	for (i = 16; i > 0; i--) {
 		struct fs_rpc_io_context *c =
@@ -1302,15 +1310,24 @@ int fs_init_rpc(const struct fs_fsal_module *pm)
 		return rc;
 	}
 
-	//rc = pthread_create(&fs_renewer_thread, NULL, fs_clientid_renewer,
-	//		    NULL);
-	rc = fs_create_session();
+        /*
+	rc = pthread_create(&fs_renewer_thread, NULL, fs_clientid_renewer,
+			    NULL);
 	if (rc) {
 		LogCrit(COMPONENT_FSAL,
 			"Cannot create kern clientid renewer thread - %s",
 			strerror(rc));
 		free_io_contexts();
 	}
+        */
+
+	fs_rpc_need_sock();
+	rc = fs_create_session();
+	if (rc) {
+		NFS4_ERR("Cannot create session - %s", strerror(rc));
+		free_io_contexts();
+	}
+
 	return rc;
 }
 
@@ -1579,6 +1596,14 @@ static inline void copy_stateid4(stateid4 *dstid, const stateid4 *srcid)
 {
         dstid->seqid = srcid->seqid;
         memmove(dstid->other, srcid->other, 12);
+}
+
+static inline void tc_prepare_sequence(struct nfsoparray *nfsops)
+{
+        /* SEQUENCE should be the first operation of a compound. */
+        assert(nfsops->opcnt == 0);
+        fs_sequence(nfsops->argoparray, nfsops->resoparray);
+        nfsops->opcnt = 1;
 }
 
 static inline OPEN_CONFIRM4resok *
@@ -3941,6 +3966,7 @@ static tc_res tc_nfs4_openv(struct tc_attrs *attrs, int count, int *flags,
 	fattr_blobs = (char *)alloca(count * FATTR_BLOB_SZ);
 	fh_buffers = alloca(count * NFS4_FHSIZE); /* on stack */
 
+        tc_prepare_sequence(nfsops);
 	for (i = 0; i < count; ++i) {
 		rc = tc_set_current_fh(&attrs[i].file, nfsops, &name);
 		if (rc < 0) {
@@ -4056,6 +4082,7 @@ static tc_res tc_nfs4_closev(const nfs_fh4 *fh4s, int count, stateid4 *sids,
 	nfsops = new_nfs_ops((MAX_DIR_DEPTH + 3) * count);
 	assert(nfsops);
 
+        tc_prepare_sequence(nfsops);
 	for (i = 0; i < count; ++i) {
 		// ignore stateless open
                 if (memcmp(sids[i].other, All_Zero, 12)) {
@@ -4103,6 +4130,7 @@ static tc_res tc_nfs4_getattrsv(struct tc_attrs *attrs, int count)
         fattr_blobs = (char *)malloc(count * FATTR_BLOB_SZ);
         assert(fattr_blobs);
 
+        tc_prepare_sequence(nfsops);
         for (i = 0; i < count; ++i) {
 		rc = tc_set_current_fh(&attrs[i].file, nfsops, NULL);
 		if (rc < 0) {
@@ -4163,6 +4191,7 @@ static tc_res tc_nfs4_setattrsv(struct tc_attrs *attrs, int count)
 	fattrs = alloca(count * sizeof(fattr4));           /* on stack */
         fattr_blobs = alloca(count * FATTR_BLOB_SZ);
 
+        tc_prepare_sequence(nfsops);
         for (i = 0; i < count; ++i) {
                 tc_attrs_to_fattr4(&attrs[i], &fattrs[i]);
                 rc = tc_set_current_fh(&attrs[i].file, nfsops, NULL);
@@ -4241,6 +4270,7 @@ static tc_res tc_nfs4_mkdirv(struct tc_attrs *dirs, int count)
 	fattr_blobs = alloca(count * FATTR_BLOB_SZ);    /* on stack */
         fh_buffers = alloca(count * NFS4_FHSIZE);       /* on stack */
 
+        tc_prepare_sequence(nfsops);
         /* prepare compound requests */
         for (i = 0; i < count; ++i) {
                 tc_attrs_to_fattr4(&dirs[i], &input_attrs[i]);
@@ -4378,6 +4408,7 @@ static tc_res tc_do_listdirv(struct glist_head *dirlist, const bitmap4 *bitmap,
         count = glist_length(dirlist);
         nfsops = new_nfs_ops((MAX_DIR_DEPTH + 3) * count);
 
+        tc_prepare_sequence(nfsops);
         glist_for_each_entry(dle, dirlist, list) {
                 if (dle->fh.nfs_fh4_len == 0) {
                         tcf = tc_file_from_path(dle->name);
@@ -4561,6 +4592,7 @@ static tc_res tc_nfs4_renamev(tc_file_pair *pairs, int count)
         nfsops = new_nfs_ops((MAX_DIR_DEPTH + 3) * count);
         assert(nfsops);
 
+        tc_prepare_sequence(nfsops);
         for (i = 0; i < count; ++i) {
                 rc = tc_set_saved_fh(&pairs[i].src_file, nfsops, &srcname);
                 if (rc < 0) {
@@ -4619,6 +4651,7 @@ static tc_res tc_nfs4_removev(tc_file *files, int count)
         nfsops = new_nfs_ops((MAX_DIR_DEPTH + 3) * count);
         assert(nfsops);
 
+        tc_prepare_sequence(nfsops);
         for (i = 0; i < count; ++i) {
                 rc = tc_set_current_fh(&files[i], nfsops, &name);
                 if (rc < 0) {
@@ -4674,6 +4707,7 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 	nfsops = new_nfs_ops((MAX_DIR_DEPTH + 3) * count);
 	assert(nfsops);
 
+        tc_prepare_sequence(nfsops);
 	for (i = 0; i < count; ++i) {
 		tc_set_cfh_to_path(pairs[i].src_path, nfsops->argoparray,
 				   &nfsops->opcnt, &srcname, false);
@@ -4748,8 +4782,7 @@ static int tc_nfs4_chdir(const char *path)
 	cwd->refcount = 1; // grap a refcount
 	memmove(cwd->path, path, strlen(path));
 
-	fs_sequence(nfsops->argoparray, nfsops->resoparray);
-	nfsops->opcnt++;
+        tc_prepare_sequence(nfsops);
 
 	rc = tc_set_cfh_to_path(path, nfsops->argoparray, &nfsops->opcnt, NULL,
 				false);
@@ -5144,6 +5177,4 @@ fsal_status_t fs_extract_handle(struct fsal_export *exp_hdl,
 	fh_desc->len = fh_size;
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
-
-
 
