@@ -1718,7 +1718,7 @@ static int construct_lookups(slice_t *comps, int compcnt,
 }
 
 static int tc_set_cfh_to_path(const char *path, nfs_argop4 *argoparray,
-			      int *opcnt, slice_t *leaf)
+			      int *opcnt, slice_t *leaf, bool use_cfh)
 {
 	slice_t *comps = NULL; /* path components */
 	int n;		       /* number of path compontents */
@@ -1735,6 +1735,8 @@ static int tc_set_cfh_to_path(const char *path, nfs_argop4 *argoparray,
                 base = TC_BASE_PATH_ROOT;
                 comps[0].data++;  // skip the leading '/'
                 comps[0].size--;
+        } else if (use_cfh) {
+                base = TC_BASE_PATH_CURRENT;
         } else {
                 base = TC_BASE_PATH_CWD;
         }
@@ -1784,7 +1786,8 @@ static int tc_set_current_fh(const tc_file *tcf, struct nfsoparray *nfsops,
 
 	if (tcf->type == TC_FILE_PATH || tcf->type == TC_FILE_CURRENT) {
 		rc = tc_set_cfh_to_path(tcf->path, nfsops->argoparray,
-					&nfsops->opcnt, leaf);
+					&nfsops->opcnt, leaf,
+					tcf->type == TC_FILE_CURRENT);
 	} else if (tcf->type == TC_FILE_HANDLE) {
                 rc = tc_set_cfh_to_handle(tcf->handle, nfsops);
 	} else {
@@ -1988,7 +1991,7 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 		 */
 
 		if (tc_set_cfh_to_path(kern_arg->path, argoparray, &opcnt,
-				       &name) == -1) {
+				       &name, false) == -1) {
 			goto exit_pathinval;
 		}
 
@@ -2251,7 +2254,7 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 		 * file-handle
 		 */
 		if (tc_set_cfh_to_path(kern_arg->path, argoparray, &opcnt,
-				       &name) == -1) {
+				       &name, false) == -1) {
 			goto error_pathinval;
 		}
 
@@ -2444,7 +2447,8 @@ static fsal_status_t do_ktcopen(struct tcopen_kargs *kern_arg, int flags,
 
         owner_len = tc_create_state_owner(owner_val);
 
-	if (tc_set_cfh_to_path(kern_arg->path, argoparray, &opcnt, &name) < 0) {
+	if (tc_set_cfh_to_path(kern_arg->path, argoparray, &opcnt, &name,
+			       false) < 0) {
 		goto exit_pathinval;
 	}
 
@@ -4479,13 +4483,13 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 
 	for (i = 0; i < count; ++i) {
 		tc_set_cfh_to_path(pairs[i].src_path, nfsops->argoparray,
-				   &nfsops->opcnt, &srcname);
+				   &nfsops->opcnt, &srcname, false);
 		tc_prepare_open(nfsops, srcname, O_RDONLY, new_auto_buf(64),
 				NULL);
 		COMPOUNDV4_ARG_ADD_OP_SAVEFH(nfsops->opcnt, nfsops->argoparray);
 
 		tc_set_cfh_to_path(pairs[i].dst_path, nfsops->argoparray,
-				   &nfsops->opcnt, &dstname);
+				   &nfsops->opcnt, &dstname, false);
 		tc_prepare_open(nfsops, dstname, O_WRONLY, new_auto_buf(64),
 				NULL);
 
@@ -4551,7 +4555,8 @@ static int tc_nfs4_chdir(const char *path)
 	cwd->refcount = 1; // grap a refcount
 	memmove(cwd->path, path, strlen(path));
 
-	rc = tc_set_cfh_to_path(path, nfsops->argoparray, &nfsops->opcnt, NULL);
+	rc = tc_set_cfh_to_path(path, nfsops->argoparray, &nfsops->opcnt, NULL,
+				false);
 	fhok = tc_prepare_getfh(nfsops, cwd->fhbuf);
 
 	rc = fs_nfsv4_call(op_ctx->creds, nfsops->opcnt, nfsops->argoparray,
