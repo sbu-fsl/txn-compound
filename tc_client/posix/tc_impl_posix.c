@@ -733,7 +733,7 @@ tc_res posix_listdir(const char *dir, struct tc_attrs_masks masks,
 			result.index = *count;
 
 			POSIX_WARN("stat failed for file : %s\n", dp->d_name);
-
+			closedir(dir_fd);
 			return result;
 		}
 
@@ -743,6 +743,7 @@ tc_res posix_listdir(const char *dir, struct tc_attrs_masks masks,
 		(*count)++;
 	}
 
+	closedir(dir_fd);
 	return result;
 }
 
