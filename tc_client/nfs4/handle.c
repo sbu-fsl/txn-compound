@@ -1254,7 +1254,7 @@ static void *fs_clientid_renewer(void *Arg)
 	return NULL;
 }
 
-static void free_io_contexts(void)
+void free_io_contexts(void)
 {
 	struct glist_head *cur, *n;
 	glist_for_each_safe(cur, n, &free_contexts) {

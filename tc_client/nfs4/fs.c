@@ -211,4 +211,5 @@ MODULE_FINI void fs_unload(void)
 		fprintf(stderr, "TCNFS module failed to unregister");
 		return;
 	}
+	free_io_contexts();
 }

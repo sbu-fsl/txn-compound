@@ -43,6 +43,7 @@ struct fs_export {
 void fs_handle_ops_init(struct fsal_obj_ops *ops);
 
 int fs_init_rpc(const struct fs_fsal_module *);
+void free_io_contexts(void);
 
 fsal_status_t fs_list_ext_attrs(struct fsal_obj_handle *obj_hdl,
 				 const struct req_op_context *opctx,
