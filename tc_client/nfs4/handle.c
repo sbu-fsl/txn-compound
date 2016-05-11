@@ -2136,10 +2136,10 @@ static nfsstat4 get_nfs4_op_status(const nfs_resop4 *op_res)
 static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 				nfs_argop4 *argoparray, nfs_resop4 *resoparray,
 				int *opcnt_temp, fattr4 *input_attr,
-				int *last_op)
+				int *last_op, buf_t *owner_pbuf)
 {
 	int opcnt = *opcnt_temp;
-	char owner_val[128];
+        char *owner_val;
 	unsigned int owner_len = 0;
 	clientid4 cid;
         slice_t name;
@@ -2147,7 +2147,9 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 
 	LogDebug(COMPONENT_FSAL, "do_ktcread() called: %d\n", opcnt);
 
-        owner_len = tc_create_state_owner(owner_val);
+        tc_new_state_owner(owner_pbuf);
+        owner_val = owner_pbuf->data;
+        owner_len = owner_pbuf->size;
 
 	kern_arg->user_arg->is_failure = 0;
 	kern_arg->user_arg->is_eof = 0;
@@ -2330,7 +2332,7 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 			   cur_arg->user_arg->data);
 
 		st = do_ktcread(cur_arg, argoparray, resoparray, &opcnt,
-				input_attr, &last_op);
+				input_attr, &last_op, new_auto_buf(64));
 
 		if (FSAL_IS_ERROR(st)) {
                         NFS4_ERR("do_ktcread failed: major=%d, minor=%d\n",
@@ -2389,10 +2391,10 @@ exit:
 static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 				 nfs_argop4 *argoparray, nfs_resop4 *resoparray,
 				 int *opcnt_temp, fattr4 *input_attr,
-				 int *last_op)
+				 int *last_op, buf_t *owner_pbuf)
 {
 	int opcnt = *opcnt_temp;
-	char owner_val[128];
+        char *owner_val;
 	unsigned int owner_len = 0;
 	clientid4 cid;
         slice_t name;
@@ -2401,7 +2403,9 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 	LogDebug(COMPONENT_FSAL, "do_ktcwrite() called: %d\n", opcnt);
 
 	/* Create the owner */
-        owner_len = tc_create_state_owner(owner_val);
+        tc_new_state_owner(owner_pbuf);
+        owner_val = owner_pbuf->data;
+        owner_len = owner_pbuf->size;
 
 	kern_arg->user_arg->is_failure = 0;
 	kern_arg->user_arg->is_eof = 0;
@@ -2574,7 +2578,7 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
 	while (i < arg_count) {
 		cur_arg = kern_arg + i;
 		st = do_ktcwrite(cur_arg, argoparray, resoparray, &opcnt,
-				 input_attr, &last_op);
+				 input_attr, &last_op, new_auto_buf(64));
 
 		if (FSAL_IS_ERROR(st)) {
 			NFS4_ERR("do_ktcwrite failed: major=%d, minor=%d\n",
