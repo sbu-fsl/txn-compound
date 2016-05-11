@@ -3920,7 +3920,9 @@ static tc_res tc_nfs4_openv(struct tc_attrs *attrs, int count, int *flags,
                         tcres = tc_failure(i, ERR_FSAL_INVAL);
                         goto exit;
                 }
-		tc_attrs_to_fattr4(&attrs[i], &fattrs[i]);
+		if (flags[i] & O_CREAT) {
+			tc_attrs_to_fattr4(&attrs[i], &fattrs[i]);
+		}
 		tc_prepare_open(nfsops, name, flags[i], new_auto_buf(64),
 				&fattrs[i]);
 		tc_prepare_getfh(nfsops, fh_buffers + i * NFS4_FHSIZE);
