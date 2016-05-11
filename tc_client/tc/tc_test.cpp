@@ -106,6 +106,9 @@ void tc_touch(const char *path, int size)
 	iov.data = size ? getRandomBytes(size) : NULL;
 	tcres = tc_writev(&iov, 1, false);
 	EXPECT_TRUE(tcres.okay) << "failed to create " << path;
+	if (iov.data) {
+		free(iov.data);
+	}
 }
 
 /**
@@ -523,6 +526,15 @@ TYPED_TEST_P(TcTest, AttrsTestFileDesc)
 	free(attrs2);
 }
 
+static void free_listdir_attrs(tc_attrs *tcas, int count)
+{
+	int i;
+	for (i = 0; i < count; ++i) {
+		free((void *)tcas[i].file.path);
+	}
+	free(tcas);
+}
+
 /**
  * List Directory Contents Test
  */
@@ -553,7 +565,7 @@ TYPED_TEST_P(TcTest, ListDirContents)
 
 	EXPECT_TRUE(compare(contents, read_attrs, count));
 
-	free(contents);
+	free_listdir_attrs(contents, count);
 	free(read_attrs);
 }
 
@@ -912,7 +924,7 @@ TYPED_TEST_P(TcTest, ListAnEmptyDirectory)
 	tc_ensure_dir(PATH, 0755, NULL);
 	tcres = tc_listdir(PATH, TC_ATTRS_MASK_ALL, 1, &contents, &count);
 	EXPECT_EQ(0, count);
-	free(contents);
+	free_listdir_attrs(contents, count);
 }
 
 /* Get "cannot access" error when listing 2nd-level dir.  */
@@ -929,7 +941,7 @@ TYPED_TEST_P(TcTest, List2ndLevelDir)
 	tcres = tc_listdir(DIR_PATH, TC_ATTRS_MASK_ALL, 1, &attrs, &count);
 	EXPECT_EQ(1, count);
 	EXPECT_EQ(0, attrs->size);
-	free(attrs);
+	free_listdir_attrs(attrs, count);
 }
 
 REGISTER_TYPED_TEST_CASE_P(TcTest,
