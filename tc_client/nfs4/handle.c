@@ -2146,6 +2146,7 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 	bool eof = false;
 	struct glist_head *temp_read;
         slice_t name;
+        READ4resok *rok;
 
 	LogDebug(COMPONENT_FSAL, "do_ktcread() called: %d\n", opcnt);
 
@@ -2165,13 +2166,9 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 			return fsalstat(ERR_FSAL_INVAL, -1);
 		}
 
-		kern_arg->read_ok.v4_rok =
-		    &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
-
-		kern_arg->read_ok.v4_rok->data.data_val =
-		    kern_arg->user_arg->data;
-		kern_arg->read_ok.v4_rok->data.data_len =
-		    kern_arg->user_arg->length;
+		rok = &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
+		rok->data.data_val = kern_arg->user_arg->data;
+		rok->data.data_len = kern_arg->user_arg->length;
 
 		if (*last_op == TC_FILE_PATH) {
 			COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argoparray,
@@ -2191,13 +2188,9 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 
 		COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, *kern_arg->fh);
 
-		kern_arg->read_ok.v4_rok =
-		    &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
-
-		kern_arg->read_ok.v4_rok->data.data_val =
-		    kern_arg->user_arg->data;
-		kern_arg->read_ok.v4_rok->data.data_len =
-		    kern_arg->user_arg->length;
+		rok = &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
+		rok->data.data_val = kern_arg->user_arg->data;
+		rok->data.data_len = kern_arg->user_arg->length;
 		COMPOUNDV4_ARG_ADD_OP_READ_STATE(
 		    opcnt, argoparray, kern_arg->user_arg->offset,
 		    kern_arg->user_arg->length, kern_arg->sid);
@@ -2272,13 +2265,9 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 			    owner_val, owner_len, OPEN4_SHARE_ACCESS_READ);
 		}
 
-		kern_arg->read_ok.v4_rok =
-		    &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
-
-		kern_arg->read_ok.v4_rok->data.data_val =
-		    kern_arg->user_arg->data;
-		kern_arg->read_ok.v4_rok->data.data_len =
-		    kern_arg->user_arg->length;
+		rok = &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
+		rok->data.data_val = kern_arg->user_arg->data;
+		rok->data.data_len = kern_arg->user_arg->length;
 		COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argoparray,
 					   kern_arg->user_arg->offset,
 					   kern_arg->user_arg->length);
@@ -2435,9 +2424,6 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
                         return fsalstat(ERR_FSAL_INVAL, -1);
                 }
 
-		kern_arg->write_ok.v4_wok =
-		    &resoparray[opcnt].nfs_resop4_u.opwrite.WRITE4res_u.resok4;
-
 		if (*last_op == TC_FILE_PATH) {
                         sid = &CURSID;
 		} else if (*last_op == TC_FILE_DESCRIPTOR) {
@@ -2456,9 +2442,6 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
                 }
 
 		COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, *kern_arg->fh);
-
-		kern_arg->write_ok.v4_wok =
-		    &resoparray[opcnt].nfs_resop4_u.opwrite.WRITE4res_u.resok4;
 
 		COMPOUNDV4_ARG_ADD_OP_WRITE_STATE(
 		    opcnt, argoparray, kern_arg->user_arg->offset,
@@ -2536,9 +2519,6 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 			    name, owner_val, owner_len,
                             OPEN4_SHARE_ACCESS_BOTH);
 		}
-
-		kern_arg->write_ok.v4_wok =
-		    &resoparray[opcnt].nfs_resop4_u.opwrite.WRITE4res_u.resok4;
 
 		COMPOUNDV4_ARG_ADD_OP_WRITE_STATE(
 		    opcnt, argoparray, kern_arg->user_arg->offset,

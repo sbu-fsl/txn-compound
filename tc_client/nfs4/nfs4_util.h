@@ -42,10 +42,6 @@ struct tcread_kargs
 	char *path;
 	stateid4 *sid;
 	nfs_fh4 *fh;
-	union
-	{
-		READ4resok *v4_rok;
-	} read_ok;
 	OPEN4resok *opok_handle;
 	struct attrlist attrib;
 };
@@ -61,10 +57,6 @@ struct tcwrite_kargs
 	char *path;
 	stateid4 *sid;
 	nfs_fh4 *fh;
-	union
-	{
-		WRITE4resok *v4_wok;
-	} write_ok;
 	OPEN4resok *opok_handle;
 	struct attrlist attrib;
 };
