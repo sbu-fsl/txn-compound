@@ -2142,9 +2142,6 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 	char owner_val[128];
 	unsigned int owner_len = 0;
 	clientid4 cid;
-	int marker = 0;
-	bool eof = false;
-	struct glist_head *temp_read;
         slice_t name;
         READ4resok *rok;
 
@@ -2222,9 +2219,6 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 				       &name, false) == -1) {
 			goto exit_pathinval;
 		}
-
-		LogDebug(COMPONENT_FSAL, "ktcread name: %s\n",
-			 kern_arg->path + marker);
 
 		kern_arg->opok_handle =
 		    &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
@@ -2401,7 +2395,6 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 	char owner_val[128];
 	unsigned int owner_len = 0;
 	clientid4 cid;
-	int marker = 0;
         slice_t name;
         const stateid4 *sid;
 
@@ -2475,9 +2468,6 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 				       &name, false) == -1) {
 			goto error_pathinval;
 		}
-
-		LogDebug(COMPONENT_FSAL, "ktcwrite name: %s\n",
-			 kern_arg->path + marker);
 
 		kern_arg->opok_handle =
 		    &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
@@ -2659,7 +2649,6 @@ static fsal_status_t do_ktcopen(struct tcopen_kargs *kern_arg, int flags,
 	unsigned int owner_len = 0;
 	clientid4 cid;
 	uint32_t open_type = 0;
-	int marker = 0;
         slice_t name;
 
 	LogDebug(COMPONENT_FSAL, "do_ktcopen() called: %d\n", opcnt);
@@ -2670,9 +2659,6 @@ static fsal_status_t do_ktcopen(struct tcopen_kargs *kern_arg, int flags,
 			       false) < 0) {
 		goto exit_pathinval;
 	}
-
-	LogDebug(COMPONENT_FSAL, "ktcopen name: %s, flags: %x\n",
-		 kern_arg->path + marker, flags);
 
 	kern_arg->opok_handle =
 	    &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
