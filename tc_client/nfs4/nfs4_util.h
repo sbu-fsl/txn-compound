@@ -25,7 +25,8 @@
 
 #include "export_mgr.h"
 #include "tc_impl_nfs4.h"
-#include<fcntl.h>
+#include <fcntl.h>
+#include <pthread.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -78,6 +79,7 @@ struct tcopen_kargs
 
 struct tc_kfd
 {
+        pthread_rwlock_t fd_lock;
 	int fd; /* fd might not be needed because we will be indexing using
 		   array index, so this will be used only to check if an fd is
 		   being used. So has to be set to -1 if freed  */
@@ -93,15 +95,11 @@ struct tc_kfd
 
 int init_fd();
 
-int getfdnum();
-
 /* Helper function to get free count, to be called before sending open to server
  */
 int get_freecount();
 
 int get_fd(stateid4 *stateid, nfs_fh4 *object);
-
-int fd_in_use(int fd);
 
 int freefd(int fd);
 
@@ -113,8 +111,19 @@ int freefd(int fd);
  */
 int incr_seqid(int fd);
 
-struct tc_kfd *get_fd_struct(int fd);
+/**
+ * Get and lock "struct tc_kfd" corresponding to "fd".
+ */
+struct tc_kfd *get_fd_struct(int fd, bool lock_for_write);
 
+/**
+ * Release lock on specified "*tcfd".  "*tcfd" will be set to NULL on success.
+ */
+int put_fd_struct(struct tc_kfd **tcfd);
+
+/**
+ * tcfd_processor will be called with the "tcfd->fd_lock" hold for write.
+ */
 typedef int (*tcfd_processor)(struct tc_kfd *tcfd, void *args);
 
 int tc_for_each_fd(tcfd_processor p, void *args);

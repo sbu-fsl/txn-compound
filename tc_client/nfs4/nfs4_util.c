@@ -22,51 +22,70 @@
 
 #include <stdlib.h>
 
-/* TODO: add lock */
+/**
+ * Protects "fd_list", "free_fds", and "free_fds_top".
+ * It also protects all free "struct tc_kfd".
+ */
+static pthread_mutex_t fd_list_lock = PTHREAD_MUTEX_INITIALIZER;
+
 static struct tc_kfd fd_list[MAX_FD];
-static int free_fdlist[MAX_FD];
-static int freelist_count, freelist_head, freelist_tail;
+
+/**
+ * A stack of free file descriptor, which is an index of fd_list.
+ * "free_fds_top" is the stack top of "free_fds".
+ */
+static int free_fds[MAX_FD];
+static int free_fds_top;
 
 int init_fd()
 {
+        int r = 0;
 	int i = 0;
+        pthread_rwlockattr_t rwlock_attr;
+
+        if ((r = pthread_rwlockattr_init(&rwlock_attr)) != 0) {
+                return r;
+        }
+
+        pthread_mutex_lock(&fd_list_lock);
+        free_fds_top = 0;
 	while (i < MAX_FD) {
-		free_fdlist[i] = i;
+                r = pthread_rwlock_init(&fd_list[i].fd_lock, &rwlock_attr);
+                if (r != 0) {
+			pthread_mutex_unlock(&fd_list_lock);
+                        return r;
+		}
+		free_fds[free_fds_top++] = i;
 		fd_list[i].fd = -1;
 		i++;
 	}
+        pthread_mutex_unlock(&fd_list_lock);
 
-	freelist_count = MAX_FD;
-	freelist_head = 0;
-	freelist_tail = MAX_FD;
-}
-
-int getfdnum()
-{
-	if (freelist_count <= 0) {
-		/* Add error log indicating fd exhaustion */
-		return -1;
-	}
-	return free_fdlist[freelist_head++];
+        return 0;
 }
 
 /* Helper function to get free count, to be called before sending open to server
  */
 int get_freecount()
 {
-	return freelist_count;
+        int freecount = 0;
+        pthread_mutex_lock(&fd_list_lock);
+        freecount = free_fds_top;
+        pthread_mutex_unlock(&fd_list_lock);
+	return freecount;
 }
 
 int get_fd(stateid4 *stateid, nfs_fh4 *object)
 {
 	int cur_fd = -1;
 
-	cur_fd = getfdnum();
-	if (cur_fd < 0) {
-		/* This is not possible because open call is sent to server only
-		 * if freecount is greater than 0 */
-		assert(0);
-	}
+        assert(stateid && object);
+        pthread_mutex_lock(&fd_list_lock);
+        if (free_fds_top <= 0) {
+		pthread_mutex_unlock(&fd_list_lock);
+		return -ENFILE;
+        }
+        cur_fd = free_fds[--free_fds_top];
 
 	assert(fd_list[cur_fd].fd < 0);
 
@@ -82,68 +101,70 @@ int get_fd(stateid4 *stateid, nfs_fh4 *object)
 	fd_list[cur_fd].seqid = 0;
 	fd_list[cur_fd].offset = 0;
 
-	freelist_count -= 1;
+        pthread_mutex_unlock(&fd_list_lock);
+
 	return cur_fd + TC_FD_OFFSET;
 }
 
-struct tc_kfd *get_fd_struct(int fd)
+struct tc_kfd *get_fd_struct(int fd, bool lock_for_write)
 {
+        struct tc_kfd *tcfd;
+
 	fd -= TC_FD_OFFSET;
-	if (fd < 0 || fd > MAX_FD) {
+	if (fd < 0 || fd >= MAX_FD) {
 		return NULL;
 	}
 
-	if (fd_list[fd].fd < 0) {
+        tcfd = fd_list + fd;
+
+        pthread_rwlock_rdlock(&tcfd->fd_lock);
+	if (tcfd->fd < 0 || tcfd->fd != fd + TC_FD_OFFSET) {
+                /* not in use OR not valid */
+	        pthread_rwlock_unlock(&tcfd->fd_lock);
                 return NULL;
         }
 
-	return fd_list + fd;
-}
-
-int fd_in_use(int fd)
-{
-	fd -= TC_FD_OFFSET;
-	if (fd < 0 || fd > MAX_FD) {
-		return -1;
+        if (lock_for_write) {  /* upgrade lock */
+                pthread_rwlock_unlock(&tcfd->fd_lock);
+		pthread_rwlock_wrlock(&tcfd->fd_lock);
 	}
 
-	if (fd_list[fd].fd < 0) {
+	return tcfd;
+}
+
+int put_fd_struct(struct tc_kfd **tcfd)
+{
+        int r;
+
+        if (!tcfd) {
                 return -1;
         }
+        r = pthread_rwlock_unlock(&(*tcfd)->fd_lock);
+        *tcfd = NULL;
 
-	return 0;
+        return r;
 }
 
 int freefd(int fd)
 {
-	fd -= TC_FD_OFFSET;
-	if (fd < 0 || fd > MAX_FD) {
-		/* Maybe assert()?? */
-		/* Add error logs too */
-		return -1;
-	}
+        struct tc_kfd *tcfd;
 
-	if (fd_in_use(fd) < 0) {
-		/* Add error logs too */
-		return -1;
-	}
-
-	if (fd_list[fd].fd != fd) {
-		/* Add error logs too */
-		/* Implementation mistake, client has nothing to do with this */
-		assert(0);
-	}
+        tcfd = get_fd_struct(fd, true);
+        if (!tcfd) {
+                return -EINVAL;
+        }
 
 	/* We have a valid fd that needs to be closed */
+	tcfd->fd = -1; /* set to "not in use" */
+	tcfd->seqid = 0;
+	tcfd->offset = 0;
+	free(tcfd->fh.nfs_fh4_val);
+        tcfd->fh.nfs_fh4_val = NULL;
+        put_fd_struct(&tcfd);
 
-	fd_list[fd].fd = -1;
-	fd_list[fd].seqid = 0;
-	fd_list[fd].offset = 0;
-	free(fd_list[fd].fh.nfs_fh4_val);
-
-	freelist_tail %= MAX_FD;
-	free_fdlist[freelist_tail++] = fd;
-	freelist_count += 1;
+        pthread_mutex_lock(&fd_list_lock);
+	free_fds[free_fds_top++] = fd - TC_FD_OFFSET;
+        pthread_mutex_unlock(&fd_list_lock);
 
 	return 0;
 }
@@ -156,41 +177,39 @@ int freefd(int fd)
  */
 int incr_seqid(int fd)
 {
-	fd -= TC_FD_OFFSET;
-	if (fd < 0 || fd > MAX_FD) {
-		/* Maybe assert()?? */
-		/* Add error logs too */
-		return -1;
-	}
+        struct tc_kfd *tcfd;
+        seqid4 seqid;
 
-	if (fd_in_use(fd) < 0) {
-		/* Add error logs too */
-		return -1;
-	}
+        tcfd = get_fd_struct(fd, true);
+        if (!tcfd) {
+                return -EINVAL;
+        }
 
-	if (fd_list[fd].fd != fd) {
-		/* Add error logs too */
-		/* Implementation mistake, client has nothing to do with this */
-		assert(0);
-	}
+	seqid = fd_list[fd].seqid++;
+        put_fd_struct(&tcfd);
 
-	fd_list[fd].seqid++;
-	return fd_list[fd].seqid;
+	return seqid;
 }
 
 int tc_for_each_fd(tcfd_processor p, void *args)
 {
 	int i;
-	int rc;
+	int rc = 0;
 
+        pthread_mutex_lock(&fd_list_lock);
 	for (i = 0; i < MAX_FD; ++i) {
+                pthread_rwlock_wrlock(&fd_list[i].fd_lock);
 		if (fd_list[i].fd > 0) {
 			rc = p(fd_list + i, args);
-			if (rc != 0)
-				return rc;
+			if (rc != 0) {
+				pthread_rwlock_wrlock(&fd_list[i].fd_lock);
+				break;
+                        }
 		}
+                pthread_rwlock_wrlock(&fd_list[i].fd_lock);
 	}
+        pthread_mutex_unlock(&fd_list_lock);
 
-	return 0;
+	return rc;
 }
 

@@ -241,7 +241,7 @@ tc_res nfs4_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 
 		switch (cur_arg->user_arg->file.type) {
 		case TC_FILE_DESCRIPTOR:
-			tcfd = get_fd_struct(cur_arg->user_arg->file.fd);
+			tcfd = get_fd_struct(cur_arg->user_arg->file.fd, false);
 			if (tcfd == NULL) {
 				result.err_no = (int)EINVAL;
 				goto error;
@@ -252,6 +252,7 @@ tc_res nfs4_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 			}
 			sid = cur_arg->sid = &tcfd->stateid;
 			fh = cur_arg->fh = &tcfd->fh;
+			put_fd_struct(&tcfd);
 			break;
 
 		case TC_FILE_PATH:
@@ -286,11 +287,13 @@ tc_res nfs4_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 		cur_arg = kern_arg + i;
 		switch (cur_arg->user_arg->file.type) {
 		case TC_FILE_DESCRIPTOR:
+			tcfd = get_fd_struct(cur_arg->user_arg->file.fd, false);
 			if (bs_get(cur_offset_bs, i)) {
 				tcfd->offset = cur_arg->user_arg->offset +
 					       cur_arg->user_arg->length;
 				cur_arg->user_arg->offset = TC_OFFSET_CUR;
 			}
+			put_fd_struct(&tcfd);
 		case TC_FILE_PATH:
 			if (cur_arg->path != NULL) {
 				free(cur_arg->path);
@@ -377,7 +380,7 @@ tc_res nfs4_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 
 		switch (cur_arg->user_arg->file.type) {
 		case TC_FILE_DESCRIPTOR:
-			tcfd = get_fd_struct(cur_arg->user_arg->file.fd);
+			tcfd = get_fd_struct(cur_arg->user_arg->file.fd, false);
 			if (!tcfd) {
                                 result.err_no = (int)EINVAL;
                                 goto error;
@@ -388,6 +391,7 @@ tc_res nfs4_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 			}
 			sid = cur_arg->sid = &tcfd->stateid;
 			fh = cur_arg->fh = &tcfd->fh;
+			put_fd_struct(&tcfd);
 			break;
 
 		case TC_FILE_PATH:
@@ -419,9 +423,10 @@ tc_res nfs4_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 			if (bs_get(cur_offset_bs, i)) {
 				cur_arg->user_arg->offset = TC_OFFSET_CUR;
 			}
-			tcfd = get_fd_struct(cur_arg->user_arg->file.fd);
+			tcfd = get_fd_struct(cur_arg->user_arg->file.fd, true);
 			assert(tcfd);
 			tc_update_file_cursor(tcfd, cur_arg->user_arg);
+			put_fd_struct(&tcfd);
 			break;
 		}
 	}
@@ -480,9 +485,10 @@ tc_file *nfs4_openv(const char **paths, int count, int *flags, mode_t *modes)
 	for (i = 0; i < count; ++i) {
 		fh4.nfs_fh4_len = attrs[i].file.handle->handle_bytes;
 		fh4.nfs_fh4_val = (char *)attrs[i].file.handle->f_handle;
-		tcfd = get_fd_struct(get_fd(sids + i, &fh4));
+		tcfd = get_fd_struct(get_fd(sids + i, &fh4), false);
 		tcfd->filesize = attrs[i].size;
 		tcfs[i] = tc_file_from_fd(tcfd->fd);
+		put_fd_struct(&tcfd);
 	}
 
 exit:
@@ -528,7 +534,7 @@ tc_file* nfs4_open(const char *path, int flags, mode_t mode)
 		goto exit;
 	}
 
-	LogDebug(COMPONENT_FSAL, "nfs4_openv() called \n");
+	LogDebug(COMPONENT_FSAL, "nfs4_open() called \n");
 
 	kern_arg.opok_handle = NULL;
 	kern_arg.fhok_handle = NULL;
@@ -577,11 +583,18 @@ static int nfs4_close_impl(struct tc_kfd *tcfd, void *args)
 
 int nfs4_close(tc_file *user_file)
 {
-	if (fd_in_use(user_file->fd) < 0) {
+	int r;
+	struct tc_kfd *tcfd;
+
+	tcfd = get_fd_struct(user_file->fd, true);
+	if (!tcfd) {
 		return -1;
 	}
 
-	return nfs4_close_impl(get_fd_struct(user_file->fd), NULL);
+	r = nfs4_close_impl(tcfd, NULL);
+	put_fd_struct(&tcfd);
+
+	return r;
 }
 
 tc_res nfs4_closev(tc_file *files, int count)
@@ -599,10 +612,11 @@ tc_res nfs4_closev(tc_file *files, int count)
 	seqs = alloca(count * sizeof(*seqs));
 
 	for (i = 0; i < count; ++i) {
-		tcfd = get_fd_struct(files[i].fd);
+		tcfd = get_fd_struct(files[i].fd, false);
 		fh4s[i] = tcfd->fh;
 		sids[i] = tcfd->stateid;
 		seqs[i] = tcfd->seqid;
+		put_fd_struct(&tcfd);
 	}
 
 	tcres =
@@ -621,8 +635,9 @@ tc_res nfs4_closev(tc_file *files, int count)
 off_t nfs4_fseek(tc_file *tcf, off_t offset, int whence)
 {
 	struct tc_kfd *tcfd;
+
 	assert(tcf->type == TC_FILE_DESCRIPTOR);
-	tcfd = get_fd_struct(tcf->fd);
+	tcfd = get_fd_struct(tcf->fd, true);
 	assert(tcfd);
 	if (whence == SEEK_SET) {
 		tcfd->offset = offset;
@@ -633,7 +648,10 @@ off_t nfs4_fseek(tc_file *tcf, off_t offset, int whence)
 	} else {
 		assert(false);
 	}
-	return tcfd->offset;
+	offset = tcfd->offset;
+	put_fd_struct(&tcfd);
+
+	return offset;
 }
 
 void nfs4_close_all()
@@ -664,8 +682,7 @@ static tc_file *nfs4_process_tc_files(struct tc_attrs *attrs, int count)
 		tcf = &attrs[i].file;
 		saved_tcfs[i] = *tcf;
 		if (tcf->type == TC_FILE_DESCRIPTOR) {
-			/* TODO: check threading */
-			tcfd = get_fd_struct(tcf->fd);
+			tcfd = get_fd_struct(tcf->fd, false);
 			h = !tcfd ? NULL
 				  : new_file_handle(tcfd->fh.nfs_fh4_len,
 						    tcfd->fh.nfs_fh4_val);
@@ -673,6 +690,7 @@ static tc_file *nfs4_process_tc_files(struct tc_attrs *attrs, int count)
 				nfs4_restore_tc_files(attrs, --i, saved_tcfs);
 				return NULL;
 			}
+			put_fd_struct(&tcfd);
 			tcf->type = TC_FILE_HANDLE;
 			tcf->handle = h;
 		}
