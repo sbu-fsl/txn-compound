@@ -939,6 +939,7 @@ TYPED_TEST_P(TcTest, List2ndLevelDir)
 	tcres = tc_listdir(DIR_PATH, TC_ATTRS_MASK_ALL, 1, &attrs, &count);
 	EXPECT_EQ(1, count);
 	EXPECT_EQ(0, attrs->size);
+	free(attrs);
 }
 
 REGISTER_TYPED_TEST_CASE_P(TcTest,

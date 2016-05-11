@@ -4186,6 +4186,9 @@ static tc_res tc_nfs4_setattrsv(struct tc_attrs *attrs, int count)
         tcres.okay = true;
 
 exit:
+        for (i = 0; i < count; ++i) {
+                nfs4_Fattr_Free(fattrs + i);
+        }
         del_nfs_ops(nfsops);
         return tcres;
 }
