@@ -870,19 +870,9 @@ TYPED_TEST_P(TcTest, CopyFiles)
 	tcres = tc_writev(iov, 2, false);
 	EXPECT_TRUE(tcres.okay);
 
-	// create empty dest files
-	iov[0].file = tc_file_from_path(pairs[0].dst_path);
-	iov[0].is_creation = true;
-	iov[0].offset = 0;
-	iov[0].length = 0;
-	iov[0].data = NULL;
-	iov[1].file = tc_file_from_path(pairs[1].dst_path);
-	iov[1].is_creation = true;
-	iov[1].offset = 0;
-	iov[1].length = 0;
-	iov[1].data = NULL;
-	tcres = tc_writev(iov, 2, false);
-	EXPECT_TRUE(tcres.okay);
+	// remove dest files
+	Removev(&pairs[0].dst_path, 1);
+	Removev(&pairs[1].dst_path, 1);
 
 	// copy files
 	tcres = tc_copyv(pairs, 2, false);

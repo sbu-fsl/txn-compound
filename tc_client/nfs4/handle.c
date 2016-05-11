@@ -2889,6 +2889,7 @@ static inline OPEN4resok *tc_prepare_open(struct nfsoparray *nfsops,
 		    (flags & O_EXCL) ? GUARDED4 : UNCHECKED4;
 		args->openhow.openflag4_u.how.createhow4_u.createattrs = *attrs;
 	} else {
+                assert(!(flags & O_CREAT));
 		args->openhow.opentype = OPEN4_NOCREATE;
 	}
 
@@ -4654,6 +4655,8 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 	tc_file tcf;
 	slice_t srcname;
 	slice_t dstname;
+        struct tc_attrs tca;
+        fattr4 attrs4;
 
 	NFS4_DEBUG("tc_nfs4_removev");
 	nfsops = new_nfs_ops((MAX_DIR_DEPTH + 3) * count);
@@ -4669,8 +4672,10 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 
 		tc_set_cfh_to_path(pairs[i].dst_path, nfsops->argoparray,
 				   &nfsops->opcnt, &dstname, false);
-		tc_prepare_open(nfsops, dstname, O_WRONLY, new_auto_buf(64),
-				NULL);
+                tc_set_up_creation(&tca, new_auto_str(dstname), 0755);
+		tc_attrs_to_fattr4(&tca, &attrs4);
+		tc_prepare_open(nfsops, dstname, O_WRONLY | O_CREAT,
+				new_auto_buf(64), &attrs4);
 
 		tc_prepare_copy(nfsops, pairs[i].src_offset,
 				pairs[i].dst_offset, pairs[i].length);
@@ -4711,6 +4716,7 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 	tcres.okay = true;
 
 exit:
+        nfs4_Fattr_Free(&attrs4);
 	del_nfs_ops(nfsops);
 	return tcres;
 }

@@ -70,7 +70,7 @@ ssize_t splice_copy(const char *src, size_t src_offset, const char *dst,
 		return -errno;
 	}
 
-	dstfd = open(dst, O_WRONLY);
+	dstfd = open(dst, O_WRONLY | O_CREAT, 0755);
 	if (dstfd < 0) {
 		close(srcfd);
 		return -errno;
