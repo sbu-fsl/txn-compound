@@ -612,6 +612,7 @@ tc_res nfs4_closev(tc_file *files, int count)
 			freefd(files[i].fd);
 		}
 		free(files);
+		files = NULL;
 	}
 
 	return tcres;
