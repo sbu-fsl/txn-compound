@@ -3984,7 +3984,7 @@ static tc_res tc_nfs4_closev(const nfs_fh4 *fh4s, int count, stateid4 *sids,
 {
         int i;
 	int rc;
-	tc_res tcres;
+	tc_res tcres = {.okay = true };
 	struct nfsoparray *nfsops;
 	const static char All_Zero[] = "\0\0\0\0\0\0\0\0\0\0\0\0"; /* 12 0s */
 
