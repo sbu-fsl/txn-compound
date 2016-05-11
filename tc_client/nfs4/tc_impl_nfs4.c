@@ -25,8 +25,6 @@
 #include "fsal_types.h"
 #include "../MainNFSD/nfs_init.h"
 
-#define TC_FILE_START 0
-
 /*
  * Initialize tc_client
  * log_path - Location of the log file
@@ -642,6 +640,8 @@ void nfs4_close_all()
 	tc_for_each_fd(nfs4_close_impl, NULL);
 }
 
+static void nfs4_fh_to_fd(struct tc_attrs *attrs, int count, int *saved_fds);
+
 static int *nfs4_fd_to_fh(struct tc_attrs *attrs, int count)
 {
 	int i;
@@ -659,14 +659,13 @@ static int *nfs4_fd_to_fh(struct tc_attrs *attrs, int count)
 		tcf = &attrs[i].file;
 		if (tcf->type == TC_FILE_DESCRIPTOR) {
 			/* TODO: check threading */
+			saved_fds[i] = tcf->fd;
 			tcfd = get_fd_struct(tcf->fd);
-			h = new_file_handle(tcfd->fh.nfs_fh4_len,
-					    tcfd->fh.nfs_fh4_val);
-			if (!h) {
-				while (--i >= 0) {
-					del_file_handle(h);
-				}
-				free(saved_fds);
+			h = !tcfd ? NULL
+				  : new_file_handle(tcfd->fh.nfs_fh4_len,
+						    tcfd->fh.nfs_fh4_val);
+			if (!tcfd || !h) {
+				nfs4_fh_to_fd(attrs, --i, saved_fds);
 				return NULL;
 			}
 			tcf->type = TC_FILE_HANDLE;
@@ -683,7 +682,8 @@ static void nfs4_fh_to_fd(struct tc_attrs *attrs, int count, int *saved_fds)
 
 	for (i = 0; i < count; ++i) {
 		if (saved_fds[i] > 0) {
-			free((void *)attrs[i].file.handle);
+			del_file_handle(
+			    (struct file_handle *)attrs[i].file.handle);
 			attrs[i].file.handle = NULL;
 			attrs[i].file.fd = saved_fds[i];
 			attrs[i].file.type = TC_FILE_DESCRIPTOR;
