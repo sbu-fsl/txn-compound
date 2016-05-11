@@ -1092,7 +1092,6 @@ static int fs_reclaim_complete()
 static int fs_create_session()
 {
 	int rc;
-#define FSAL_CREATE_SESSION_NB_OP_ALLOC 1
 	nfs_argop4 arg;
 	nfs_resop4 res;
 	char machname[MAXHOSTNAMELEN + 1];
@@ -4618,11 +4617,13 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 	slice_t srcname;
 	slice_t dstname;
         struct tc_attrs tca;
-        fattr4 attrs4;
+        fattr4 *attrs4;
 
 	NFS4_DEBUG("tc_nfs4_removev");
 	nfsops = new_nfs_ops((MAX_DIR_DEPTH + 3) * count);
 	assert(nfsops);
+        attrs4 = calloc(count, sizeof(*attrs4));
+        assert(attrs4);
 
         tc_prepare_sequence(nfsops);
 	for (i = 0; i < count; ++i) {
@@ -4635,9 +4636,9 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 		tc_set_cfh_to_path(pairs[i].dst_path, nfsops->argoparray,
 				   &nfsops->opcnt, &dstname, false);
                 tc_set_up_creation(&tca, new_auto_str(dstname), 0755);
-		tc_attrs_to_fattr4(&tca, &attrs4);
+		tc_attrs_to_fattr4(&tca, &attrs4[i]);
 		tc_prepare_open(nfsops, dstname, O_WRONLY | O_CREAT,
-				new_auto_buf(64), &attrs4);
+				new_auto_buf(64), &attrs4[i]);
 
 		tc_prepare_copy(nfsops, pairs[i].src_offset,
 				pairs[i].dst_offset, pairs[i].length);
@@ -4678,7 +4679,10 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 	tcres.okay = true;
 
 exit:
-        nfs4_Fattr_Free(&attrs4);
+	for (i = 0; i < count; ++i) {
+		nfs4_Fattr_Free(&attrs4[i]);
+	}
+	free(attrs4);
 	del_nfs_ops(nfsops);
 	return tcres;
 }
