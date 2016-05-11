@@ -166,6 +166,11 @@ static struct tc_cwd_data *tc_get_cwd()
         return cwd;
 }
 
+/* A special stateid to use the current stateid on the server side. */
+static const stateid4 CURSID = {
+        .seqid = 1U,
+};
+
 static void tc_put_cwd(struct tc_cwd_data *cwd)
 {
         if (atomic_dec_int32_t(&cwd->refcount) == 0) {
@@ -2408,8 +2413,8 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 	unsigned int owner_len = 0;
 	clientid4 cid;
 	int marker = 0;
-	struct bitmap4 DEBUG_bm;
         slice_t name;
+        const stateid4 *sid;
 
 	LogDebug(COMPONENT_FSAL, "do_ktcwrite() called: %d\n", opcnt);
 
@@ -2434,16 +2439,13 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 		    &resoparray[opcnt].nfs_resop4_u.opwrite.WRITE4res_u.resok4;
 
 		if (*last_op == TC_FILE_PATH) {
-			COMPOUNDV4_ARG_ADD_OP_WRITE(opcnt, argoparray,
-						    kern_arg->user_arg->offset,
-						    kern_arg->user_arg->data,
-						    kern_arg->user_arg->length);
+                        sid = &CURSID;
 		} else if (*last_op == TC_FILE_DESCRIPTOR) {
-			COMPOUNDV4_ARG_ADD_OP_WRITE_STATE(
-			    opcnt, argoparray, kern_arg->user_arg->offset,
-			    kern_arg->user_arg->data,
-			    kern_arg->user_arg->length, kern_arg->sid);
+                        sid = kern_arg->sid;
 		}
+		COMPOUNDV4_ARG_ADD_OP_WRITE_STATE(
+		    opcnt, argoparray, kern_arg->user_arg->offset,
+		    kern_arg->user_arg->data, kern_arg->user_arg->length, sid);
 
 		break;
 
@@ -2538,9 +2540,10 @@ static fsal_status_t do_ktcwrite(struct tcwrite_kargs *kern_arg,
 		kern_arg->write_ok.v4_wok =
 		    &resoparray[opcnt].nfs_resop4_u.opwrite.WRITE4res_u.resok4;
 
-		COMPOUNDV4_ARG_ADD_OP_WRITE(
+		COMPOUNDV4_ARG_ADD_OP_WRITE_STATE(
 		    opcnt, argoparray, kern_arg->user_arg->offset,
-		    kern_arg->user_arg->data, kern_arg->user_arg->length);
+		    kern_arg->user_arg->data, kern_arg->user_arg->length,
+                    (&CURSID));
 
 		*last_op = TC_FILE_PATH;
                 break;
