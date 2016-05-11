@@ -2572,13 +2572,12 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
 	fs_sequence(argoparray, resoparray);
 	opcnt++;
 
-	input_attr = malloc(sizeof(fattr4));
-	memset(input_attr, 0, sizeof(fattr4));
+	input_attr = calloc(arg_count, sizeof(fattr4));
 
 	while (i < arg_count) {
 		cur_arg = kern_arg + i;
 		st = do_ktcwrite(cur_arg, argoparray, resoparray, &opcnt,
-				 input_attr, &last_op, new_auto_buf(64));
+				 &input_attr[i], &last_op, new_auto_buf(64));
 
 		if (FSAL_IS_ERROR(st)) {
 			NFS4_ERR("do_ktcwrite failed: major=%d, minor=%d\n",
@@ -2627,6 +2626,9 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
         st = nfsstat4_to_fsal(cpd_status);
 
 exit:
+	for (i = 0; i < arg_count; ++i) {
+		nfs4_Fattr_Free(&input_attr[i]);
+	}
 	free(input_attr);
 	free(argoparray);
 	free(resoparray);
