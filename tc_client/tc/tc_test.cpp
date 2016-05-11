@@ -730,6 +730,7 @@ TYPED_TEST_P(TcTest, SuccesiveReads)
 	iov.offset = TC_OFFSET_CUR;
 	iov.length = N;
 	iov.data = read;
+	iov.is_creation = false;
 	tcres = tc_readv(&iov, 1, false);
 	EXPECT_TRUE(tcres.okay);
 

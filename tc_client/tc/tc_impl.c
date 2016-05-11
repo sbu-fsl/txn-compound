@@ -107,6 +107,13 @@ int tc_close(tc_file *tcf)
 
 tc_res tc_readv(struct tc_iovec *reads, int count, bool is_transaction)
 {
+	int i;
+
+	for (i = 0; i < count; ++i) {
+		if (reads[i].is_creation) {
+			return tc_failure(i, EINVAL);
+		}
+	}
 	/**
 	 * TODO: check if the functions should use posix or TC depending on the
 	 * back-end file system.
