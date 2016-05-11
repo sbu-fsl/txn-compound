@@ -37,7 +37,7 @@ static struct tc_kfd fd_list[MAX_FD];
 static int free_fds[MAX_FD];
 static int free_fds_top;
 
-int init_fd()
+int tc_init_fds()
 {
         int r = 0;
 	int i = 0;
@@ -66,7 +66,7 @@ int init_fd()
 
 /* Helper function to get free count, to be called before sending open to server
  */
-int get_freecount()
+int tc_count_free_fds()
 {
         int freecount = 0;
         pthread_mutex_lock(&fd_list_lock);
@@ -75,7 +75,7 @@ int get_freecount()
 	return freecount;
 }
 
-int get_fd(stateid4 *stateid, nfs_fh4 *object)
+int tc_alloc_fd(stateid4 *stateid, nfs_fh4 *object)
 {
 	int cur_fd = -1;
 
@@ -106,7 +106,7 @@ int get_fd(stateid4 *stateid, nfs_fh4 *object)
 	return cur_fd + TC_FD_OFFSET;
 }
 
-struct tc_kfd *get_fd_struct(int fd, bool lock_for_write)
+struct tc_kfd *tc_get_fd_struct(int fd, bool lock_for_write)
 {
         struct tc_kfd *tcfd;
 
@@ -132,7 +132,7 @@ struct tc_kfd *get_fd_struct(int fd, bool lock_for_write)
 	return tcfd;
 }
 
-int put_fd_struct(struct tc_kfd **tcfd)
+int tc_put_fd_struct(struct tc_kfd **tcfd)
 {
         int r;
 
@@ -145,11 +145,11 @@ int put_fd_struct(struct tc_kfd **tcfd)
         return r;
 }
 
-int freefd(int fd)
+int tc_free_fd(int fd)
 {
         struct tc_kfd *tcfd;
 
-        tcfd = get_fd_struct(fd, true);
+        tcfd = tc_get_fd_struct(fd, true);
         if (!tcfd) {
                 return -EINVAL;
         }
@@ -160,7 +160,7 @@ int freefd(int fd)
 	tcfd->offset = 0;
 	free(tcfd->fh.nfs_fh4_val);
         tcfd->fh.nfs_fh4_val = NULL;
-        put_fd_struct(&tcfd);
+        tc_put_fd_struct(&tcfd);
 
         pthread_mutex_lock(&fd_list_lock);
 	free_fds[free_fds_top++] = fd - TC_FD_OFFSET;
@@ -175,18 +175,18 @@ int freefd(int fd)
  * This should be called after calling the state changing operation to update seq id.
  * This should be called only if the operation succeeded
  */
-int incr_seqid(int fd)
+int tc_incr_fd_seqid(int fd)
 {
         struct tc_kfd *tcfd;
         seqid4 seqid;
 
-        tcfd = get_fd_struct(fd, true);
+        tcfd = tc_get_fd_struct(fd, true);
         if (!tcfd) {
                 return -EINVAL;
         }
 
 	seqid = fd_list[fd].seqid++;
-        put_fd_struct(&tcfd);
+        tc_put_fd_struct(&tcfd);
 
 	return seqid;
 }

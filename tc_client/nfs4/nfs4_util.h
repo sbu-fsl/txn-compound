@@ -93,15 +93,15 @@ struct tc_kfd
         size_t filesize;
 };
 
-int init_fd();
+int tc_init_fds();
 
 /* Helper function to get free count, to be called before sending open to server
  */
-int get_freecount();
+int tc_count_free_fds();
 
-int get_fd(stateid4 *stateid, nfs_fh4 *object);
+int tc_alloc_fd(stateid4 *stateid, nfs_fh4 *object);
 
-int freefd(int fd);
+int tc_free_fd(int fd);
 
 /*
  * Caller has performed an operation which changed the state of a lock,
@@ -109,17 +109,17 @@ int freefd(int fd);
  * This should be called after calling the state changing operation to update seq id.
  * This should be called only if the operation succeeded
  */
-int incr_seqid(int fd);
+int tc_incr_fd_seqid(int fd);
 
 /**
  * Get and lock "struct tc_kfd" corresponding to "fd".
  */
-struct tc_kfd *get_fd_struct(int fd, bool lock_for_write);
+struct tc_kfd *tc_get_fd_struct(int fd, bool lock_for_write);
 
 /**
  * Release lock on specified "*tcfd".  "*tcfd" will be set to NULL on success.
  */
-int put_fd_struct(struct tc_kfd **tcfd);
+int tc_put_fd_struct(struct tc_kfd **tcfd);
 
 /**
  * tcfd_processor will be called with the "tcfd->fd_lock" hold for write.
