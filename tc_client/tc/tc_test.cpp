@@ -30,6 +30,12 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+#include <algorithm>
+#include <list>
+#include <random>
+#include <thread>
+#include <vector>
+
 #include <gtest/gtest.h>
 
 #include "tc_api.h"
@@ -43,6 +49,20 @@
 #define TCTEST_DEBUG(fmt, args...) LogDebug(COMPONENT_TC_TEST, fmt, ##args)
 
 #define EXPECT_NOTNULL(x) EXPECT_TRUE(x != NULL) << #x << " is NULL"
+
+namespace
+{
+void DoParallel(int nthread, std::function<void(int)> worker)
+{
+	std::list<std::thread> threads;
+	for (int i = 0; i < nthread; ++i) {
+		threads.emplace_back(worker, i);
+	}
+	for (auto it = threads.begin(); it != threads.end(); ++it) {
+		it->join();
+	}
+}
+} // anonymous namespace
 
 /**
  * Ensure files or directories do not exist before test.
@@ -124,6 +144,7 @@ public:
 	static void TearDownTestCase() {
 		TCTEST_WARN("Global TearDown of Posix Impl\n");
 		tc_deinit(tcdata);
+		//sleep(120);
 	}
 	static void SetUp() {
 		TCTEST_WARN("SetUp Posix Impl Test\n");
@@ -866,12 +887,80 @@ TYPED_TEST_P(TcTest, List2ndLevelDir)
 	tc_attrs *attrs;
 	int count;
 
-	//tc_ensure_dir(DIR_PATH, 0755, NULL);
-	//tc_touch(FILE_PATH, 0);
+	tc_ensure_dir(DIR_PATH, 0755, NULL);
+	tc_touch(FILE_PATH, 0);
 	tcres = tc_listdir(DIR_PATH, TC_ATTRS_MASK_ALL, 1, &attrs, &count);
 	EXPECT_EQ(1, count);
 	EXPECT_EQ(0, attrs->size);
 	free_listdir_attrs(attrs, count);
+}
+
+TYPED_TEST_P(TcTest, ShuffledRdWr)
+{
+	const char *PATH = "TcTest-ShuffledRdWr.dat";
+	const int N = 8;  /* size of iovs */
+	struct tc_iovec iovs[N];
+	const int S = 4096;
+	tc_touch(PATH, N * S);
+
+	char *data1 = getRandomBytes(N * S);
+	char *data2 = (char *)malloc(N * S);
+	std::vector<int> offsets(N);
+	std::iota(offsets.begin(), offsets.end(), 0);
+	std::mt19937 rng(8887);
+	for (int i = 0; i < 10; ++i) { // repeat for 10 times
+		for (int n = 0; n < N; ++n) {
+			tc_iov2path(&iovs[n], PATH, offsets[n] * S, S,
+				    data1 + offsets[n] * S);
+		}
+		tc_res tcres = tc_writev(iovs, N, false);
+		EXPECT_TRUE(tcres.okay);
+
+		for (int n = 0; n < N; ++n) {
+			iovs[n].data = data2 + offsets[n] * S;
+		}
+		tcres = tc_readv(iovs, N, false);
+		EXPECT_TRUE(tcres.okay);
+		EXPECT_EQ(0, memcmp(data1, data2, N * S));
+
+		std::shuffle(offsets.begin(), offsets.end(), rng);
+	}
+
+	free(data1);
+	free(data2);
+}
+
+TYPED_TEST_P(TcTest, ParallelRdWrAFile)
+{
+	const char *PATH = "TcTest-ParallelRdWrAFile.dat";
+	const int T = 6;  /* # of threads */
+	const int S = 4096;
+	tc_touch(PATH, T * S);
+
+	struct tc_iovec iovs[T];
+	char *data1 = getRandomBytes(T * S);
+	char *data2 = (char *)malloc(T * S);
+	for (int i = 0; i < 1; ++i) { // repeat for 10 times
+		for (int t = 0; t < T; ++t) {
+			tc_iov2path(&iovs[t], PATH, t * S, S, data1 + t * S);
+		}
+		DoParallel(T, [&iovs](int i) {
+			tc_res tcres = tc_writev(&iovs[i], 1, false);
+			EXPECT_TRUE(tcres.okay);
+		});
+
+		for (int t = 0; t < T; ++t) {
+			iovs[t].data = data2 + t * S;
+		}
+		DoParallel(T, [&iovs](int i) {
+			tc_res tcres = tc_readv(&iovs[i], 1, false);
+			EXPECT_TRUE(tcres.okay);
+		});
+		EXPECT_EQ(0, memcmp(data1, data2, T * S));
+	}
+
+	free(data1);
+	free(data2);
 }
 
 REGISTER_TYPED_TEST_CASE_P(TcTest,
@@ -888,7 +977,9 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   SuccesiveWrites,
 			   CopyFiles,
 			   ListAnEmptyDirectory,
-			   List2ndLevelDir);
+			   List2ndLevelDir,
+			   ShuffledRdWr,
+			   ParallelRdWrAFile);
 
 typedef ::testing::Types<TcNFS4Impl, TcPosixImpl> TcImpls;
 INSTANTIATE_TYPED_TEST_CASE_P(TC, TcTest, TcImpls);
