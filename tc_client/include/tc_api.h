@@ -242,6 +242,54 @@ struct tc_iovec
 	unsigned int is_write_stable : 1;   /* IN/OUT: stable write? */
 };
 
+static inline struct tc_iovec *tc_iov2file(struct tc_iovec *iov,
+					   const tc_file *tcf,
+					   size_t off,
+					   size_t len,
+					   void *buf)
+{
+	iov->file = *tcf;
+	iov->offset = off;
+	iov->length = len;
+	iov->data = buf;
+	iov->is_creation = false;
+	return iov;
+}
+
+static inline struct tc_iovec *tc_iov2path(struct tc_iovec *iov,
+					   const char *path, size_t off,
+					   size_t len, void *buf)
+{
+	iov->file = tc_file_from_path(path);
+	iov->offset = off;
+	iov->length = len;
+	iov->data = buf;
+	iov->is_creation = false;
+	return iov;
+}
+
+static inline struct tc_iovec *tc_iov2fd(struct tc_iovec *iov, int fd,
+					 size_t off, size_t len, void *buf)
+{
+	iov->file = tc_file_from_fd(fd);
+	iov->offset = off;
+	iov->length = len;
+	iov->data = buf;
+	iov->is_creation = false;
+	return iov;
+}
+
+static inline struct tc_iovec *
+tc_iov4creation(struct tc_iovec *iov, const char *path, size_t len, void *buf)
+{
+	iov->file = tc_file_from_path(path);
+	iov->offset = 0;
+	iov->length = len;
+	iov->data = buf;
+	iov->is_creation = true;
+	return iov;
+}
+
 /**
  * Result of a TC operation.
  *
@@ -563,6 +611,9 @@ static inline bool tx_removev(tc_file *files, int count)
 	tc_res res = tc_removev(files, count, true);
 	return res.okay;
 }
+
+int tc_unlink(const char *pathname);
+tc_res tc_unlinkv(const char **pathnames, int count);
 
 /**
  * Create one or more directories.

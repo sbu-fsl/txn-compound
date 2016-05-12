@@ -62,10 +62,7 @@ static tc_iovec *build_iovec(tc_file *files, int count, int offset)
 	iov = (tc_iovec *)calloc(count, sizeof(tc_iovec));
 
 	while (i < count) {
-		iov[i].file = files[i];
-		iov[i].offset = offset;
-		iov[i].length = N;
-		iov[i].data = (void *)malloc(N);
+		tc_iov2file(&iov[i], &files[i], offset, N, (void *)malloc(N));
 		i++;
 	}
 
@@ -79,11 +76,7 @@ void tc_touch(const char *path, int size)
 	tc_iovec iov;
 	tc_res tcres;
 
-	iov.file = tc_file_from_path(path);
-	iov.is_creation = true;
-	iov.offset = 0;
-	iov.length = size;
-	iov.data = size ? getRandomBytes(size) : NULL;
+	tc_iov4creation(&iov, path, size, (size ? getRandomBytes(size) : NULL));
 	tcres = tc_writev(&iov, 1, false);
 	EXPECT_TRUE(tcres.okay) << "failed to create " << path;
 	if (iov.data) {
@@ -111,12 +104,7 @@ static tc_iovec *set_iovec_file_paths(const char **paths, int count,
 			free_iovec(iovs, i);
 			return NULL;
 		}
-
-		iovs[i].file = tc_file_from_path(paths[i]);
-		iovs[i].offset = offset;
-
-		iovs[i].length = N;
-		iovs[i].data = (void *)malloc(N);
+		tc_iov2path(&iovs[i], paths[i], offset, N, malloc(N));
 		iovs[i].is_creation = is_write;
 	}
 
@@ -635,11 +623,7 @@ TYPED_TEST_P(TcTest, Append)
 	EXPECT_NOTNULL(data);
 	EXPECT_NOTNULL(data_read);
 
-	iov.file = tc_file_from_path(PATH);
-	iov.offset = 0;
-	iov.length = N;
-	iov.data = data;
-	iov.is_creation = true;
+	tc_iov4creation(&iov, PATH, N, data);
 
 	res = tc_writev(&iov, 1, false);
 	EXPECT_TRUE(res.okay);
@@ -681,11 +665,7 @@ TYPED_TEST_P(TcTest, SuccesiveReads)
 	Removev(&path, 1);
 
 	data = (char *)getRandomBytes(5 * N);
-	iov.file = tc_file_from_path(path);
-	iov.offset = 0;
-	iov.length = 5 * N;
-	iov.data = data;
-	iov.is_creation = true;
+	tc_iov4creation(&iov, path, 5 * N, data);
 
 	tcres = tc_writev(&iov, 1, false);
 	EXPECT_TRUE(tcres.okay);
@@ -695,11 +675,7 @@ TYPED_TEST_P(TcTest, SuccesiveReads)
 
 	tcf = tc_open(path, O_RDONLY, 0);
 	EXPECT_NOTNULL(tcf);
-	iov.file = *tcf;
-	iov.offset = TC_OFFSET_CUR;
-	iov.length = N;
-	iov.data = read;
-	iov.is_creation = false;
+	tc_iov2file(&iov, tcf, TC_OFFSET_CUR, N, read);
 	tcres = tc_readv(&iov, 1, false);
 	EXPECT_TRUE(tcres.okay);
 
@@ -837,17 +813,9 @@ TYPED_TEST_P(TcTest, CopyFiles)
 	pairs[1].length = N;
 
 	// create source files
-	iov[0].file = tc_file_from_path(pairs[0].src_path);
-	iov[0].is_creation = true;
-	iov[0].offset = 0;
-	iov[0].length = N;
-	iov[0].data = getRandomBytes(N);
+	tc_iov4creation(&iov[0], pairs[0].src_path, N, getRandomBytes(N));
 	EXPECT_NOTNULL(iov[0].data);
-	iov[1].file = tc_file_from_path(pairs[1].src_path);
-	iov[1].is_creation = true;
-	iov[1].offset = 0;
-	iov[1].length = N;
-	iov[1].data = getRandomBytes(N);
+	tc_iov4creation(&iov[1], pairs[1].src_path, N, getRandomBytes(N));
 	EXPECT_NOTNULL(iov[1].data);
 	tcres = tc_writev(iov, 2, false);
 	EXPECT_TRUE(tcres.okay);
@@ -860,18 +828,10 @@ TYPED_TEST_P(TcTest, CopyFiles)
 	tcres = tc_copyv(pairs, 2, false);
 	EXPECT_TRUE(tcres.okay);
 
-	read_iov[0].file = tc_file_from_path(pairs[0].dst_path);
-	read_iov[0].is_creation = false;
-	read_iov[0].offset = 0;
-	read_iov[0].length = N;
-	read_iov[0].data = malloc(N);
-	EXPECT_TRUE(read_iov[0].data);
-	read_iov[1].file = tc_file_from_path(pairs[1].dst_path);
-	read_iov[1].is_creation = false;
-	read_iov[1].offset = 0;
-	read_iov[1].length = N;
-	read_iov[1].data = malloc(N);
-	EXPECT_TRUE(read_iov[1].data);
+	tc_iov2path(&read_iov[0], pairs[0].dst_path, 0, N, malloc(N));
+	EXPECT_NOTNULL(read_iov[0].data);
+	tc_iov2path(&read_iov[1], pairs[1].dst_path, 0, N, malloc(N));
+	EXPECT_NOTNULL(read_iov[1].data);
 
 	tcres = tc_readv(read_iov, 2, false);
 	EXPECT_TRUE(tcres.okay);
