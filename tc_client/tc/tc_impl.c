@@ -188,6 +188,26 @@ tc_res tc_removev(tc_file *files, int count, bool is_transaction)
 	}
 }
 
+int tc_unlink(const char *path)
+{
+	tc_file tcf = tc_file_from_path(path);
+	tc_res tcres = tc_removev(&tcf, 1, false);
+	return tcres.okay ? 0 : -tcres.err_no;
+}
+
+tc_res tc_unlinkv(const char **paths, int count)
+{
+	int i = 0, r = 0;
+	tc_file *files;
+
+	files = (tc_file *)alloca(count * sizeof(tc_file));
+	for (i = 0; i < count; ++i) {
+		files[i] = tc_file_from_path(paths[i]);
+	}
+
+	return tc_removev(files, count, false);
+}
+
 tc_res tc_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)
 {
 	int i;

@@ -45,30 +45,10 @@
 #define EXPECT_NOTNULL(x) EXPECT_TRUE(x != NULL) << #x << " is NULL"
 
 /**
- * TODO(mchen): move to fileutil.h
- * Ensure the file does not exist
- * before test.
+ * Ensure files or directories do not exist before test.
  */
-
-/**
- * Ensure files or directories do not exist
- * before test.
- */
-static void Removev(const char **paths, int count)
-{
-	int i = 0, r = 0;
-	tc_file *files;
-
-	files = (tc_file *)alloca(count * sizeof(tc_file));
-	for (i = 0; i < count; ++i) {
-		files[i] = tc_file_from_path(paths[i]);
-	}
-
-	/**
-	 * FIXME: the compound may fail if files[i] does not exist whereas
-	 * files[j] exists where i < j. So we ended up not deleting files[j].
-	 */
-	tc_removev(files, count, false);
+bool Removev(const char **paths, int count) {
+	return tc_unlinkv(paths, count).okay;
 }
 
 /**
@@ -115,43 +95,32 @@ void tc_touch(const char *path, int size)
  * Set the tc_iovec
  */
 static tc_iovec *set_iovec_file_paths(const char **paths, int count,
-				      int is_write, size_t offset)
+				      bool is_write, size_t offset)
 {
 	int i = 0;
-	tc_iovec *user_arg = NULL;
+	tc_iovec *iovs = NULL;
 	const int N = 4096;
 
-	user_arg = (tc_iovec *)calloc(count, sizeof(tc_iovec));
+	iovs = (tc_iovec *)calloc(count, sizeof(tc_iovec));
 
-	while (i < count) {
+	for (i = 0; i < count; ++i) {
 		if (paths[i] == NULL) {
 			TCTEST_WARN(
 			    "set_iovec_FilePath() failed for file : %s\n",
 			    paths[i]);
-
-			int indx = 0;
-			while (indx < i) {
-				free((user_arg + indx)->data);
-				indx++;
-			}
-			free(user_arg);
-
+			free_iovec(iovs, i);
 			return NULL;
 		}
 
-		(user_arg + i)->file = tc_file_from_path(paths[i]);
-		(user_arg + i)->offset = offset;
+		iovs[i].file = tc_file_from_path(paths[i]);
+		iovs[i].offset = offset;
 
-		(user_arg + i)->length = N;
-		(user_arg + i)->data = (void *)malloc(N);
-
-		if (is_write)
-			(user_arg + i)->is_creation = 1;
-
-		i++;
+		iovs[i].length = N;
+		iovs[i].data = (void *)malloc(N);
+		iovs[i].is_creation = is_write;
 	}
 
-	return user_arg;
+	return iovs;
 }
 
 class TcPosixImpl {
@@ -238,14 +207,14 @@ TYPED_TEST_P(TcTest, WritevCanCreateFiles)
 	Removev(PATH, count);
 
 	struct tc_iovec *writev = NULL;
-	writev = set_iovec_file_paths(PATH, count, 1, 0);
+	writev = set_iovec_file_paths(PATH, count, true, 0);
 	EXPECT_FALSE(writev == NULL);
 
 	res = tc_writev(writev, count, false);
 	EXPECT_TRUE(res.okay);
 
 	struct tc_iovec *readv = NULL;
-	readv = set_iovec_file_paths(PATH, count, 0, 0);
+	readv = set_iovec_file_paths(PATH, count, false, 0);
 	EXPECT_FALSE(readv == NULL);
 
 	res = tc_readv(readv, count, false);
