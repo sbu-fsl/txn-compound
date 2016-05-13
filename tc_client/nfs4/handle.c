@@ -1067,7 +1067,6 @@ static SEQUENCE4resok *fs_sequence(nfs_argop4 *arg, nfs_resop4 *res)
 	memcpy(&sa->sa_sessionid, &fs_sessionid, NFS4_SESSIONID_SIZE);
 	sa->sa_slotid = alloc_session_slot(sess_slot_tbl, &sa->sa_sequenceid,
 					   &sa->sa_highest_slotid);
-        fprintf(stderr, "pid-%d using slotid: %d\n", getpid(), sa->sa_slotid);
 	sa->sa_cachethis = false;
 
 	return sok;
@@ -1110,7 +1109,7 @@ static int fs_reclaim_complete()
 
         rc = fs_nfsv4_call(NULL, opcnt, arg, res, NULL);
         if (rc != NFS4_OK) {
-		return -1;
+		return rc;
 	}
 
 	return 0;
@@ -1246,7 +1245,11 @@ static int fs_create_session()
         }
 
 	//fs_destroy_session();
-	fs_reclaim_complete();
+	rc = fs_reclaim_complete();
+        if (rc != 0) {
+		NFS4_ERR("fs_reclaim_complete() failed: %d", rc);
+		return -rc;
+        }
 
 	return 0;
 }
@@ -1759,7 +1762,7 @@ static fsal_status_t fs_create(struct fsal_obj_handle *dir_hdl,
 
 	opok = &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
 	opok->attrset = empty_bitmap;
-	fs_get_clientid(&cid);
+	tc_get_clientid(&cid);
 	COMPOUNDV4_ARG_ADD_OP_OPEN_CREATE(opcnt, argoparray, (char *)name,
 					  input_attr, cid, owner_val,
 					  owner_len);
@@ -2870,7 +2873,7 @@ static inline OPEN4resok *tc_prepare_open(struct nfsoparray *nfsops,
 	OPEN4args *args;
 
 	tc_new_state_owner(owner_pbuf);
-	fs_get_clientid(&cid);
+	tc_get_clientid(&cid);
 
 	nfsops->argoparray[n].argop = NFS4_OP_OPEN;
 	args = &nfsops->argoparray[n].nfs_argop4_u.opopen;
@@ -3941,7 +3944,6 @@ static tc_res tc_nfs4_openv(struct tc_attrs *attrs, int count, int *flags,
 	char *fh_buffers;
 	nfs_fh4 fh;
 	OPEN4resok *opok;
-        SEQUENCE4resok *seqok;
 
 	NFS4_DEBUG("tc_nfs4_openv");
 	assert(count >= 1);
@@ -3952,7 +3954,7 @@ static tc_res tc_nfs4_openv(struct tc_attrs *attrs, int count, int *flags,
 	fattr_blobs = (char *)alloca(count * FATTR_BLOB_SZ);
 	fh_buffers = alloca(count * NFS4_FHSIZE); /* on stack */
 
-        seqok = tc_prepare_sequence(nfsops);
+        tc_prepare_sequence(nfsops);
 	for (i = 0; i < count; ++i) {
 		rc = tc_set_current_fh(&attrs[i].file, nfsops, &name);
 		if (rc < 0) {
