@@ -25,9 +25,10 @@
 
 struct session_slot_table *new_session_slot_table()
 {
+        int i;
 	struct session_slot_table *sst;
 
-	sst = calloc(1, sizeof(*sst));
+	sst = malloc(sizeof(*sst));
 	if (!sst) {
 		return NULL;
 	}
@@ -39,8 +40,13 @@ struct session_slot_table *new_session_slot_table()
 	}
 	bs_set_all(sst->free_slots);
 
+        for (i = 0; i < SESSION_SLOT_TABLE_CAPACITY; ++i) {
+                sst->slots[i] = 1;
+        }
+
 	pthread_mutex_init(&sst->mutex, NULL);
 	pthread_cond_init(&sst->slot_cv, NULL);
+        sst->highest_used_slotid_plus1 = 0;
 	sst->server_highest_slotid = SESSION_SLOT_TABLE_CAPACITY - 1;
 	sst->target_highest_slotid = SESSION_SLOT_TABLE_CAPACITY - 1;
 
@@ -96,7 +102,7 @@ void free_session_slot(struct session_slot_table *sst, int slotid,
 		sst->highest_used_slotid_plus1 = s + 1;
 	}
 	if (sent) {
-		assert(server_highest >= sst->highest_used_slotid_plus1);
+		assert(server_highest + 1 >= sst->highest_used_slotid_plus1);
 		sst->server_highest_slotid = server_highest;
 		sst->target_highest_slotid = target_highest;
 		/* increment sequenceid */
