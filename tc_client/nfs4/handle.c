@@ -2184,6 +2184,7 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 	clientid4 cid;
         slice_t name;
         READ4resok *rok;
+        const stateid4 *sid;
 
 	LogDebug(COMPONENT_FSAL, "do_ktcread() called: %d\n", opcnt);
 
@@ -2210,14 +2211,13 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 		rok->data.data_len = kern_arg->user_arg->length;
 
 		if (*last_op == TC_FILE_PATH) {
-			COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argoparray,
-						   kern_arg->user_arg->offset,
-						   kern_arg->user_arg->length);
+                        sid = &CURSID;
 		} else if (*last_op == TC_FILE_DESCRIPTOR) {
-			COMPOUNDV4_ARG_ADD_OP_READ_STATE(
-			    opcnt, argoparray, kern_arg->user_arg->offset,
-			    kern_arg->user_arg->length, kern_arg->sid);
+                        sid = kern_arg->sid;
 		}
+		COMPOUNDV4_ARG_ADD_OP_READ_STATE(
+		    opcnt, argoparray, kern_arg->user_arg->offset,
+		    kern_arg->user_arg->length, sid);
 		break;
 	case TC_FILE_DESCRIPTOR:
 
@@ -2276,9 +2276,9 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg,
 		rok = &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
 		rok->data.data_val = kern_arg->user_arg->data;
 		rok->data.data_len = kern_arg->user_arg->length;
-		COMPOUNDV4_ARG_ADD_OP_READ(opcnt, argoparray,
-					   kern_arg->user_arg->offset,
-					   kern_arg->user_arg->length);
+		COMPOUNDV4_ARG_ADD_OP_READ_STATE(
+		    opcnt, argoparray, kern_arg->user_arg->offset,
+		    kern_arg->user_arg->length, (&CURSID));
 		*last_op = TC_FILE_PATH;
 		break;
 	default:
