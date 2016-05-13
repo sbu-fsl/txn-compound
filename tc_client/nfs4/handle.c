@@ -50,6 +50,7 @@
 #include "export_mgr.h"
 #include "nfs4_util.h"
 #include "tc_helper.h"
+#include "session_slots.h"
 
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
@@ -66,7 +67,7 @@
 static clientid4 fs_clientid;
 static clientid4 tc_clientid;
 static sessionid4 fs_sessionid;
-static sequenceid4 fs_sequenceid;
+static sequenceid4 fs_sequenceid;  /* per-ClientID sequence for creating sessions */
 static pthread_mutex_t fs_clientid_mutex = PTHREAD_MUTEX_INITIALIZER;
 static char fs_hostname[MAXNAMLEN + 1];
 static pthread_t fs_recv_thread;
@@ -78,6 +79,8 @@ static uint32_t rpc_xid;
 static pthread_mutex_t listlock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t sockless = PTHREAD_COND_INITIALIZER;
 static pthread_cond_t need_context = PTHREAD_COND_INITIALIZER;
+
+static struct session_slot_table *sess_slot_tbl;
 
 /*
  * Protects the "free_contexts" list and the "need_context" condition.
@@ -873,6 +876,25 @@ static int fs_compoundv4_call(struct fs_rpc_io_context *pcontext,
 	return rc;
 }
 
+static void tc_update_sequence(nfs_argop4 *arg, nfs_resop4 *res, bool sent)
+{
+	SEQUENCE4resok *sok;
+
+	if (arg->argop != NFS4_OP_SEQUENCE) {
+		return;
+	}
+	if (sent && res->nfs_resop4_u.opsequence.sr_status == NFS4_OK) {
+		sok = &res->nfs_resop4_u.opsequence.SEQUENCE4res_u.sr_resok4;
+		free_session_slot(sess_slot_tbl, sok->sr_slotid,
+				  sok->sr_highest_slotid,
+				  sok->sr_target_highest_slotid, sent);
+	} else {
+		free_session_slot(sess_slot_tbl, sok->sr_slotid,
+				  sok->sr_highest_slotid,
+				  sok->sr_target_highest_slotid, false);
+	}
+}
+
 /**
  * Make the RPC call of the NFS request.  Note the difference of failure of RPC
  * and failure of NFS.  If "nfsstat" is NULL, the return value is the status of
@@ -926,6 +948,7 @@ static int fs_compoundv4_execute(const char *caller,
                        rc = res.status;
                }
         }
+        tc_update_sequence(argoparray, resoparray, rc == RPC_SUCCESS);
 	return rc;
 }
 
@@ -1033,19 +1056,21 @@ static int fs_setclientid(clientid4 *resultclientid, uint32_t *lease_time)
 	return 0;
 }
 
-static int fs_sequence(nfs_argop4 *arg, nfs_resop4 *res)
+static SEQUENCE4resok *fs_sequence(nfs_argop4 *arg, nfs_resop4 *res)
 {
+	SEQUENCE4args *sa;
+	SEQUENCE4resok *sok;
 
 	arg->argop = NFS4_OP_SEQUENCE;
-        memcpy(&arg->nfs_argop4_u.opsequence.sa_sessionid, &fs_sessionid,
-               NFS4_SESSIONID_SIZE);
-        /* TODO: use atomic operation on fs_sequenceid */
-        arg->nfs_argop4_u.opsequence.sa_sequenceid = fs_sequenceid++;
-        arg->nfs_argop4_u.opsequence.sa_slotid = 0;
-        arg->nfs_argop4_u.opsequence.sa_highest_slotid = 0;
-        arg->nfs_argop4_u.opsequence.sa_cachethis = false;
+	sa = &arg->nfs_argop4_u.opsequence;
+	sok = &res->nfs_resop4_u.opsequence.SEQUENCE4res_u.sr_resok4;
+	memcpy(&sa->sa_sessionid, &fs_sessionid, NFS4_SESSIONID_SIZE);
+	sa->sa_slotid = alloc_session_slot(sess_slot_tbl, &sa->sa_sequenceid,
+					   &sa->sa_highest_slotid);
+        fprintf(stderr, "pid-%d using slotid: %d\n", getpid(), sa->sa_slotid);
+	sa->sa_cachethis = false;
 
-        return 0;
+	return sok;
 }
 
 static fsal_status_t fs_destroy_session()
@@ -1061,6 +1086,8 @@ static fsal_status_t fs_destroy_session()
         rc = fs_nfsv4_call(NULL, 1, &arg, &res, NULL);
         if (rc != NFS4_OK) {
 		nfsstat4_to_fsal(rc);
+	} else {
+		del_session_slot_table(&sess_slot_tbl);
 	}
 
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
@@ -1207,6 +1234,16 @@ static int fs_create_session()
 	csr = &res.nfs_resop4_u.opcreate_session.CREATE_SESSION4res_u.csr_resok4;
 	memcpy(&fs_sessionid, csr->csr_sessionid, NFS4_SESSIONID_SIZE);
 	fs_sequenceid = csr->csr_sequence;
+
+        if (sess_slot_tbl) {
+                NFS4_WARN("currently only one session is supported\n");
+                del_session_slot_table(&sess_slot_tbl);
+        }
+        sess_slot_tbl = new_session_slot_table();
+        if (!sess_slot_tbl) {
+                NFS4_ERR("cannot create session slot table");
+                return -ENOMEM;
+        }
 
 	//fs_destroy_session();
 	fs_reclaim_complete();
@@ -1479,7 +1516,6 @@ static fsal_status_t fs_lookup_impl(struct fsal_obj_handle *parent,
 		switch (parent->type) {
 		case DIRECTORY:
 			break;
-
 		default:
 			return fsalstat(ERR_FSAL_NOTDIR, 0);
 		}
@@ -1517,7 +1553,7 @@ static fsal_status_t fs_lookup_impl(struct fsal_obj_handle *parent,
 		return nfsstat4_to_fsal(rc);
 
 	return fs_make_object(export, &atok->obj_attributes, &fhok->object,
-			       handle);
+			      handle);
 }
 
 static fsal_status_t fs_lookup(struct fsal_obj_handle *parent,
@@ -1602,12 +1638,14 @@ static inline void copy_stateid4(stateid4 *dstid, const stateid4 *srcid)
         memmove(dstid->other, srcid->other, 12);
 }
 
-static inline void tc_prepare_sequence(struct nfsoparray *nfsops)
+static inline SEQUENCE4resok *tc_prepare_sequence(struct nfsoparray *nfsops)
 {
+        SEQUENCE4resok *sok;
         /* SEQUENCE should be the first operation of a compound. */
         assert(nfsops->opcnt == 0);
-        fs_sequence(nfsops->argoparray, nfsops->resoparray);
+        sok = fs_sequence(nfsops->argoparray, nfsops->resoparray);
         nfsops->opcnt = 1;
+        return sok;
 }
 
 static inline OPEN_CONFIRM4resok *
@@ -3903,6 +3941,7 @@ static tc_res tc_nfs4_openv(struct tc_attrs *attrs, int count, int *flags,
 	char *fh_buffers;
 	nfs_fh4 fh;
 	OPEN4resok *opok;
+        SEQUENCE4resok *seqok;
 
 	NFS4_DEBUG("tc_nfs4_openv");
 	assert(count >= 1);
@@ -3913,7 +3952,7 @@ static tc_res tc_nfs4_openv(struct tc_attrs *attrs, int count, int *flags,
 	fattr_blobs = (char *)alloca(count * FATTR_BLOB_SZ);
 	fh_buffers = alloca(count * NFS4_FHSIZE); /* on stack */
 
-        tc_prepare_sequence(nfsops);
+        seqok = tc_prepare_sequence(nfsops);
 	for (i = 0; i < count; ++i) {
 		rc = tc_set_current_fh(&attrs[i].file, nfsops, &name);
 		if (rc < 0) {

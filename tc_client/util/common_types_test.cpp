@@ -110,3 +110,18 @@ TEST(BitsetTest, AutoBitsetTest) {
 	EXPECT_EQ(8887, bs->size);
 	test_bitset(bs, "auto-bitset-8887");
 }
+
+TEST(BitsetTest, TestFindFirstSet) {
+	bitset_t *bs = new_auto_bitset(33);
+	EXPECT_EQ(-1, bs_ffs(bs));
+	bs_set(bs, 32);
+	EXPECT_EQ(32, bs_ffs(bs));
+	bs_set(bs, 6);
+	EXPECT_EQ(6, bs_ffs(bs));
+	bs_set_all(bs);
+	EXPECT_EQ(0, bs_ffs(bs));
+	bs_reset_all(bs);
+	EXPECT_EQ(-1, bs_ffs(bs));
+	bs_set(bs, 13);
+	EXPECT_EQ(13, bs_ffs(bs));
+}

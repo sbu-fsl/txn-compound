@@ -11,6 +11,7 @@ SET(fsaltcnfs_LIB_SRCS
    fs.c
    export.c
    xattrs.c
+   session_slots.c
 )
 
 add_library(fsaltcnfs SHARED ${fsaltcnfs_LIB_SRCS} ${fsal_CORE_SRCS})

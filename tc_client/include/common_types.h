@@ -66,6 +66,34 @@ static inline void bs_set(bitset_t *bs, size_t pos)
 	}
 }
 
+static inline void bs_set_all(bitset_t *bs)
+{
+	memset(bs->bits, 255, (bs->size + 7) / 8);
+}
+
+static inline void bs_reset_all(bitset_t *bs)
+{
+	memset(bs->bits, 0, (bs->size + 7) / 8);
+}
+
+static inline int bs_ffs(bitset_t *bs)
+{
+	int i;
+	int res = -1;
+	const int N = (bs->size + 7) / 8;
+
+	for (i = 0; i < N; ++i) {
+		res = ffs(bs->bits[i]);
+		if (res > 0) {
+			assert(res <= 8);
+			res += ((i * 8) - 1);
+			return res < bs->size ? res : -1;
+		}
+	}
+
+	return -1;
+}
+
 static inline bool bs_get(bitset_t *bs, size_t pos)
 {
 	return pos < bs->size ? (bs->bits[pos / 8] & (1 << (pos % 8))) : 0;
