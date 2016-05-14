@@ -2139,18 +2139,11 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg, int *last_op,
 			return fsalstat(ERR_FSAL_INVAL, -1);
 		}
 
-		rok = &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
-		rok->data.data_val = kern_arg->user_arg->data;
-		rok->data.data_len = kern_arg->user_arg->length;
-
 		if (*last_op == TC_FILE_PATH) {
                         sid = &CURSID;
 		} else if (*last_op == TC_FILE_DESCRIPTOR) {
                         sid = kern_arg->sid;
 		}
-		COMPOUNDV4_ARG_ADD_OP_READ_STATE(
-		    opcnt, argoparray, kern_arg->user_arg->offset,
-		    kern_arg->user_arg->length, sid);
 		break;
 	case TC_FILE_DESCRIPTOR:
 
@@ -2160,13 +2153,7 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg, int *last_op,
 
 		COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, *kern_arg->fh);
 
-		rok = &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
-		rok->data.data_val = kern_arg->user_arg->data;
-		rok->data.data_len = kern_arg->user_arg->length;
-		COMPOUNDV4_ARG_ADD_OP_READ_STATE(
-		    opcnt, argoparray, kern_arg->user_arg->offset,
-		    kern_arg->user_arg->length, kern_arg->sid);
-
+                sid = kern_arg->sid;
 		*last_op = TC_FILE_DESCRIPTOR;
 		break;
 	case TC_FILE_PATH:
@@ -2177,7 +2164,6 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg, int *last_op,
 		 *  3) Start from putrootfh and keeping adding lookups,
 		 *  4) Followed by open and read
 		 */
-
 		if (*last_op == TC_FILE_PATH) {
 			/*
 			 * No need to send close if its the first read request
@@ -2189,7 +2175,6 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg, int *last_op,
 		 * Parse the file-path and send lookups to set the current
 		 * file-handle
 		 */
-
 		if (tc_set_cfh_to_path(kern_arg->path, &name, false) == -1) {
 			goto exit_pathinval;
 		}
@@ -2205,18 +2190,20 @@ static fsal_status_t do_ktcread(struct tcread_kargs *kern_arg, int *last_op,
 		    opcnt, argoparray, 0 /*seq id*/, cid, name, owner_val,
 		    owner_len, OPEN4_SHARE_ACCESS_READ);
 
-		rok = &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
-		rok->data.data_val = kern_arg->user_arg->data;
-		rok->data.data_len = kern_arg->user_arg->length;
-		COMPOUNDV4_ARG_ADD_OP_READ_STATE(
-		    opcnt, argoparray, kern_arg->user_arg->offset,
-		    kern_arg->user_arg->length, (&CURSID));
+                sid = &CURSID;
 		*last_op = TC_FILE_PATH;
 		break;
 	default:
 		return fsalstat(ERR_FSAL_INVAL, -1);
 		break;
 	}
+
+        rok = &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
+        rok->data.data_val = kern_arg->user_arg->data;
+        rok->data.data_len = kern_arg->user_arg->length;
+        COMPOUNDV4_ARG_ADD_OP_READ_STATE(
+            opcnt, argoparray, kern_arg->user_arg->offset,
+            kern_arg->user_arg->length, sid);
 
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 
