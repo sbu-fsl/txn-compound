@@ -1608,24 +1608,6 @@ static inline void copy_stateid4(stateid4 *dstid, const stateid4 *srcid)
         memmove(dstid->other, srcid->other, 12);
 }
 
-static inline OPEN_CONFIRM4resok *
-tc_prepare_open_confirm(stateid4 *stateid)
-{
-	OPEN_CONFIRM4args *ocargs;
-	OPEN_CONFIRM4resok *ocok;
-
-	ocargs = &argoparray[opcnt].nfs_argop4_u.opopen_confirm;
-	ocok = &resoparray[opcnt]
-		    .nfs_resop4_u.opopen_confirm.OPEN_CONFIRM4res_u.resok4;
-
-	argoparray[opcnt].argop = NFS4_OP_OPEN_CONFIRM;
-	copy_stateid4(&ocargs->open_stateid, stateid);
-	ocargs->seqid = 1;
-        ++opcnt;
-
-	return ocok;
-}
-
 static fsal_status_t fs_open_confirm(const struct user_cred *cred,
 				      const nfs_fh4 *fh4, stateid4 *stateid,
 				      struct fsal_export *export)
@@ -1822,59 +1804,6 @@ static fsal_status_t fs_read_state(const nfs_fh4 *fh4, const nfs_fh4 *fh4_1,
 	*end_of_file = rok->eof;
 	*read_amount = rok->data.data_len;
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
-}
-
-/*
- * Parse path, start from putrootfh and send multiple lookups till we get
- * to the last directory.
- * Lookup is not sent for the file becase open is send with the filename
- * Marker variable is updated to the location of the "filename" in path
- *
- * Returns -1 in the case of invalid paths, 0 otherwise
- */
-static int construct_lookup(char *path, int *marker)
-{
-        char *saved;
-        char *pcopy;
-        char *p;
-        char *temp;
-        *marker = 1;
-
-        pcopy = gsh_strdup(path);
-        temp = malloc(MAX_FILENAME_LENGTH);
-        if (temp == NULL) {
-                goto error_after_gsh;
-        }
-        COMPOUNDV4_ARG_ADD_OP_PUTROOTFH(opcnt, argoparray);
-
-        p = strtok_r(pcopy, "/", &saved);
-        while (p) {
-                if (strcmp(p, "..") == 0) {
-                        /* Don't allow lookup of ".." */
-                        LogInfo(COMPONENT_FSAL,
-                                "Attempt to use \"..\" element in path %s",
-                                path);
-                        goto error_after_temp;
-                }
-                strncpy(temp, p, MAX_FILENAME_LENGTH);
-                p = strtok_r(NULL, "/", &saved);
-                if (p) {
-                        COMPOUNDV4_ARG_ADD_OP_LOOKUPNAME(
-                            opcnt, argoparray, (path + *marker), strlen(temp));
-                        *marker += (strlen(temp) + 1);
-                }
-        }
-
-        gsh_free(pcopy);
-        free(temp);
-
-        return 0;
-
-error_after_temp:
-        free(temp);
-error_after_gsh:
-        gsh_free(pcopy);
-        return -1;
 }
 
 #define TC_BASE_PATH_CURRENT 1
