@@ -242,6 +242,23 @@ struct tc_iovec
 	unsigned int is_write_stable : 1;   /* IN/OUT: stable write? */
 };
 
+struct tc_iov_array
+{
+	int size;
+	struct tc_iovec *iovs;
+};
+
+#define TC_IOV_ARRAY_INITIALIZER(iov, s)                                       \
+	{                                                                      \
+		.size = (s), .iovs = (iov),                                    \
+	}
+
+static inline struct tc_iov_array tc_iovs2array(struct tc_iovec *iovs, int s)
+{
+	struct tc_iov_array iova = TC_IOV_ARRAY_INITIALIZER(iovs, s);
+	return iova;
+}
+
 static inline struct tc_iovec *tc_iov2file(struct tc_iovec *iov,
 					   const tc_file *tcf,
 					   size_t off,
