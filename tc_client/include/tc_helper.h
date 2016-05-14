@@ -56,6 +56,8 @@ void tc_get_attrs_from_stat(const struct stat *st, struct tc_attrs *attrs);
 
 void tc_copy_attrs(const struct tc_attrs *src, struct tc_attrs *dst);
 
+bool tc_cmp_file(const tc_file *tcf1, const tc_file *tcf2);
+
 #ifdef __cplusplus
 }
 #endif

@@ -24,6 +24,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include "tc_api.h"
 
 void free_iovec(struct tc_iovec *iovec, int count)
@@ -122,3 +123,26 @@ void tc_copy_attrs(const struct tc_attrs *src, struct tc_attrs *dst)
 	if (src->masks.has_ctime)
 		tc_attrs_set_ctime(dst, src->ctime);
 }
+
+bool tc_cmp_file(const tc_file *tcf1, const tc_file *tcf2)
+{
+	if (tcf1->type != tcf2->type)
+		return false;
+	switch (tcf1->type) {
+	case TC_FILE_DESCRIPTOR:
+		return tcf1->fd == tcf2->fd;
+	case TC_FILE_PATH:
+		return strcmp(tcf1->path, tcf2->path) == 0;
+	case TC_FILE_HANDLE:
+		if (tcf1->handle->handle_bytes != tcf2->handle->handle_bytes)
+			return false;
+		if (tcf1->handle->handle_type != tcf2->handle->handle_type)
+			return false;
+		return memcmp(tcf1->handle->f_handle,
+			      tcf2->handle->f_handle,
+			      tcf1->handle->handle_bytes);
+	default:
+		return true;
+	}
+};
+
