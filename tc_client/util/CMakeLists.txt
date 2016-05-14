@@ -14,6 +14,7 @@ set_target_properties(path_utils PROPERTIES POSITION_INDEPENDENT_CODE on)
 set(util_SRC
   bench.cpp
   fileutil.cpp
+  iovec_utils.cpp
 )
 
 include_directories(
@@ -38,6 +39,7 @@ set(test_LIB
   gtest_main
   gmock
   path_utils
+  tc_helper
 )
 
 function (add_unittest TestName LibName)
@@ -53,3 +55,4 @@ add_unittest(zipf_test tc_util)
 add_unittest(fileutil_test tc_util)
 add_unittest(path_utils_test tc_util)
 add_unittest(common_types_test tc_util)
+add_unittest(iovec_utils_test tc_util)
