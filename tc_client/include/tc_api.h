@@ -37,7 +37,7 @@
 extern "C" {
 #endif
 
-/* 
+/**
  * Initialize tc_client
  * log_path - Location of the log file
  * config_path - Location of the config file
@@ -153,7 +153,7 @@ static inline tc_file tc_file_from_cfh(const char *relpath) {
 	if (relpath && relpath[0] == '/') {
 		return tc_file_from_path(relpath);
 	}
-	
+
 	tf.type = TC_FILE_CURRENT;
 	tf.fd = -1;	/* poison */
 	tf.path = relpath;
@@ -234,7 +234,7 @@ struct tc_iovec
 	 * IN:  data requested to be written
 	 * OUT: data successfully read
 	 */
-	void *data;
+	char *data;
 
 	unsigned int is_creation : 1; /* IN: create file if not exist? */
 	unsigned int is_failure : 1;  /* OUT: is this I/O a failure? */
@@ -263,7 +263,7 @@ static inline struct tc_iovec *tc_iov2file(struct tc_iovec *iov,
 					   const tc_file *tcf,
 					   size_t off,
 					   size_t len,
-					   void *buf)
+					   char *buf)
 {
 	iov->file = *tcf;
 	iov->offset = off;
@@ -275,7 +275,7 @@ static inline struct tc_iovec *tc_iov2file(struct tc_iovec *iov,
 
 static inline struct tc_iovec *tc_iov2path(struct tc_iovec *iov,
 					   const char *path, size_t off,
-					   size_t len, void *buf)
+					   size_t len, char *buf)
 {
 	iov->file = tc_file_from_path(path);
 	iov->offset = off;
@@ -286,7 +286,7 @@ static inline struct tc_iovec *tc_iov2path(struct tc_iovec *iov,
 }
 
 static inline struct tc_iovec *tc_iov2fd(struct tc_iovec *iov, int fd,
-					 size_t off, size_t len, void *buf)
+					 size_t off, size_t len, char *buf)
 {
 	iov->file = tc_file_from_fd(fd);
 	iov->offset = off;
@@ -297,7 +297,7 @@ static inline struct tc_iovec *tc_iov2fd(struct tc_iovec *iov, int fd,
 }
 
 static inline struct tc_iovec *
-tc_iov4creation(struct tc_iovec *iov, const char *path, size_t len, void *buf)
+tc_iov4creation(struct tc_iovec *iov, const char *path, size_t len, char *buf)
 {
 	iov->file = tc_file_from_path(path);
 	iov->offset = 0;

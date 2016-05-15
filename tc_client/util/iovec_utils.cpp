@@ -125,6 +125,9 @@ bool tc_restore_iov_array(struct tc_iov_array *iova,
 			}
 		}
 	}
+	if (i_off != 0) {
+		advance(false);
+	}
 
 	if (res) {
 		for (int n = 0; n < nparts; ++n) {

@@ -82,7 +82,7 @@ static tc_iovec *build_iovec(tc_file *files, int count, int offset)
 	iov = (tc_iovec *)calloc(count, sizeof(tc_iovec));
 
 	while (i < count) {
-		tc_iov2file(&iov[i], &files[i], offset, N, (void *)malloc(N));
+		tc_iov2file(&iov[i], &files[i], offset, N, (char *)malloc(N));
 		i++;
 	}
 
@@ -124,7 +124,7 @@ static tc_iovec *set_iovec_file_paths(const char **paths, int count,
 			free_iovec(iovs, i);
 			return NULL;
 		}
-		tc_iov2path(&iovs[i], paths[i], offset, N, malloc(N));
+		tc_iov2path(&iovs[i], paths[i], offset, N, (char *)malloc(N));
 		iovs[i].is_creation = is_write;
 	}
 
@@ -849,9 +849,9 @@ TYPED_TEST_P(TcTest, CopyFiles)
 	tcres = tc_copyv(pairs, 2, false);
 	EXPECT_TRUE(tcres.okay);
 
-	tc_iov2path(&read_iov[0], pairs[0].dst_path, 0, N, malloc(N));
+	tc_iov2path(&read_iov[0], pairs[0].dst_path, 0, N, (char *)malloc(N));
 	EXPECT_NOTNULL(read_iov[0].data);
-	tc_iov2path(&read_iov[1], pairs[1].dst_path, 0, N, malloc(N));
+	tc_iov2path(&read_iov[1], pairs[1].dst_path, 0, N, (char *)malloc(N));
 	EXPECT_NOTNULL(read_iov[1].data);
 
 	tcres = tc_readv(read_iov, 2, false);
