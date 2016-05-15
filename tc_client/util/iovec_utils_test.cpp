@@ -26,12 +26,9 @@
 #include <gtest/gtest.h>
 
 #include "tc_helper.h"
+#include "test_util.h"
 
 using std::vector;
-
-constexpr size_t operator"" _KB(unsigned long long a) { return a << 10; }
-constexpr size_t operator"" _MB(unsigned long long a) { return a << 20; }
-constexpr size_t operator"" _GB(unsigned long long a) { return a << 30; }
 
 static inline struct tc_iov_array vec2array(vector<struct tc_iovec> &vec)
 {
@@ -75,6 +72,21 @@ TEST(IovecUtils, SplitOneBigIovec)
 	}
 
 	free(buf);
+}
+
+TEST(IovecUtils, SplitIovecsOfDifferentSizes)
+{
+	struct tc_iovec iov;
+	tc_iov2fd(&iov, 1, 0, 8_KB, new char[2_MB]);
+	struct tc_iov_array iova = TC_IOV_ARRAY_INITIALIZER(&iov, 1);
+	for (size_t s = 8_KB; s <= 2_MB; s += 8_KB) {
+		iov.length = s;
+		int nparts;
+		auto parts = tc_split_iov_array(&iova, 1_MB, &nparts);
+		EXPECT_TRUE(tc_restore_iov_array(&iova, &parts, nparts));
+		EXPECT_EQ(s, iov.length);
+	}
+	delete[] iov.data;
 }
 
 TEST(IovecUtils, SmallCpdsAreNotSplit)
@@ -164,6 +176,7 @@ TEST(IovecUtils, SplitIovecDueToOverhead)
 	EXPECT_EQ(1, parts[1].size);
 	EXPECT_EQ(512_KB, parts[1].iovs->length);
 
+	EXPECT_TRUE(tc_restore_iov_array(&iova, &parts, nparts));
 	delete[] iovs[0].data;
 	delete[] iovs[1].data;
 }
@@ -186,6 +199,7 @@ TEST(IovecUtils, SplitDonotGenerateTinyIovec)
 					  TC_SPLIT_THRESHOLD);
 			}
 		}
+		EXPECT_TRUE(tc_restore_iov_array(&iova, &parts, nparts));
 		for (int i = 0; i < count; ++i) {
 			delete[] iovs[i].data;
 		}

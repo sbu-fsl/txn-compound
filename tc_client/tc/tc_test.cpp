@@ -40,6 +40,7 @@
 
 #include "tc_api.h"
 #include "tc_helper.h"
+#include "test_util.h"
 #include "util/fileutil.h"
 #include "log.h"
 
@@ -963,6 +964,32 @@ TYPED_TEST_P(TcTest, ParallelRdWrAFile)
 	free(data2);
 }
 
+TYPED_TEST_P(TcTest, RdWrLargeThanRPCLimit)
+{
+	struct tc_iovec iov;
+	char* data1 = getRandomBytes(2_MB);
+	tc_iov4creation(&iov, "TcTest-WriteLargeThanRPCLimit.dat", 2_MB, data1);
+
+	tc_res tcres = tc_writev(&iov, 1, false);
+	EXPECT_TRUE(tcres.okay);
+	EXPECT_EQ(2_MB, iov.length);
+
+	char* data2 = (char *)malloc(2_MB);
+	iov.is_creation = false;
+	iov.data = data2;
+	for (size_t s = 8_KB; s <= 2_MB; s += 8_KB) {
+		iov.length = s;
+		tcres = tc_readv(&iov, 1, false);
+		EXPECT_TRUE(tcres.okay);
+		EXPECT_EQ(iov.length == 2_MB, iov.is_eof);
+		EXPECT_EQ(s, iov.length);
+		EXPECT_EQ(0, memcmp(data1, data2, s));
+	}
+
+	free(data1);
+	free(data2);
+}
+
 REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   WritevCanCreateFiles,
 			   TestFileDesc,
@@ -979,7 +1006,8 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   ListAnEmptyDirectory,
 			   List2ndLevelDir,
 			   ShuffledRdWr,
-			   ParallelRdWrAFile);
+			   ParallelRdWrAFile,
+			   RdWrLargeThanRPCLimit);
 
 typedef ::testing::Types<TcNFS4Impl, TcPosixImpl> TcImpls;
 INSTANTIATE_TYPED_TEST_CASE_P(TC, TcTest, TcImpls);

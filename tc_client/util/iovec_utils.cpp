@@ -121,8 +121,6 @@ static inline size_t tc_get_iov_overhead(const struct tc_iovec *iov)
 	return putfh_bytes + lookup_bytes + open_close_bytes + rdwr_bytes;
 }
 
-const size_t SPLIT_THRESHOLD = 4096;
-
 struct tc_iov_array *tc_split_iov_array(const struct tc_iov_array *iova,
 					int size_limit, int *nparts)
 {
@@ -149,6 +147,7 @@ struct tc_iov_array *tc_split_iov_array(const struct tc_iov_array *iova,
 	    size_t len) {
 		struct tc_iovec iov = *i_iov;
 		iov.offset += i_off;
+		iov.data += i_off;
 		iov.length = len;
 		iov.is_creation = i_iov->is_creation && i_off == 0;
 		cur_cpd.push_back(iov);
@@ -167,10 +166,10 @@ struct tc_iov_array *tc_split_iov_array(const struct tc_iov_array *iova,
 			i_iov = iova->iovs + i;
 		} else {
 			// Don't split if we will create a tiny head or tail.
-			bool tiny_head = space_left <= SPLIT_THRESHOLD;
+			bool tiny_head = space_left <= TC_SPLIT_THRESHOLD;
 			bool tiny_tail =
 			    (data_remain + CPDSIZE) <= size_limit &&
-			    (data_remain - space_left) <= SPLIT_THRESHOLD;
+			    (data_remain - space_left) <= TC_SPLIT_THRESHOLD;
 			if (tiny_head || tiny_tail) {
 				add_part();
 				continue;

@@ -206,7 +206,7 @@ void nfs4_deinit(void *arg)
  * read_count - Length of the above array
  *              (Or number of reads)
  */
-tc_res nfs4_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
+tc_res nfs4_do_readv(struct tc_iovec *arg, int read_count, bool istxn)
 {
 	struct tcread_kargs *kern_arg = NULL;
 	struct tcread_kargs *cur_arg = NULL;
@@ -229,7 +229,7 @@ tc_res nfs4_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 		return result;
 	}
 
-	LogDebug(COMPONENT_FSAL, "nfs4_readv() called\n");
+	NFS4_DEBUG("nfs4_do_readv() called");
 
 	kern_arg = malloc(read_count * (sizeof(struct tcread_kargs)));
 
@@ -322,6 +322,34 @@ error:
 	return result;
 }
 
+tc_res nfs4_do_iovec(struct tc_iovec *iovs, int count, bool istxn,
+		     tc_res (*fn)(struct tc_iovec *iovs, int count, bool istxn))
+{
+	static const size_t CPD_LIMIT = (1 << 20);
+	int i;
+	int nparts;
+	struct tc_iov_array iova = TC_IOV_ARRAY_INITIALIZER(iovs, count);
+	struct tc_iov_array *parts =
+	    tc_split_iov_array(&iova, CPD_LIMIT, &nparts);
+	tc_res tcres;
+
+	for (i = 0; i < nparts; ++i) {
+		tcres = fn(parts[i].iovs, parts[i].size, istxn);
+		if (!tcres.okay) {
+			/* TODO: FIX tcres */
+			goto exit;
+		}
+	}
+
+exit:
+	tc_restore_iov_array(&iova, &parts, nparts);
+	return tcres;
+}
+
+tc_res nfs4_readv(struct tc_iovec *iovs, int count, bool istxn) {
+	return nfs4_do_iovec(iovs, count, istxn, nfs4_do_readv);
+}
+
 static void tc_update_file_cursor(struct tc_kfd *tcfd, struct tc_iovec *write)
 {
 	if (write->offset == TC_OFFSET_CUR) {
@@ -344,7 +372,7 @@ static void tc_update_file_cursor(struct tc_kfd *tcfd, struct tc_iovec *write)
  * read_count - Length of the above array
  *              (Or number of reads)
  */
-tc_res nfs4_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
+tc_res nfs4_do_writev(struct tc_iovec *arg, int write_count, bool istxn)
 {
 	struct tcwrite_kargs *kern_arg = NULL;
 	struct tcwrite_kargs *cur_arg = NULL;
@@ -367,7 +395,7 @@ tc_res nfs4_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 		return result;
 	}
 
-	LogDebug(COMPONENT_FSAL, "nfs4_writev() called \n");
+	NFS4_DEBUG("nfs4_do_writev() called");
 
 	kern_arg = calloc(write_count, (sizeof(struct tcwrite_kargs)));
 
@@ -450,6 +478,11 @@ tc_res nfs4_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 error:
 	free(kern_arg);
 	return result;
+}
+
+tc_res nfs4_writev(struct tc_iovec *iovs, int count, bool istxn)
+{
+	return nfs4_do_iovec(iovs, count, istxn, nfs4_do_writev);
 }
 
 tc_file *nfs4_openv(const char **paths, int count, int *flags, mode_t *modes)
