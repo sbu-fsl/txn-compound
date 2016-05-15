@@ -9312,7 +9312,7 @@ extern "C" {
 		return true;
 	}
 
-#if 0
+#if 1
 	static inline bool xdr_nfs_ftype4(XDR *, nfs_ftype4 *);
 	static inline bool xdr_nfsstat4(XDR *, nfsstat4 *);
 	static inline bool xdr_attrlist4(XDR *, attrlist4 *);
@@ -9868,13 +9868,10 @@ extern "C" {
 	static inline bool xdr_data_content4(XDR *, data_content4*);
 	static inline bool xdr_data_protected4(XDR *, data_protected4*);
 	static inline bool xdr_data_protect_info4(XDR *, data_protect_info4*);
-	static inline bool xdr_space_info4(XDR *, space_info4*);
 	static inline bool xdr_data_info4(XDR *, data_info4*);
 	static inline bool xdr_data4(XDR *, data4*);
 	static inline bool xdr_app_data_hole4(XDR *, app_data_hole4*);
-	static inline bool xdr_write_plus_arg4(XDR *, write_plus_arg4*);
 	static inline bool xdr_WRITE_PLUS4args(XDR *, WRITE_PLUS4args*);
-	static inline bool xdr_write_response4(XDR *, write_response4*);
 	static inline bool xdr_WRITE_PLUS4res(XDR *, WRITE_PLUS4res*);
 
 #else				/* K&R C */
@@ -10296,13 +10293,10 @@ extern "C" {
 	static inline bool xdr_data_content4();
 	static inline bool xdr_data_protected4();
 	static inline bool xdr_data_protect_info4();
-	static inline bool xdr_space_info4();
 	static inline bool xdr_data_info4();
 	static inline bool xdr_data4();
 	static inline bool xdr_app_data_hole4();
-	static inline bool xdr_write_plus_arg4();
 	static inline bool xdr_WRITE_PLUS4args();
-	static inline bool xdr_write_response4();
 	static inline bool xdr_WRITE_PLUS4res();
 
 #endif				/* 0 */
