@@ -421,6 +421,13 @@ static struct bitmap4 empty_bitmap = {
 	.bitmap4_len = 2
 };
 
+static bool is_special_stateid(const stateid4 *sid)
+{
+	static const char All_Zero[] =
+	    "\0\0\0\0\0\0\0\0\0\0\0\0"; /* 12 times \0 */
+        return memcmp(sid->other, All_Zero, 12) == 0;
+}
+
 static int fs_fsalattr_to_fattr4(const struct attrlist *attrs, fattr4 *data)
 {
 	int i;
@@ -1553,11 +1560,10 @@ static fsal_status_t fs_do_close(const struct user_cred *creds,
 				  struct fsal_export *exp)
 {
 	int rc;
-	char All_Zero[] = "\0\0\0\0\0\0\0\0\0\0\0\0";	/* 12 times \0 */
 
 	/* Check if this was a "stateless" open,
 	 * then nothing is to be done at close */
-	if (!memcmp(sid->other, All_Zero, 12))
+	if (is_special_stateid(sid))
 		return fsalstat(ERR_FSAL_NO_ERROR, 0);
 
         tc_start_compound(true);
@@ -1583,11 +1589,10 @@ static fsal_status_t tc_do_close(const struct user_cred *creds,
 				 seqid4 *seqid, struct fsal_export *exp)
 {
 	int rc;
-	char All_Zero[] = "\0\0\0\0\0\0\0\0\0\0\0\0";	/* 12 times \0 */
 
 	/* Check if this was a "stateless" open,
 	 * then nothing is to be done at close */
-	if (!memcmp(sid->other, All_Zero, 12))
+	if (is_special_stateid(sid))
 		return fsalstat(ERR_FSAL_NO_ERROR, 0);
 
         tc_start_compound(true);
@@ -3759,7 +3764,6 @@ static tc_res tc_nfs4_closev(const nfs_fh4 *fh4s, int count, stateid4 *sids,
         int i;
 	int rc;
 	tc_res tcres = {.okay = true };
-	const static char All_Zero[] = "\0\0\0\0\0\0\0\0\0\0\0\0"; /* 12 0s */
 
 	NFS4_DEBUG("tc_nfs4_closev");
 	assert(count >= 1);
@@ -3767,7 +3771,7 @@ static tc_res tc_nfs4_closev(const nfs_fh4 *fh4s, int count, stateid4 *sids,
 
 	for (i = 0; i < count; ++i) {
 		// ignore stateless open
-                if (memcmp(sids[i].other, All_Zero, 12)) {
+                if (!is_special_stateid(sids + i)) {
 			COMPOUNDV4_ARG_ADD_OP_PUTFH(
 			    opcnt, argoparray, fh4s[i]);
 			COMPOUNDV4_ARG_ADD_OP_TCCLOSE(opcnt,
