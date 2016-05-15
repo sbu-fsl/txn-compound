@@ -49,6 +49,7 @@ function (add_unittest TestName LibName)
 endfunction (add_unittest)
 
 add_library(tc_util STATIC ${util_SRC})
+target_link_libraries(tc_util path_utils)
 
 add_unittest(bench_test tc_util)
 add_unittest(zipf_test tc_util)

@@ -175,7 +175,7 @@ TEST(IovecUtils, HandleOverlappedIovecs)
 	tc_iov2fd(iovs + 0, (1 << 30) + 1, 0, 256_KB, new char[256_KB]);
 	tc_iov2fd(iovs + 1, (1 << 30) + 1, 128_KB, 256_KB, new char[256_KB]);
 
-	struct tc_iov_array iova = TC_IOV_ARRAY_INITIALIZER(iovs, 3);
+	struct tc_iov_array iova = TC_IOV_ARRAY_INITIALIZER(iovs, 2);
 	int nparts;
 	auto parts = tc_split_iov_array(&iova, 1_MB, &nparts);
 

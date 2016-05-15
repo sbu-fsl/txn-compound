@@ -20,9 +20,106 @@
 
 #include "iovec_utils.h"
 
+#include <algorithm>
 #include <vector>
 
 #include "tc_helper.h"
+#include "path_utils.h"
+
+// We should indeed include "nfsv41.h" and use sizeof(XXX) to get the overhead
+// of the operations.  But "nfsv41.h" include some libntirpc header files which
+// include syntax not compatible with C++.  We could not do that, so we define
+// const variable to replace the sizeof(XXX) operations.
+// #include "nfsv41.h"
+
+// # of bytes of NFSv4.1 operation code
+static const size_t OPSIZE = sizeof(int);
+
+// sizeof(PUTFH4args) == 16
+static const size_t PUTFH4SZ = 16;
+
+// sizeof(LOOKUP4args) == 16
+static const size_t LOOKUP4SZ = 16;
+
+// sizeof(OPEN4args) == 136
+static const size_t OPEN4SZ = 136;
+
+// sizeof(CLOSE4args) == 20
+static const size_t CLOSE4SZ = 20;
+
+// sizeof(COMPOUND4args) == 40
+static const size_t COMPOUND4SZ = 40;
+
+// sizeof(READ4args) == 32
+static const size_t READ4SZ = 32;
+
+// sizeof(WRITE4args) == 48
+static const size_t WRITE4SZ = 48;
+
+// Also defined in "nfsv41.h".
+static const size_t NFS4_FHSIZE = 128;
+
+// The base size of a compound (or RPC)
+// 192 is the Fragment lenght of a RPC with no securiy payload (XID etc.)
+// 256 is the space for securiy payload
+// COMPOUND4SZ is for compound header size
+static const size_t CPDSIZE = 192 + 256 + COMPOUND4SZ;
+
+// MAX(sizeof(READ4args), sizeof(WRITE4args)) == 48;
+static const size_t RDWRSIZE = 48;
+
+// Return the RPC overhead byte excluding the data size.
+static inline size_t tc_get_iov_overhead(const struct tc_iovec *iov)
+{
+	int n = 0;
+	size_t putfh_bytes = 0;
+	size_t lookup_bytes = 0;
+	size_t open_close_bytes = 0;
+	size_t rdwr_bytes = OPSIZE + RDWRSIZE;
+
+	switch (iov->file.type) {
+	case TC_FILE_DESCRIPTOR:
+		putfh_bytes = OPSIZE + NFS4_FHSIZE;
+		break;
+	case TC_FILE_PATH:
+		assert(iov->file.path);
+		if (iov->file.path[0] == '/') {
+			// PUTROOTFH does not have args
+			putfh_bytes = OPSIZE;
+		} else {
+			putfh_bytes = PUTFH4SZ + NFS4_FHSIZE;
+		}
+		n = tc_path_tokenize(iov->file.path, NULL);
+		// n-1 LOOKUPs.  The last component of path will be used by
+		// OPEN, we count all path length here for simplicity.
+		lookup_bytes =
+		    strlen(iov->file.path) + (OPSIZE + LOOKUP4SZ) * (n - 1);
+		// OPEN, CLOSE, and GETFH
+		open_close_bytes = OPEN4SZ + CLOSE4SZ + OPSIZE * 3;
+		break;
+	case TC_FILE_HANDLE:
+		assert(iov->file.handle);
+		putfh_bytes = PUTFH4SZ + NFS4_FHSIZE;
+		open_close_bytes = OPEN4SZ + CLOSE4SZ + OPSIZE * 2;
+		break;
+	case TC_FILE_CURRENT:
+		if (iov->file.path) {
+			assert(iov->file.path[0] != '/');
+			n = tc_path_tokenize(iov->file.path, NULL);
+			lookup_bytes = strlen(iov->file.path) +
+				       (OPSIZE + LOOKUP4SZ) * (n - 1);
+			open_close_bytes = OPEN4SZ + CLOSE4SZ + OPSIZE * 3;
+		}
+		break;
+	case TC_FILE_SAVED:
+		putfh_bytes = OPSIZE;  // for RESTOREFH4
+		break;
+	default:
+		assert(false);
+	}
+
+	return putfh_bytes + lookup_bytes + open_close_bytes + rdwr_bytes;
+}
 
 const size_t SPLIT_THRESHOLD = 4096;
 
@@ -31,7 +128,7 @@ struct tc_iov_array *tc_split_iov_array(const struct tc_iov_array *iova,
 {
 	std::vector<struct tc_iov_array> parts;
 	std::vector<struct tc_iovec> cur_cpd; // iovec of current compound
-	size_t cpd_size = 0;
+	size_t cpd_size = CPDSIZE;
 
 	auto add_part = [&parts, &cur_cpd, &cpd_size]() {
 		struct tc_iov_array iova;
@@ -41,7 +138,7 @@ struct tc_iov_array *tc_split_iov_array(const struct tc_iov_array *iova,
 		memmove(iova.iovs, cur_cpd.data(), iovs_memsize);
 		parts.push_back(iova);
 		cur_cpd.clear();
-		cpd_size = 0;
+		cpd_size = CPDSIZE;
 	};
 
 	struct tc_iovec *i_iov = iova->iovs; // current iovec to split
@@ -55,7 +152,7 @@ struct tc_iov_array *tc_split_iov_array(const struct tc_iov_array *iova,
 		iov.length = len;
 		iov.is_creation = i_iov->is_creation && i_off == 0;
 		cur_cpd.push_back(iov);
-		cpd_size += len;
+		cpd_size += (tc_get_iov_overhead(&iov) + len);
 		i_off += iov.length;
 	};
 
