@@ -157,13 +157,21 @@ struct tc_iov_array *tc_split_iov_array(const struct tc_iov_array *iova,
 	};
 
 	while (i < iova->size) {
-		if (cpd_size + i_iov->length - i_off <= size_limit) {
+		size_t space_left = size_limit - cpd_size;
+		size_t data_remain =
+		    tc_get_iov_overhead(i_iov) + i_iov->length - i_off;
+		if (space_left >= data_remain) {
 			add_iov_to_cpd(i_iov->length - i_off);
 			++i;
 			i_off = 0;
 			i_iov = iova->iovs + i;
 		} else {
-			if (size_limit - cpd_size <= SPLIT_THRESHOLD) {
+			// Don't split if we will create a tiny head or tail.
+			bool tiny_head = space_left <= SPLIT_THRESHOLD;
+			bool tiny_tail =
+			    (data_remain + CPDSIZE) <= size_limit &&
+			    (data_remain - space_left) <= SPLIT_THRESHOLD;
+			if (tiny_head || tiny_tail) {
 				add_part();
 				continue;
 			}

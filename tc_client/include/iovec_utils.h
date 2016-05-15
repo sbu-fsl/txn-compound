@@ -28,6 +28,8 @@
 extern "C" {
 #endif
 
+const size_t TC_SPLIT_THRESHOLD = 4096;
+
 /**
  * Split an array of tc_iovec specified by "iova" to multiple arrays of
  * tc_iovec so that the total size of tc_iovecs in each array is no larger than

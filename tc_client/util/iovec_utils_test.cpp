@@ -33,6 +33,13 @@ constexpr size_t operator"" _KB(unsigned long long a) { return a << 10; }
 constexpr size_t operator"" _MB(unsigned long long a) { return a << 20; }
 constexpr size_t operator"" _GB(unsigned long long a) { return a << 30; }
 
+static inline struct tc_iov_array vec2array(vector<struct tc_iovec> &vec)
+{
+	struct tc_iov_array iova =
+	    TC_IOV_ARRAY_INITIALIZER(vec.data(), (int)vec.size());
+	return iova;
+}
+
 TEST(IovecUtils, SplitOneBigIovec)
 {
 	const char *PATH = "SplitOneBigIovec.dat";
@@ -139,6 +146,50 @@ TEST(IovecUtils, AdjacentOffsetsOfDifferentFilesAreNotMerged)
 	delete[] iovs[0].data;
 	delete[] iovs[1].data;
 	delete[] iovs[2].data;
+}
+
+TEST(IovecUtils, SplitIovecDueToOverhead)
+{
+	struct tc_iovec iovs[2];
+	tc_iov2fd(iovs + 0, (1 << 30) + 1, 0, 512_KB, new char[512_KB]);
+	tc_iov2fd(iovs + 1, (1 << 30) + 2, 512_KB, 512_KB, new char[512_KB]);
+
+	struct tc_iov_array iova = TC_IOV_ARRAY_INITIALIZER(iovs, 2);
+	int nparts;
+	auto parts = tc_split_iov_array(&iova, 1_MB, &nparts);
+
+	EXPECT_EQ(2, nparts);
+	EXPECT_EQ(1, parts[0].size);
+	EXPECT_EQ(512_KB, parts[0].iovs->length);
+	EXPECT_EQ(1, parts[1].size);
+	EXPECT_EQ(512_KB, parts[1].iovs->length);
+
+	delete[] iovs[0].data;
+	delete[] iovs[1].data;
+}
+
+TEST(IovecUtils, SplitDonotGenerateTinyIovec)
+{
+	vector<size_t> iosizes {16_KB, 32_KB, 64_KB, 128_KB, 256_KB};
+	for (size_t iosz : iosizes) {
+		int count = 1_MB / iosz;
+		vector<tc_iovec> iovs(count);
+		for (int i = 0; i < count; ++i) {
+			tc_iov2fd(&iovs[i], i, 0, iosz, new char[iosz]);
+		}
+		struct tc_iov_array iova = vec2array(iovs);
+		int nparts;
+		auto parts = tc_split_iov_array(&iova, 1_MB, &nparts);
+		for (int p = 0; p < nparts; ++p) {
+			for (int s = 0; s < parts[p].size; ++s) {
+				EXPECT_GT(parts[p].iovs[s].length,
+					  TC_SPLIT_THRESHOLD);
+			}
+		}
+		for (int i = 0; i < count; ++i) {
+			delete[] iovs[i].data;
+		}
+	}
 }
 
 TEST(IovecUtils, HandleShortRdWr)
