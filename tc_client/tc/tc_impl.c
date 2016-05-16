@@ -292,12 +292,6 @@ static tc_res nfs4_ensure_dir(slice_t *comps, int n, mode_t mode)
 		return tcres;
 
 	tcres = tc_mkdirv(dirs, absent, false);
-	for (i = 0; i < absent; ++i) {
-		if (tcres.okay || i < tcres.index) {
-			assert(dirs[i].file.type == TC_FILE_HANDLE);
-			free((void *)dirs[i].file.handle);
-		}
-	}
 
 	return tcres;
 }

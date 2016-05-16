@@ -164,6 +164,7 @@ public:
 		    get_tc_config_file((char *)alloca(PATH_MAX), PATH_MAX),
 		    "/tmp/tc-nfs4.log", 77);
 		TCTEST_WARN("Global SetUp of NFS4 Impl\n");
+		/* TODO: recreate test dir if exist */
 		tc_res res = tc_ensure_dir("/vfs0/tc_nfs4_test", 0755, NULL);
 		EXPECT_TRUE(res.okay);
 		tc_chdir("/vfs0/tc_nfs4_test");  /* change to mnt point */
@@ -984,10 +985,56 @@ TYPED_TEST_P(TcTest, RdWrLargeThanRPCLimit)
 		EXPECT_EQ(iov.length == 2_MB, iov.is_eof);
 		EXPECT_EQ(s, iov.length);
 		EXPECT_EQ(0, memcmp(data1, data2, s));
+		if (s % 128_KB == 0)
+			fprintf(stderr, "read size: %llu\n", s);
 	}
 
 	free(data1);
 	free(data2);
+}
+
+TYPED_TEST_P(TcTest, CompressDeepPaths)
+{
+	const char *PATHS[] = { "TcTest-CompressDeepPaths/a/b/c0/001.dat",
+				"TcTest-CompressDeepPaths/a/b/c0/002.dat",
+				"TcTest-CompressDeepPaths/a/b/c1/001.dat",
+				"TcTest-CompressDeepPaths/a/b/c1/002.dat",
+				"TcTest-CompressDeepPaths/a/b/c1/002.dat",
+				"TcTest-CompressDeepPaths/a/b/c1/002.dat", };
+	const int N = sizeof(PATHS)/sizeof(PATHS[0]);
+
+	tc_ensure_dir("TcTest-CompressDeepPaths/a/b/c0", 0755, NULL);
+	tc_ensure_dir("TcTest-CompressDeepPaths/a/b/c1", 0755, NULL);
+
+	tc_unlinkv(PATHS, N);
+	struct tc_iovec *iovs = (struct tc_iovec *)calloc(N, sizeof(*iovs));
+	for (int i = 0; i < N; ++i) {
+		if (i == 0 || strcmp(PATHS[i], PATHS[i-1])) {
+			tc_iov4creation(&iovs[i], PATHS[i], 4_KB,
+					new char[4_KB]);
+		} else {
+			tc_iov2path(&iovs[i], PATHS[i], 0, 4_KB,
+				    new char[4_KB]);
+		}
+	}
+
+	tc_res tcres = tc_writev(iovs, N, false);
+	EXPECT_TRUE(tcres.okay);
+	for (int i = 0; i < N; ++i) {
+		EXPECT_STREQ(iovs[i].file.path, PATHS[i]);
+		delete[] iovs[i].data;
+	}
+
+	tc_attrs *attrs = new tc_attrs[N];
+	for (int i = 0; i < N; ++i) {
+		attrs[i].file = iovs[i].file;
+		attrs[i].masks = TC_ATTRS_MASK_ALL;
+	}
+	tcres = tc_getattrsv(attrs, N, false);
+	EXPECT_TRUE(tcres.okay);
+
+	free(iovs);
+	delete[] attrs;
 }
 
 REGISTER_TYPED_TEST_CASE_P(TcTest,
@@ -1007,7 +1054,8 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   List2ndLevelDir,
 			   ShuffledRdWr,
 			   ParallelRdWrAFile,
-			   RdWrLargeThanRPCLimit);
+			   RdWrLargeThanRPCLimit,
+			   CompressDeepPaths);
 
 typedef ::testing::Types<TcNFS4Impl, TcPosixImpl> TcImpls;
 INSTANTIATE_TYPED_TEST_CASE_P(TC, TcTest, TcImpls);

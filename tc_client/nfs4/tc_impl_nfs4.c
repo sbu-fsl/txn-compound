@@ -24,6 +24,8 @@
 #include "log.h"
 #include "fsal_types.h"
 #include "../MainNFSD/nfs_init.h"
+#include "path_utils.h"
+#include "iovec_utils.h"
 
 /*
  * Initialize tc_client
@@ -322,23 +324,105 @@ error:
 	return result;
 }
 
+/**
+ * Use relative paths to shorten path lookups.
+ *
+ * Returns the saved tc_files if the iovs has been changed, or NULL if we
+ * cannot compress the paths.
+ */
+static tc_file *nfs4_compress_paths(struct tc_iovec *iovs, int count)
+{
+	tc_file *saved_tcfs = NULL;
+	char *buf;
+	int i;
+	bool compressed = false;
+
+	if (iovs == NULL || count <= 1) {
+		return NULL;
+	}
+
+	saved_tcfs = calloc(count, sizeof(*saved_tcfs));
+	if (!saved_tcfs) {
+		return NULL;
+	}
+
+	saved_tcfs[0] = iovs[0].file;
+	for (i = 1; i < count; ++i) {
+		saved_tcfs[i] = iovs[i].file;
+		if (iovs[i].file.type != TC_FILE_PATH ||
+		    saved_tcfs[i - 1].type != TC_FILE_PATH) {
+			continue;
+		}
+		buf = malloc(PATH_MAX);
+		if (!buf) {
+			break;
+		}
+		if (tc_path_rebase(saved_tcfs[i - 1].path, iovs[i].file.path,
+				   buf, PATH_MAX) < 0) {
+			break;
+		}
+		if (tc_path_tokenize(buf, NULL) >=
+		    tc_path_tokenize(iovs[i].file.path, NULL)) {
+			continue;
+		}
+		/*if (buf[0] == '.' && buf[1] == 0) {*/
+			/*iovs[i].file.type = TC_FILE_CURRENT;*/
+			/*iovs[i].file.path = NULL;*/
+			/*free(buf);*/
+		/*} else {*/
+		iovs[i].file.type = TC_FILE_CURRENT;
+		iovs[i].file.path = buf;
+		/*}*/
+		compressed = true;
+	}
+
+	if (!compressed) {
+		free(saved_tcfs);
+		saved_tcfs = NULL;
+	}
+
+	return saved_tcfs;
+}
+
+static void nfs4_decompress_paths(struct tc_iovec *iovs, int count,
+				  tc_file *saved_tcfs)
+{
+	int i;
+
+	if (saved_tcfs == NULL) {
+		return;
+	}
+
+	for (i = 0; i < count; ++i) {
+		if (!tc_cmp_file(&iovs[i].file, saved_tcfs + i)) {
+			free((char *)iovs[i].file.path);
+			iovs[i].file = saved_tcfs[i];
+		}
+	}
+	free(saved_tcfs);
+}
+
 tc_res nfs4_do_iovec(struct tc_iovec *iovs, int count, bool istxn,
 		     tc_res (*fn)(struct tc_iovec *iovs, int count, bool istxn))
 {
-	static const size_t CPD_LIMIT = (1 << 20);
+	static const int CPD_LIMIT = (1 << 20);
 	int i;
 	int nparts;
 	struct tc_iov_array iova = TC_IOV_ARRAY_INITIALIZER(iovs, count);
-	struct tc_iov_array *parts =
-	    tc_split_iov_array(&iova, CPD_LIMIT, &nparts);
+	struct tc_iov_array *parts;
 	tc_res tcres;
+	tc_file *saved_tcfs;
+
+	parts = tc_split_iov_array(&iova, CPD_LIMIT, &nparts);
 
 	for (i = 0; i < nparts; ++i) {
+		saved_tcfs = nfs4_compress_paths(parts[i].iovs, parts[i].size);
 		tcres = fn(parts[i].iovs, parts[i].size, istxn);
 		if (!tcres.okay) {
 			/* TODO: FIX tcres */
 			goto exit;
 		}
+		nfs4_decompress_paths(parts[i].iovs, parts[i].size, saved_tcfs);
 	}
 
 exit:

@@ -72,9 +72,8 @@ int tc_path_distance(const char *src, const char *dst);
 int tc_path_distance_s(slice_t src, slice_t dst);
 
 /**
- * Convert "path" to relative path based on "base" if the distance between
- * "base" and "path" is smaller than the distance between "/" and "path".
- * The result relative path is stored in "buf".
+ * Convert "path" to relative path based on "base".  The result relative path
+ * is stored in "buf".
  *
  * NOTE: "buf" must not overlap with "path"
  *
