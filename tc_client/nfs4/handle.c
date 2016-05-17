@@ -2666,6 +2666,14 @@ static fsal_status_t fs_mknod(struct fsal_obj_handle *dir_hdl,
 	return st;
 }
 
+static void tc_prepare_symlink(char *name, char *link_path, fattr4 *attrs)
+{
+	resoparray[opcnt].nfs_resop4_u.opcreate.CREATE4res_u.resok4.attrset =
+	    empty_bitmap;
+	COMPOUNDV4_ARG_ADD_OP_SYMLINK(opcnt, argoparray, (char *)name,
+				      (char *)link_path, (*attrs));
+}
+
 static fsal_status_t fs_symlink(struct fsal_obj_handle *dir_hdl,
 				 const char *name, const char *link_path,
 				 struct attrlist *attrib,
@@ -2693,10 +2701,7 @@ static fsal_status_t fs_symlink(struct fsal_obj_handle *dir_hdl,
 	ph = container_of(dir_hdl, struct fs_obj_handle, obj);
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
 
-	resoparray[opcnt].nfs_resop4_u.opcreate.CREATE4res_u.resok4.attrset =
-	    empty_bitmap;
-	COMPOUNDV4_ARG_ADD_OP_SYMLINK(opcnt, argoparray, (char *)name,
-				      (char *)link_path, input_attr);
+        tc_prepare_symlink((char *)name, (char *)link_path, &input_attr);
 
 	fhok = &resoparray[opcnt].nfs_resop4_u.opgetfh.GETFH4res_u.resok4;
 	fhok->object.nfs_fh4_val = padfilehandle;
@@ -2719,6 +2724,19 @@ static fsal_status_t fs_symlink(struct fsal_obj_handle *dir_hdl,
 	if (!FSAL_IS_ERROR(st))
 		*attrib = (*handle)->attributes;
 	return st;
+}
+
+static READLINK4resok *tc_prepare_readlink(char *buf, size_t buf_size)
+{
+	READLINK4resok *rlok;
+
+	rlok = &resoparray[opcnt].nfs_resop4_u.opreadlink.READLINK4res_u.resok4;
+	rlok->link.utf8string_val = buf;
+	rlok->link.utf8string_len = buf_size;
+	argoparray[opcnt].argop = NFS4_OP_READLINK;
+	opcnt++;
+
+	return rlok;
 }
 
 static fsal_status_t fs_readlink(struct fsal_obj_handle *obj_hdl,
@@ -2746,10 +2764,7 @@ static fsal_status_t fs_readlink(struct fsal_obj_handle *obj_hdl,
 	if (link_content->addr == NULL)
 		return fsalstat(ERR_FSAL_NOMEM, 0);
 
-	rlok = &resoparray[opcnt].nfs_resop4_u.opreadlink.READLINK4res_u.resok4;
-	rlok->link.utf8string_val = link_content->addr;
-	rlok->link.utf8string_len = link_content->len;
-	COMPOUNDV4_ARG_ADD_OP_READLINK(opcnt, argoparray);
+        rlok = tc_prepare_readlink(link_content->addr, link_content->len);
 
 	rc = fs_nfsv4_call(op_ctx->creds, NULL);
 	if (rc != NFS4_OK) {
@@ -4261,6 +4276,117 @@ exit:
 	return tcres;
 }
 
+static tc_res tc_nfs4_symlinkv(const char **oldpaths, const char **newpaths,
+			       int count)
+{
+	int rc;
+	tc_res tcres;
+	nfsstat4 cpd_status;
+	nfsstat4 op_status;
+	int i = 0; /* index of tc_iovec */
+	int j = 0; /* index of NFS operations */
+	struct tc_attrs tca;
+	fattr4 *attrs4;
+	slice_t name;
+	char *pname;
+
+	NFS4_DEBUG("tc_nfs4_symlinkv");
+	attrs4 = calloc(count, sizeof(*attrs4));
+	assert(attrs4);
+
+	tc_start_compound(true);
+	for (i = 0; i < count; ++i) {
+		tc_set_cfh_to_path(newpaths[i], &name, false);
+		pname = new_auto_str(name);
+		tc_set_up_creation(&tca, pname, 0755);
+		tc_attrs_to_fattr4(&tca, &attrs4[i]);
+		tc_prepare_symlink(pname, (char *)oldpaths[i], &attrs4[i]);
+	}
+
+	rc = fs_nfsv4_call(op_ctx->creds, &cpd_status);
+	if (rc != RPC_SUCCESS) {
+		NFS4_ERR("rpc failed: %d", rc);
+		tcres = tc_failure(0, rc);
+		goto exit;
+	}
+
+	i = 0;
+	for (j = 0; j < opcnt; ++j) {
+		op_status = get_nfs4_op_status(&resoparray[j]);
+		if (op_status != NFS4_OK) {
+			NFS4_ERR("NFS operation (%d) failed: %d",
+				 resoparray[j].resop, op_status);
+			tcres = tc_failure(i, nfsstat4_to_errno(op_status));
+			goto exit;
+		}
+		if (resoparray[j].resop == NFS4_OP_CREATE) {
+			++i;
+		}
+	}
+
+	tcres.okay = true;
+
+exit:
+	for (i = 0; i < count; ++i) {
+		nfs4_Fattr_Free(&attrs4[i]);
+	}
+	free(attrs4);
+	return tcres;
+}
+
+tc_res tc_nfs4_readlinkv(const char **paths, char **bufs, size_t *bufsizes,
+			 int count)
+{
+	int rc;
+	tc_res tcres;
+	nfsstat4 cpd_status;
+	nfsstat4 op_status;
+	size_t lksize;
+	int i = 0; /* index of tc_iovec */
+	int j = 0; /* index of NFS operations */
+
+	NFS4_DEBUG("tc_nfs4_readlinkv");
+
+	tc_start_compound(true);
+	for (i = 0; i < count; ++i) {
+		tc_set_cfh_to_path(paths[i], NULL, false);
+		tc_prepare_readlink(bufs[i], bufsizes[i]);
+	}
+
+	rc = fs_nfsv4_call(op_ctx->creds, &cpd_status);
+	if (rc != RPC_SUCCESS) {
+		NFS4_ERR("rpc failed: %d", rc);
+		tcres = tc_failure(0, rc);
+		goto exit;
+	}
+
+	i = 0;
+	for (j = 0; j < opcnt; ++j) {
+		op_status = get_nfs4_op_status(&resoparray[j]);
+		if (op_status != NFS4_OK) {
+			NFS4_ERR("NFS operation (%d) failed: %d",
+				 resoparray[j].resop, op_status);
+			tcres = tc_failure(i, nfsstat4_to_errno(op_status));
+			goto exit;
+		}
+		if (resoparray[j].resop == NFS4_OP_READLINK) {
+			lksize = resoparray[j]
+				     .nfs_resop4_u.opreadlink.READLINK4res_u
+				     .resok4.link.utf8string_len;
+			if (lksize < bufsizes[i]) {
+				bufs[i][lksize] = '\0';
+				bufsizes[i] = lksize;
+			}
+			++i;
+		}
+	}
+
+	tcres.okay = true;
+
+exit:
+	return tcres;
+}
+
 static int tc_nfs4_chdir(const char *path)
 {
 	int rc;
@@ -4350,6 +4476,8 @@ void fs_handle_ops_init(struct fsal_obj_ops *ops)
         ops->tc_renamev = tc_nfs4_renamev;
         ops->tc_removev = tc_nfs4_removev;
         ops->tc_copyv = tc_nfs4_copyv;
+        ops->tc_symlinkv = tc_nfs4_symlinkv;
+        ops->tc_readlinkv = tc_nfs4_readlinkv;
         ops->tc_chdir = tc_nfs4_chdir;
         ops->tc_getcwd = tc_nfs4_getcwd;
 	ops->tc_destroysession = fs_destroy_session;

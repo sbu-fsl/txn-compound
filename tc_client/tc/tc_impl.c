@@ -335,6 +335,26 @@ tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 	}
 }
 
+tc_res tc_symlinkv(const char **oldpaths, const char **newpaths, int count,
+		   bool istxn)
+{
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_symlinkv(oldpaths, newpaths, count, istxn);
+	} else {
+		return posix_symlinkv(oldpaths, newpaths, count, istxn);
+	}
+}
+
+tc_res tc_readlinkv(const char **paths, char **bufs, size_t *bufsizes,
+		    int count, bool istxn)
+{
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_readlinkv(paths, bufs, bufsizes, count, istxn);
+	} else {
+		return posix_readlinkv(paths, bufs, bufsizes, count, istxn);
+	}
+}
+
 tc_res tc_write_adb(struct tc_adb *patterns, int count, bool is_transaction)
 {
 	return TC_OKAY;

@@ -878,6 +878,29 @@ tc_res nfs4_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 	return res;
 }
 
+tc_res nfs4_symlinkv(const char **oldpaths, const char **newpaths, int count,
+		     bool istxn)
+{
+	struct gsh_export *exp = op_ctx->export;
+	tc_res res;
+
+	res = exp->fsal_export->obj_ops->tc_symlinkv(oldpaths, newpaths, count);
+
+	return res;
+}
+
+tc_res nfs4_readlinkv(const char **paths, char **bufs, size_t *bufsizes,
+		      int count, bool istxn)
+{
+	struct gsh_export *exp = op_ctx->export;
+	tc_res res;
+
+	res = exp->fsal_export->obj_ops->tc_readlinkv(paths, bufs, bufsizes,
+						      count);
+
+	return res;
+}
+
 int nfs4_chdir(const char *path)
 {
 	struct gsh_export *exp = op_ctx->export;

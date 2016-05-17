@@ -49,6 +49,9 @@
 #define TCTEST_INFO(fmt, args...) LogInfo(COMPONENT_TC_TEST, fmt, ##args)
 #define TCTEST_DEBUG(fmt, args...) LogDebug(COMPONENT_TC_TEST, fmt, ##args)
 
+#define EXPECT_OK(x)                                                           \
+	EXPECT_TRUE(x.okay) << "Failed at " << x.index << ": "                 \
+			    << strerror(x.err_no)
 #define EXPECT_NOTNULL(x) EXPECT_TRUE(x != NULL) << #x << " is NULL"
 
 namespace
@@ -1040,6 +1043,47 @@ TYPED_TEST_P(TcTest, CompressDeepPaths)
 	delete[] attrs;
 }
 
+TYPED_TEST_P(TcTest, SymlinkBasics)
+{
+	const char *TARGETS[] = { "TcTest-SymlinkBasics/001.file",
+				  "TcTest-SymlinkBasics/002.file",
+				  "TcTest-SymlinkBasics/003.file",
+				  "TcTest-SymlinkBasics/004.file",
+				  "TcTest-SymlinkBasics/005.file", };
+	const char *LINKS[] = { "TcTest-SymlinkBasics/001.link",
+				"TcTest-SymlinkBasics/002.link",
+				"TcTest-SymlinkBasics/003.link",
+				"TcTest-SymlinkBasics/004.link",
+				"TcTest-SymlinkBasics/005.link", };
+	const char *CONTENTS[] = { "001.file", "002.file", "003.file",
+				   "004.file", "005.file", };
+	const int N = sizeof(TARGETS) / sizeof(TARGETS[0]);
+	char **bufs = new char*[N];
+	size_t *bufsizes = new size_t[N];
+
+	EXPECT_OK(tc_ensure_dir("TcTest-SymlinkBasics", 0755, NULL));
+	Removev(TARGETS, N);
+	Removev(LINKS, N);
+
+	for (int i = 0; i < N; ++i) {
+		tc_touch(TARGETS[i], 4_KB);
+		bufs[i] = new char[PATH_MAX];
+		bufsizes[i] = PATH_MAX;
+	}
+
+	EXPECT_OK(tc_symlinkv(CONTENTS, LINKS, N, false));
+
+	EXPECT_OK(tc_readlinkv(LINKS, bufs, bufsizes, N, false));
+
+	for (int i = 0; i < N; ++i) {
+		EXPECT_EQ(strlen(CONTENTS[i]), bufsizes[i]);
+		EXPECT_EQ(0, strncmp(CONTENTS[i], bufs[i], bufsizes[i]));
+		delete[] bufs[i];
+	}
+	delete[] bufs;
+	delete[] bufsizes;
+}
+
 REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   WritevCanCreateFiles,
 			   TestFileDesc,
@@ -1058,7 +1102,8 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   ShuffledRdWr,
 			   ParallelRdWrAFile,
 			   RdWrLargeThanRPCLimit,
-			   CompressDeepPaths);
+			   CompressDeepPaths,
+			   SymlinkBasics);
 
 typedef ::testing::Types<TcNFS4Impl, TcPosixImpl> TcImpls;
 INSTANTIATE_TYPED_TEST_CASE_P(TC, TcTest, TcImpls);

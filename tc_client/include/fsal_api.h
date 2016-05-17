@@ -1349,6 +1349,12 @@ struct fsal_obj_ops {
 
 	tc_res (*tc_copyv)(struct tc_extent_pair *pairs, int count);
 
+	tc_res (*tc_symlinkv)(const char **oldpaths, const char **newpaths,
+			      int count);
+
+	tc_res (*tc_readlinkv)(const char **paths, char **bufs,
+			       size_t *bufsizes, int count);
+
 	fsal_status_t (*root_lookup)(struct fsal_obj_handle **handle);
 
 	fsal_status_t (*lookup_plus)(const char *path,

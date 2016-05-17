@@ -676,6 +676,30 @@ static inline bool tx_copyv(struct tc_extent_pair *pairs, int count)
 }
 
 /**
+ * Create a list of symlinks.  Useful for operations such as "cp -sR".
+ *
+ * @oldpaths: an array of source paths
+ * @newpaths: an array of dest paths
+ */
+tc_res tc_symlinkv(const char **oldpaths, const char **newpaths, int count,
+		   bool istxn);
+
+static inline bool tx_symlinkv(const char **oldpaths, const char **newpaths,
+			       int count)
+{
+	return tc_symlinkv(oldpaths, newpaths, count, true).okay;
+}
+
+tc_res tc_readlinkv(const char **paths, char **bufs, size_t *bufsizes,
+		    int count, bool istxn);
+
+static inline bool tx_readlinkv(const char **paths, char **bufs,
+				size_t *bufsizes, int count)
+{
+	return tc_readlinkv(paths, bufs, bufsizes, count, true).okay;
+}
+
+/**
  * Application data blocks (ADB).
  *
  * See https://tools.ietf.org/html/draft-ietf-nfsv4-minorversion2-39#page-60

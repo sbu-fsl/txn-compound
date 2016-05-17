@@ -769,6 +769,47 @@ tc_res posix_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 	return tcres;
 }
 
+tc_res posix_symlinkv(const char **oldpaths, const char **newpaths, int count,
+		      bool istxn)
+{
+	int i;
+	tc_res tcres = { .okay = true };
+
+	for (i = 0; i < count; ++i) {
+		if (symlink(oldpaths[i], newpaths[i]) < 0) {
+			tcres = tc_failure(i, errno);
+			POSIX_ERR("posix_symlinkv-%d symlink %s to %s: %s", i,
+				  oldpaths[i], newpaths[i], strerror(errno));
+			break;
+		}
+	}
+
+	return tcres;
+}
+
+tc_res posix_readlinkv(const char **paths, char **bufs, size_t *bufsizes,
+		       int count, bool istxn)
+{
+	int i;
+	ssize_t sz;
+	tc_res tcres = { .okay = true };
+
+	for (i = 0; i < count; ++i) {
+		if ((sz = readlink(paths[i], bufs[i], bufsizes[i])) < 0) {
+			tcres = tc_failure(i, errno);
+			POSIX_ERR("posix_readlinkv-%d readlink at %s: %s",
+				  i, paths[i], strerror(errno));
+			break;
+		}
+		if (sz < bufsizes[i]) {
+			bufs[i][sz] = '\0';
+		}
+		bufsizes[i] = sz;
+	}
+
+	return tcres;
+}
+
 int posix_chdir(const char *path)
 {
 	int ret;
