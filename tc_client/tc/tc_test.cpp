@@ -697,14 +697,17 @@ TYPED_TEST_P(TcTest, SuccesiveReads)
 	EXPECT_NOTNULL(read);
 
 	tcf = tc_open(path, O_RDONLY, 0);
+	EXPECT_EQ(0, tc_fseek(tcf, 0, SEEK_CUR));
 	EXPECT_NOTNULL(tcf);
 	tc_iov2file(&iov, tcf, TC_OFFSET_CUR, N, read);
 	tcres = tc_readv(&iov, 1, false);
 	EXPECT_TRUE(tcres.okay);
+	EXPECT_EQ(N, tc_fseek(tcf, 0, SEEK_CUR));
 
 	iov.data = read + N;
 	tcres = tc_readv(&iov, 1, false);
 	EXPECT_TRUE(tcres.okay);
+	EXPECT_EQ(2 * N, tc_fseek(tcf, 0, SEEK_CUR));
 
 	EXPECT_EQ(3 * N, tc_fseek(tcf, N, SEEK_CUR));
 	iov.data = read + 3 * N;

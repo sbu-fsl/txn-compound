@@ -28,6 +28,8 @@
 #include <fcntl.h>
 #include <pthread.h>
 
+#define TC_COMPRESS_PATH 1
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -68,6 +70,12 @@ struct tcopen_kargs
 	OPEN4resok *opok_handle;
 	GETFH4resok *fhok_handle;
 	struct attrlist attrib;
+};
+
+struct nfs4_fd_data {
+	stateid4 *stateid;
+	nfs_fh4 *fh4;
+	size_t fd_cursor;
 };
 
 #define MAX_READ_COUNT      10
@@ -113,6 +121,8 @@ int tc_incr_fd_seqid(int fd);
 
 /**
  * Get and lock "struct tc_kfd" corresponding to "fd".
+ *
+ * @lock_for_write: write lock or read lock
  */
 struct tc_kfd *tc_get_fd_struct(int fd, bool lock_for_write);
 

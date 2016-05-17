@@ -1867,8 +1867,10 @@ static int tc_set_cfh_to_path(const char *path, slice_t *leaf, bool use_cfh)
 	n = tc_path_tokenize(path, &comps);
 	if (n < 0) {
 		NFS4_ERR("Cannot tokenize path: %s", path); return -1;
+	} else if (n == 0) {
+		return 0;
 	}
-        if (path[0] == '/') {
+	if (path[0] == '/') {
                 base = TC_BASE_PATH_ROOT;
                 comps[0].data++;  // skip the leading '/'
                 comps[0].size--;
@@ -1897,6 +1899,12 @@ static int tc_set_cfh_to_handle(const struct file_handle *h)
 	return 1;
 }
 
+static inline void tc_prepare_putfh(nfs_fh4 *fh)
+{
+	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, *fh);
+}
+
+
 /**
  * Construct NFS lookups that will set current FH properly on the server side.
  * This is necessary before executing almost all operations.
@@ -1924,7 +1932,10 @@ static int tc_set_current_fh(const tc_file *tcf, slice_t *leaf)
 					tcf->type == TC_FILE_CURRENT);
 	} else if (tcf->type == TC_FILE_HANDLE) {
                 rc = tc_set_cfh_to_handle(tcf->handle);
-	} else {
+	} else if (tcf->type == TC_FILE_DESCRIPTOR) {
+		tc_prepare_putfh(((struct nfs4_fd_data *)tcf->fd_data)->fh4);
+                rc = 1;
+        } else {
 		NFS4_ERR("unsupported type: %d", tcf->type);
 		rc = -1;
 	}
@@ -2145,6 +2156,12 @@ exit_pathinval:
 	return fsalstat(ERR_FSAL_INVAL, 0);
 }
 
+static inline void tc_prepare_rdwr(struct tc_iovec *iov, bool write);
+
+static bool tc_open_file_if_necessary(const tc_file *tcf, int flags,
+				      buf_t *pbuf_owner, fattr4 *attrs4,
+				      const tc_file **opened_file);
+
 /*
  * Send multiple reads for one or more files
  * kern_arg - an array of tcread args with size "arg_count"
@@ -2165,35 +2182,25 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 	nfsstat4 op_status;
 	struct tcread_kargs *cur_arg = NULL;
 	struct READ4resok *read_res;
-	int last_op = TC_FILE_START;
+        struct tc_iovec *iov;
 	int i = 0;      /* index of tc_iovec */
 	int j = 0;      /* index of NFS operations */
+        const tc_file *opened_file = NULL;
 
 	LogDebug(COMPONENT_FSAL, "ktcread() called\n");
 
         tc_start_compound(true);
 
-	while (i < arg_count) {
-		cur_arg = kern_arg + i;
-
-		NFS4_DEBUG("path: %s; offset: %d; len: %d; data: %p",
-			   cur_arg->user_arg->file.path,
-			   cur_arg->user_arg->offset, cur_arg->user_arg->length,
-			   cur_arg->user_arg->data);
-
-		st = do_ktcread(cur_arg, &last_op, new_auto_buf(64));
-
-		if (FSAL_IS_ERROR(st)) {
-                        NFS4_ERR("do_ktcread failed: major=%d, minor=%d\n",
-                                 st.major, st.minor);
-			goto exit;
-		}
-
-		i++;
+	for (i = 0; i < arg_count; ++i) {
+		iov = kern_arg[i].user_arg;
+		tc_open_file_if_necessary(&iov->file, O_RDONLY,
+					  new_auto_buf(64), NULL, &opened_file);
+		tc_prepare_rdwr(iov, false);
 	}
 
-	if (last_op == TC_FILE_PATH) {
+	if (opened_file) {
 		COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
+                opened_file = NULL;
 	}
 
 	rc = fs_nfsv4_call(op_ctx->creds, &cpd_status);
@@ -2367,6 +2374,32 @@ error_pathinval:
 	return fsalstat(ERR_FSAL_INVAL, 0);
 }
 
+static inline void tc_prepare_rdwr(struct tc_iovec *iov, bool write)
+{
+	size_t offset = iov->offset;
+	struct nfs4_fd_data *fd_data;
+	const stateid4 *sid = &CURSID;
+	READ4resok *rok;
+
+	if (iov->file.type == TC_FILE_DESCRIPTOR) {
+		fd_data = (struct nfs4_fd_data *)iov->file.fd_data;
+		if (offset == TC_OFFSET_CUR) {
+			offset = fd_data->fd_cursor;
+		}
+		sid = fd_data->stateid;
+	}
+	if (write) {
+		COMPOUNDV4_ARG_ADD_OP_WRITE_STATE(opcnt, argoparray, offset,
+						  iov->data, iov->length, sid);
+	} else {
+		rok = &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
+		rok->data.data_val = iov->data;
+		rok->data.data_len = iov->length;
+		COMPOUNDV4_ARG_ADD_OP_READ_STATE(opcnt, argoparray, offset,
+						 iov->length, sid);
+	}
+}
+
 /*
  * Send multiple writes for one or more files
  * kern_arg - an array of tcread args with size "arg_count"
@@ -2385,12 +2418,12 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
 	fsal_status_t st;
 	nfsstat4 op_status;
         nfsstat4 cpd_status;
-	struct tcwrite_kargs *cur_arg = NULL;
+        struct tc_iovec *iov;
         struct WRITE4resok *write_res = NULL;
 	fattr4 *input_attr = NULL;
-	int last_op = TC_FILE_START;
 	int i = 0;      /* index of tc_iovec */
 	int j = 0;      /* index of NFS operations */
+        const tc_file *opened_file = NULL;
 
 	LogDebug(COMPONENT_FSAL, "ktcwrite() called\n");
 
@@ -2398,22 +2431,17 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
 
 	input_attr = calloc(arg_count, sizeof(fattr4));
 
-	while (i < arg_count) {
-		cur_arg = kern_arg + i;
-		st = do_ktcwrite(cur_arg, &input_attr[i], &last_op,
-				 new_auto_buf(64));
-
-		if (FSAL_IS_ERROR(st)) {
-			NFS4_ERR("do_ktcwrite failed: major=%d, minor=%d\n",
-				 st.major, st.minor);
-			goto exit;
-		}
-
-		i++;
+	for (i = 0; i < arg_count; ++i) {
+		iov = kern_arg[i].user_arg;
+		tc_open_file_if_necessary(
+		    &iov->file, O_WRONLY | (iov->is_creation ? O_CREAT : 0),
+		    new_auto_buf(64), &input_attr[i], &opened_file);
+		tc_prepare_rdwr(iov, true);
 	}
 
-	if (last_op == TC_FILE_PATH) {
-		COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
+	if (opened_file) {
+		COMPOUNDV4_ARG_ADD_OP_CLOSE(opcnt, argoparray, (&CURSID));
+                opened_file = NULL;
 	}
 
 	rc = fs_nfsv4_call(op_ctx->creds, &cpd_status);
@@ -2603,11 +2631,6 @@ static inline CREATE4resok *tc_prepare_mkdir(const char *name, fattr4 *fattr)
 	return crok;
 }
 
-static inline void tc_prepare_putfh(nfs_fh4 *fh)
-{
-	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, *fh);
-}
-
 /**
  * Set up the GETATTR operation.
  */
@@ -2652,6 +2675,7 @@ static inline GETFH4resok *tc_prepare_getfh(char *fh)
 }
 
 /**
+ * TODO: deal with opening file by handle
  * @owner_pbuf: pbuf for owner
  * @attrs: initial attributes for file creation.
  */
@@ -3668,6 +3692,56 @@ void fattr4_to_tc_attrs(const fattr4 *attr4, struct tc_attrs *tca)
         set_mode_type(&tca->mode, attrlist.type);
 }
 
+static bool tc_open_file_if_necessary(const tc_file *tcf, int flags,
+				      buf_t *pbuf_owner, fattr4 *attrs4,
+				      const tc_file **opened_file)
+{
+	slice_t name;
+	struct tc_attrs attrs;
+
+        if (tcf->type == TC_FILE_DESCRIPTOR) {
+                tc_set_current_fh(tcf, NULL);
+                return false;
+        }
+
+	if (tcf->type == TC_FILE_CURRENT &&
+	    (tcf->path == NULL || strcmp(tcf->path, ".") == 0)) {
+		return false; /* no need to open */
+	}
+
+	if (*opened_file) {
+		if (tc_cmp_file(tcf, *opened_file)) {
+			return false; /* no need to open */
+		}
+		COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
+	}
+
+#ifdef TC_COMPRESS_PATH
+        if (tcf->type == TC_FILE_CURRENT && tcf->path &&
+            strncmp(tcf->path, "../", 3) == 0) {
+                COMPOUNDV4_ARG_ADD_OP_RESTOREFH(opcnt, argoparray);
+                tc_set_cfh_to_path(tcf->path + 3, &name, true);
+                COMPOUNDV4_ARG_ADD_OP_SAVEFH(opcnt, argoparray);
+        } else {
+                tc_set_saved_fh(tcf, &name);
+        }
+#else
+        tc_set_current_fh(tcf, &name);
+#endif
+
+	if (flags & O_CREAT) {
+		attrs.masks = TC_ATTRS_MASK_NONE;
+		tc_attrs_set_mode(&attrs, 0644);
+		tc_attrs_set_uid(&attrs, getuid());
+		tc_attrs_set_gid(&attrs, getgid());
+		tc_attrs_to_fattr4(&attrs, attrs4);
+	}
+	tc_prepare_open(name, flags, pbuf_owner, attrs4);
+
+	*opened_file = tcf;
+	return true;
+}
+
 static tc_res tc_nfs4_openv(struct tc_attrs *attrs, int count, int *flags,
 			    stateid4 *sids)
 {
@@ -3701,8 +3775,7 @@ static tc_res tc_nfs4_openv(struct tc_attrs *attrs, int count, int *flags,
 		if (flags[i] & O_CREAT) {
 			tc_attrs_to_fattr4(&attrs[i], &fattrs[i]);
 		}
-		tc_prepare_open(name, flags[i], new_auto_buf(64),
-				&fattrs[i]);
+		tc_prepare_open(name, flags[i], new_auto_buf(64), &fattrs[i]);
 		tc_prepare_getfh(fh_buffers + i * NFS4_FHSIZE);
 		tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ);
 	}

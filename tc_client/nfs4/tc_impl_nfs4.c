@@ -235,51 +235,48 @@ tc_res nfs4_do_readv(struct tc_iovec *arg, int read_count, bool istxn)
 
 	kern_arg = malloc(read_count * (sizeof(struct tcread_kargs)));
 
-	while (i < read_count && i < MAX_READ_COUNT) {
+	for (i = 0; i < read_count && i < MAX_READ_COUNT; ++i) {
 		cur_arg = kern_arg + i;
 		cur_arg->user_arg = arg + i;
 		cur_arg->opok_handle = NULL;
 		cur_arg->path = NULL;
 
-		switch (cur_arg->user_arg->file.type) {
-		case TC_FILE_DESCRIPTOR:
-			tcfd =
-			    tc_get_fd_struct(cur_arg->user_arg->file.fd, false);
-			if (tcfd == NULL) {
-				result.err_no = (int)EINVAL;
-				goto error;
-			}
-			if (cur_arg->user_arg->offset == TC_OFFSET_CUR) {
-				cur_arg->user_arg->offset = tcfd->offset;
-				bs_set(cur_offset_bs, i);
-			}
-			sid = cur_arg->sid = &tcfd->stateid;
-			fh = cur_arg->fh = &tcfd->fh;
-			tc_put_fd_struct(&tcfd);
-			break;
+		/*switch (cur_arg->user_arg->file.type) {*/
+		/*case TC_FILE_DESCRIPTOR:*/
+			/*tcfd =*/
+			    /*tc_get_fd_struct(cur_arg->user_arg->file.fd, false);*/
+			/*if (tcfd == NULL) {*/
+				/*result.err_no = (int)EINVAL;*/
+				/*goto error;*/
+			/*}*/
+			/*if (cur_arg->user_arg->offset == TC_OFFSET_CUR) {*/
+				/*cur_arg->user_arg->offset = tcfd->offset;*/
+				/*bs_set(cur_offset_bs, i);*/
+			/*}*/
+			/*sid = cur_arg->sid = &tcfd->stateid;*/
+			/*fh = cur_arg->fh = &tcfd->fh;*/
+			/*tc_put_fd_struct(&tcfd);*/
+			/*break;*/
 
-		case TC_FILE_PATH:
-			file_path = cur_arg->user_arg->file.path;
-			if (file_path != NULL) {
-				cur_arg->path = strndup(file_path, PATH_MAX);
-			}
-			sid = NULL;
-			fh = NULL;
-			break;
+		/*case TC_FILE_PATH:*/
+			/*file_path = cur_arg->user_arg->file.path;*/
+			/*if (file_path != NULL) {*/
+				/*cur_arg->path = strndup(file_path, PATH_MAX);*/
+			/*}*/
+			/*sid = NULL;*/
+			/*fh = NULL;*/
+			/*break;*/
 
-		case TC_FILE_CURRENT:
-			cur_arg->sid = sid;
-			cur_arg->fh = fh;
-			break;
+		/*case TC_FILE_CURRENT:*/
+			/*cur_arg->sid = sid;*/
+			/*cur_arg->fh = fh;*/
+			/*break;*/
 
-		default:
-			NFS4_ERR("unsupported file type: %d",
-				 cur_arg->user_arg->file.type);
-			assert(false);
-		}
-
-		// cur_arg->read_ok = NULL;
-		i++;
+		/*default:*/
+			/*NFS4_ERR("unsupported file type: %d",*/
+				 /*cur_arg->user_arg->file.type);*/
+			/*assert(false);*/
+		/*}*/
 	}
 
 	fsal_status = export->fsal_export->obj_ops->tc_read(
@@ -288,22 +285,22 @@ tc_res nfs4_do_readv(struct tc_iovec *arg, int read_count, bool istxn)
 	i = 0;
 	while (i < read_count && i < MAX_READ_COUNT) {
 		cur_arg = kern_arg + i;
-		switch (cur_arg->user_arg->file.type) {
-		case TC_FILE_DESCRIPTOR:
-			tcfd =
-			    tc_get_fd_struct(cur_arg->user_arg->file.fd, false);
-			if (bs_get(cur_offset_bs, i)) {
-				tcfd->offset = cur_arg->user_arg->offset +
-					       cur_arg->user_arg->length;
-				cur_arg->user_arg->offset = TC_OFFSET_CUR;
-			}
-			tc_put_fd_struct(&tcfd);
-		case TC_FILE_PATH:
-			if (cur_arg->path != NULL) {
-				free(cur_arg->path);
-			}
-			break;
-		}
+		/*switch (cur_arg->user_arg->file.type) {*/
+		/*case TC_FILE_DESCRIPTOR:*/
+			/*tcfd =*/
+			    /*tc_get_fd_struct(cur_arg->user_arg->file.fd, true);*/
+			/*if (bs_get(cur_offset_bs, i)) {*/
+				/*tcfd->offset = cur_arg->user_arg->offset +*/
+					       /*cur_arg->user_arg->length;*/
+				/*cur_arg->user_arg->offset = TC_OFFSET_CUR;*/
+			/*}*/
+			/*tc_put_fd_struct(&tcfd);*/
+		/*case TC_FILE_PATH:*/
+			/*if (cur_arg->path != NULL) {*/
+				/*free(cur_arg->path);*/
+			/*}*/
+			/*break;*/
+		/*}*/
 		i++;
 	}
 
@@ -365,14 +362,8 @@ static tc_file *nfs4_compress_paths(struct tc_iovec *iovs, int count)
 		    tc_path_tokenize(iovs[i].file.path, NULL)) {
 			continue;
 		}
-		/*if (buf[0] == '.' && buf[1] == 0) {*/
-			/*iovs[i].file.type = TC_FILE_CURRENT;*/
-			/*iovs[i].file.path = NULL;*/
-			/*free(buf);*/
-		/*} else {*/
 		iovs[i].file.type = TC_FILE_CURRENT;
 		iovs[i].file.path = buf;
-		/*}*/
 		compressed = true;
 	}
 
@@ -402,6 +393,73 @@ static void nfs4_decompress_paths(struct tc_iovec *iovs, int count,
 	free(saved_tcfs);
 }
 
+static int nfs4_fill_fd_data(tc_file *tcf)
+{
+	struct nfs4_fd_data *fd_data;
+	struct tc_kfd *tcfd = NULL;
+
+	assert(tcf->type == TC_FILE_DESCRIPTOR);
+	tcfd = tc_get_fd_struct(tcf->fd, false);
+	if (!tcfd) {
+		return -EINVAL;
+	}
+	fd_data = malloc(sizeof(*fd_data));
+	if (!fd_data) {
+		tc_put_fd_struct(&tcfd);
+		return -ENOMEM;
+	}
+	/* TODO: check race condition */
+	fd_data->stateid = &tcfd->stateid;
+	fd_data->fh4 = &tcfd->fh;
+	fd_data->fd_cursor = tcfd->offset;
+	tc_put_fd_struct(&tcfd);
+	tcf->fd_data = fd_data;
+
+	return 0;
+}
+
+static void nfs4_clear_fd_data(tc_file *tcf)
+{
+	if (tcf->fd_data) {
+		free((struct nfs4_fd_data *)(tcf->fd_data));
+		tcf->fd_data = NULL;
+	}
+}
+
+static void nfs4_clear_fd_iovecs(struct tc_iovec *iovs, int count)
+{
+	struct tc_kfd *tcfd = NULL;
+	int i;
+
+	for (i = 0; i < count; ++i) {
+		if (iovs[i].file.type == TC_FILE_DESCRIPTOR) {
+			if (iovs[i].offset == TC_OFFSET_CUR) {
+				tcfd = tc_get_fd_struct(iovs[i].file.fd, true);
+				assert(tcfd);
+				tcfd->offset += iovs[i].length;
+				tc_put_fd_struct(&tcfd);
+			}
+			nfs4_clear_fd_data(&iovs[i].file);
+		}
+	}
+}
+
+static int nfs4_fill_fd_iovecs(struct tc_iovec *iovs, int count)
+{
+	int i;
+	int r;
+
+	for (i = 0; i < count; ++i) {
+		if (iovs[i].file.type == TC_FILE_DESCRIPTOR &&
+		    (r = nfs4_fill_fd_data(&iovs[i].file)) != 0) {
+			nfs4_clear_fd_iovecs(iovs, --i);
+			return r;
+		}
+	}
+
+	return 0;
+}
+
 tc_res nfs4_do_iovec(struct tc_iovec *iovs, int count, bool istxn,
 		     tc_res (*fn)(struct tc_iovec *iovs, int count, bool istxn))
 {
@@ -411,22 +469,42 @@ tc_res nfs4_do_iovec(struct tc_iovec *iovs, int count, bool istxn,
 	struct tc_iov_array iova = TC_IOV_ARRAY_INITIALIZER(iovs, count);
 	struct tc_iov_array *parts;
 	tc_res tcres;
+#ifdef TC_COMPRESS_PATH
 	tc_file *saved_tcfs;
+#endif
+
+	for (i = 0; i < count; ++i) {
+		iovs[i].is_eof = false;
+		iovs[i].is_failure = false;
+	}
+
+	/* deal with TC_FILE_DESCRIPTOR files */
+	tcres.err_no = nfs4_fill_fd_iovecs(iovs, count);
+	if (tcres.err_no != 0) {
+		tcres.index = 0;
+		tcres.okay = false;
+		return tcres;
+	}
 
 	parts = tc_split_iov_array(&iova, CPD_LIMIT, &nparts);
 
 	for (i = 0; i < nparts; ++i) {
+#ifdef TC_COMPRESS_PATH
 		saved_tcfs = nfs4_compress_paths(parts[i].iovs, parts[i].size);
+#endif
 		tcres = fn(parts[i].iovs, parts[i].size, istxn);
 		if (!tcres.okay) {
 			/* TODO: FIX tcres */
 			goto exit;
 		}
+#ifdef TC_COMPRESS_PATH
 		nfs4_decompress_paths(parts[i].iovs, parts[i].size, saved_tcfs);
+#endif
 	}
 
 exit:
 	tc_restore_iov_array(&iova, &parts, nparts);
+	nfs4_clear_fd_iovecs(iovs, count);
 	return tcres;
 }
 
@@ -488,41 +566,41 @@ tc_res nfs4_do_writev(struct tc_iovec *arg, int write_count, bool istxn)
 		cur_arg->user_arg = arg + i;
 		cur_arg->opok_handle = NULL;
 		cur_arg->path = NULL;
-		assert(cur_arg->user_arg->file.type == TC_FILE_PATH ||
-                       cur_arg->user_arg->file.type == TC_FILE_DESCRIPTOR ||
-                       cur_arg->user_arg->file.type == TC_FILE_CURRENT);
+		/*assert(cur_arg->user_arg->file.type == TC_FILE_PATH ||*/
+                       /*cur_arg->user_arg->file.type == TC_FILE_DESCRIPTOR ||*/
+                       /*cur_arg->user_arg->file.type == TC_FILE_CURRENT);*/
 
-		switch (cur_arg->user_arg->file.type) {
-		case TC_FILE_DESCRIPTOR:
-			tcfd =
-			    tc_get_fd_struct(cur_arg->user_arg->file.fd, false);
-			if (!tcfd) {
-                                result.err_no = (int)EINVAL;
-                                goto error;
-			}
-			if (cur_arg->user_arg->offset == TC_OFFSET_CUR) {
-				cur_arg->user_arg->offset = tcfd->offset;
-				bs_set(cur_offset_bs, i);
-			}
-			sid = cur_arg->sid = &tcfd->stateid;
-			fh = cur_arg->fh = &tcfd->fh;
-			tc_put_fd_struct(&tcfd);
-			break;
+		/*switch (cur_arg->user_arg->file.type) {*/
+		/*case TC_FILE_DESCRIPTOR:*/
+			/*tcfd =*/
+			    /*tc_get_fd_struct(cur_arg->user_arg->file.fd, false);*/
+			/*if (!tcfd) {*/
+                                /*result.err_no = (int)EINVAL;*/
+                                /*goto error;*/
+			/*}*/
+			/*if (cur_arg->user_arg->offset == TC_OFFSET_CUR) {*/
+				/*cur_arg->user_arg->offset = tcfd->offset;*/
+				/*bs_set(cur_offset_bs, i);*/
+			/*}*/
+			/*sid = cur_arg->sid = &tcfd->stateid;*/
+			/*fh = cur_arg->fh = &tcfd->fh;*/
+			/*tc_put_fd_struct(&tcfd);*/
+			/*break;*/
 
-		case TC_FILE_PATH:
-			file_path = cur_arg->user_arg->file.path;
-			if (file_path != NULL) {
-				cur_arg->path = strndup(file_path, PATH_MAX);
-			}
-			sid = NULL;
-			fh = NULL;
-			break;
+		/*case TC_FILE_PATH:*/
+			/*file_path = cur_arg->user_arg->file.path;*/
+			/*if (file_path != NULL) {*/
+				/*cur_arg->path = strndup(file_path, PATH_MAX);*/
+			/*}*/
+			/*sid = NULL;*/
+			/*fh = NULL;*/
+			/*break;*/
 
-		case TC_FILE_CURRENT:
-			cur_arg->sid = sid;
-			cur_arg->fh = fh;
-			break;
-		}
+		/*case TC_FILE_CURRENT:*/
+			/*cur_arg->sid = sid;*/
+			/*cur_arg->fh = fh;*/
+			/*break;*/
+		/*}*/
 	}
 
 	fsal_status = export->fsal_export->obj_ops->tc_write(
@@ -530,21 +608,21 @@ tc_res nfs4_do_writev(struct tc_iovec *arg, int write_count, bool istxn)
 
 	for (i = 0; i < write_count && i < MAX_WRITE_COUNT; ++i) {
 		cur_arg = kern_arg + i;
-		if (cur_arg->path != NULL) {
-			free(cur_arg->path);
-		}
-		switch (cur_arg->user_arg->file.type) {
-		case TC_FILE_DESCRIPTOR:
-			if (bs_get(cur_offset_bs, i)) {
-				cur_arg->user_arg->offset = TC_OFFSET_CUR;
-			}
-			tcfd =
-			    tc_get_fd_struct(cur_arg->user_arg->file.fd, true);
-			assert(tcfd);
-			tc_update_file_cursor(tcfd, cur_arg->user_arg);
-			tc_put_fd_struct(&tcfd);
-			break;
-		}
+		/*if (cur_arg->path != NULL) {*/
+			/*free(cur_arg->path);*/
+		/*}*/
+		/*switch (cur_arg->user_arg->file.type) {*/
+		/*case TC_FILE_DESCRIPTOR:*/
+			/*if (bs_get(cur_offset_bs, i)) {*/
+				/*cur_arg->user_arg->offset = TC_OFFSET_CUR;*/
+			/*}*/
+			/*tcfd =*/
+			    /*tc_get_fd_struct(cur_arg->user_arg->file.fd, true);*/
+			/*assert(tcfd);*/
+			/*tc_update_file_cursor(tcfd, cur_arg->user_arg);*/
+			/*tc_put_fd_struct(&tcfd);*/
+			/*break;*/
+		/*}*/
 	}
 
 	free(kern_arg);
@@ -804,10 +882,14 @@ static tc_file *nfs4_process_tc_files(struct tc_attrs *attrs, int count)
 		saved_tcfs[i] = *tcf;
 		if (tcf->type == TC_FILE_DESCRIPTOR) {
 			tcfd = tc_get_fd_struct(tcf->fd, false);
-			h = !tcfd ? NULL
-				  : new_file_handle(tcfd->fh.nfs_fh4_len,
-						    tcfd->fh.nfs_fh4_val);
-			if (!tcfd || !h) {
+			if (!tcfd) {
+				nfs4_restore_tc_files(attrs, --i, saved_tcfs);
+				return NULL;
+			}
+			h = new_file_handle(tcfd->fh.nfs_fh4_len,
+					    tcfd->fh.nfs_fh4_val);
+			if (!h) {
+				tc_put_fd_struct(&tcfd);
 				nfs4_restore_tc_files(attrs, --i, saved_tcfs);
 				return NULL;
 			}

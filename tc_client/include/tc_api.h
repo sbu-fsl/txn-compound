@@ -107,6 +107,7 @@ typedef struct _tc_file
 
 	union
 	{
+		void *fd_data;
 		const char *path;
 		const struct file_handle *handle;
 	}; /* path_or_handle */
@@ -128,7 +129,7 @@ static inline tc_file tc_file_from_fd(int fd) {
 
 	tf.type = TC_FILE_DESCRIPTOR;
 	tf.fd = fd;
-	tf.path = NULL;
+	tf.fd_data = NULL;
 
 	return tf;
 }

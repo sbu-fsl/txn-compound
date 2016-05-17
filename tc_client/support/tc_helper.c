@@ -132,6 +132,7 @@ bool tc_cmp_file(const tc_file *tcf1, const tc_file *tcf2)
 	case TC_FILE_DESCRIPTOR:
 		return tcf1->fd == tcf2->fd;
 	case TC_FILE_PATH:
+	case TC_FILE_CURRENT:
 		return strcmp(tcf1->path, tcf2->path) == 0;
 	case TC_FILE_HANDLE:
 		if (tcf1->handle->handle_bytes != tcf2->handle->handle_bytes)
