@@ -36,7 +36,7 @@ int main(int argc, char *argv[])
 	 * file to the correct NFS server. */
 	readlink("/proc/self/exe", exe_path, PATH_MAX);
 	snprintf(tc_config_path, PATH_MAX,
-		 "%s/../../../config/vfs.proxy.conf", dirname(exe_path));
+		 "%s/../../../config/tc.ganesha.conf", dirname(exe_path));
 	fprintf(stderr, "using config file: %s\n", tc_config_path);
 
 	/* Initialize TC services and daemons */
