@@ -230,6 +230,8 @@ tc_res nfs4_do_readv(struct tc_iovec *iovs, int read_count, bool istxn)
 	return result;
 }
 
+static void nfs4_decompress_paths(struct tc_iovec *iovs, int count,
+				  tc_file *saved_tcfs);
 /**
  * Use relative paths to shorten path lookups.
  *
@@ -261,14 +263,18 @@ static tc_file *nfs4_compress_paths(struct tc_iovec *iovs, int count)
 		}
 		buf = malloc(PATH_MAX);
 		if (!buf) {
-			break;
+			nfs4_decompress_paths(iovs, i, saved_tcfs);
+			return NULL;
 		}
 		if (tc_path_rebase(saved_tcfs[i - 1].path, iovs[i].file.path,
 				   buf, PATH_MAX) < 0) {
-			break;
+			free(buf);
+			nfs4_decompress_paths(iovs, i, saved_tcfs);
+			return NULL;
 		}
 		if (tc_path_tokenize(buf, NULL) >=
 		    tc_path_tokenize(iovs[i].file.path, NULL)) {
+			free(buf);
 			continue;
 		}
 		iovs[i].file.type = TC_FILE_CURRENT;
