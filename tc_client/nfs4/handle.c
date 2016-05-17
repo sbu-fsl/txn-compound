@@ -470,6 +470,7 @@ static GETATTR4resok *fs_fill_getattr_reply(nfs_resop4 *resop, char *blob,
 
 static void tc_update_sequence(nfs_argop4 *arg, nfs_resop4 *res, bool sent)
 {
+	SEQUENCE4args *sa;
 	SEQUENCE4resok *sok;
 
 	if (arg->argop != NFS4_OP_SEQUENCE) {
@@ -481,9 +482,10 @@ static void tc_update_sequence(nfs_argop4 *arg, nfs_resop4 *res, bool sent)
 				  sok->sr_highest_slotid,
 				  sok->sr_target_highest_slotid, sent);
 	} else {
-		free_session_slot(sess_slot_tbl, sok->sr_slotid,
-				  sok->sr_highest_slotid,
-				  sok->sr_target_highest_slotid, false);
+		sa = &arg->nfs_argop4_u.opsequence;
+		free_session_slot(sess_slot_tbl, sa->sa_slotid,
+				  sa->sa_highest_slotid, sa->sa_highest_slotid,
+				  false);
 	}
 	slot_allocated = false;
 }
@@ -1150,7 +1152,7 @@ static int fs_create_session()
 	int rc;
 	char machname[MAXHOSTNAMELEN + 1];
 	client_owner4 nfsclientowner;
-	uint32_t eia_flags;
+	uint32_t eia_flags = 0;
 	channel_attrs4 csa_fore_chan_attrs = { .ca_headerpadsize = 0,
 					       .ca_maxrequestsize = 1049620,
 					       .ca_maxresponsesize = 1049480,
@@ -1172,7 +1174,7 @@ static int fs_create_session()
         EXCHANGE_ID4resok *eir;
         CREATE_SESSION4args *csa;
         CREATE_SESSION4resok *csr;
-	uint32_t csa_flags;
+	uint32_t csa_flags = 0;
         struct sockaddr_in sin;
         char server_major_id_buf[NFS4_OPAQUE_LIMIT];
         char server_scope_buf[NFS4_OPAQUE_LIMIT];
@@ -1598,7 +1600,7 @@ static fsal_status_t tc_do_close(const struct user_cred *creds,
         tc_start_compound(true);
 
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, *fh4);
-	COMPOUNDV4_ARG_ADD_OP_TCCLOSE(opcnt, argoparray, *seqid, (*sid));
+	COMPOUNDV4_ARG_ADD_OP_TCCLOSE(opcnt, argoparray, (*seqid), (*sid));
 
 	rc = fs_nfsv4_call(creds, NULL);
 	if (rc != NFS4_OK)
@@ -3735,6 +3737,8 @@ static bool tc_open_file_if_necessary(const tc_file *tcf, int flags,
 		tc_attrs_set_uid(&attrs, getuid());
 		tc_attrs_set_gid(&attrs, getgid());
 		tc_attrs_to_fattr4(&attrs, attrs4);
+	} else {
+		attrs4 = NULL;
 	}
 	tc_prepare_open(name, flags, pbuf_owner, attrs4);
 
@@ -4160,11 +4164,9 @@ static tc_res tc_do_listdirv(struct glist_head *dirlist, const bitmap4 *bitmap,
         nfsstat4 cpd_status;
         nfsstat4 op_status;
         READDIR4resok *rdok;
-        int count;
         int i, j;
         int rc;
 
-        count = glist_length(dirlist);
         tc_start_compound(true);
 
         glist_for_each_entry(dle, dirlist, list) {
@@ -4444,7 +4446,6 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 	nfsstat4 op_status;
 	int i = 0; /* index of tc_iovec */
 	int j = 0; /* index of NFS operations */
-	tc_file tcf;
 	slice_t srcname;
 	slice_t dstname;
         struct tc_attrs tca;

@@ -66,9 +66,7 @@ void del_session_slot_table(struct session_slot_table **sst)
 int alloc_session_slot(struct session_slot_table *sst, uint32_t *sequence,
 		       uint32_t *highest_slotid)
 {
-	int pos;
 	int slotid = -1;
-	static const int N = sizeof(int) * 8;
 
 	pthread_mutex_lock(&sst->mutex);
 	slotid = bs_ffs(sst->free_slots);
