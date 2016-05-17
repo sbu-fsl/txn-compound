@@ -203,121 +203,30 @@ void nfs4_deinit(void *arg)
 }
 
 /*
- * arg - Array of reads for one or more files
+ * iovs - Array of reads for one or more files
  *       Contains file-path, read length, offset, etc.
  * read_count - Length of the above array
  *              (Or number of reads)
  */
-tc_res nfs4_do_readv(struct tc_iovec *arg, int read_count, bool istxn)
+tc_res nfs4_do_readv(struct tc_iovec *iovs, int read_count, bool istxn)
 {
-	struct tcread_kargs *kern_arg = NULL;
-	struct tcread_kargs *cur_arg = NULL;
-	fsal_status_t fsal_status = { 0, 0 };
-	int i = 0;
+	tc_res tcres;
 	struct gsh_export *export = op_ctx->export;
 	tc_res result = { .okay = false, .index = 0, .err_no = (int)ENOENT };
-	const char *file_path = NULL;
-	stateid4 *sid = NULL;
-	nfs_fh4 *fh = NULL;
-	struct tc_kfd *tcfd = NULL;
-	bitset_t *cur_offset_bs = new_auto_bitset(read_count);
 
 	if (export == NULL) {
 		return result;
 	}
 
-	if (export->fsal_export->obj_ops->tc_read == NULL) {
+	if (export->fsal_export->obj_ops->tc_readv == NULL) {
 		result.err_no = (int)ENOTSUP;
 		return result;
 	}
 
 	NFS4_DEBUG("nfs4_do_readv() called");
 
-	kern_arg = malloc(read_count * (sizeof(struct tcread_kargs)));
+	result = export->fsal_export->obj_ops->tc_readv(iovs, read_count);
 
-	for (i = 0; i < read_count && i < MAX_READ_COUNT; ++i) {
-		cur_arg = kern_arg + i;
-		cur_arg->user_arg = arg + i;
-		cur_arg->opok_handle = NULL;
-		cur_arg->path = NULL;
-
-		/*switch (cur_arg->user_arg->file.type) {*/
-		/*case TC_FILE_DESCRIPTOR:*/
-			/*tcfd =*/
-			    /*tc_get_fd_struct(cur_arg->user_arg->file.fd, false);*/
-			/*if (tcfd == NULL) {*/
-				/*result.err_no = (int)EINVAL;*/
-				/*goto error;*/
-			/*}*/
-			/*if (cur_arg->user_arg->offset == TC_OFFSET_CUR) {*/
-				/*cur_arg->user_arg->offset = tcfd->offset;*/
-				/*bs_set(cur_offset_bs, i);*/
-			/*}*/
-			/*sid = cur_arg->sid = &tcfd->stateid;*/
-			/*fh = cur_arg->fh = &tcfd->fh;*/
-			/*tc_put_fd_struct(&tcfd);*/
-			/*break;*/
-
-		/*case TC_FILE_PATH:*/
-			/*file_path = cur_arg->user_arg->file.path;*/
-			/*if (file_path != NULL) {*/
-				/*cur_arg->path = strndup(file_path, PATH_MAX);*/
-			/*}*/
-			/*sid = NULL;*/
-			/*fh = NULL;*/
-			/*break;*/
-
-		/*case TC_FILE_CURRENT:*/
-			/*cur_arg->sid = sid;*/
-			/*cur_arg->fh = fh;*/
-			/*break;*/
-
-		/*default:*/
-			/*NFS4_ERR("unsupported file type: %d",*/
-				 /*cur_arg->user_arg->file.type);*/
-			/*assert(false);*/
-		/*}*/
-	}
-
-	fsal_status = export->fsal_export->obj_ops->tc_read(
-	    kern_arg, read_count, &result.index);
-
-	i = 0;
-	while (i < read_count && i < MAX_READ_COUNT) {
-		cur_arg = kern_arg + i;
-		/*switch (cur_arg->user_arg->file.type) {*/
-		/*case TC_FILE_DESCRIPTOR:*/
-			/*tcfd =*/
-			    /*tc_get_fd_struct(cur_arg->user_arg->file.fd, true);*/
-			/*if (bs_get(cur_offset_bs, i)) {*/
-				/*tcfd->offset = cur_arg->user_arg->offset +*/
-					       /*cur_arg->user_arg->length;*/
-				/*cur_arg->user_arg->offset = TC_OFFSET_CUR;*/
-			/*}*/
-			/*tc_put_fd_struct(&tcfd);*/
-		/*case TC_FILE_PATH:*/
-			/*if (cur_arg->path != NULL) {*/
-				/*free(cur_arg->path);*/
-			/*}*/
-			/*break;*/
-		/*}*/
-		i++;
-	}
-
-	free(kern_arg);
-
-	if (FSAL_IS_ERROR(fsal_status)) {
-		result.err_no = (int)fsal_status.major;
-		LogDebug(COMPONENT_FSAL, "tcread failed at index: %d\n",
-			 result.index);
-		return result;
-	}
-
-	result.okay = true;
-	return result;
-
-error:
-	free(kern_arg);
 	return result;
 }
 
@@ -534,111 +443,25 @@ static void tc_update_file_cursor(struct tc_kfd *tcfd, struct tc_iovec *write)
  * read_count - Length of the above array
  *              (Or number of reads)
  */
-tc_res nfs4_do_writev(struct tc_iovec *arg, int write_count, bool istxn)
+tc_res nfs4_do_writev(struct tc_iovec *iovs, int write_count, bool istxn)
 {
-	struct tcwrite_kargs *kern_arg = NULL;
-	struct tcwrite_kargs *cur_arg = NULL;
 	fsal_status_t fsal_status = { 0, 0 };
-	int i = 0;
 	struct gsh_export *export = op_ctx->export;
 	tc_res result = { .okay = false, .index = 0, .err_no = (int)ENOENT };
-	const char *file_path = NULL;
-	stateid4 *sid = NULL;
-	nfs_fh4 *fh = NULL;
-	struct tc_kfd *tcfd = NULL;
-	bitset_t *cur_offset_bs = new_auto_bitset(write_count);
 
 	if (export == NULL) {
 		return result;
 	}
 
-	if (export->fsal_export->obj_ops->tc_write == NULL) {
+	if (export->fsal_export->obj_ops->tc_writev == NULL) {
 		result.err_no = (int)ENOTSUP;
 		return result;
 	}
 
 	NFS4_DEBUG("nfs4_do_writev() called");
 
-	kern_arg = calloc(write_count, (sizeof(struct tcwrite_kargs)));
+	result = export->fsal_export->obj_ops->tc_writev(iovs, write_count);
 
-	for (i = 0; i < write_count && i < MAX_WRITE_COUNT; ++i) {
-		cur_arg = kern_arg + i;
-		cur_arg->user_arg = arg + i;
-		cur_arg->opok_handle = NULL;
-		cur_arg->path = NULL;
-		/*assert(cur_arg->user_arg->file.type == TC_FILE_PATH ||*/
-                       /*cur_arg->user_arg->file.type == TC_FILE_DESCRIPTOR ||*/
-                       /*cur_arg->user_arg->file.type == TC_FILE_CURRENT);*/
-
-		/*switch (cur_arg->user_arg->file.type) {*/
-		/*case TC_FILE_DESCRIPTOR:*/
-			/*tcfd =*/
-			    /*tc_get_fd_struct(cur_arg->user_arg->file.fd, false);*/
-			/*if (!tcfd) {*/
-                                /*result.err_no = (int)EINVAL;*/
-                                /*goto error;*/
-			/*}*/
-			/*if (cur_arg->user_arg->offset == TC_OFFSET_CUR) {*/
-				/*cur_arg->user_arg->offset = tcfd->offset;*/
-				/*bs_set(cur_offset_bs, i);*/
-			/*}*/
-			/*sid = cur_arg->sid = &tcfd->stateid;*/
-			/*fh = cur_arg->fh = &tcfd->fh;*/
-			/*tc_put_fd_struct(&tcfd);*/
-			/*break;*/
-
-		/*case TC_FILE_PATH:*/
-			/*file_path = cur_arg->user_arg->file.path;*/
-			/*if (file_path != NULL) {*/
-				/*cur_arg->path = strndup(file_path, PATH_MAX);*/
-			/*}*/
-			/*sid = NULL;*/
-			/*fh = NULL;*/
-			/*break;*/
-
-		/*case TC_FILE_CURRENT:*/
-			/*cur_arg->sid = sid;*/
-			/*cur_arg->fh = fh;*/
-			/*break;*/
-		/*}*/
-	}
-
-	fsal_status = export->fsal_export->obj_ops->tc_write(
-	    kern_arg, write_count, &result.index);
-
-	for (i = 0; i < write_count && i < MAX_WRITE_COUNT; ++i) {
-		cur_arg = kern_arg + i;
-		/*if (cur_arg->path != NULL) {*/
-			/*free(cur_arg->path);*/
-		/*}*/
-		/*switch (cur_arg->user_arg->file.type) {*/
-		/*case TC_FILE_DESCRIPTOR:*/
-			/*if (bs_get(cur_offset_bs, i)) {*/
-				/*cur_arg->user_arg->offset = TC_OFFSET_CUR;*/
-			/*}*/
-			/*tcfd =*/
-			    /*tc_get_fd_struct(cur_arg->user_arg->file.fd, true);*/
-			/*assert(tcfd);*/
-			/*tc_update_file_cursor(tcfd, cur_arg->user_arg);*/
-			/*tc_put_fd_struct(&tcfd);*/
-			/*break;*/
-		/*}*/
-	}
-
-	free(kern_arg);
-
-	if (FSAL_IS_ERROR(fsal_status)) {
-		result.err_no = (int)fsal_status.major;
-		LogDebug(COMPONENT_FSAL, "tcwrite failed at index: %d\n",
-			 result.index);
-		return result;
-	}
-
-	result.okay = true;
-	return result;
-
-error:
-	free(kern_arg);
 	return result;
 }
 

@@ -2058,27 +2058,22 @@ static bool tc_open_file_if_necessary(const tc_file *tcf, int flags,
 				      buf_t *pbuf_owner, fattr4 *attrs4,
 				      const tc_file **opened_file);
 
-/*
+/**
  * Send multiple reads for one or more files
- * kern_arg - an array of tcread args with size "arg_count"
- * fail_index - Returns the position (read) inside the array that failed
- *  (in case of failure)
- *  The failure could be in putrootfh, lookup, open, read or close,
- *  fail_index would only point to the read call because it is unaware
- *  of the putrootfh, lookup, open or close
- * Caller has to make sure kern_arg and fields inside are allocated
- * and freed
+ * "iovs" - an array of tc_iovec with size "count"
+ * tc_res.index - Returns the position (read) inside the array that failed (in
+ * case of failure)  The failure could be in putrootfh, lookup, open, read or
+ * close, tc_res.index  would only point to the read call because it is unaware
+ * of the putrootfh, lookup, open or close.
+ * Caller has to make sure iovs and fields inside are allocated and freed.
  */
-static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
-			     int *fail_index)
+static tc_res tc_nfs4_readv(struct tc_iovec *iovs, int count)
 {
+        tc_res tcres;
 	int rc;
-	fsal_status_t st;
         nfsstat4 cpd_status;
 	nfsstat4 op_status;
-	struct tcread_kargs *cur_arg = NULL;
 	struct READ4resok *read_res;
-        struct tc_iovec *iov;
 	int i = 0;      /* index of tc_iovec */
 	int j = 0;      /* index of NFS operations */
         const tc_file *opened_file = NULL;
@@ -2087,11 +2082,10 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 
         tc_start_compound(true);
 
-	for (i = 0; i < arg_count; ++i) {
-		iov = kern_arg[i].user_arg;
-		tc_open_file_if_necessary(&iov->file, O_RDONLY,
+	for (i = 0; i < count; ++i) {
+		tc_open_file_if_necessary(&iovs[i].file, O_RDONLY,
 					  new_auto_buf(64), NULL, &opened_file);
-		tc_prepare_rdwr(iov, false);
+		tc_prepare_rdwr(&iovs[i], false);
 	}
 
 	if (opened_file) {
@@ -2102,7 +2096,7 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
 	rc = fs_nfsv4_call(op_ctx->creds, &cpd_status);
 	if (rc != RPC_SUCCESS) {    /* RPC failed */
                 NFS4_ERR("fs_nfsv4_call() returned error: %d\n", rc);
-                st = fsalstat(ERR_FSAL_SERVERFAULT, rc);
+                tcres = tc_failure(0, rc);
                 goto exit;
         }
 
@@ -2111,25 +2105,26 @@ static fsal_status_t ktcread(struct tcread_kargs *kern_arg, int arg_count,
         for (j = 0; j < opcnt; ++j) {
                 op_status = get_nfs4_op_status(&resoparray[j]);
                 if (op_status != NFS4_OK) {
-                        *fail_index = i;
-			kern_arg[i].user_arg->is_failure = 1;
+			iovs[i].is_failure = 1;
 			NFS4_ERR("the %d-th tc_iovec failed (NFS op: %d)", i,
 				 resoparray[j].resop);
-                        break;
+                        tcres = tc_failure(i, nfsstat4_to_errno(op_status));
+                        goto exit;
                 }
                 if (resoparray[j].resop == NFS4_OP_READ) {
 			read_res = &resoparray[j]
 					.nfs_resop4_u.opread.READ4res_u.resok4;
-			kern_arg[i].user_arg->length = read_res->data.data_len;
-			kern_arg[i].user_arg->is_eof = read_res->eof;
+			iovs[i].length = read_res->data.data_len;
+			iovs[i].is_eof = read_res->eof;
                         i++;
 		}
 	}
 
-        st = nfsstat4_to_fsal(cpd_status);
+	if (cpd_status == NFS4_OK)
+		tcres.okay = true;
 
 exit:
-	return st;
+        return tcres;
 }
 
 static inline void tc_prepare_rdwr(struct tc_iovec *iov, bool write)
@@ -2159,24 +2154,20 @@ static inline void tc_prepare_rdwr(struct tc_iovec *iov, bool write)
 }
 
 /*
- * Send multiple writes for one or more files
- * kern_arg - an array of tcread args with size "arg_count"
- * fail_index - Returns the position (read) inside the array that failed
- *  (in case of failure)
- *  The failure could be in putrootfh, lookup, open, read or close,
- *  fail_index would only point to the read call because it is unaware
- *  of the putrootfh, lookup, open or close
- * Caller has to make sure kern_arg and fields inside are allocated
- * and freed
+ * Send multiple reads for one or more files
+ * "iovs" - an array of tc_iovec with size "count"
+ * tc_res.index - Returns the position (write) inside the array that failed (in
+ * case of failure)  The failure could be in putrootfh, lookup, open, read or
+ * close, tc_res.index  would only point to the read call because it is unaware
+ * of the putrootfh, lookup, open or close.
+ * Caller has to make sure iovs and fields inside are allocated and freed.
  */
-static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
-			      int *fail_index)
+static tc_res tc_nfs4_writev(struct tc_iovec *iovs, int count)
 {
+        tc_res tcres;
 	int rc;
-	fsal_status_t st;
 	nfsstat4 op_status;
         nfsstat4 cpd_status;
-        struct tc_iovec *iov;
         struct WRITE4resok *write_res = NULL;
 	fattr4 *input_attr = NULL;
 	int i = 0;      /* index of tc_iovec */
@@ -2187,14 +2178,14 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
 
         tc_start_compound(true);
 
-	input_attr = calloc(arg_count, sizeof(fattr4));
+	input_attr = calloc(count, sizeof(fattr4));
 
-	for (i = 0; i < arg_count; ++i) {
-		iov = kern_arg[i].user_arg;
+	for (i = 0; i < count; ++i) {
 		tc_open_file_if_necessary(
-		    &iov->file, O_WRONLY | (iov->is_creation ? O_CREAT : 0),
+		    &iovs[i].file,
+		    O_WRONLY | (iovs[i].is_creation ? O_CREAT : 0),
 		    new_auto_buf(64), &input_attr[i], &opened_file);
-		tc_prepare_rdwr(iov, true);
+		tc_prepare_rdwr(&iovs[i], true);
 	}
 
 	if (opened_file) {
@@ -2206,7 +2197,7 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
 	if (rc != RPC_SUCCESS) {
 		NFS4_ERR("fs_nfsv4_call() returned error: %d (%s)\n", rc,
 			 strerror(rc));
-                st = fsalstat(ERR_FSAL_SERVERFAULT, rc);
+                tcres = tc_failure(0, rc);
                 goto exit;
 	}
 
@@ -2215,31 +2206,32 @@ static fsal_status_t ktcwrite(struct tcwrite_kargs *kern_arg, int arg_count,
         for (j = 0; j < opcnt; ++j) {
                 op_status = get_nfs4_op_status(&resoparray[j]);
                 if (op_status != NFS4_OK) {
-                        *fail_index = i;
-			kern_arg[i].user_arg->is_failure = 1;
+                        iovs[i].is_failure = 1;
+                        tcres = tc_failure(i, nfsstat4_to_errno(op_status));
 			NFS4_ERR("the %d-th tc_iovec failed (NFS op: %d)", i,
 				 resoparray[j].resop);
-			break;
+                        goto exit;
                 }
                 if (resoparray[j].resop == NFS4_OP_WRITE) {
 			write_res =
 			    &resoparray[j]
 				 .nfs_resop4_u.opwrite.WRITE4res_u.resok4;
-			kern_arg[i].user_arg->length = write_res->count;
-			kern_arg[i].user_arg->is_write_stable =
+			iovs[i].length = write_res->count;
+			iovs[i].is_write_stable =
 			    (write_res->committed != UNSTABLE4);
 			i++;
                 }
         }
 
-        st = nfsstat4_to_fsal(cpd_status);
+	if (cpd_status == NFS4_OK)
+		tcres.okay = true;
 
 exit:
-	for (i = 0; i < arg_count; ++i) {
+	for (i = 0; i < count; ++i) {
 		nfs4_Fattr_Free(&input_attr[i]);
 	}
 	free(input_attr);
-	return st;
+        return tcres;
 }
 
 static inline uint32_t tc_open_flags_to_access(int flags)
@@ -4347,8 +4339,8 @@ void fs_handle_ops_init(struct fsal_obj_ops *ops)
 	ops->handle_digest = fs_handle_digest;
 	ops->handle_to_key = fs_handle_to_key;
 	ops->status = fs_status;
-	ops->tc_read = ktcread;
-	ops->tc_write = ktcwrite;
+	ops->tc_readv = tc_nfs4_readv;
+	ops->tc_writev = tc_nfs4_writev;
 	ops->tc_open = ktcopen;
 	ops->tc_close = ktcclose;
         ops->tc_getattrsv = tc_nfs4_getattrsv;

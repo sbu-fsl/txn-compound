@@ -35,21 +35,6 @@ extern "C" {
 #endif
 
 /*
- * Structure to be passed to ktcread
- * user_arg - Contains file-path, user buffer, read length, offset, etc
- * which are passed by the user
- */
-struct tcread_kargs
-{
-	struct tc_iovec *user_arg;
-	char *path;
-	stateid4 *sid;
-	nfs_fh4 *fh;
-	OPEN4resok *opok_handle;
-	struct attrlist attrib;
-};
-
-/*
  * Structure to be passed to ktcwrite
  * user_arg - Contains file-path, user buffer, write length, offset, etc
  * which are passed by the user
