@@ -545,7 +545,7 @@ static inline bool tx_setattrsv(struct tc_attrs *attrs, int count)
  *
  * @dir [IN]: the path of the directory to list
  * @masks [IN]: masks of attributes to get for listed objects
- * @max_count [IN]: the maximum number of count to list
+ * @max_count [IN]: the maximum number of count to list; 0 means unlimited
  * @contents [OUT]: the pointer to the array of files/directories in the
  * directory.  The array and the paths in the array will be allocated
  * internally by this function; the caller is responsible for releasing the

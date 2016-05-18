@@ -509,15 +509,6 @@ TYPED_TEST_P(TcTest, AttrsTestFileDesc)
 	free(attrs2);
 }
 
-static void free_listdir_attrs(tc_attrs *tcas, int count)
-{
-	int i;
-	for (i = 0; i < count; ++i) {
-		free((void *)tcas[i].file.path);
-	}
-	free(tcas);
-}
-
 static int tc_cmp_attrs_by_name(const void *a, const void *b)
 {
 	const tc_attrs *attrs1 = (const tc_attrs *)a;
@@ -556,7 +547,7 @@ TYPED_TEST_P(TcTest, ListDirContents)
 
 	EXPECT_TRUE(compare(contents, read_attrs, count));
 
-	free_listdir_attrs(contents, count);
+	tc_free_attrs(contents, count, true);
 	free(read_attrs);
 }
 
@@ -592,7 +583,7 @@ TYPED_TEST_P(TcTest, ListDirRecursively)
 	for (int i = 0; i < count; ++i) {
 		EXPECT_STREQ(expected[i], contents[i].file.path);
 	}
-	free_listdir_attrs(contents, count);
+	tc_free_attrs(contents, count, true);
 }
 
 /**
@@ -927,7 +918,7 @@ TYPED_TEST_P(TcTest, ListAnEmptyDirectory)
 	tcres =
 	    tc_listdir(PATH, TC_ATTRS_MASK_ALL, 1, false, &contents, &count);
 	EXPECT_EQ(0, count);
-	free_listdir_attrs(contents, count);
+	EXPECT_EQ(NULL, contents);
 }
 
 /* Get "cannot access" error when listing 2nd-level dir.  */
@@ -945,7 +936,7 @@ TYPED_TEST_P(TcTest, List2ndLevelDir)
 	    tc_listdir(DIR_PATH, TC_ATTRS_MASK_ALL, 1, false, &attrs, &count);
 	EXPECT_EQ(1, count);
 	EXPECT_EQ(0, attrs->size);
-	free_listdir_attrs(attrs, count);
+	tc_free_attrs(attrs, count, true);
 }
 
 TYPED_TEST_P(TcTest, ShuffledRdWr)

@@ -204,8 +204,14 @@ tc_res tc_listdir(const char *dir, struct tc_attrs_masks masks, int max_count,
 		tc_free_attrs(atarray.attrs, atarray.size, true);
 	}
 
-	*contents = atarray.attrs;
 	*count = atarray.size;
+	if (*count == 0) {
+		free(atarray.attrs);
+		*contents = NULL;
+	} else {
+		*contents = atarray.attrs;
+	}
+
 	return tcres;
 }
 
