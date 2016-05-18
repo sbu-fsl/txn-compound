@@ -27,6 +27,7 @@
 #include <string.h>
 #include <sys/types.h>
 
+#include "ganesha_list.h"
 #include "tc_impl_posix.h"
 #include "tc_helper.h"
 #include "log.h"
@@ -668,83 +669,136 @@ tc_res posix_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)
 	return result;
 }
 
-/**
- * List the content of a directory.
- *
- * @dir [IN]: the path of the directory to list
- * @masks [IN]: masks of attributes to get for listed objects
- * @max_count [IN]: the maximum number of count to list
- * @contents [OUT]: the pointer to the array of files/directories in the
- * directory.  The array and the paths in the array will be allocated
- * internally by this function; the caller is responsible for releasing the
- * memory, probably by using tc_free_attrs().
- */
+struct tc_posix_dir_to_list {
+	struct glist_head list;
+	const char *path;
+	int origin_index;
+	bool need_free_path;
+};
 
-tc_res posix_listdir(const char *dir, struct tc_attrs_masks masks,
-		     int max_count, struct tc_attrs **contents, int *count)
+static inline struct tc_posix_dir_to_list *
+enqueue_dir_to_list(struct glist_head *dir_queue, const char *path,
+		    bool own_path, int index)
+{
+	struct tc_posix_dir_to_list *dle;
+
+	dle = malloc(sizeof(*dle));
+	if (!dle) {
+		return NULL;
+	}
+	dle->path = path;
+	dle->need_free_path = own_path;
+	dle->origin_index = index;
+	glist_add_tail(dir_queue, &dle->list);
+
+	return dle;
+}
+
+static int posix_listdir(struct glist_head *dir_queue, const char *dir,
+			 struct tc_attrs_masks masks, int index, int *limit,
+			 bool recursive, tc_listdirv_cb cb, void *cbarg)
 {
 	DIR *dir_fd;
-	struct tc_attrs *cur_attr = NULL;
+	struct tc_attrs cur_attr;
 	struct dirent *dp;
-	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
-	char file_name[PATH_MAX];
+	int path_len;
+	char *path;
+	struct stat st;
+	struct tc_posix_dir_to_list *dle;
+	int ret = 0;
 
 	assert(dir != NULL);
-	*contents = calloc(max_count, sizeof(struct tc_attrs));
 
 	dir_fd = opendir(dir);
-
 	if (!dir_fd) {
-		result.okay = false;
-		result.err_no = errno;
-
-		return result;
+		return -errno;
 	}
 
-	*count = 0;
-	while ((dp = readdir(dir_fd)) != NULL && *count < max_count) {
-		cur_attr = (*contents) + *count;
-		/* copy the file name */
-		cur_attr->file.type = TC_FILE_PATH;
-
-		POSIX_WARN("DirEntry  : %s\n", dp->d_name);
-
+	while ((dp = readdir(dir_fd)) != NULL && (*limit == -1 || *limit > 0)) {
+		POSIX_DEBUG("DirEntry  : %s\n", dp->d_name);
 		/* Skip the current and parent directory entry */
 		if (!strncmp(dp->d_name, ".", strlen(dp->d_name)) ||
 		    !strncmp(dp->d_name, "..", strlen(dp->d_name)))
 			continue;
 
-		char *file_path =
-		    (char *)calloc(1, strlen(dp->d_name) + strlen(dir) + 2);
-		strncpy(file_path, dir, strlen(dir));
-		strncat(file_path, "/", 1);
-		strncat(file_path, dp->d_name, strlen(dp->d_name));
-		cur_attr->file.path = file_path;
+		path_len = strlen(dp->d_name) + strlen(dir) + 2;
+		char *path = (char *)malloc(path_len);
+		tc_path_join(dir, dp->d_name, path, path_len);
 
-		struct stat st;
-		file_name[0] = 0;
-		strcpy(file_name, dir);
-		strcat(file_name, "/");
-		strcat(file_name, dp->d_name);
+		cur_attr.file = tc_file_from_path(path);
+		cur_attr.masks = masks;
 
-		if (stat(file_name, &st) < 0) {
-			result.okay = false;
-			result.err_no = errno;
-			result.index = *count;
-
+		if (stat(path, &st) < 0) {
 			POSIX_WARN("stat failed for file : %s\n", dp->d_name);
-			closedir(dir_fd);
-			return result;
+			ret = -errno;
+			goto exit;
 		}
 
 		/* copy the attributes */
-		tc_get_attrs_from_stat(&st, cur_attr);
+		tc_get_attrs_from_stat(&st, &cur_attr);
+		if (!cb(&cur_attr, path, cbarg)) {
+			ret = 0;
+			goto exit;
+		}
 
-		(*count)++;
+		if (recursive && S_ISDIR(st.st_mode)) {
+			if (!enqueue_dir_to_list(dir_queue, path, true,
+						 index)) {
+				free(path);
+				ret = -ENOMEM;
+				goto exit;
+			}
+		} else {
+			free(path);
+		}
+
+		if (*limit != -1) {
+			--(*limit);
+		}
 	}
 
+exit:
 	closedir(dir_fd);
-	return result;
+	return ret;
+}
+
+tc_res posix_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
+		      int max_entries, bool recursive, tc_listdirv_cb cb,
+		      void *cbarg, bool istxn)
+{
+	tc_res tcres = { .okay = true };
+	GLIST_HEAD(dir_queue);
+	struct tc_posix_dir_to_list *dle;
+	int i;
+	int ret = 0;
+
+	if (max_entries == 0) {  /* no limit */
+		max_entries = -1;
+	}
+
+	for (i = 0; i < count; ++i) {
+		enqueue_dir_to_list(&dir_queue, dirs[i], false, i);
+	}
+
+	while (!glist_empty(&dir_queue)) {
+		dle = glist_first_entry(&dir_queue, struct tc_posix_dir_to_list,
+					list);
+		if (ret == 0 && (max_entries == -1 || max_entries > 0)) {
+			ret = posix_listdir(&dir_queue, dle->path, masks,
+					    dle->origin_index, &max_entries,
+					    recursive, cb, cbarg);
+			if (ret < 0) {
+				tcres = tc_failure(dle->origin_index, ret);
+			}
+		}
+		if (dle->need_free_path) {
+			free((char *)dle->path);
+		}
+		glist_del(&dle->list);
+		free(dle);
+	}
+
+	return tcres;
 }
 
 tc_res posix_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)

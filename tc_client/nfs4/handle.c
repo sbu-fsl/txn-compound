@@ -338,6 +338,15 @@ static struct bitmap4 fs_bitmap_readdir = {
 	.bitmap4_len = 1
 };
 
+/**
+ * XXX: FATTR4_FILEHANDLE?
+ */
+static struct bitmap4 tc_bitmap_readdir = {
+	.map[0] = PXY_ATTR_BIT(FATTR4_TYPE) |
+		  PXY_ATTR_BIT(FATTR4_RDATTR_ERROR),
+	.bitmap4_len = 1
+};
+
 static struct bitmap4 fs_bitmap_fsinfo = {
 	.map[0] =
 	    (PXY_ATTR_BIT(FATTR4_FILES_AVAIL) | PXY_ATTR_BIT(FATTR4_FILES_FREE)
@@ -2471,15 +2480,14 @@ static inline OPEN4resok *tc_prepare_open(slice_t name, int flags,
 
 /* The caller should release "rdok->reply.entries" */
 static inline READDIR4resok *tc_prepare_readdir(nfs_cookie4 *cookie,
-						int dircount,
 						const struct bitmap4 *attrbm)
 {
 	READDIR4resok *rdok;
 
 	rdok = &resoparray[opcnt].nfs_resop4_u.opreaddir.READDIR4res_u.resok4;
 	rdok->reply.entries = NULL;
-	COMPOUNDV4_ARG_ADD_OP_READDIR(opcnt, argoparray, *cookie, dircount,
-				      (attrbm ? fs_bitmap_readdir : *attrbm));
+	COMPOUNDV4_ARG_ADD_OP_READDIR(opcnt, argoparray, *cookie,
+				      (attrbm ? *attrbm : tc_bitmap_readdir));
 
 	return rdok;
 }
@@ -2826,13 +2834,12 @@ static fsal_status_t fs_do_readdir(struct fs_obj_handle *ph,
 	entry4 *e4;
 	READDIR4resok *rdok;
 	fsal_status_t st = { ERR_FSAL_NO_ERROR, 0 };
-        const int dircount = 2048;
 
         tc_start_compound(true);
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
 	rdok = &resoparray[opcnt].nfs_resop4_u.opreaddir.READDIR4res_u.resok4;
 	rdok->reply.entries = NULL;
-	COMPOUNDV4_ARG_ADD_OP_READDIR(opcnt, argoparray, *cookie, dircount,
+	COMPOUNDV4_ARG_ADD_OP_READDIR(opcnt, argoparray, *cookie,
 				      fs_bitmap_readdir);
 
 	rc = fs_nfsv4_call(op_ctx->creds, NULL);
@@ -3849,26 +3856,17 @@ exit:
 }
 
 /**
- * Directory entries read by listdirv.
- */
-struct tc_dir_entry_listed {
-	struct glist_head siblings; /* entires share the same parent */
-	struct tc_attrs attrs;
-};
-
-/**
  * A directory to be listed.
  */
 struct tc_dir_to_list {
 	struct glist_head list; /* list of all directories to be listed */
-	const char *name;
+	const char *path;  /* relative path from the original dir */
         nfs_cookie4 cookie;
         char fhbuf[NFS4_FHSIZE];
         nfs_fh4 fh;
-        int index;
-        int nchildren;
-        struct glist_head children;
-        bool eof;
+	int origin_index; /* index of the dir that this dir originate from */
+	int nchildren;
+        bool need_free_path;
 };
 
 struct nfsoparray {
@@ -3892,216 +3890,227 @@ static bool xdr_listdirv(XDR *x, struct nfsoparray *nfsops)
         return res;
 }
 
-static int tc_parse_dir_entries(const entry4 *entries,
-				struct glist_head *entrylist,
-				nfs_cookie4 *cookie)
+static inline struct tc_dir_to_list *
+enqueue_dir_to_list(struct glist_head *dir_queue, const char *path, int index,
+		    bool own_path)
 {
-        struct tc_dir_entry_listed *dentry;
-        int n = 0;
-        while (entries) {
-                dentry = calloc(1, sizeof(*dentry));
-		dentry->attrs.file =
-		    tc_file_from_path(strndup(entries->name.utf8string_val,
-					      entries->name.utf8string_len));
-		fattr4_to_tc_attrs(&entries->attrs, &dentry->attrs);
-                *cookie = entries->cookie;
-                glist_add_tail(entrylist, &dentry->siblings);
-                entries = entries->nextentry;
-                ++n;
-        }
-        return n;
+	struct tc_dir_to_list *dle;
+
+	dle = malloc(sizeof(*dle));
+	dle->path = path;
+	dle->need_free_path = own_path;
+	dle->cookie = 0;
+	dle->fh.nfs_fh4_val = NULL;
+	dle->fh.nfs_fh4_len = 0;
+	dle->origin_index = index;
+	dle->nchildren = 0;
+	glist_add_tail(dir_queue, &dle->list);
+
+	return dle;
 }
 
-static tc_res tc_do_listdirv(struct glist_head *dirlist, const bitmap4 *bitmap,
-			     int max_entries_per_dir)
+static inline void dequeue_dir_to_list(struct glist_head *dir_queue)
 {
-        struct tc_dir_to_list *dle;
-        tc_file tcf;
-        struct nfsoparray nfsops = {
-                .argoparray = argoparray,
-                .resoparray = resoparray,
-                .opcnt = opcnt,
-                .capacity = MAX_NUM_OPS_PER_COMPOUND,
-        };
-        tc_res tcres;
-        nfsstat4 cpd_status;
-        nfsstat4 op_status;
-        READDIR4resok *rdok;
-        int i, j;
-        int rc;
+	struct tc_dir_to_list *dle;
 
-        tc_start_compound(true);
+	dle = glist_first_entry(dir_queue, struct tc_dir_to_list, list);
+	glist_del(&dle->list);
+	if (dle->need_free_path) {
+		free((char *)dle->path);
+	}
+	free(dle);
+}
 
-        glist_for_each_entry(dle, dirlist, list) {
-                if (dle->fh.nfs_fh4_len == 0) {
-                        tcf = tc_file_from_path(dle->name);
-                        tc_set_current_fh(&tcf, NULL);
-                        tc_prepare_getfh(dle->fhbuf);
-                } else {
-                        tc_prepare_putfh(&dle->fh);
+static int tc_parse_dir_entries(struct glist_head *dir_queue,
+				struct tc_dir_to_list *parent,
+				const entry4 *entries, int *limit,
+                                bool recursive, tc_listdirv_cb cb, void *cbarg)
+{
+	bool success;
+	char *path;
+	buf_t buf;
+	int ret;
+	struct tc_attrs attrs;
+	int n = 0;
+
+	while (entries && (*limit == -1 || *limit > 0)) {
+		path = malloc(PATH_MAX);
+		buf = mkbuf(path, PATH_MAX);
+		ret = tc_path_join_s(toslice(parent->path),
+				     mkslice(entries->name.utf8string_val,
+					     entries->name.utf8string_len),
+				     &buf);
+		assert(ret > 0);
+		attrs.file = tc_file_from_path(asstr(&buf));
+		fattr4_to_tc_attrs(&entries->attrs, &attrs);
+		success = cb(&attrs, parent->path, cbarg);
+		if (!success) {
+			free(path);
+			return -1;
 		}
-		tc_prepare_readdir(&dle->cookie, max_entries_per_dir, bitmap);
+
+		if (recursive && S_ISDIR(attrs.mode)) {
+			enqueue_dir_to_list(dir_queue, path,
+					    parent->origin_index, true);
+		} else {
+                        free(path);
+                }
+
+		parent->cookie = entries->cookie;
+		entries = entries->nextentry;
+		++n;
+		if (*limit != -1) {
+			--*limit;
+                }
+	}
+	return n;
+}
+
+static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
+			     const bitmap4 *bitmap, bool recursive,
+			     tc_listdirv_cb cb, void *cbarg)
+{
+	struct tc_dir_to_list *next_dle;
+	struct tc_dir_to_list *dle;
+	struct nfsoparray nfsops = { .argoparray = argoparray,
+				     .resoparray = resoparray,
+				     .opcnt = opcnt,
+				     .capacity = MAX_NUM_OPS_PER_COMPOUND, };
+	tc_res tcres;
+	nfsstat4 cpd_status;
+	nfsstat4 op_status;
+	READDIR4resok *rdok;
+	int i = 0, j;
+	int rc;
+	static const int MAX_READDIRS_PER_COMPOUND = 16;
+
+	tc_start_compound(true);
+
+	glist_for_each_entry(dle, dir_queue, list)
+	{
+		if (dle->fh.nfs_fh4_len == 0) {
+			tc_set_cfh_to_path(dle->path, NULL, false);
+			tc_prepare_getfh(dle->fhbuf);
+		} else {
+			tc_prepare_putfh(&dle->fh);
+		}
+		tc_prepare_readdir(&dle->cookie, bitmap);
+		if (++i >= MAX_READDIRS_PER_COMPOUND)
+			break;
 	}
 
 	rc = fs_nfsv4_call(op_ctx->creds, &cpd_status);
-        if (rc != RPC_SUCCESS) {
-                NFS4_ERR("rpc failed: %d", rc);
-                tcres = tc_failure(0, rc);
-                goto exit;
-        }
+	if (rc != RPC_SUCCESS) {
+		NFS4_ERR("rpc failed: %d", rc);
+		tcres = tc_failure(0, rc);
+		goto exit;
+	}
 
-        dle = glist_first_entry(dirlist, struct tc_dir_to_list, list);
-        i = 0;
-        for (j = 0; j < opcnt; ++j) {
-                op_status = get_nfs4_op_status(resoparray + j);
-                if (op_status != NFS4_OK) {
-                        NFS4_ERR("NFS operation (%d) failed: %d",
-                                 resoparray[j].resop, op_status);
-                        tcres = tc_failure(i, nfsstat4_to_errno(op_status));
-                        goto exit;
-                }
-                switch(resoparray[j].resop) {
-                case NFS4_OP_GETFH:
+	dle = glist_first_entry(dir_queue, struct tc_dir_to_list, list);
+	i = 0;
+	for (j = 0; j < opcnt; ++j) {
+		op_status = get_nfs4_op_status(resoparray + j);
+		if (op_status != NFS4_OK) {
+			NFS4_ERR("NFS operation (%d) failed: %d",
+				 resoparray[j].resop, op_status);
+			tcres = tc_failure(i, nfsstat4_to_errno(op_status));
+			goto exit;
+		}
+		switch (resoparray[j].resop) {
+		case NFS4_OP_GETFH:
 			dle->fh =
 			    resoparray[j]
 				.nfs_resop4_u.opgetfh.GETFH4res_u.resok4.object;
-                        break;
-                case NFS4_OP_READDIR:
+			break;
+		case NFS4_OP_READDIR:
 			rdok =
 			    &resoparray[j]
 				 .nfs_resop4_u.opreaddir.READDIR4res_u.resok4;
-                        dle->eof = rdok->reply.eof;
-			dle->nchildren += tc_parse_dir_entries(
-			    rdok->reply.entries, &dle->children, &dle->cookie);
+			rc = tc_parse_dir_entries(dir_queue, dle,
+						  rdok->reply.entries, limit,
+						  recursive, cb, cbarg);
+			if (rc < 0) {
+				tcres = tc_failure(i, rc);
+				goto exit;
+			}
+			dle->nchildren += rc;
 			++i;
-                        dle = glist_next_entry(dle, list);
-                        break;
+			next_dle = glist_next_entry(dle, list);
+			if (rdok->reply.eof) {
+				glist_del(&dle->list);
+				if (dle->need_free_path) {
+					free((char *)dle->path);
+				}
+				free(dle);
+			}
+			dle = next_dle;
+                        if (*limit == 0) {
+                                tcres.okay = true;
+                                goto exit;
+                        }
+			break;
 		}
-        }
+	}
 
-        if (cpd_status == NFS4_OK)
-                tcres.okay = true;
+	if (cpd_status == NFS4_OK)
+		tcres.okay = true;
 
 exit:
-        nfsops.opcnt = opcnt;
-        xdr_free((xdrproc_t) xdr_listdirv, &nfsops);
-        return tcres;
+	nfsops.opcnt = opcnt;
+	xdr_free((xdrproc_t)xdr_listdirv, &nfsops);
+	return tcres;
 }
 
 tc_res tc_nfs4_listdirv(const char **dirs, int count,
 			struct tc_attrs_masks masks, int max_entries,
-			tc_listdirv_cb cb, void *cbarg)
+			bool recursive, tc_listdirv_cb cb, void *cbarg)
 {
         int i = 0;
-        int ndir;
-        int entries_per_dir;
-        tc_res tcres;
-        struct tc_attrs *entries;
-	/**
-	 * When max_entries is set, we only need the first "max_entries"
-	 * entries.  However, because we read from all directories in parallel,
-	 * we might read more than needed because we don't know how many
-	 * entries are there in each directory.
-	 */
-	int entrycnt = 0; /* the number of entries read and needed */
-	int entryread; /* the number of netries read but not necessary needed */
-	GLIST_HEAD(dirlist);
-        struct tc_dir_to_list *alldirs;
-        struct tc_dir_to_list *dle;
-        struct tc_dir_to_list *dle_next;
-        struct tc_dir_entry_listed *dentry;
-        struct tc_dir_entry_listed *dentry_next;
+	tc_res tcres = { .okay = true };
+	GLIST_HEAD(dir_queue);
         bitmap4 bitmap = fs_bitmap_readdir;
 
         tc_attr_masks_to_bitmap(&masks, &bitmap);
 
-        alldirs = alloca(count * sizeof(*alldirs));
-        entries = alloca(sizeof(*entries) * MAX_ENTRIES_PER_COMPOUND);
-        for (i = 0; i < count; ++i) {
-                dle = alldirs + i;
-                dle->name = dirs[i];
-                dle->cookie = 0;
-                dle->nchildren = 0;
-                dle->index = i;
-                dle->eof = false;
-                dle->fh.nfs_fh4_len = 0;
-                glist_init(&dle->children);
-                glist_add_tail(&dirlist, &dle->list);
+        /**
+         * The API uses "0" as "unlimited" whereas the implementation uses "-1"
+         * as "unlimited".
+         */
+        if (max_entries == 0) {
+                max_entries = -1;
         }
 
-        while (!glist_empty(&dirlist)) {
-                entrycnt = 0;
-                i = 0;
-                do {
-                        entrycnt += alldirs[i].nchildren;
-                } while (alldirs[i++].eof);
-
-                ndir = glist_length(&dirlist);
-		entries_per_dir = MIN(max_entries - entrycnt,
-				      MAX_ENTRIES_PER_COMPOUND / ndir);
-		tcres = tc_do_listdirv(&dirlist, &bitmap, entries_per_dir);
-		if (!tcres.okay) {
-                        goto exit;
-                }
-
-                // find directories that still need to be listed
-                // 1. Remove directories that are finished.
-                glist_for_each_entry_safe(dle, dle_next, &dirlist, list) {
-                        if (dle->eof) {
-                                glist_del(&dle->list);
-                        }
-                }
-
-		// 2. Remove directories that should not be read because of
-		// max_entries.
-                if (max_entries == 0) continue;
-		entryread = 0;
-                for (i = 0; i < count && entryread < max_entries; ++i) {
-                        entryread += alldirs[i].nchildren;
-                }
-                for (; i < count; ++i) {
-                        // Remove from the list; no-op if not in the list;
-                        glist_del(&alldirs[i].list);
-                }
+        for (i = 0; i < count; ++i) {
+		enqueue_dir_to_list(&dir_queue, dirs[i], i, false);
 	}
 
-        for (i = 0; i < count; ++i) {
-                dle = &alldirs[i];
-		if (!glist_empty(&dle->children)) {
-			glist_for_each_entry(dentry, &dle->children, siblings)
-			{
-				if (!cb(&dentry->attrs, dle->name, cbarg)) {
-					goto exit;
-				}
-			}
+	/**
+         * We maintain a queue of directories to list, and call
+         * tc_do_listdirv() for each directory.  Once the EOF is reached for a
+         * directory, we dequeue the directory until the queue becomes empty.
+         * When "recursive" is true, a subdirectory is enqueued whenever we
+         * encounter the subdirectory.
+         */
+	while (!glist_empty(&dir_queue)) {
+		tcres = tc_do_listdirv(&dir_queue, &max_entries, &bitmap,
+				       recursive, cb, cbarg);
+		if (!tcres.okay) {
+			goto exit;
 		}
-                if (!dle->eof) {
-                        break;
-                }
-        }
+	}
 
 exit:
-        for (i = 0; i < count; ++i) {
-                if (glist_empty(&alldirs[i].children)) {
-                        continue;
-                }
-		glist_for_each_entry_safe(dentry, dentry_next,
-					  &alldirs[i].children, siblings) {
-                        if (!tcres.okay && dentry->attrs.file.path) {
-                                free((void *)dentry->attrs.file.path);
-                        }
-                        glist_del(&dentry->siblings);
-                        free(dentry);
-		}
-        }
-        return tcres;
+        while (!glist_empty(&dir_queue)) {
+                dequeue_dir_to_list(&dir_queue);
+	}
+	return tcres;
 }
 
 static tc_res tc_nfs4_renamev(tc_file_pair *pairs, int count)
 {
-        int rc;
-        tc_res tcres;
-        nfsstat4 cpd_status;
+	int rc;
+	tc_res tcres;
+	nfsstat4 cpd_status;
 	nfsstat4 op_status;
 	int i = 0;      /* index of tc_iovec */
 	int j = 0;      /* index of NFS operations */

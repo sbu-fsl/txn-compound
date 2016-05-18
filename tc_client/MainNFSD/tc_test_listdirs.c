@@ -125,8 +125,8 @@ int main(int argc, char *argv[])
 		goto exit;
 	}
 
-	tcres = tc_listdirv(DIR_PATHS, NDIRS, masks, 0, process_direntry, NULL,
-			    false);
+	tcres = tc_listdirv(DIR_PATHS, NDIRS, masks, 0, false, process_direntry,
+			    NULL, false);
 	if (tcres.okay) {
 		fprintf(stderr, "successfully listed %d files\n",
 			NDIRS * NFILES);

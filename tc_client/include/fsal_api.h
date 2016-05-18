@@ -1341,7 +1341,7 @@ struct fsal_obj_ops {
 
 	tc_res (*tc_listdirv)(const char **dirs, int count,
 			      struct tc_attrs_masks masks, int max_entries,
-			      tc_listdirv_cb cb, void *cbarg);
+			      bool recursive, tc_listdirv_cb cb, void *cbarg);
 
 	tc_res (*tc_renamev)(tc_file_pair *pairs, int count);
 

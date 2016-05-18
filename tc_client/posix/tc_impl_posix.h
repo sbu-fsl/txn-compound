@@ -100,19 +100,9 @@ tc_res posix_renamev(tc_file_pair *pairs, int count, bool is_transaction);
  */
 tc_res posix_removev(tc_file *tc_files, int count, bool is_transaction);
 
-/**
- * List the content of a directory.
- *
- * @dir [IN]: the path of the directory to list
- * @masks [IN]: masks of attributes to get for listed objects
- * @max_count [IN]: the maximum number of count to list
- * @contents [OUT]: the pointer to the array of files/directories in the
- * directory.  The array and the paths in the array will be allocated
- * internally by this function; the caller is responsible for releasing the
- * memory, probably by using tc_free_attrs().
- */
-tc_res posix_listdir(const char *dir, struct tc_attrs_masks masks,
-		     int max_count, struct tc_attrs **contents, int *count);
+tc_res posix_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
+		      int max_entries, bool recursive, tc_listdirv_cb cb,
+		      void *cbarg, bool istxn);
 
 tc_res posix_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction);
 

@@ -552,7 +552,7 @@ static inline bool tx_setattrsv(struct tc_attrs *attrs, int count)
  * memory, probably by using tc_free_attrs().
  */
 tc_res tc_listdir(const char *dir, struct tc_attrs_masks masks, int max_count,
-		  struct tc_attrs **contents, int *count);
+		  bool recursive, struct tc_attrs **contents, int *count);
 
 /**
  * Callback of tc_listdirv().
@@ -572,12 +572,14 @@ typedef bool (*tc_listdirv_cb)(const struct tc_attrs *entry, const char *dir,
  * @dirs: the array of directories to list
  * @count: the length of "dirs"
  * @masks: the attributes to retrieve for each listed entry
- * @max_entries: the max number of entry to list; 0 means infinite
- * @cb: the callback function to be applied to each listed entry
+ * @recursive [IN]: list directory entries recursively
+ * @max_entries [IN]: the max number of entry to list; 0 means infinite
+ * @cb [IN}: the callback function to be applied to each listed entry
+ * @cbarg [IN/OUT]: private arguments for the callback
  */
 tc_res tc_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
-		   int max_entries, tc_listdirv_cb cb, void *cbarg,
-		   bool is_transaction);
+		   int max_entries, bool recursive, tc_listdirv_cb cb,
+		   void *cbarg, bool is_transaction);
 
 /**
  * Free an array of "tc_attrs".

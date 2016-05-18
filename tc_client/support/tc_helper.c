@@ -94,12 +94,18 @@ void tc_get_attrs_from_stat(const struct stat *st, struct tc_attrs *attrs)
 		attrs->gid = st->st_gid;
 	if (attrs->masks.has_rdev)
 		attrs->rdev = st->st_rdev;
-	if (attrs->masks.has_atime)
+	if (attrs->masks.has_atime) {
 		attrs->atime.tv_sec = st->st_atime;
-	if (attrs->masks.has_mtime)
+		attrs->atime.tv_nsec = 0;
+	}
+	if (attrs->masks.has_mtime) {
 		attrs->mtime.tv_sec = st->st_mtime;
-	if (attrs->masks.has_ctime)
+		attrs->mtime.tv_nsec = 0;
+	}
+	if (attrs->masks.has_ctime) {
 		attrs->ctime.tv_sec = st->st_ctime;
+		attrs->ctime.tv_nsec = 0;
+	}
 }
 
 void tc_copy_attrs(const struct tc_attrs *src, struct tc_attrs *dst)

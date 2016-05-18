@@ -258,9 +258,9 @@ do { \
 	argcompound.argarray.argarray_len += 1;			\
 } while (0)
 
-#define MAX_ENTRIES_PER_COMPOUND 4096
+#define TC_READDIR_MAXCOUNT_BYTES 1048576
 
-#define COMPOUNDV4_ARG_ADD_OP_READDIR(opcnt, args, c4, dircount, inbitmap)     \
+#define COMPOUNDV4_ARG_ADD_OP_READDIR(opcnt, args, c4, inbitmap)               \
 	do {                                                                   \
 		nfs_argop4 *op = args + opcnt;                                 \
 		opcnt++;                                                       \
@@ -268,9 +268,9 @@ do { \
 		op->nfs_argop4_u.opreaddir.cookie = c4;                        \
 		memset(&op->nfs_argop4_u.opreaddir.cookieverf, 0,              \
 		       NFS4_VERIFIER_SIZE);                                    \
-		op->nfs_argop4_u.opreaddir.dircount = dircount;                \
+		op->nfs_argop4_u.opreaddir.dircount = 0;                       \
 		op->nfs_argop4_u.opreaddir.maxcount =                          \
-		    MAX_ENTRIES_PER_COMPOUND;                                  \
+		    TC_READDIR_MAXCOUNT_BYTES;                                 \
 		op->nfs_argop4_u.opreaddir.attr_request = inbitmap;            \
 	} while (0)
 

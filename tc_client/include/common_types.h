@@ -32,7 +32,7 @@ extern "C" {
 #endif
 
 typedef struct {
-	const size_t capacity;
+	size_t capacity;
 	size_t size;
 	char *data;
 } buf_t;
@@ -133,7 +133,7 @@ static inline buf_t *init_buf(void *rawbuf, size_t c)
 	if (!rawbuf)
 		return NULL;
 	buf_t *pbuf = (buf_t *)rawbuf;
-	*((size_t *)&pbuf->capacity) = c;
+	pbuf->capacity = c;
 	pbuf->size = 0;
 	pbuf->data = ((char *)rawbuf) + sizeof(buf_t);
 	return pbuf;

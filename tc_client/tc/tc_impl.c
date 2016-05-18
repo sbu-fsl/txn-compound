@@ -152,22 +152,74 @@ tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	}
 }
 
-tc_res tc_listdir(const char *dir, struct tc_attrs_masks masks, int max_count,
-		  struct tc_attrs **contents, int *count)
+struct _tc_attrs_array {
+	struct tc_attrs *attrs;
+	size_t size;
+	size_t capacity;
+};
+
+static bool fill_dir_entries(const struct tc_attrs *entry, const char *dir,
+			     void *cbarg)
 {
-	if (TC_IMPL_IS_NFS4) {
-		return nfs4_listdir(dir, masks, max_count, contents, count);
-	} else {
-		return posix_listdir(dir, masks, max_count, contents, count);
+	void *buf;
+	struct _tc_attrs_array *parray = (struct _tc_attrs_array *)cbarg;
+
+	if (parray->size >= parray->capacity) {
+		buf = realloc(parray->attrs,
+			      sizeof(struct tc_attrs) * parray->capacity * 2);
+		if (!buf) {
+			return false;
+		}
+		parray->attrs = (struct tc_attrs *)buf;
+		parray->capacity *= 2;
 	}
+	parray->attrs[parray->size] = *entry;
+	parray->attrs[parray->size].file.path = strdup(entry->file.path);
+	parray->size += 1;
+
+	return true;
+}
+
+tc_res tc_listdir(const char *dir, struct tc_attrs_masks masks, int max_count,
+		  bool recursive, struct tc_attrs **contents, int *count)
+{
+	tc_res tcres;
+	struct _tc_attrs_array atarray;
+
+	atarray.size = 0;
+	if (max_count == 0) {
+		atarray.capacity = 8;
+	} else {
+		assert(max_count > 0);
+		atarray.capacity = max_count;
+	}
+	atarray.attrs = calloc(atarray.capacity, sizeof(struct tc_attrs));
+	if (!atarray.attrs) {
+		return tc_failure(0, ENOMEM);
+	}
+
+	tcres = tc_listdirv(&dir, 1, masks, max_count, recursive,
+			    fill_dir_entries, &atarray, false);
+	if (!tcres.okay) {
+		tc_free_attrs(atarray.attrs, atarray.size, true);
+	}
+
+	*contents = atarray.attrs;
+	*count = atarray.size;
+	return tcres;
 }
 
 tc_res tc_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
-		   int max_entries, tc_listdirv_cb cb, void *cbarg,
-		   bool is_transaction)
+		   int max_entries, bool recursive, tc_listdirv_cb cb,
+		   void *cbarg, bool is_transaction)
 {
-	return nfs4_listdirv(dirs, count, masks, max_entries, cb, cbarg,
-			     is_transaction);
+	if (TC_IMPL_IS_NFS4) {
+		return nfs4_listdirv(dirs, count, masks, max_entries, recursive,
+				     cb, cbarg, is_transaction);
+	} else {
+		return posix_listdirv(dirs, count, masks, max_entries,
+				      recursive, cb, cbarg, is_transaction);
+	}
 }
 
 tc_res tc_renamev(tc_file_pair *pairs, int count, bool is_transaction)

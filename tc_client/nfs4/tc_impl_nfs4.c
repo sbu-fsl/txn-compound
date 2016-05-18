@@ -798,52 +798,15 @@ tc_res nfs4_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)
 	return res;
 }
 
-struct _tc_attrs_array {
-	struct tc_attrs *attrs;
-	size_t size;
-	size_t capacity;
-};
-
-static bool fill_dir_entries(const struct tc_attrs *entry, const char *dir,
-			     void *cbarg)
-{
-	struct _tc_attrs_array *parray = (struct _tc_attrs_array *)cbarg;
-	parray->attrs[parray->size++] = *entry;
-	return true;
-}
-
-tc_res nfs4_listdir(const char *dir, struct tc_attrs_masks masks, int max_count,
-		    struct tc_attrs **contents, int *count)
-{
-	tc_res tcres;
-	struct _tc_attrs_array atarray;
-	atarray.attrs = calloc(max_count, sizeof(struct tc_attrs));
-	if (!atarray.attrs) {
-		return tc_failure(0, ENOMEM);
-	}
-	atarray.size = 0;
-	atarray.capacity = max_count;
-
-	tcres = nfs4_listdirv(&dir, 1, masks, max_count, fill_dir_entries,
-			      &atarray, false);
-	if (!tcres.okay) {
-		tc_free_attrs(atarray.attrs, atarray.size, true);
-	}
-
-	*contents = atarray.attrs;
-	*count = atarray.size;
-	return tcres;
-}
-
 tc_res nfs4_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
-		     int max_entries, tc_listdirv_cb cb, void *cbarg,
-		     bool is_transaction)
+		     int max_entries, bool recursive, tc_listdirv_cb cb,
+		     void *cbarg, bool is_transaction)
 {
 	struct gsh_export *exp = op_ctx->export;
 	tc_res res;
 
-	res = exp->fsal_export->obj_ops->tc_listdirv(dirs, count, masks,
-						     max_entries, cb, cbarg);
+	res = exp->fsal_export->obj_ops->tc_listdirv(
+	    dirs, count, masks, max_entries, recursive, cb, cbarg);
 
 	return res;
 }

@@ -346,13 +346,13 @@ bool compare(tc_attrs *usr, tc_attrs *check, int count)
 			}
 		}
 
-		if (written->masks.has_atime) {
-			if (memcmp((void *)&(written->atime),
-				   (void *)&(read->atime),
-				   sizeof(read->atime))) {
-				TCTEST_WARN("atime does not match\n");
-				TCTEST_WARN(" %d %d\n", written->atime,
-					   read->atime);
+		if (written->masks.has_ctime) {
+			if (memcmp((void *)&(written->ctime),
+				   (void *)&(read->ctime),
+				   sizeof(read->ctime))) {
+				TCTEST_WARN("ctime does not match\n");
+				TCTEST_WARN(" %d %d\n", written->ctime,
+					   read->ctime);
 
 				return false;
 			}
@@ -518,6 +518,13 @@ static void free_listdir_attrs(tc_attrs *tcas, int count)
 	free(tcas);
 }
 
+static int tc_cmp_attrs_by_name(const void *a, const void *b)
+{
+	const tc_attrs *attrs1 = (const tc_attrs *)a;
+	const tc_attrs *attrs2 = (const tc_attrs *)b;
+	return strcmp(attrs1->file.path, attrs2->file.path);
+}
+
 /**
  * List Directory Contents Test
  */
@@ -532,10 +539,11 @@ TYPED_TEST_P(TcTest, ListDirContents)
 	tc_touch("TcTest-ListDir/file2.txt", 2);
 	tc_touch("TcTest-ListDir/file3.txt", 3);
 
-	tc_res res =
-	    tc_listdir(DIR_PATH, TC_ATTRS_MASK_ALL, 3, &contents, &count);
+	tc_res res = tc_listdir(DIR_PATH, TC_ATTRS_MASK_ALL, 3, false,
+				&contents, &count);
 	EXPECT_TRUE(res.okay);
 	EXPECT_EQ(3, count);
+	qsort(contents, count, sizeof(*contents), tc_cmp_attrs_by_name);
 
 	tc_attrs *read_attrs = (tc_attrs *)calloc(count, sizeof(tc_attrs));
 	read_attrs[0].file = tc_file_from_path("TcTest-ListDir/file1.txt");
@@ -550,6 +558,41 @@ TYPED_TEST_P(TcTest, ListDirContents)
 
 	free_listdir_attrs(contents, count);
 	free(read_attrs);
+}
+
+TYPED_TEST_P(TcTest, ListDirRecursively)
+{
+	EXPECT_OK(tc_ensure_dir("TcTest-ListDirRecursively/00/00", 0755, 0));
+	EXPECT_OK(tc_ensure_dir("TcTest-ListDirRecursively/00/01", 0755, 0));
+	EXPECT_OK(tc_ensure_dir("TcTest-ListDirRecursively/01", 0755, 0));
+
+	tc_touch("TcTest-ListDirRecursively/00/00/1.txt", 0);
+	tc_touch("TcTest-ListDirRecursively/00/00/2.txt", 0);
+	tc_touch("TcTest-ListDirRecursively/00/01/3.txt", 0);
+	tc_touch("TcTest-ListDirRecursively/00/01/4.txt", 0);
+	tc_touch("TcTest-ListDirRecursively/01/5.txt", 0);
+
+	tc_attrs *contents;
+	int count = 0;
+	EXPECT_OK(tc_listdir("TcTest-ListDirRecursively", TC_ATTRS_MASK_ALL, 0,
+			     true, &contents, &count));
+	qsort(contents, count, sizeof(*contents), tc_cmp_attrs_by_name);
+	const char *expected[] = {
+		"TcTest-ListDirRecursively/00",
+		"TcTest-ListDirRecursively/00/00",
+		"TcTest-ListDirRecursively/00/00/1.txt",
+		"TcTest-ListDirRecursively/00/00/2.txt",
+		"TcTest-ListDirRecursively/00/01",
+		"TcTest-ListDirRecursively/00/01/3.txt",
+		"TcTest-ListDirRecursively/00/01/4.txt",
+		"TcTest-ListDirRecursively/01",
+		"TcTest-ListDirRecursively/01/5.txt",
+	};
+	EXPECT_EQ(count, sizeof(expected) / sizeof(expected[0]));
+	for (int i = 0; i < count; ++i) {
+		EXPECT_STREQ(expected[i], contents[i].file.path);
+	}
+	free_listdir_attrs(contents, count);
 }
 
 /**
@@ -881,7 +924,8 @@ TYPED_TEST_P(TcTest, ListAnEmptyDirectory)
 	tc_res tcres;
 
 	tc_ensure_dir(PATH, 0755, NULL);
-	tcres = tc_listdir(PATH, TC_ATTRS_MASK_ALL, 1, &contents, &count);
+	tcres =
+	    tc_listdir(PATH, TC_ATTRS_MASK_ALL, 1, false, &contents, &count);
 	EXPECT_EQ(0, count);
 	free_listdir_attrs(contents, count);
 }
@@ -897,7 +941,8 @@ TYPED_TEST_P(TcTest, List2ndLevelDir)
 
 	tc_ensure_dir(DIR_PATH, 0755, NULL);
 	tc_touch(FILE_PATH, 0);
-	tcres = tc_listdir(DIR_PATH, TC_ATTRS_MASK_ALL, 1, &attrs, &count);
+	tcres =
+	    tc_listdir(DIR_PATH, TC_ATTRS_MASK_ALL, 1, false, &attrs, &count);
 	EXPECT_EQ(1, count);
 	EXPECT_EQ(0, attrs->size);
 	free_listdir_attrs(attrs, count);
@@ -1090,6 +1135,7 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   AttrsTestPath,
 			   AttrsTestFileDesc,
 			   ListDirContents,
+			   ListDirRecursively,
 			   RenameFile,
 			   RemoveFileTest,
 			   MakeDirectory,
