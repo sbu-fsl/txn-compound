@@ -108,33 +108,6 @@ void tc_touch(const char *path, int size)
 	}
 }
 
-/**
- * Set the tc_iovec
- */
-static tc_iovec *set_iovec_file_paths(const char **paths, int count,
-				      bool is_write, size_t offset)
-{
-	int i = 0;
-	tc_iovec *iovs = NULL;
-	const int N = 4096;
-
-	iovs = (tc_iovec *)calloc(count, sizeof(tc_iovec));
-
-	for (i = 0; i < count; ++i) {
-		if (paths[i] == NULL) {
-			TCTEST_WARN(
-			    "set_iovec_FilePath() failed for file : %s\n",
-			    paths[i]);
-			free_iovec(iovs, i);
-			return NULL;
-		}
-		tc_iov2path(&iovs[i], paths[i], offset, N, (char *)malloc(N));
-		iovs[i].is_creation = is_write;
-	}
-
-	return iovs;
-}
-
 class TcPosixImpl {
 public:
 	static void *tcdata;
@@ -210,29 +183,29 @@ TYPED_TEST_CASE_P(TcTest);
  */
 TYPED_TEST_P(TcTest, WritevCanCreateFiles)
 {
-	const char *PATH[] = { "WritevCanCreateFiles1.txt",
-			       "WritevCanCreateFiles2.txt",
-			       "WritevCanCreateFiles3.txt",
-			       "WritevCanCreateFiles4.txt" };
-	char data[] = "abcd123";
-	tc_res res;
-	int count = 4;
+	const char *PATHS[] = { "WritevCanCreateFiles1.txt",
+				"WritevCanCreateFiles2.txt",
+				"WritevCanCreateFiles3.txt",
+				"WritevCanCreateFiles4.txt" };
+	const int count = sizeof(PATHS)/sizeof(PATHS[0]);
 
-	Removev(PATH, count);
+	Removev(PATHS, count);
 
-	struct tc_iovec *writev = NULL;
-	writev = set_iovec_file_paths(PATH, count, true, 0);
-	EXPECT_FALSE(writev == NULL);
+	tc_iovec *writev = (tc_iovec *)malloc(sizeof(tc_iovec) * count);
+	for (int i = 0; i < count; ++i) {
+		tc_iov4creation(&writev[i], PATHS[i], 4096,
+				getRandomBytes(4096));
+	}
 
-	res = tc_writev(writev, count, false);
-	EXPECT_TRUE(res.okay);
+	EXPECT_OK(tc_writev(writev, count, false));
 
-	struct tc_iovec *readv = NULL;
-	readv = set_iovec_file_paths(PATH, count, false, 0);
-	EXPECT_FALSE(readv == NULL);
+	tc_iovec *readv = (tc_iovec *)malloc(sizeof(tc_iovec) * count);
+	for (int i = 0; i < count; ++i) {
+		tc_iov2path(&readv[i], PATHS[i], 0, 4096,
+			    (char *)malloc(4096));
+	}
 
-	res = tc_readv(readv, count, false);
-	EXPECT_TRUE(res.okay);
+	EXPECT_OK(tc_readv(readv, count, false));
 
 	EXPECT_TRUE(compare_content(writev, readv, count));
 
