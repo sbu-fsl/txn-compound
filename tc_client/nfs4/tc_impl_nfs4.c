@@ -618,8 +618,9 @@ int nfs4_close(tc_file *user_file)
 		return -1;
 	}
 
-	r = nfs4_close_impl(tcfd, NULL);
 	tc_put_fd_struct(&tcfd);
+	r = nfs4_close_impl(tcfd, NULL);
+	//tc_put_fd_struct(&tcfd);
 
 	return r;
 }

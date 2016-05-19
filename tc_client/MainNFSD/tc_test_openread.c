@@ -66,6 +66,7 @@ int main(int argc, char *argv[])
 	}
 
 	file1 = nfs4_open(TC_TEST_NFS_FILE1, O_RDWR, 0);
+	//file1 = tc_open(TC_TEST_NFS_FILE1, O_RDWR, 0);
 	if (file1->fd < 0) {
 		NFS4_DEBUG("Cannot open %s", TC_TEST_NFS_FILE1);
 	}
@@ -95,7 +96,7 @@ int main(int argc, char *argv[])
         read_iovec[3].data = malloc(16384);
         assert(read_iovec[3].data);
 
-	read_iovec[2].is_creation = 1;
+	//read_iovec[2].is_creation = 1;
         res = tc_writev(read_iovec, 4, false);
 
         /* Read the file; nfs4_readv() will open it first if needed. */
@@ -118,6 +119,7 @@ int main(int argc, char *argv[])
 	}
 
 	rc = nfs4_close(file1);
+	//rc = tc_close(file1);
 	if (rc < 0) {
 		NFS4_DEBUG("Cannot close %d", file1->fd);
 	}

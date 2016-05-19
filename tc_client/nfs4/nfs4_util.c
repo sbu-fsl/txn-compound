@@ -202,11 +202,11 @@ int tc_for_each_fd(tcfd_processor p, void *args)
 		if (fd_list[i].fd > 0) {
 			rc = p(fd_list + i, args);
 			if (rc != 0) {
-				pthread_rwlock_wrlock(&fd_list[i].fd_lock);
+				pthread_rwlock_unlock(&fd_list[i].fd_lock);
 				break;
                         }
 		}
-                pthread_rwlock_wrlock(&fd_list[i].fd_lock);
+                pthread_rwlock_unlock(&fd_list[i].fd_lock);
 	}
         pthread_mutex_unlock(&fd_list_lock);
 
