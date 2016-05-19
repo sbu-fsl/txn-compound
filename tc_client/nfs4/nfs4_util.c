@@ -185,7 +185,7 @@ int tc_incr_fd_seqid(int fd)
                 return -EINVAL;
         }
 
-	seqid = fd_list[fd].seqid++;
+	tcfd->seqid++;
         tc_put_fd_struct(&tcfd);
 
 	return seqid;
