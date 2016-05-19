@@ -3343,6 +3343,10 @@ void tc_attrs_to_fattr4(const struct tc_attrs *tca, fattr4 *attr4)
                 attrlist.mask |= ATTR_SIZE;
                 attrlist.filesize = tca->size;
         }
+        if (tca->masks.has_fileid) {
+                attrlist.mask |= ATTR_FILEID;
+                attrlist.fileid = tca->fileid;
+        }
         if (tca->masks.has_uid) {
                 attrlist.mask |= ATTR_OWNER;
                 attrlist.owner = tca->uid;
@@ -3439,6 +3443,9 @@ void fattr4_to_tc_attrs(const fattr4 *attr4, struct tc_attrs *tca)
                 tca->masks.has_uid = true;
                 tca->uid = attrlist.owner;
         }
+        if (attrlist.mask & ATTR_FILEID) {
+		tc_attrs_set_fileid(tca, attrlist.fileid);
+	}
         if (attrlist.mask & ATTR_GROUP) {
                 tca->masks.has_gid = true;
                 tca->gid = attrlist.group;

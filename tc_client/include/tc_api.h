@@ -383,6 +383,7 @@ struct tc_attrs_masks
 	unsigned int has_mode : 1;  /* protection flags */
 	unsigned int has_size : 1;  /* file size, in bytes */
 	unsigned int has_nlink : 1; /* number of hard links */
+	unsigned int has_fileid : 1;
 	unsigned int has_uid : 1;   /* user ID of owner */
 	unsigned int has_gid : 1;   /* group ID of owner */
 	unsigned int has_rdev : 1;  /* device ID of block or char special
@@ -402,6 +403,7 @@ struct tc_attrs
 	mode_t mode;   /* protection */
 	size_t size;   /* file size, in bytes */
 	nlink_t nlink; /* number of hard links */
+	uint64_t fileid;
 	uid_t uid;
 	gid_t gid;
 	dev_t rdev;
@@ -420,6 +422,12 @@ static inline void tc_attrs_set_size(struct tc_attrs *attrs, size_t size)
 {
 	attrs->size = size;
 	attrs->masks.has_size = true;
+}
+
+static inline void tc_attrs_set_fileid(struct tc_attrs *attrs, uint64_t fileid)
+{
+	attrs->fileid = fileid;
+	attrs->masks.has_fileid = true;
 }
 
 static inline void tc_attrs_set_uid(struct tc_attrs *attrs, size_t uid)
@@ -501,6 +509,8 @@ static inline void tc_stat2attrs(const struct stat *st, struct tc_attrs *attrs)
 		attrs->size = st->st_size;
 	if (attrs->masks.has_nlink)
 		attrs->nlink = st->st_nlink;
+	if (attrs->masks.has_fileid)
+		attrs->fileid = (uint64_t)st->st_ino;
 	if (attrs->masks.has_uid)
 		attrs->uid = st->st_uid;
 	if (attrs->masks.has_gid)
@@ -529,6 +539,8 @@ static inline void tc_attrs2stat(const struct tc_attrs *attrs, struct stat *st)
 		st->st_size = attrs->size;
 	if (attrs->masks.has_nlink)
 		st->st_nlink = attrs->nlink;
+	if (attrs->masks.has_fileid)
+		st->st_ino = (ino_t)attrs->fileid;
 	if (attrs->masks.has_uid)
 		st->st_uid = attrs->uid;
 	if (attrs->masks.has_gid)
@@ -549,15 +561,17 @@ extern const struct tc_attrs_masks TC_ATTRS_MASK_NONE;
 #define TC_MASK_INIT_ALL                                                       \
 	{                                                                      \
 		.has_mode = true, .has_size = true, .has_nlink = true,         \
-		.has_uid = true, .has_gid = true, .has_rdev = true,            \
-		.has_atime = true, .has_mtime = true, .has_ctime = true,       \
+		.has_fileid = true, .has_uid = true, .has_gid = true,          \
+		.has_rdev = true, .has_atime = true, .has_mtime = true,        \
+		.has_ctime = true,                                             \
 	}
 
 #define TC_MASK_INIT_NONE                                                      \
 	{                                                                      \
 		.has_mode = false, .has_size = false, .has_nlink = false,      \
-		.has_uid = false, .has_gid = false, .has_rdev = false,         \
-		.has_atime = false, .has_mtime = false, .has_ctime = false,    \
+		.has_fileid = false, .has_uid = false, .has_gid = false,       \
+		.has_rdev = false, .has_atime = false, .has_mtime = false,     \
+		.has_ctime = false,                                            \
 	}
 
 /**
