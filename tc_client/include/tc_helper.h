@@ -52,8 +52,6 @@ struct file_handle *new_file_handle(size_t fh_len, char *fh_val);
 
 void del_file_handle(struct file_handle *fh);
 
-void tc_get_attrs_from_stat(const struct stat *st, struct tc_attrs *attrs);
-
 void tc_copy_attrs(const struct tc_attrs *src, struct tc_attrs *dst);
 
 bool tc_cmp_file(const tc_file *tcf1, const tc_file *tcf2);

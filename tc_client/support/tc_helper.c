@@ -80,34 +80,6 @@ void del_file_handle(struct file_handle *fh)
 	free(fh);
 }
 
-void tc_get_attrs_from_stat(const struct stat *st, struct tc_attrs *attrs)
-{
-	if (attrs->masks.has_mode)
-		attrs->mode = st->st_mode;
-	if (attrs->masks.has_size)
-		attrs->size = st->st_size;
-	if (attrs->masks.has_nlink)
-		attrs->nlink = st->st_nlink;
-	if (attrs->masks.has_uid)
-		attrs->uid = st->st_uid;
-	if (attrs->masks.has_gid)
-		attrs->gid = st->st_gid;
-	if (attrs->masks.has_rdev)
-		attrs->rdev = st->st_rdev;
-	if (attrs->masks.has_atime) {
-		attrs->atime.tv_sec = st->st_atime;
-		attrs->atime.tv_nsec = 0;
-	}
-	if (attrs->masks.has_mtime) {
-		attrs->mtime.tv_sec = st->st_mtime;
-		attrs->mtime.tv_nsec = 0;
-	}
-	if (attrs->masks.has_ctime) {
-		attrs->ctime.tv_sec = st->st_ctime;
-		attrs->ctime.tv_nsec = 0;
-	}
-}
-
 void tc_copy_attrs(const struct tc_attrs *src, struct tc_attrs *dst)
 {
 	if (src->masks.has_mode)

@@ -735,7 +735,7 @@ static int posix_listdir(struct glist_head *dir_queue, const char *dir,
 		}
 
 		/* copy the attributes */
-		tc_get_attrs_from_stat(&st, &cur_attr);
+		tc_stat2attrs(&st, &cur_attr);
 		if (!cb(&cur_attr, path, cbarg)) {
 			ret = 0;
 			goto exit;

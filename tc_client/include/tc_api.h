@@ -493,6 +493,56 @@ static inline void tc_attrs_mask_set(struct tc_attrs_masks *masks)
 	masks->has_ctime = true;
 }
 
+static inline void tc_stat2attrs(const struct stat *st, struct tc_attrs *attrs)
+{
+	if (attrs->masks.has_mode)
+		attrs->mode = st->st_mode;
+	if (attrs->masks.has_size)
+		attrs->size = st->st_size;
+	if (attrs->masks.has_nlink)
+		attrs->nlink = st->st_nlink;
+	if (attrs->masks.has_uid)
+		attrs->uid = st->st_uid;
+	if (attrs->masks.has_gid)
+		attrs->gid = st->st_gid;
+	if (attrs->masks.has_rdev)
+		attrs->rdev = st->st_rdev;
+	if (attrs->masks.has_atime) {
+		attrs->atime.tv_sec = st->st_atime;
+		attrs->atime.tv_nsec = 0;
+	}
+	if (attrs->masks.has_mtime) {
+		attrs->mtime.tv_sec = st->st_mtime;
+		attrs->mtime.tv_nsec = 0;
+	}
+	if (attrs->masks.has_ctime) {
+		attrs->ctime.tv_sec = st->st_ctime;
+		attrs->ctime.tv_nsec = 0;
+	}
+}
+
+static inline void tc_attrs2stat(const struct tc_attrs *attrs, struct stat *st)
+{
+	if (attrs->masks.has_mode)
+		st->st_mode = attrs->mode;
+	if (attrs->masks.has_size)
+		st->st_size = attrs->size;
+	if (attrs->masks.has_nlink)
+		st->st_nlink = attrs->nlink;
+	if (attrs->masks.has_uid)
+		st->st_uid = attrs->uid;
+	if (attrs->masks.has_gid)
+		st->st_gid = attrs->gid;
+	if (attrs->masks.has_rdev)
+		st->st_rdev = attrs->rdev;
+	if (attrs->masks.has_atime)
+		st->st_atime = attrs->atime.tv_sec;
+	if (attrs->masks.has_mtime)
+		st->st_mtime = attrs->atime.tv_sec;
+	if (attrs->masks.has_ctime)
+		st->st_ctime = attrs->ctime.tv_sec;
+}
+
 extern const struct tc_attrs_masks TC_ATTRS_MASK_ALL;
 extern const struct tc_attrs_masks TC_ATTRS_MASK_NONE;
 
