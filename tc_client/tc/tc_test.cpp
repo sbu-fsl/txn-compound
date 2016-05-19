@@ -1093,6 +1093,47 @@ TYPED_TEST_P(TcTest, SymlinkBasics)
 	delete[] bufsizes;
 }
 
+static bool is_same_stat(const struct stat *st1, const struct stat *st2)
+{
+	return st1->st_ino == st2->st_ino
+	    && st1->st_mode == st2->st_mode
+	    && st1->st_nlink == st2->st_nlink
+	    && st1->st_uid == st2->st_uid
+	    && st1->st_gid == st2->st_gid
+	    && st1->st_rdev == st2->st_rdev
+	    && st1->st_size == st2->st_size
+	    && st1->st_mtime == st2->st_mtime
+	    && st1->st_ctime == st2->st_ctime;
+	    //&& st1->st_dev == st2->st_dev
+	    //&& st1->st_blksize == st2->st_blksize
+	    //&& st1->st_blocks == st2->st_blocks
+}
+
+TYPED_TEST_P(TcTest, TcStatBasics)
+{
+	const char *FPATH = "TcTest-TcStatFile.txt";
+	const char *LPATH = "TcTest-TcStatLink.txt";
+
+	tc_unlink(FPATH);
+	tc_unlink(LPATH);
+	tc_touch(FPATH, 4_KB);
+	EXPECT_EQ(0, tc_symlink(FPATH, LPATH));
+
+	struct stat st1;
+	EXPECT_EQ(0, tc_stat(LPATH, &st1));
+
+	struct stat st2;
+	tc_file *tcf = tc_open(FPATH, O_RDONLY, 0);
+	EXPECT_EQ(0, tc_fstat(tcf, &st2));
+	EXPECT_TRUE(is_same_stat(&st1, &st2));
+	tc_close(tcf);
+
+	struct stat st3;
+	EXPECT_EQ(0, tc_lstat(LPATH, &st3));
+	EXPECT_TRUE(S_ISLNK(st3.st_mode));
+	EXPECT_FALSE(is_same_stat(&st1, &st3));
+}
+
 REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   WritevCanCreateFiles,
 			   TestFileDesc,
@@ -1113,7 +1154,8 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   ParallelRdWrAFile,
 			   RdWrLargeThanRPCLimit,
 			   CompressDeepPaths,
-			   SymlinkBasics);
+			   SymlinkBasics,
+			   TcStatBasics);
 
 typedef ::testing::Types<TcNFS4Impl, TcPosixImpl> TcImpls;
 INSTANTIATE_TYPED_TEST_CASE_P(TC, TcTest, TcImpls);

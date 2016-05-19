@@ -245,6 +245,17 @@ static inline buf_t *buf_reset(buf_t *pbuf)
 	return pbuf;
 }
 
+static inline int buf_printf(buf_t *pbuf, const char *format, ...)
+{
+	va_list args;
+
+	va_start(args, format);
+	pbuf->size = vsnprintf(pbuf->data, pbuf->capacity, format, args);
+	va_end(args);
+
+	return pbuf->size;
+}
+
 /**
  * Append a string to pbuf, return the number of bytes appended.
  */

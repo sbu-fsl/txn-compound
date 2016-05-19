@@ -28,6 +28,7 @@
 #include "nfs4/tc_impl_nfs4.h"
 #include "path_utils.h"
 #include "common_types.h"
+#include "sys/stat.h"
 
 static tc_res TC_OKAY = { .okay = true, .index = -1, .err_no = 0, };
 
@@ -141,6 +142,68 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	} else {
 		return posix_getattrsv(attrs, count, is_transaction);
 	}
+}
+
+static int tc_stat_impl(tc_file tcf, struct stat *buf, bool readlink)
+{
+	const char *path;
+	char *linkbuf;
+	char *link_target;
+	int ret;
+	tc_res tcres;
+	struct tc_attrs tca = {
+		.file = tcf,
+		.masks = TC_ATTRS_MASK_ALL,
+	};
+
+	tcres = tc_getattrsv(&tca, 1, false);
+	if (!tcres.okay) {
+		return tcres.err_no;
+	}
+
+	if (!readlink || !S_ISLNK(tca.mode)) {
+		tc_attrs2stat(&tca, buf);
+		return 0;
+	}
+
+	assert(tcf.type == TC_FILE_PATH);
+
+	linkbuf = alloca(PATH_MAX);
+	link_target = alloca(PATH_MAX);
+
+	while (S_ISLNK(tca.mode)) {
+		path = tca.file.path;
+		ret = tc_readlink(path, linkbuf, PATH_MAX);
+		if (ret != 0) {
+			return ret;
+		}
+
+		tc_path_joinall(link_target, PATH_MAX, path, "..", linkbuf);
+
+		tca.file.path = link_target;
+		tcres = tc_getattrsv(&tca, 1, false);
+		if (!tcres.okay) {
+			return tcres.err_no;
+		}
+	}
+
+	tc_attrs2stat(&tca, buf);
+	return 0;
+}
+
+int tc_stat(const char *path, struct stat *buf)
+{
+	return tc_stat_impl(tc_file_from_path(path), buf, true);
+}
+
+int tc_fstat(tc_file *tcf, struct stat *buf)
+{
+	return tc_stat_impl(*tcf, buf, false);
+}
+
+int tc_lstat(const char *path, struct stat *buf)
+{
+	return tc_stat_impl(tc_file_from_path(path), buf, false);
 }
 
 tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)

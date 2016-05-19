@@ -369,7 +369,7 @@ tc_res posix_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 
 		/* get attributes */
 		if (cur_attr->file.type == TC_FILE_PATH)
-			res = stat(cur_attr->file.path, &st);
+			res = lstat(cur_attr->file.path, &st);
 		else
 			res = fstat(cur_attr->file.fd, &st);
 

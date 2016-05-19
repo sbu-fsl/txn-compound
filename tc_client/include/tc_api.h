@@ -589,6 +589,10 @@ static inline bool tx_getattrsv(struct tc_attrs *attrs, int count)
 	return res.okay;
 }
 
+int tc_stat(const char *path, struct stat *buf);
+int tc_lstat(const char *path, struct stat *buf);
+int tc_fstat(tc_file *tcf, struct stat *buf);
+
 /**
  * Set attributes of file objects.
  *
@@ -763,6 +767,18 @@ static inline bool tx_readlinkv(const char **paths, char **bufs,
 				size_t *bufsizes, int count)
 {
 	return tc_readlinkv(paths, bufs, bufsizes, count, true).okay;
+}
+
+static inline int tc_symlink(const char *oldpath, const char *newpath)
+{
+	tc_res tcres = tc_symlinkv(&oldpath, &newpath, 1, false);
+	return tcres.okay ? 0 : tcres.err_no;
+}
+
+static inline int tc_readlink(const char *path, char *buf, size_t bufsize)
+{
+	tc_res tcres = tc_readlinkv(&path, &buf, &bufsize, 1, false);
+	return tcres.okay ? 0 : tcres.err_no;
 }
 
 /**
