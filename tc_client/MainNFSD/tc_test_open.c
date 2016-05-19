@@ -71,5 +71,5 @@ int main(int argc, char *argv[])
 
 	tc_deinit(context);
 
-	return res.okay ? 0 : res.err_no;
+	return res.err_no;
 }

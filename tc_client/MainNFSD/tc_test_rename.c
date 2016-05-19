@@ -85,13 +85,13 @@ int main(int argc, char *argv[])
 	}
 
 	res = tc_ensure_dir(srcpaths[0], 0755, &tmp);
-	if (!res.okay) {
+	if (!tc_okay(res)) {
 		NFS4_ERR("failed to create source directory %s",
 			 srcpaths[0]);
 		goto exit;
 	}
 	res = tc_ensure_dir(dstpaths[0], 0755, &tmp);
-	if (!res.okay) {
+	if (!tc_okay(res)) {
 		NFS4_ERR("failed to create destination directory %s",
 			 srcpaths[0]);
 		goto exit;
@@ -107,7 +107,7 @@ int main(int argc, char *argv[])
 		file_iov[i].data = (char *)srcpaths[i];
 	}
 	res = tc_writev(file_iov, N, false);
-	if (!res.okay) {
+	if (!tc_okay(res)) {
 		fprintf(stderr, "Failed to create test files\n");
 		goto exit;
 	}
@@ -119,7 +119,7 @@ int main(int argc, char *argv[])
 	}
 
 	res = tc_renamev(pairs, N, false);
-	if (res.okay) {
+	if (tc_okay(res)) {
 		fprintf(stderr, "Successfully renamed %d test files\n", N);
 	} else {
 		fprintf(stderr,
@@ -132,5 +132,5 @@ int main(int argc, char *argv[])
 exit:
 	tc_deinit(context);
 
-	return res.okay ? 0 : res.err_no;
+	return res.err_no;
 }

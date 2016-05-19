@@ -81,7 +81,7 @@ int main(int argc, char *argv[])
 
 	/* create common parent directory */
 	res = tc_ensure_dir(DIR_PATHS[0], 0755, &leaf);
-	if (!res.okay) {
+	if (!tc_okay(res)) {
 		NFS4_ERR("failed to create parent directory of %s",
 			 DIR_PATHS[0]);
 		goto exit;
@@ -105,7 +105,7 @@ int main(int argc, char *argv[])
 	res = tc_mkdirv(dirs, N, false);
 
 	/* Check results. */
-	if (res.okay) {
+	if (tc_okay(res)) {
 		fprintf(stderr,
 			"All directories successfully created via NFS.\n");
 	} else {
@@ -115,5 +115,5 @@ int main(int argc, char *argv[])
 exit:
 	tc_deinit(context);
 
-	return res.okay ? 0 : res.err_no;
+	return res.err_no;
 }

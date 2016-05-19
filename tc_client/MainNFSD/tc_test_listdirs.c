@@ -86,7 +86,7 @@ int main(int argc, char *argv[])
 
 	/* create common parent directory */
 	tcres = tc_ensure_dir("/vfs0", 0755, NULL);
-	if (!tcres.okay) {
+	if (!tc_okay(tcres)) {
 		NFS4_ERR("failed to create parent directory /vfs0");
 		goto exit;
 	}
@@ -96,7 +96,7 @@ int main(int argc, char *argv[])
 		tc_set_up_creation(&dirs[i], DIR_PATHS[i], 0755);
 	}
 	tcres = tc_mkdirv(dirs, NDIRS, false);
-	if (tcres.okay) {
+	if (tc_okay(tcres)) {
 		fprintf(stderr, "successfully created %d directories\n", NDIRS);
 	} else {
 		fprintf(stderr, "failed to create directories\n");
@@ -117,7 +117,7 @@ int main(int argc, char *argv[])
 	}
 	/* FIXME: use tc_writev() to create files instead of directories */
 	tcres = tc_mkdirv(files, NDIRS * NFILES, false);
-	if (tcres.okay) {
+	if (tc_okay(tcres)) {
 		fprintf(stderr, "successfully created %d files\n",
 			NDIRS * NFILES);
 	} else {
@@ -127,7 +127,7 @@ int main(int argc, char *argv[])
 
 	tcres = tc_listdirv(DIR_PATHS, NDIRS, masks, 0, false, process_direntry,
 			    NULL, false);
-	if (tcres.okay) {
+	if (tc_okay(tcres)) {
 		fprintf(stderr, "successfully listed %d files\n",
 			NDIRS * NFILES);
 	} else {
@@ -138,5 +138,5 @@ int main(int argc, char *argv[])
 exit:
 	tc_deinit(context);
 
-	return tcres.okay ? 0 : tcres.err_no;
+	return tcres.err_no;
 }

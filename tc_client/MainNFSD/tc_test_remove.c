@@ -79,7 +79,7 @@ int main(int argc, char *argv[])
 	}
 
 	res = tc_ensure_dir(TC_TEST_NFS_DIR, 0755, NULL);
-	if (!res.okay) {
+	if (!tc_okay(res)) {
 		NFS4_ERR("failed to create parent directory %s",
 			 TC_TEST_NFS_DIR);
 		goto exit;
@@ -99,7 +99,7 @@ int main(int argc, char *argv[])
 	/* Write the file using NFS compounds; nfs4_writev() will open the file
 	 * with CREATION flag, write to it, and then close it. */
 	res = tc_writev(file_iov, N, false);
-	if (res.okay) {
+	if (tc_okay(res)) {
 		fprintf(stderr, "Successfully created %d test files\n", N);
 	} else {
 		fprintf(stderr, "Failed to create test files\n");
@@ -107,7 +107,7 @@ int main(int argc, char *argv[])
 	}
 
 	res = tc_removev(files, N, false);
-	if (res.okay) {
+	if (tc_okay(res)) {
 		fprintf(stderr, "Successfully removed %d test files\n", N);
 	} else {
 		fprintf(stderr,
@@ -120,5 +120,5 @@ int main(int argc, char *argv[])
 exit:
 	tc_deinit(context);
 
-	return res.okay ? 0 : res.err_no;
+	return res.err_no;
 }

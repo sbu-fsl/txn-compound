@@ -73,22 +73,20 @@ tc_file *posix_open(const char *path, int flags, mode_t mode)
 tc_res posix_closev(tc_file *tcfs, int count)
 {
 	int i;
-	tc_res tcres = { .okay = true };
+	tc_res tcres = { .err_no = 0 };
 
 	for (i = 0; i < count; ++i) {
 		assert(tcfs[i].type == TC_FILE_DESCRIPTOR);
 		/* return error no in case of failure */
 		if (close(tcfs[i].fd) < 0) {
-			tcres.okay = false;
-			tcres.index = i;
-			tcres.err_no = errno;
+			tcres = tc_failure(i, errno);
 			break;
 		} else {
 			tcfs[i].fd = INT_MIN;
 		}
 	}
 
-	if (tcres.okay) {
+	if (tc_okay(tcres)) {
 		free(tcfs);
 	}
 
@@ -104,7 +102,7 @@ int posix_close(tc_file *tcf)
 {
 	tc_res tcres;
 	tcres = posix_closev(tcf, 1);
-	if (tcres.okay) {
+	if (tc_okay(tcres)) {
 		free(tcf);
 		return 0;
 	} else {
@@ -143,7 +141,7 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 	ssize_t amount_read;
 	tc_file file = { 0 };
 	struct tc_iovec *iov = NULL;
-	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
+	tc_res result = { .index = -1, .err_no = 0 };
 	struct stat st;
 
 	POSIX_WARN("posix_readv() called \n");
@@ -164,7 +162,7 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 		}
 
 		if (fd < 0) {
-			result.okay = false;
+			result = tc_failure(i, errno);
 			POSIX_ERR("failed in readv: %s\n", strerror(errno));
 			break;
 		}
@@ -180,7 +178,7 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 			if (iov->file.type == TC_FILE_PATH) {
 				close(fd);
 			}
-			result.okay = false;
+			result = tc_failure(i, errno);
 			break;
 		}
 
@@ -200,21 +198,11 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 		}
 
 		if (iov->file.type == TC_FILE_PATH && close(fd) < 0) {
-			result.okay = false;
+			result = tc_failure(i, errno);
 			break;
 		}
 	}
 
-	/* No error encountered */
-	if (result.okay)
-		goto exit;
-
-	result.index = i;
-	result.err_no = errno;
-
-	POSIX_WARN("posix_readv() failed at index : %d\n", result.index);
-
-exit:
 	return result;
 }
 
@@ -229,7 +217,7 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 	int fd, i = 0;
 	ssize_t written = 0;
 	struct tc_iovec *iov = NULL;
-	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
+	tc_res result = { .index = -1, .err_no = 0 };
 	int flags;
 	off_t offset;
 
@@ -253,8 +241,7 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 		}
 
 		if (fd < 0) {
-			result.okay = false;
-			result.err_no = errno;
+			result = tc_failure(i, errno);
 			break;
 		}
 
@@ -277,7 +264,7 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 				if (iov->file.type == TC_FILE_PATH) {
 					close(fd);
 				}
-				result.okay = false;
+				result = tc_failure(i, errno);
 				break;
 			}
 		}
@@ -285,22 +272,11 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 		/* set the length to number of bytes successfully written */
 		iov->length = written;
 		if (iov->file.type == TC_FILE_PATH && close(fd) < 0) {
-			result.okay = false;
+			result = tc_failure(i, errno);
 			break;
 		}
 	}
 
-	/* No errors encountered */
-	if (result.okay)
-		goto exit;
-
-	/* Set the index at which error occured and the error no */
-	result.index = i;
-	result.err_no = errno;
-
-	POSIX_WARN("posix_writev() failed at index : %d\n", result.index);
-
-exit:
 	return result;
 }
 
@@ -359,7 +335,7 @@ tc_res posix_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	int fd = -1, i = 0, res = 0;
 	struct tc_attrs *cur_attr = NULL;
-	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
+	tc_res result = { .index = -1, .err_no = 0 };
 	struct stat st;
 
 	POSIX_WARN("posix_getattrsv() called \n");
@@ -376,9 +352,7 @@ tc_res posix_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 		if (res < 0) {
 			perror("");
 			POSIX_WARN("file path : %s\n", cur_attr->file.path);
-			result.okay = false;
-			result.err_no = errno;
-			result.index = i;
+			result = tc_failure(i, errno);
 			POSIX_WARN("posix_getattrsv() failed at index : %d\n",
 				   result.index);
 			break;
@@ -488,7 +462,7 @@ tc_res posix_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	int fd = -1, i = 0;
 	struct tc_attrs *cur_attr = NULL;
-	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
+	tc_res result = { .index = -1, .err_no = 0 };
 
 	POSIX_WARN("posix_setattrsv() called \n");
 
@@ -499,9 +473,7 @@ tc_res posix_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 		 * Set the attributes if corrseponding mask bit is set
 		 */
 		if (helper_set_attrs(cur_attr) < 0) {
-			result.okay = false;
-			result.err_no = errno;
-			result.index = i;
+			result = tc_failure(i, errno);
 			POSIX_WARN("posix_setattrsv() failed at index : %d\n",
 				   result.index);
 			break;
@@ -526,7 +498,7 @@ tc_res posix_renamev(struct tc_file_pair *pairs, int count, bool is_transaction)
 {
 	int i = 0;
 	tc_file_pair *cur_pair = NULL;
-	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
+	tc_res result = { .index = -1, .err_no = 0 };
 
 	while (i < count) {
 		cur_pair = pairs + i;
@@ -538,15 +510,10 @@ tc_res posix_renamev(struct tc_file_pair *pairs, int count, bool is_transaction)
 
 		if (rename(cur_pair->src_file.path, cur_pair->dst_file.path) <
 		    0) {
-			perror("");
-			result.okay = false;
-			result.err_no = errno;
-			result.index = i;
-
-			POSIX_WARN("posix_renamev() failed at index : %d\n",
-				   result.index);
-
-			return result;
+			result = tc_failure(i, errno);
+			POSIX_WARN("posix_renamev() failed at index %d: %s\n",
+				   i, strerror(errno));
+			break;
 		}
 
 		i++;
@@ -568,7 +535,7 @@ tc_res posix_removev(tc_file *files, int count, bool is_transaction)
 {
 	int i = 0;
 	tc_file *cur_file = NULL;
-	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
+	tc_res result = { .index = -1, .err_no = 0 };
 
 	while (i < count) {
 		cur_file = files + i;
@@ -576,15 +543,11 @@ tc_res posix_removev(tc_file *files, int count, bool is_transaction)
 		assert(cur_file->path != NULL);
 
 		if (remove(cur_file->path) < 0) {
-			result.okay = false;
-			result.err_no = errno;
-			result.index = i;
-
+			result = tc_failure(i, errno);
 			POSIX_WARN("posix_removev() failed at index %d for "
 				   "path %s: %s\n",
 				   result.index, cur_file->path,
 				   strerror(errno));
-
 			return result;
 		}
 
@@ -607,7 +570,7 @@ tc_res posix_remove_dirv(tc_file *dir, int count, bool is_transaction)
 {
 	int i = 0;
 	tc_file *cur_dir = NULL;
-	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
+	tc_res result = { .index = -1, .err_no = 0 };
 
 	while (i < count) {
 		cur_dir = dir + i;
@@ -615,10 +578,7 @@ tc_res posix_remove_dirv(tc_file *dir, int count, bool is_transaction)
 		assert(cur_dir->path != NULL);
 
 		if (rmdir(cur_dir->path) < 0) {
-			result.okay = false;
-			result.err_no = errno;
-			result.index = i;
-
+			result = tc_failure(i, errno);
 			POSIX_WARN("posix_remove_dirv() failed at index : %d\n",
 				   result.index);
 
@@ -644,7 +604,7 @@ tc_res posix_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)
 {
 	int i = 0;
 	tc_file *cur_dir = NULL;
-	tc_res result = { .okay = true, .index = -1, .err_no = 0 };
+	tc_res result = { .index = -1, .err_no = 0 };
 
 	while (i < count) {
 		cur_dir = &dirs[i].file;
@@ -652,10 +612,7 @@ tc_res posix_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)
 		assert(cur_dir->path != NULL);
 
 		if (mkdir(cur_dir->path, dirs[i].mode) < 0) {
-			perror("");
-			result.okay = false;
-			result.err_no = errno;
-			result.index = i;
+			result = tc_failure(i, errno);
 
 			POSIX_WARN("posix_mkdirv() failed at index : %d\n",
 				   result.index);
@@ -766,7 +723,7 @@ tc_res posix_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
 		      int max_entries, bool recursive, tc_listdirv_cb cb,
 		      void *cbarg, bool istxn)
 {
-	tc_res tcres = { .okay = true };
+	tc_res tcres = { .err_no = 0 };
 	GLIST_HEAD(dir_queue);
 	struct tc_posix_dir_to_list *dle;
 	int i;
@@ -805,16 +762,14 @@ tc_res posix_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 {
 	int i;
 	ssize_t ret;
-	tc_res tcres = { .okay = true };
+	tc_res tcres = { .err_no = 0 };
 
 	for (i = 0; i < count; ++i) {
 		ret = splice_copy(pairs[i].src_path, pairs[i].src_offset,
 				  pairs[i].dst_path, pairs[i].dst_offset,
 				  pairs[i].length);
 		if (ret < 0) {
-			tcres.okay = false;
-			tcres.index = i;
-			tcres.err_no = -ret;
+			tcres = tc_failure(i, -ret);
 			return tcres;
 		}
 		pairs[i].length = ret;
@@ -827,7 +782,7 @@ tc_res posix_symlinkv(const char **oldpaths, const char **newpaths, int count,
 		      bool istxn)
 {
 	int i;
-	tc_res tcres = { .okay = true };
+	tc_res tcres = { .err_no = 0 };
 
 	for (i = 0; i < count; ++i) {
 		if (symlink(oldpaths[i], newpaths[i]) < 0) {
@@ -846,7 +801,7 @@ tc_res posix_readlinkv(const char **paths, char **bufs, size_t *bufsizes,
 {
 	int i;
 	ssize_t sz;
-	tc_res tcres = { .okay = true };
+	tc_res tcres = { .err_no = 0 };
 
 	for (i = 0; i < count; ++i) {
 		if ((sz = readlink(paths[i], bufs[i], bufsizes[i])) < 0) {

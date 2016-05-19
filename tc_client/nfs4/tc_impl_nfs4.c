@@ -212,7 +212,7 @@ tc_res nfs4_do_readv(struct tc_iovec *iovs, int read_count, bool istxn)
 {
 	tc_res tcres;
 	struct gsh_export *export = op_ctx->export;
-	tc_res result = { .okay = false, .index = 0, .err_no = (int)ENOENT };
+	tc_res result = { .index = 0, .err_no = (int)ENOENT };
 
 	if (export == NULL) {
 		return result;
@@ -397,7 +397,6 @@ tc_res nfs4_do_iovec(struct tc_iovec *iovs, int count, bool istxn,
 	tcres.err_no = nfs4_fill_fd_iovecs(iovs, count);
 	if (tcres.err_no != 0) {
 		tcres.index = 0;
-		tcres.okay = false;
 		return tcres;
 	}
 
@@ -408,7 +407,7 @@ tc_res nfs4_do_iovec(struct tc_iovec *iovs, int count, bool istxn,
 		saved_tcfs = nfs4_compress_paths(parts[i].iovs, parts[i].size);
 #endif
 		tcres = fn(parts[i].iovs, parts[i].size, istxn);
-		if (!tcres.okay) {
+		if (!tc_okay(tcres)) {
 			/* TODO: FIX tcres */
 			goto exit;
 		}
@@ -453,7 +452,7 @@ tc_res nfs4_do_writev(struct tc_iovec *iovs, int write_count, bool istxn)
 {
 	fsal_status_t fsal_status = { 0, 0 };
 	struct gsh_export *export = op_ctx->export;
-	tc_res result = { .okay = false, .index = 0, .err_no = (int)ENOENT };
+	tc_res result = { .index = 0, .err_no = (int)ENOENT };
 
 	if (export == NULL) {
 		return result;
@@ -504,7 +503,7 @@ tc_file *nfs4_openv(const char **paths, int count, int *flags, mode_t *modes)
 
 	tcres =
 	    export->fsal_export->obj_ops->tc_openv(attrs, count, flags, sids);
-	if (!tcres.okay) {
+	if (!tc_okay(tcres)) {
 		tcfs = NULL;
 		goto exit;
 	}
@@ -649,7 +648,7 @@ tc_res nfs4_closev(tc_file *files, int count)
 
 	tcres =
 	    export->fsal_export->obj_ops->tc_closev(fh4s, count, sids, seqs);
-	if (tcres.okay) {
+	if (tc_okay(tcres)) {
 		for (i = 0; i < count; ++i) {
 			tc_free_fd(files[i].fd);
 		}

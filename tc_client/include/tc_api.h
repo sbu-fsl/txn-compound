@@ -316,14 +316,14 @@ tc_iov4creation(struct tc_iovec *iov, const char *path, size_t len, char *buf)
  */
 typedef struct _tc_res
 {
-	bool okay;  /* no error */
 	int index;  /* index of the first failed operation */
 	int err_no; /* error number of the failed operation */
 } tc_res;
 
+#define tc_okay(tcres) ((tcres).err_no == 0)
+
 static inline tc_res tc_failure(int i, int err) {
 	tc_res res;
-	res.okay = false;
 	res.index = i;
 	res.err_no = err;
 	return res;
@@ -354,8 +354,7 @@ tc_res tc_readv(struct tc_iovec *reads, int count, bool is_transaction);
 
 static inline bool tx_readv(struct tc_iovec *reads, int count)
 {
-	tc_res res = tc_readv(reads, count, true);
-	return res.okay;
+	return tc_okay(tc_readv(reads, count, true));
 }
 
 /**
@@ -371,8 +370,7 @@ tc_res tc_writev(struct tc_iovec *writes, int count, bool is_transaction);
 
 static inline bool tx_writev(struct tc_iovec *writes, int count)
 {
-	tc_res res = tc_writev(writes, count, true);
-	return res.okay;
+	return tc_okay(tc_writev(writes, count, true));
 }
 
 /**
@@ -585,8 +583,7 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction);
 
 static inline bool tx_getattrsv(struct tc_attrs *attrs, int count)
 {
-	tc_res res = tc_getattrsv(attrs, count, true);
-	return res.okay;
+	return tc_okay(tc_getattrsv(attrs, count, true));
 }
 
 int tc_stat(const char *path, struct stat *buf);
@@ -604,8 +601,7 @@ tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction);
 
 static inline bool tx_setattrsv(struct tc_attrs *attrs, int count)
 {
-	tc_res res = tc_setattrsv(attrs, count, true);
-	return res.okay;
+	return tc_okay(tc_setattrsv(attrs, count, true));
 }
 
 /**
@@ -688,16 +684,14 @@ tc_res tc_renamev(struct tc_file_pair *pairs, int count, bool is_transaction);
 
 static inline bool tx_renamev(tc_file_pair *pairs, int count)
 {
-	tc_res res = tc_renamev(pairs, count, true);
-	return res.okay;
+	return tc_okay(tc_renamev(pairs, count, true));
 }
 
 tc_res tc_removev(tc_file *files, int count, bool is_transaction);
 
 static inline bool tx_removev(tc_file *files, int count)
 {
-	tc_res res = tc_removev(files, count, true);
-	return res.okay;
+	return tc_okay(tc_removev(files, count, true));
 }
 
 int tc_unlink(const char *pathname);
@@ -717,8 +711,7 @@ tc_res tc_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction);
 static inline bool tx_mkdirv(struct tc_attrs *dirs, int count,
 			     bool is_transaction)
 {
-	tc_res res = tc_mkdirv(dirs, count, is_transaction);
-	return res.okay;
+	return tc_okay(tc_mkdirv(dirs, count, is_transaction));
 }
 
 struct tc_extent_pair
@@ -741,8 +734,7 @@ tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction);
 
 static inline bool tx_copyv(struct tc_extent_pair *pairs, int count)
 {
-	tc_res res = tc_copyv(pairs, count, true);
-	return res.okay;
+	return tc_okay(tc_copyv(pairs, count, true));
 }
 
 /**
@@ -757,7 +749,7 @@ tc_res tc_symlinkv(const char **oldpaths, const char **newpaths, int count,
 static inline bool tx_symlinkv(const char **oldpaths, const char **newpaths,
 			       int count)
 {
-	return tc_symlinkv(oldpaths, newpaths, count, true).okay;
+	return tc_okay(tc_symlinkv(oldpaths, newpaths, count, true));
 }
 
 tc_res tc_readlinkv(const char **paths, char **bufs, size_t *bufsizes,
@@ -766,19 +758,17 @@ tc_res tc_readlinkv(const char **paths, char **bufs, size_t *bufsizes,
 static inline bool tx_readlinkv(const char **paths, char **bufs,
 				size_t *bufsizes, int count)
 {
-	return tc_readlinkv(paths, bufs, bufsizes, count, true).okay;
+	return tc_okay(tc_readlinkv(paths, bufs, bufsizes, count, true));
 }
 
 static inline int tc_symlink(const char *oldpath, const char *newpath)
 {
-	tc_res tcres = tc_symlinkv(&oldpath, &newpath, 1, false);
-	return tcres.okay ? 0 : tcres.err_no;
+	return tc_symlinkv(&oldpath, &newpath, 1, false).err_no;
 }
 
 static inline int tc_readlink(const char *path, char *buf, size_t bufsize)
 {
-	tc_res tcres = tc_readlinkv(&path, &buf, &bufsize, 1, false);
-	return tcres.okay ? 0 : tcres.err_no;
+	return tc_readlinkv(&path, &buf, &bufsize, 1, false).err_no;
 }
 
 /**
@@ -844,8 +834,7 @@ tc_res tc_write_adb(struct tc_adb *patterns, int count, bool is_transaction);
 
 static inline bool tx_write_adb(struct tc_adb *patterns, int count)
 {
-	tc_res res = tc_write_adb(patterns, count, true);
-	return res.okay;
+	return tc_okay(tc_write_adb(patterns, count, true));
 }
 
 /**

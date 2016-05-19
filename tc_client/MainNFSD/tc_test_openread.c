@@ -103,7 +103,7 @@ int main(int argc, char *argv[])
 
 
         /* Check results. */
-	if (res.okay) {
+	if (tc_okay(res)) {
 		fprintf(stderr,
 			"Successfully read the first %d bytes of file \"%s\" "
 			"via NFS.\n",
@@ -123,5 +123,5 @@ int main(int argc, char *argv[])
 	}
 	tc_deinit(context);
 
-	return res.okay ? 0 : res.err_no;
+	return res.err_no;
 }

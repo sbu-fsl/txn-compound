@@ -30,7 +30,7 @@
 #include "common_types.h"
 #include "sys/stat.h"
 
-static tc_res TC_OKAY = { .okay = true, .index = -1, .err_no = 0, };
+static tc_res TC_OKAY = { .index = -1, .err_no = 0, };
 
 static bool TC_IMPL_IS_NFS4 = false;
 
@@ -102,8 +102,7 @@ tc_file* tc_open_by_path(int dirfd, const char *pathname, int flags, mode_t mode
 
 int tc_close(tc_file *tcf)
 {
-	tc_res tcres = tc_closev(tcf, 1);
-	return tcres.okay ? 0 : -tcres.err_no;
+	return tc_closev(tcf, 1).err_no;
 }
 
 tc_res tc_readv(struct tc_iovec *reads, int count, bool is_transaction)
@@ -157,7 +156,7 @@ static int tc_stat_impl(tc_file tcf, struct stat *buf, bool readlink)
 	};
 
 	tcres = tc_getattrsv(&tca, 1, false);
-	if (!tcres.okay) {
+	if (!tc_okay(tcres)) {
 		return tcres.err_no;
 	}
 
@@ -182,7 +181,7 @@ static int tc_stat_impl(tc_file tcf, struct stat *buf, bool readlink)
 
 		tca.file.path = link_target;
 		tcres = tc_getattrsv(&tca, 1, false);
-		if (!tcres.okay) {
+		if (!tc_okay(tcres)) {
 			return tcres.err_no;
 		}
 	}
@@ -263,7 +262,7 @@ tc_res tc_listdir(const char *dir, struct tc_attrs_masks masks, int max_count,
 
 	tcres = tc_listdirv(&dir, 1, masks, max_count, recursive,
 			    fill_dir_entries, &atarray, false);
-	if (!tcres.okay) {
+	if (!tc_okay(tcres)) {
 		tc_free_attrs(atarray.attrs, atarray.size, true);
 	}
 
@@ -312,8 +311,7 @@ tc_res tc_removev(tc_file *files, int count, bool is_transaction)
 int tc_unlink(const char *path)
 {
 	tc_file tcf = tc_file_from_path(path);
-	tc_res tcres = tc_removev(&tcf, 1, false);
-	return tcres.okay ? 0 : -tcres.err_no;
+	return tc_removev(&tcf, 1, false).err_no;
 }
 
 tc_res tc_unlinkv(const char **paths, int count)
@@ -355,7 +353,7 @@ static tc_res posix_ensure_dir(slice_t *comps, int n, mode_t mode)
 		tc_path_append(path, comps[i]);
 		attrs.file = tc_file_from_path(asstr(path));
 		tcres = posix_getattrsv(&attrs, 1, false);
-		if (tcres.okay) {
+		if (tc_okay(tcres)) {
 			continue;
 		}
 		if (tcres.err_no != ENOENT) {
@@ -364,7 +362,7 @@ static tc_res posix_ensure_dir(slice_t *comps, int n, mode_t mode)
 		}
 		tc_set_up_creation(&attrs, path->data, mode);
 		tcres = posix_mkdirv(&attrs, 1, false);
-		if (!tcres.okay) {
+		if (!tc_okay(tcres)) {
 			/*POSIX_ERR("failed to create %s", path->data);*/
 			return tcres;
 		}
@@ -388,7 +386,7 @@ static tc_res nfs4_ensure_dir(slice_t *comps, int n, mode_t mode)
 	}
 
 	tcres = tc_getattrsv(dirs, n, false);
-	if (tcres.okay || tcres.err_no != ENOENT) {
+	if (tc_okay(tcres) || tcres.err_no != ENOENT) {
 		return tcres;
 	}
 

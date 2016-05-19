@@ -50,8 +50,8 @@
 #define TCTEST_DEBUG(fmt, args...) LogDebug(COMPONENT_TC_TEST, fmt, ##args)
 
 #define EXPECT_OK(x)                                                           \
-	EXPECT_TRUE(x.okay) << "Failed at " << x.index << ": "                 \
-			    << strerror(x.err_no)
+	EXPECT_TRUE(tc_okay(x)) << "Failed at " << x.index << ": "             \
+				<< strerror(x.err_no)
 #define EXPECT_NOTNULL(x) EXPECT_TRUE(x != NULL) << #x << " is NULL"
 
 namespace
@@ -72,7 +72,7 @@ void DoParallel(int nthread, std::function<void(int)> worker)
  * Ensure files or directories do not exist before test.
  */
 bool Removev(const char **paths, int count) {
-	return tc_unlinkv(paths, count).okay;
+	return tc_okay(tc_unlinkv(paths, count));
 }
 
 /**
@@ -98,11 +98,9 @@ static char *getRandomBytes(int N);
 void tc_touch(const char *path, int size)
 {
 	tc_iovec iov;
-	tc_res tcres;
 
 	tc_iov4creation(&iov, path, size, (size ? getRandomBytes(size) : NULL));
-	tcres = tc_writev(&iov, 1, false);
-	EXPECT_TRUE(tcres.okay) << "failed to create " << path;
+	EXPECT_OK(tc_writev(&iov, 1, false));
 	if (iov.data) {
 		free(iov.data);
 	}
@@ -141,8 +139,7 @@ public:
 		    "/tmp/tc-nfs4.log", 77);
 		TCTEST_WARN("Global SetUp of NFS4 Impl\n");
 		/* TODO: recreate test dir if exist */
-		tc_res res = tc_ensure_dir("/vfs0/tc_nfs4_test", 0755, NULL);
-		EXPECT_TRUE(res.okay);
+		EXPECT_OK(tc_ensure_dir("/vfs0/tc_nfs4_test", 0755, NULL));
 		tc_chdir("/vfs0/tc_nfs4_test");  /* change to mnt point */
 	}
 	static void TearDownTestCase() {
@@ -238,15 +235,13 @@ TYPED_TEST_P(TcTest, TestFileDesc)
 	writev = build_iovec(files, N, 0);
 	EXPECT_FALSE(writev == NULL);
 
-	res = tc_writev(writev, N, false);
-	EXPECT_TRUE(res.okay);
+	EXPECT_OK(tc_writev(writev, N, false));
 
 	struct tc_iovec *readv = NULL;
 	readv = build_iovec(files, N, 0);
 	EXPECT_FALSE(readv == NULL);
 
-	res = tc_readv(readv, N, false);
-	EXPECT_TRUE(res.okay);
+	EXPECT_OK(tc_readv(readv, N, false));
 
 	EXPECT_TRUE(compare_content(writev, readv, N));
 
@@ -422,14 +417,12 @@ TYPED_TEST_P(TcTest, AttrsTestPath)
 	}
 
 	attrs1 = set_tc_attrs(attrs1, count);
-	res = tc_setattrsv(attrs1, count, false);
-	EXPECT_TRUE(res.okay);
+	EXPECT_OK(tc_setattrsv(attrs1, count, false));
 
 	for (i = 0; i < count; ++i) {
 		attrs2[i].masks = attrs1[i].masks;
 	}
-	res = tc_getattrsv(attrs2, count, false);
-	EXPECT_TRUE(res.okay);
+	EXPECT_OK(tc_getattrsv(attrs2, count, false));
 
 	EXPECT_TRUE(compare(attrs1, attrs2, count));
 
@@ -446,7 +439,6 @@ TYPED_TEST_P(TcTest, AttrsTestFileDesc)
 	const char *PATH[] = { "WritevCanCreateFiles4.txt",
 			       "WritevCanCreateFiles5.txt",
 			       "WritevCanCreateFiles6.txt" };
-	tc_res res = { 0 };
 	int i = 0;
 	const int count = 3;
 	tc_file *tcfs;
@@ -465,14 +457,12 @@ TYPED_TEST_P(TcTest, AttrsTestFileDesc)
 	}
 
 	set_tc_attrs(attrs1, count);
-	res = tc_setattrsv(attrs1, count, false);
-	EXPECT_TRUE(res.okay);
+	EXPECT_OK(tc_setattrsv(attrs1, count, false));
 
 	for (i = 0; i < count; ++i) {
 		attrs2[i].masks = attrs1[i].masks;
 	}
-	res = tc_getattrsv(attrs2, count, false);
-	EXPECT_TRUE(res.okay);
+	EXPECT_OK(tc_getattrsv(attrs2, count, false));
 
 	EXPECT_TRUE(compare(attrs1, attrs2, count));
 
@@ -498,14 +488,13 @@ TYPED_TEST_P(TcTest, ListDirContents)
 	tc_attrs *contents;
 	int count = 0;
 
-	EXPECT_TRUE(tc_ensure_dir(DIR_PATH, 0755, 0).okay);
+	EXPECT_OK(tc_ensure_dir(DIR_PATH, 0755, 0));
 	tc_touch("TcTest-ListDir/file1.txt", 1);
 	tc_touch("TcTest-ListDir/file2.txt", 2);
 	tc_touch("TcTest-ListDir/file3.txt", 3);
 
-	tc_res res = tc_listdir(DIR_PATH, TC_ATTRS_MASK_ALL, 3, false,
-				&contents, &count);
-	EXPECT_TRUE(res.okay);
+	EXPECT_OK(tc_listdir(DIR_PATH, TC_ATTRS_MASK_ALL, 3, false, &contents,
+			     &count));
 	EXPECT_EQ(3, count);
 	qsort(contents, count, sizeof(*contents), tc_cmp_attrs_by_name);
 
@@ -515,8 +504,7 @@ TYPED_TEST_P(TcTest, ListDirContents)
 	read_attrs[2].file = tc_file_from_path("TcTest-ListDir/file3.txt");
 	read_attrs[0].masks = read_attrs[1].masks = read_attrs[2].masks =
 	    TC_ATTRS_MASK_ALL;
-	res = tc_getattrsv(read_attrs, count, false);
-	EXPECT_TRUE(res.okay);
+	EXPECT_OK(tc_getattrsv(read_attrs, count, false));
 
 	EXPECT_TRUE(compare(contents, read_attrs, count));
 
@@ -580,8 +568,7 @@ TYPED_TEST_P(TcTest, RenameFile)
 		files[i].dst_file = tc_file_from_path(dest_path[i]);
 	}
 
-	tc_res res = tc_renamev(files, 4, false);
-	EXPECT_TRUE(res.okay);
+	EXPECT_OK(tc_renamev(files, 4, false));
 
 	/* TODO use listdir to check src files no longer exist */
 
@@ -605,9 +592,7 @@ TYPED_TEST_P(TcTest, RemoveFileTest)
 		i++;
 	}
 
-	tc_res res = tc_removev(file, 4, false);
-
-	EXPECT_TRUE(res.okay);
+	EXPECT_OK(tc_removev(file, 4, false));
 
 	free(file);
 }
@@ -630,9 +615,7 @@ TYPED_TEST_P(TcTest, MakeDirectory)
 		i++;
 	}
 
-	tc_res res = tc_mkdirv(dirs, 3, false);
-
-	EXPECT_TRUE(res.okay);
+	EXPECT_OK(tc_mkdirv(dirs, 3, false));
 }
 
 /**
@@ -646,7 +629,6 @@ TYPED_TEST_P(TcTest, Append)
 	struct stat st;
 	char *data;
 	char *data_read;
-	tc_res res;
 	struct tc_iovec iov;
 
 	Removev(&PATH, 1);
@@ -658,22 +640,19 @@ TYPED_TEST_P(TcTest, Append)
 
 	tc_iov4creation(&iov, PATH, N, data);
 
-	res = tc_writev(&iov, 1, false);
-	EXPECT_TRUE(res.okay);
+	EXPECT_OK(tc_writev(&iov, 1, false));
 
 	for (i = 0; i < 2; ++i) {
 		iov.offset = TC_OFFSET_END;
 		iov.data = data + N * (i + 1);
 		iov.is_creation = false;
-		res = tc_writev(&iov, 1, false);
-		EXPECT_TRUE(res.okay);
+		EXPECT_OK(tc_writev(&iov, 1, false));
 	}
 
 	iov.offset = 0;
 	iov.length = 3 * N;
 	iov.data = data_read;
-	res = tc_readv(&iov, 1, false);
-	EXPECT_TRUE(res.okay);
+	EXPECT_OK(tc_readv(&iov, 1, false));
 	EXPECT_TRUE(iov.is_eof);
 	EXPECT_EQ(3 * N, iov.length);
 	EXPECT_EQ(0, memcmp(data, data_read, 3 * N));
@@ -692,7 +671,6 @@ TYPED_TEST_P(TcTest, SuccesiveReads)
 	const int N = 4096;
 	char *data;
 	char *read;
-	tc_res tcres;
 	tc_file *tcf;
 
 	Removev(&path, 1);
@@ -700,8 +678,7 @@ TYPED_TEST_P(TcTest, SuccesiveReads)
 	data = (char *)getRandomBytes(5 * N);
 	tc_iov4creation(&iov, path, 5 * N, data);
 
-	tcres = tc_writev(&iov, 1, false);
-	EXPECT_TRUE(tcres.okay);
+	EXPECT_OK(tc_writev(&iov, 1, false));
 
 	read = (char *)malloc(5 * N);
 	EXPECT_NOTNULL(read);
@@ -710,29 +687,24 @@ TYPED_TEST_P(TcTest, SuccesiveReads)
 	EXPECT_EQ(0, tc_fseek(tcf, 0, SEEK_CUR));
 	EXPECT_NOTNULL(tcf);
 	tc_iov2file(&iov, tcf, TC_OFFSET_CUR, N, read);
-	tcres = tc_readv(&iov, 1, false);
-	EXPECT_TRUE(tcres.okay);
+	EXPECT_OK(tc_readv(&iov, 1, false));
 	EXPECT_EQ(N, tc_fseek(tcf, 0, SEEK_CUR));
 
 	iov.data = read + N;
-	tcres = tc_readv(&iov, 1, false);
-	EXPECT_TRUE(tcres.okay);
+	EXPECT_OK(tc_readv(&iov, 1, false));
 	EXPECT_EQ(2 * N, tc_fseek(tcf, 0, SEEK_CUR));
 
 	EXPECT_EQ(3 * N, tc_fseek(tcf, N, SEEK_CUR));
 	iov.data = read + 3 * N;
-	tcres = tc_readv(&iov, 1, false);
-	EXPECT_TRUE(tcres.okay);
+	EXPECT_OK(tc_readv(&iov, 1, false));
 
 	EXPECT_EQ(2 * N, tc_fseek(tcf, 2 * N, SEEK_SET));
 	iov.data = read + 2 * N;
-	tcres = tc_readv(&iov, 1, false);
-	EXPECT_TRUE(tcres.okay);
+	EXPECT_OK(tc_readv(&iov, 1, false));
 
 	EXPECT_EQ(4 * N, tc_fseek(tcf, -N, SEEK_END));
 	iov.data = read + 4 * N;
-	tcres = tc_readv(&iov, 1, false);
-	EXPECT_TRUE(tcres.okay);
+	EXPECT_OK(tc_readv(&iov, 1, false));
 	EXPECT_TRUE(iov.is_eof);
 
 	EXPECT_EQ(0, memcmp(data, read, 5 * N));
@@ -834,7 +806,6 @@ TYPED_TEST_P(TcTest, CopyFiles)
 	struct tc_extent_pair pairs[2];
 	struct tc_iovec iov[2];
 	struct tc_iovec read_iov[2];
-	tc_res tcres;
 
 	pairs[0].src_path = "SourceFile1.txt";
 	pairs[0].src_offset = 0;
@@ -853,24 +824,21 @@ TYPED_TEST_P(TcTest, CopyFiles)
 	EXPECT_NOTNULL(iov[0].data);
 	tc_iov4creation(&iov[1], pairs[1].src_path, N, getRandomBytes(N));
 	EXPECT_NOTNULL(iov[1].data);
-	tcres = tc_writev(iov, 2, false);
-	EXPECT_TRUE(tcres.okay);
+	EXPECT_OK(tc_writev(iov, 2, false));
 
 	// remove dest files
 	Removev(&pairs[0].dst_path, 1);
 	Removev(&pairs[1].dst_path, 1);
 
 	// copy files
-	tcres = tc_copyv(pairs, 2, false);
-	EXPECT_TRUE(tcres.okay);
+	EXPECT_OK(tc_copyv(pairs, 2, false));
 
 	tc_iov2path(&read_iov[0], pairs[0].dst_path, 0, N, (char *)malloc(N));
 	EXPECT_NOTNULL(read_iov[0].data);
 	tc_iov2path(&read_iov[1], pairs[1].dst_path, 0, N, (char *)malloc(N));
 	EXPECT_NOTNULL(read_iov[1].data);
 
-	tcres = tc_readv(read_iov, 2, false);
-	EXPECT_TRUE(tcres.okay);
+	EXPECT_OK(tc_readv(read_iov, 2, false));
 
 	compare_content(iov, read_iov, 2);
 
@@ -885,11 +853,10 @@ TYPED_TEST_P(TcTest, ListAnEmptyDirectory)
 	const char *PATH = "TcTest-EmptyDir";
 	tc_attrs *contents;
 	int count;
-	tc_res tcres;
 
 	tc_ensure_dir(PATH, 0755, NULL);
-	tcres =
-	    tc_listdir(PATH, TC_ATTRS_MASK_ALL, 1, false, &contents, &count);
+	EXPECT_OK(
+	    tc_listdir(PATH, TC_ATTRS_MASK_ALL, 1, false, &contents, &count));
 	EXPECT_EQ(0, count);
 	EXPECT_EQ(NULL, contents);
 }
@@ -899,14 +866,13 @@ TYPED_TEST_P(TcTest, List2ndLevelDir)
 {
 	const char *DIR_PATH = "TcTest-Dir/nested-dir";
 	const char *FILE_PATH = "TcTest-Dir/nested-dir/foo";
-	tc_res tcres;
 	tc_attrs *attrs;
 	int count;
 
 	tc_ensure_dir(DIR_PATH, 0755, NULL);
 	tc_touch(FILE_PATH, 0);
-	tcres =
-	    tc_listdir(DIR_PATH, TC_ATTRS_MASK_ALL, 1, false, &attrs, &count);
+	EXPECT_OK(
+	    tc_listdir(DIR_PATH, TC_ATTRS_MASK_ALL, 1, false, &attrs, &count));
 	EXPECT_EQ(1, count);
 	EXPECT_EQ(0, attrs->size);
 	tc_free_attrs(attrs, count, true);
@@ -930,14 +896,12 @@ TYPED_TEST_P(TcTest, ShuffledRdWr)
 			tc_iov2path(&iovs[n], PATH, offsets[n] * S, S,
 				    data1 + offsets[n] * S);
 		}
-		tc_res tcres = tc_writev(iovs, N, false);
-		EXPECT_TRUE(tcres.okay);
+		EXPECT_OK(tc_writev(iovs, N, false));
 
 		for (int n = 0; n < N; ++n) {
 			iovs[n].data = data2 + offsets[n] * S;
 		}
-		tcres = tc_readv(iovs, N, false);
-		EXPECT_TRUE(tcres.okay);
+		EXPECT_OK(tc_readv(iovs, N, false));
 		EXPECT_EQ(0, memcmp(data1, data2, N * S));
 
 		std::shuffle(offsets.begin(), offsets.end(), rng);
@@ -962,16 +926,14 @@ TYPED_TEST_P(TcTest, ParallelRdWrAFile)
 			tc_iov2path(&iovs[t], PATH, t * S, S, data1 + t * S);
 		}
 		DoParallel(T, [&iovs](int i) {
-			tc_res tcres = tc_writev(&iovs[i], 1, false);
-			EXPECT_TRUE(tcres.okay);
+			EXPECT_OK(tc_writev(&iovs[i], 1, false));
 		});
 
 		for (int t = 0; t < T; ++t) {
 			iovs[t].data = data2 + t * S;
 		}
 		DoParallel(T, [&iovs](int i) {
-			tc_res tcres = tc_readv(&iovs[i], 1, false);
-			EXPECT_TRUE(tcres.okay);
+			EXPECT_OK(tc_readv(&iovs[i], 1, false));
 		});
 		EXPECT_EQ(0, memcmp(data1, data2, T * S));
 	}
@@ -986,8 +948,7 @@ TYPED_TEST_P(TcTest, RdWrLargeThanRPCLimit)
 	char* data1 = getRandomBytes(2_MB);
 	tc_iov4creation(&iov, "TcTest-WriteLargeThanRPCLimit.dat", 2_MB, data1);
 
-	tc_res tcres = tc_writev(&iov, 1, false);
-	EXPECT_TRUE(tcres.okay);
+	EXPECT_OK(tc_writev(&iov, 1, false));
 	EXPECT_EQ(2_MB, iov.length);
 
 	char* data2 = (char *)malloc(2_MB);
@@ -995,8 +956,7 @@ TYPED_TEST_P(TcTest, RdWrLargeThanRPCLimit)
 	iov.data = data2;
 	for (size_t s = 8_KB; s <= 2_MB; s += 8_KB) {
 		iov.length = s;
-		tcres = tc_readv(&iov, 1, false);
-		EXPECT_TRUE(tcres.okay);
+		EXPECT_OK(tc_readv(&iov, 1, false));
 		EXPECT_EQ(iov.length == 2_MB, iov.is_eof);
 		EXPECT_EQ(s, iov.length);
 		EXPECT_EQ(0, memcmp(data1, data2, s));
@@ -1033,8 +993,7 @@ TYPED_TEST_P(TcTest, CompressDeepPaths)
 		}
 	}
 
-	tc_res tcres = tc_writev(iovs, N, false);
-	EXPECT_TRUE(tcres.okay);
+	EXPECT_OK(tc_writev(iovs, N, false));
 	for (int i = 0; i < N; ++i) {
 		EXPECT_STREQ(iovs[i].file.path, PATHS[i]);
 		delete[] iovs[i].data;
@@ -1045,8 +1004,7 @@ TYPED_TEST_P(TcTest, CompressDeepPaths)
 		attrs[i].file = iovs[i].file;
 		attrs[i].masks = TC_ATTRS_MASK_ALL;
 	}
-	tcres = tc_getattrsv(attrs, N, false);
-	EXPECT_TRUE(tcres.okay);
+	EXPECT_OK(tc_getattrsv(attrs, N, false));
 
 	free(iovs);
 	delete[] attrs;

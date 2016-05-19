@@ -2078,9 +2078,8 @@ static bool tc_open_file_if_necessary(const tc_file *tcf, int flags,
  */
 static tc_res tc_nfs4_readv(struct tc_iovec *iovs, int count)
 {
-        tc_res tcres;
+	tc_res tcres = { 0 };
 	int rc;
-        nfsstat4 cpd_status;
 	nfsstat4 op_status;
 	struct READ4resok *read_res;
 	int i = 0;      /* index of tc_iovec */
@@ -2102,7 +2101,7 @@ static tc_res tc_nfs4_readv(struct tc_iovec *iovs, int count)
                 opened_file = NULL;
 	}
 
-	rc = fs_nfsv4_call(op_ctx->creds, &cpd_status);
+	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {    /* RPC failed */
                 NFS4_ERR("fs_nfsv4_call() returned error: %d\n", rc);
                 tcres = tc_failure(0, rc);
@@ -2128,9 +2127,6 @@ static tc_res tc_nfs4_readv(struct tc_iovec *iovs, int count)
                         i++;
 		}
 	}
-
-	if (cpd_status == NFS4_OK)
-		tcres.okay = true;
 
 exit:
         return tcres;
@@ -2173,10 +2169,9 @@ static inline void tc_prepare_rdwr(struct tc_iovec *iov, bool write)
  */
 static tc_res tc_nfs4_writev(struct tc_iovec *iovs, int count)
 {
-        tc_res tcres;
+	tc_res tcres = { 0 };
 	int rc;
 	nfsstat4 op_status;
-        nfsstat4 cpd_status;
         struct WRITE4resok *write_res = NULL;
 	fattr4 *input_attr = NULL;
 	int i = 0;      /* index of tc_iovec */
@@ -2202,7 +2197,7 @@ static tc_res tc_nfs4_writev(struct tc_iovec *iovs, int count)
                 opened_file = NULL;
 	}
 
-	rc = fs_nfsv4_call(op_ctx->creds, &cpd_status);
+	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
 		NFS4_ERR("fs_nfsv4_call() returned error: %d (%s)\n", rc,
 			 strerror(rc));
@@ -2231,9 +2226,6 @@ static tc_res tc_nfs4_writev(struct tc_iovec *iovs, int count)
 			i++;
                 }
         }
-
-	if (cpd_status == NFS4_OK)
-		tcres.okay = true;
 
 exit:
 	for (i = 0; i < count; ++i) {
@@ -3528,7 +3520,6 @@ static tc_res tc_nfs4_openv(struct tc_attrs *attrs, int count, int *flags,
 {
 	int rc;
 	tc_res tcres;
-	nfsstat4 cpd_status;
 	nfsstat4 op_status;
 	int i = 0; /* index of tc_iovec */
 	int j = 0; /* index of NFS operations */
@@ -3561,7 +3552,7 @@ static tc_res tc_nfs4_openv(struct tc_attrs *attrs, int count, int *flags,
 		tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ);
 	}
 
-	rc = fs_nfsv4_call(op_ctx->creds, &cpd_status);
+	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
                 NFS4_ERR("rpc failed: %d", rc);
                 tcres = tc_failure(0, rc);
@@ -3601,9 +3592,6 @@ static tc_res tc_nfs4_openv(struct tc_attrs *attrs, int count, int *flags,
                 }
         }
 
-	if (cpd_status == NFS4_OK)
-		tcres.okay = true;
-
 exit:
         for (i = 0; i < count; ++i) {
                 nfs4_Fattr_Free(&fattrs[i]);
@@ -3617,7 +3605,7 @@ static tc_res tc_nfs4_closev(const nfs_fh4 *fh4s, int count, stateid4 *sids,
 {
         int i;
 	int rc;
-	tc_res tcres = {.okay = true };
+	tc_res tcres = { .err_no = 0 };
 
 	NFS4_DEBUG("tc_nfs4_closev");
 	assert(count >= 1);
@@ -3654,7 +3642,6 @@ static tc_res tc_nfs4_getattrsv(struct tc_attrs *attrs, int count)
 {
         int rc;
         tc_res tcres;
-        nfsstat4 cpd_status;
 	nfsstat4 op_status;
 	GETATTR4resok *atok;
 	int i = 0;      /* index of tc_iovec */
@@ -3676,7 +3663,7 @@ static tc_res tc_nfs4_getattrsv(struct tc_attrs *attrs, int count)
 		tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ);
 	}
 
-	rc = fs_nfsv4_call(op_ctx->creds, &cpd_status);
+	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
                 NFS4_ERR("rpc failed: %d", rc);
                 tcres = tc_failure(0, rc);
@@ -3699,7 +3686,6 @@ static tc_res tc_nfs4_getattrsv(struct tc_attrs *attrs, int count)
 		fattr4_to_tc_attrs(&atok->obj_attributes, attrs + i);
 		++i;
 	}
-        tcres.okay = true;
 
 exit:
         tc_end_compound();
@@ -3711,7 +3697,6 @@ static tc_res tc_nfs4_setattrsv(struct tc_attrs *attrs, int count)
 {
         int rc;
         tc_res tcres;
-        nfsstat4 cpd_status;
 	nfsstat4 op_status;
 	fattr4 *new_fattrs;
 	int i = 0;      /* index of tc_iovec */
@@ -3735,7 +3720,7 @@ static tc_res tc_nfs4_setattrsv(struct tc_attrs *attrs, int count)
                 tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ);
         }
 
-	rc = fs_nfsv4_call(op_ctx->creds, &cpd_status);
+	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
                 NFS4_ERR("rpc failed: %d", rc);
                 tcres = tc_failure(0, rc);
@@ -3765,8 +3750,6 @@ static tc_res tc_nfs4_setattrsv(struct tc_attrs *attrs, int count)
                 }
         }
 
-        tcres.okay = true;
-
 exit:
         for (i = 0; i < count; ++i) {
                 nfs4_Fattr_Free(fattrs + i);
@@ -3784,7 +3767,6 @@ static tc_res tc_nfs4_mkdirv(struct tc_attrs *dirs, int count)
         int j;
         int rc;
         tc_res tcres;
-        nfsstat4 cpd_status;
         nfsstat4 op_status;
         char *fh_buffers;
         fattr4 *input_attrs;
@@ -3817,7 +3799,7 @@ static tc_res tc_nfs4_mkdirv(struct tc_attrs *dirs, int count)
 		tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ);
 	}
 
-	rc = fs_nfsv4_call(op_ctx->creds, &cpd_status);
+	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
                 NFS4_ERR("rpc failed: %d", rc);
                 tcres = tc_failure(0, rc);
@@ -3851,9 +3833,6 @@ static tc_res tc_nfs4_mkdirv(struct tc_attrs *dirs, int count)
                         break;
                 }
         }
-
-	if (cpd_status == NFS4_OK)
-		tcres.okay = true;
 
 exit:
         for (i = 0; i < count; ++i) {
@@ -3984,7 +3963,6 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 				     .opcnt = opcnt,
 				     .capacity = MAX_NUM_OPS_PER_COMPOUND, };
 	tc_res tcres;
-	nfsstat4 cpd_status;
 	nfsstat4 op_status;
 	READDIR4resok *rdok;
 	int i = 0, j;
@@ -4006,7 +3984,7 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 			break;
 	}
 
-	rc = fs_nfsv4_call(op_ctx->creds, &cpd_status);
+	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
 		NFS4_ERR("rpc failed: %d", rc);
 		tcres = tc_failure(0, rc);
@@ -4052,15 +4030,12 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 			}
 			dle = next_dle;
                         if (*limit == 0) {
-                                tcres.okay = true;
+                                tcres.err_no = 0;
                                 goto exit;
                         }
 			break;
 		}
 	}
-
-	if (cpd_status == NFS4_OK)
-		tcres.okay = true;
 
 exit:
 	nfsops.opcnt = opcnt;
@@ -4073,7 +4048,7 @@ tc_res tc_nfs4_listdirv(const char **dirs, int count,
 			bool recursive, tc_listdirv_cb cb, void *cbarg)
 {
         int i = 0;
-	tc_res tcres = { .okay = true };
+	tc_res tcres = { .err_no = 0 };
 	GLIST_HEAD(dir_queue);
         bitmap4 bitmap = fs_bitmap_readdir;
 
@@ -4101,7 +4076,7 @@ tc_res tc_nfs4_listdirv(const char **dirs, int count,
 	while (!glist_empty(&dir_queue)) {
 		tcres = tc_do_listdirv(&dir_queue, &max_entries, &bitmap,
 				       recursive, cb, cbarg);
-		if (!tcres.okay) {
+		if (!tc_okay(tcres)) {
 			goto exit;
 		}
 	}
@@ -4117,7 +4092,6 @@ static tc_res tc_nfs4_renamev(tc_file_pair *pairs, int count)
 {
 	int rc;
 	tc_res tcres;
-	nfsstat4 cpd_status;
 	nfsstat4 op_status;
 	int i = 0;      /* index of tc_iovec */
 	int j = 0;      /* index of NFS operations */
@@ -4141,7 +4115,7 @@ static tc_res tc_nfs4_renamev(tc_file_pair *pairs, int count)
                 tc_prepare_rename(&srcname, &dstname);
         }
 
-        rc = fs_nfsv4_call(op_ctx->creds, &cpd_status);
+        rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
         if (rc != RPC_SUCCESS) {
                 NFS4_ERR("rpc failed: %d", rc);
                 tcres = tc_failure(0, rc);
@@ -4162,8 +4136,6 @@ static tc_res tc_nfs4_renamev(tc_file_pair *pairs, int count)
                 }
         }
 
-        tcres.okay = true;
-
 exit:
         return tcres;
 }
@@ -4172,7 +4144,6 @@ static tc_res tc_nfs4_removev(tc_file *files, int count)
 {
         int rc;
         tc_res tcres;
-        nfsstat4 cpd_status;
 	nfsstat4 op_status;
 	int i = 0;      /* index of tc_iovec */
 	int j = 0;      /* index of NFS operations */
@@ -4190,7 +4161,7 @@ static tc_res tc_nfs4_removev(tc_file *files, int count)
                 tc_prepare_remove(new_auto_str(name));
         }
 
-	rc = fs_nfsv4_call(op_ctx->creds, &cpd_status);
+	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
                 NFS4_ERR("rpc failed: %d", rc);
                 tcres = tc_failure(0, rc);
@@ -4211,8 +4182,6 @@ static tc_res tc_nfs4_removev(tc_file *files, int count)
                 }
         }
 
-        tcres.okay = true;
-
 exit:
         return tcres;
 }
@@ -4221,7 +4190,6 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 {
 	int rc;
 	tc_res tcres;
-	nfsstat4 cpd_status;
 	nfsstat4 op_status;
 	int i = 0; /* index of tc_iovec */
 	int j = 0; /* index of NFS operations */
@@ -4258,7 +4226,7 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 						    argoparray);
 	}
 
-	rc = fs_nfsv4_call(op_ctx->creds, &cpd_status);
+	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
                 NFS4_ERR("rpc failed: %d", rc);
                 tcres = tc_failure(0, rc);
@@ -4282,8 +4250,6 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 		}
 	}
 
-	tcres.okay = true;
-
 exit:
 	for (i = 0; i < count; ++i) {
 		nfs4_Fattr_Free(&attrs4[i]);
@@ -4297,7 +4263,6 @@ static tc_res tc_nfs4_symlinkv(const char **oldpaths, const char **newpaths,
 {
 	int rc;
 	tc_res tcres;
-	nfsstat4 cpd_status;
 	nfsstat4 op_status;
 	int i = 0; /* index of tc_iovec */
 	int j = 0; /* index of NFS operations */
@@ -4319,7 +4284,7 @@ static tc_res tc_nfs4_symlinkv(const char **oldpaths, const char **newpaths,
 		tc_prepare_symlink(pname, (char *)oldpaths[i], &attrs4[i]);
 	}
 
-	rc = fs_nfsv4_call(op_ctx->creds, &cpd_status);
+	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
 		NFS4_ERR("rpc failed: %d", rc);
 		tcres = tc_failure(0, rc);
@@ -4340,8 +4305,6 @@ static tc_res tc_nfs4_symlinkv(const char **oldpaths, const char **newpaths,
 		}
 	}
 
-	tcres.okay = true;
-
 exit:
 	for (i = 0; i < count; ++i) {
 		nfs4_Fattr_Free(&attrs4[i]);
@@ -4355,7 +4318,6 @@ tc_res tc_nfs4_readlinkv(const char **paths, char **bufs, size_t *bufsizes,
 {
 	int rc;
 	tc_res tcres;
-	nfsstat4 cpd_status;
 	nfsstat4 op_status;
 	size_t lksize;
 	int i = 0; /* index of tc_iovec */
@@ -4369,7 +4331,7 @@ tc_res tc_nfs4_readlinkv(const char **paths, char **bufs, size_t *bufsizes,
 		tc_prepare_readlink(bufs[i], bufsizes[i]);
 	}
 
-	rc = fs_nfsv4_call(op_ctx->creds, &cpd_status);
+	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
 		NFS4_ERR("rpc failed: %d", rc);
 		tcres = tc_failure(0, rc);
@@ -4396,8 +4358,6 @@ tc_res tc_nfs4_readlinkv(const char **paths, char **bufs, size_t *bufsizes,
 			++i;
 		}
 	}
-
-	tcres.okay = true;
 
 exit:
 	return tcres;

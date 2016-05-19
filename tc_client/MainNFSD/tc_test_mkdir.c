@@ -85,7 +85,7 @@ int main(int argc, char *argv[])
 	}
 
 	res = tc_getattrsv(dirs, N, false);
-	if (res.okay) {
+	if (tc_okay(res)) {
 		fprintf(stderr, "directory %s already exists\n", DIR_LEAF);
 		goto exit;
 	} else {
@@ -115,7 +115,7 @@ int main(int argc, char *argv[])
 	res = tc_mkdirv(dirs, n, false);
 
 	/* Check results. */
-	if (res.okay) {
+	if (tc_okay(res)) {
 		fprintf(stderr, "directory %s successfully created via NFS.\n",
 			DIR_LEAF);
 	} else {
@@ -125,5 +125,5 @@ int main(int argc, char *argv[])
 exit:
 	tc_deinit(context);
 
-	return res.okay ? 0 : res.err_no;
+	return res.err_no;
 }

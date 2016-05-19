@@ -79,14 +79,14 @@ int main(int argc, char *argv[])
 	}
 
 	res = tc_ensure_dir(srcdir, 0755, NULL);
-	if (!res.okay) {
+	if (!tc_okay(res)) {
 		NFS4_ERR("failed to ensure source directory %s: %s",
 			 srcdir, strerror(res.err_no));
 		return res.err_no;
 	}
 
 	res = tc_ensure_dir(dstdir, 0755, NULL);
-	if (!res.okay) {
+	if (!tc_okay(res)) {
 		NFS4_ERR("failed to ensure source directory %s: %s",
 			 dstdir, strerror(res.err_no));
 		return res.err_no;
@@ -130,7 +130,7 @@ int main(int argc, char *argv[])
 	res = tc_writev(iov, 4, false);
 
 	/* Check results. */
-	if (res.okay) {
+	if (tc_okay(res)) {
 		fprintf(stderr,
 			"Successfully write files: %d bytes in %s; %d bytes "
 			"in %s via NFS.\n",
@@ -160,7 +160,7 @@ int main(int argc, char *argv[])
 
 	res = tc_copyv(pairs, 2, false);
 
-	if (!res.okay) {
+	if (!tc_okay(res)) {
 		fprintf(stderr,
 			"Failed to copy files at the %d-th operation: %s",
 			res.index, strerror(res.err_no));
@@ -169,5 +169,5 @@ int main(int argc, char *argv[])
 exit:
 	tc_deinit(context);
 
-	return res.okay ? 0 : res.err_no;
+	return res.err_no;
 }
