@@ -148,6 +148,13 @@ TEST(PathUtilsTest, JoinTest) {
 	Expect("/a/a/../b", "c/c/../d/.", "/a/b/c/d");
 }
 
+TEST(PathUtilsTest, JoinallTest) {
+	char path[1024];
+
+	tc_path_joinall(path, 1024, "a", "b", "b", "..", "c");
+	EXPECT_STREQ(path, "a/b/c");
+}
+
 TEST(PathUtilsTest, RebaseTest) {
 	char path[1024];
 	auto Expect = [&path](const char *base, const char *p,

@@ -184,6 +184,29 @@ int tc_path_join(const char *path1, const char *path2, char *buf,
 	return n;
 }
 
+int _tc_path_joinall_impl(char *buf, size_t buf_size, int n, ...)
+{
+	int i;
+	int ret;
+	va_list ap;
+	const char *path;
+	buf_t bf = BUF_INITIALIZER(buf, buf_size);
+
+	va_start(ap, n);
+	for (i = 0; i < n; ++i) {
+		path = va_arg(ap, const char *);
+		if ((ret = tc_path_append_impl(&bf, toslice(path))) < 0) {
+			return ret;
+		}
+	}
+	va_end(ap);
+	if (!buf_append_null(&bf)) {
+		return -ENOBUFS;
+	}
+
+	return tc_path_normalize(buf, buf, buf_size);
+}
+
 int tc_path_append(buf_t *pbuf, slice_t comp)
 {
 	tc_path_append_impl(pbuf, comp);

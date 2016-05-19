@@ -27,6 +27,8 @@
 extern "C" {
 #endif
 
+#include <stdarg.h>
+
 /**
  * Tokenize "path" into "components"; return the number of components inside
  * path on success, or -1 on failure.
@@ -92,6 +94,15 @@ int tc_path_rebase_s(slice_t base, slice_t path, buf_t *pbuf);
 int tc_path_join(const char *path1, const char *path2, char *buf, size_t buf_size);
 int tc_path_join_s(slice_t path1, slice_t path2, buf_t *pbuf);
 int tc_path_append(buf_t *pbuf, slice_t comp);
+
+int _tc_path_joinall_impl(char *buf, size_t buf_size, int n, ...);
+
+#define TC_NUMPATHS(...)                                                       \
+	(sizeof((const char * []) { __VA_ARGS__ }) / sizeof(const char *))
+
+#define tc_path_joinall(buf, buf_size, ...)                                    \
+	_tc_path_joinall_impl((buf), (buf_size), TC_NUMPATHS(__VA_ARGS__),     \
+			      __VA_ARGS__)
 
 #ifdef __cplusplus
 }
