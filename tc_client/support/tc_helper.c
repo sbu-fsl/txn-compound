@@ -88,6 +88,8 @@ void tc_copy_attrs(const struct tc_attrs *src, struct tc_attrs *dst)
 		tc_attrs_set_size(dst, src->size);
 	if (src->masks.has_nlink)
 		tc_attrs_set_nlink(dst, src->nlink);
+	if (src->masks.has_fileid)
+		tc_attrs_set_fileid(dst, src->fileid);
 	if (src->masks.has_uid)
 		tc_attrs_set_uid(dst, src->uid);
 	if (src->masks.has_gid)
