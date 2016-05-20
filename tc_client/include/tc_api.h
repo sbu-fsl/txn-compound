@@ -274,6 +274,13 @@ static inline struct tc_iovec *tc_iov2file(struct tc_iovec *iov,
 	return iov;
 }
 
+static inline struct tc_iovec *tc_iov2current(struct tc_iovec *iov, size_t off,
+					      size_t len, char *buf)
+{
+	tc_file tcf = tc_file_current();
+	return tc_iov2file(iov, &tcf, off, len, buf);
+}
+
 static inline struct tc_iovec *tc_iov2path(struct tc_iovec *iov,
 					   const char *path, size_t off,
 					   size_t len, char *buf)

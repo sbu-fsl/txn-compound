@@ -73,29 +73,16 @@ int main(int argc, char *argv[])
 	NFS4_DEBUG("Opened %s, %d\n", TC_TEST_NFS_FILE1, file1->fd);
 
 	/* Setup I/O request */
-        read_iovec[0].file = *file1;
-        read_iovec[0].offset = 0;
-        read_iovec[0].length = 16384;
-        read_iovec[0].data = malloc(16384);
+	tc_iov2file(&read_iovec[0], file1, 0, 16384, malloc(16384));
         assert(read_iovec[0].data);
-        read_iovec[1].file = tc_file_current();
-        read_iovec[1].offset = 16384;
-        read_iovec[1].length = 16384;
-        read_iovec[1].data = malloc(16384);
-        assert(read_iovec[1].data);
+	tc_iov2current(&read_iovec[1], 16384, 16384, malloc(16384));
+	assert(read_iovec[1].data);
 
-        read_iovec[2].file = tc_file_from_path(TC_TEST_NFS_FILE0);
-        read_iovec[2].offset = 0;
-        read_iovec[2].length = 16384;
-        read_iovec[2].data = malloc(16384);
-        assert(read_iovec[2].data);
-        read_iovec[3].file = tc_file_current();
-        read_iovec[3].offset = 16384;
-        read_iovec[3].length = 16384;
-        read_iovec[3].data = malloc(16384);
-        assert(read_iovec[3].data);
+	tc_iov2path(&read_iovec[2], TC_TEST_NFS_FILE0, 0, 16384, malloc(16384));
+	assert(read_iovec[2].data);
+	tc_iov2current(&read_iovec[3], 16384, 16384, malloc(16384));
+	assert(read_iovec[3].data);
 
-	read_iovec[2].is_creation = 1;
         res = tc_writev(read_iovec, 4, false);
 
         /* Read the file; nfs4_readv() will open it first if needed. */
