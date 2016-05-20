@@ -65,7 +65,7 @@ int main(int argc, char *argv[])
 		return EIO;
 	}
 
-	file1 = nfs4_open(TC_TEST_NFS_FILE1, O_RDWR, 0);
+	file1 = tc_open(TC_TEST_NFS_FILE1, O_RDWR, 0);
 	if (file1->fd < 0) {
 		NFS4_DEBUG("Cannot open %s", TC_TEST_NFS_FILE1);
 	}
@@ -117,7 +117,7 @@ int main(int argc, char *argv[])
 			strerror(res.err_no), DEFAULT_LOG_FILE);
 	}
 
-	rc = nfs4_close(file1);
+	rc = tc_close(file1);
 	if (rc < 0) {
 		NFS4_DEBUG("Cannot close %d", file1->fd);
 	}

@@ -529,69 +529,6 @@ exit:
 	return tcfs;
 }
 
-/*
- * arg - Array of writes for one or more files
- *       Contains file-path, write length, offset, etc.
- * read_count - Length of the above array
- *              (Or number of reads)
- */
-tc_file* nfs4_open(const char *path, int flags, mode_t mode)
-{
-	struct tcopen_kargs kern_arg;
-	tc_file *tcf;
-	fsal_status_t fsal_status = { 0, 0 };
-	int i = 0;
-	struct gsh_export *export = op_ctx->export;
-	const char *file_path = NULL;
-
-	if (export == NULL) {
-		goto exit;
-	}
-
-	tcf = malloc(sizeof(*tcf));
-	if (!tcf) {
-		goto exit;
-	}
-
-	if (export->fsal_export->obj_ops->tc_open == NULL) {
-		goto exit;
-	}
-
-	if (path == NULL) {
-		goto exit;
-	}
-
-	LogDebug(COMPONENT_FSAL, "nfs4_open() called \n");
-
-	kern_arg.opok_handle = NULL;
-	kern_arg.fhok_handle = NULL;
-	kern_arg.path = (char *)path;
-	memset(&kern_arg.attrib, 0, sizeof(struct attrlist));
-
-	if (tc_count_free_fds() <= 0) {
-		goto exit;
-	}
-
-	fsal_status = export->fsal_export->obj_ops->tc_open(&kern_arg, flags);
-
-	if (FSAL_IS_ERROR(fsal_status)) {
-		goto exit;
-	}
-
-	tcf->fd = tc_alloc_fd(&kern_arg.opok_handle->stateid,
-			      &kern_arg.fhok_handle->object);
-	tcf->type = TC_FILE_DESCRIPTOR;
-
-	free(kern_arg.fhok_handle->object.nfs_fh4_val);
-
-	/*
-	 * Need to increment seqid only once because tc_open calls only OPEN
-	 */
-	tc_incr_fd_seqid(tcf->fd);
-exit:
-	return tcf;
-}
-
 static int nfs4_close_impl(struct tc_kfd *tcfd, void *args)
 {
 	struct gsh_export *export = op_ctx->export;
@@ -605,23 +542,6 @@ static int nfs4_close_impl(struct tc_kfd *tcfd, void *args)
 
 	tc_free_fd(tcfd->fd);
 	return 0;
-}
-
-
-int nfs4_close(tc_file *user_file)
-{
-	int r;
-	struct tc_kfd *tcfd;
-
-	tcfd = tc_get_fd_struct(user_file->fd, true);
-	if (!tcfd) {
-		return -1;
-	}
-
-	r = nfs4_close_impl(tcfd, NULL);
-	tc_put_fd_struct(&tcfd);
-
-	return r;
 }
 
 tc_res nfs4_closev(tc_file *files, int count)

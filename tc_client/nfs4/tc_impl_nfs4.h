@@ -56,28 +56,12 @@ tc_res nfs4_readv(struct tc_iovec *reads, int read_count, bool is_transaction);
 tc_res nfs4_writev(struct tc_iovec *writes, int write_count,
 		   bool is_transaction);
 
-/*
- * @path - Full path of the file to be opened
- * @flags - Currently supports O_RDONLY, O_WRONLY, O_RDWR, O_CREAT
- *
- * Returns tc_file with fd set
- */
-tc_file* nfs4_open(const char *path, int flags, mode_t mode);
-
 /**
  * Open a list of files specified by paths
  *
  * Returns a list of tc_file that the caller is responsible for freeing.
  */
 tc_file *nfs4_openv(const char **paths, int count, int *flags, mode_t *modes);
-
-/*
- * @file - File that has to be closed
- *
- * Calls ktcclose with the right fh-stateid-seqid
- * If server is unreachable, might return failure
- */
-int nfs4_close(tc_file *tcf);
 
 /**
  *
