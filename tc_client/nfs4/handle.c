@@ -2455,7 +2455,7 @@ static inline OPEN4resok *tc_prepare_open(slice_t name, int flags,
 	args->owner.owner.owner_val = owner_pbuf->data;
 	args->owner.owner.owner_len = owner_pbuf->size;
 
-	if (attrs) {
+	if (flags & O_CREAT) {
 		args->openhow.opentype = OPEN4_CREATE;
 		args->openhow.openflag4_u.how.mode =
 		    (flags & O_EXCL) ? GUARDED4 : UNCHECKED4;
