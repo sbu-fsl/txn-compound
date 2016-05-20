@@ -190,3 +190,13 @@ TEST(PathUtilsTest, AppendTest) {
 	tc_path_append(pbuf, toslice("//b"));
 	EXPECT_STREQ(asstr(pbuf), "/a/b");
 }
+
+TEST(PathUtilsTest, DirAndBaseName) {
+	const char *P = "a/b/c";
+	EXPECT_EQ(0, cmpslice(tc_path_dirname(P), mkslice(P, 3)));
+	EXPECT_EQ(0, cmpslice(tc_path_basename(P), mkslice(P + 4, 1)));
+
+	P = "noslash";
+	EXPECT_EQ(0, cmpslice(tc_path_dirname(P), mkslice(P, 0)));
+	EXPECT_EQ(0, cmpslice(tc_path_basename(P), mkslice(P, strlen(P))));
+}

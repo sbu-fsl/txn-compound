@@ -95,6 +95,19 @@ int tc_path_join(const char *path1, const char *path2, char *buf, size_t buf_siz
 int tc_path_join_s(slice_t path1, slice_t path2, buf_t *pbuf);
 int tc_path_append(buf_t *pbuf, slice_t comp);
 
+slice_t tc_path_dirname_s(slice_t path);
+slice_t tc_path_basename_s(slice_t path);
+
+static inline slice_t tc_path_dirname(const char *path)
+{
+	return tc_path_dirname_s(toslice(path));
+}
+
+static inline slice_t tc_path_basename(const char *path)
+{
+	return tc_path_basename_s(toslice(path));
+}
+
 int _tc_path_joinall_impl(char *buf, size_t buf_size, int n, ...);
 
 #define TC_NUMPATHS(...)                                                       \

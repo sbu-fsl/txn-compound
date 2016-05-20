@@ -280,6 +280,25 @@ static inline int buf_appendf(buf_t *pbuf, const char *format, ...)
 	return n;
 }
 
+static inline int cmpslice(slice_t sa, slice_t sb)
+{
+	int i;
+
+	for (i = 0; i < sa.size && i < sb.size; ++i) {
+		if (sa.data[i] != sb.data[i]) {
+			return sa.data[i] - sb.data[i];
+		}
+	}
+	if (sa.size == sb.size) {
+		return 0;
+	} else if (sa.size < sb.size) {
+		return -1;
+	} else {
+		return 1;
+	}
+}
+
+
 #ifdef __cplusplus
 }
 #endif

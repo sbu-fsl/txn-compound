@@ -288,3 +288,25 @@ int tc_path_rebase(const char *base, const char *path, char *buf,
 
 	return n;
 }
+
+slice_t tc_path_dirname_s(slice_t path)
+{
+	int i;
+	const int N = path.size;
+
+	for (i = N - 1; i >= 0 && path.data[i] != '/'; --i)
+		;
+
+	return mkslice(path.data, i < 0 ? 0 : i);
+}
+
+slice_t tc_path_basename_s(slice_t path)
+{
+	int i;
+	const int N = path.size;
+
+	for (i = N - 1; i >= 0 && path.data[i] != '/'; --i)
+		;
+
+	return mkslice(path.data + i + 1, N - i - 1);
+}
