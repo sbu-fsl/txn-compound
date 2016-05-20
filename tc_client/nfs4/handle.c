@@ -1594,35 +1594,6 @@ static fsal_status_t fs_do_close(const struct user_cred *creds,
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
-/*
- * Similar to fs_do_close, only difference being this accepts seqid
- * This is because for operations which involve modifying the state,
- * seqid for a lock owner keeps changing.
- * So caller has to make sure it passes the right seqid from kfd structure
- */
-static fsal_status_t tc_do_close(const struct user_cred *creds,
-				 const nfs_fh4 *fh4, stateid4 *sid,
-				 seqid4 *seqid, struct fsal_export *exp)
-{
-	int rc;
-
-	/* Check if this was a "stateless" open,
-	 * then nothing is to be done at close */
-	if (is_special_stateid(sid))
-		return fsalstat(ERR_FSAL_NO_ERROR, 0);
-
-        tc_start_compound(true);
-
-	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, *fh4);
-	COMPOUNDV4_ARG_ADD_OP_TCCLOSE(opcnt, argoparray, (*seqid), (*sid));
-
-	rc = fs_nfsv4_call(creds, NULL);
-	if (rc != NFS4_OK)
-		return nfsstat4_to_fsal(rc);
-	sid->seqid++;
-	return fsalstat(ERR_FSAL_NO_ERROR, 0);
-}
-
 static inline void copy_stateid4(stateid4 *dstid, const stateid4 *srcid)
 {
         dstid->seqid = srcid->seqid;
@@ -2249,130 +2220,6 @@ static inline uint32_t tc_open_flags_to_access(int flags)
 	} else {
 		return OPEN4_SHARE_ACCESS_READ;
 	}
-}
-
-static fsal_status_t do_ktcopen(struct tcopen_kargs *kern_arg, int flags,
-                                fattr4 *input_attr)
-{
-	char owner_val[128];
-	unsigned int owner_len = 0;
-	clientid4 cid;
-	uint32_t open_type = 0;
-        slice_t name;
-
-	LogDebug(COMPONENT_FSAL, "do_ktcopen() called: %d\n", opcnt);
-
-        owner_len = tc_create_state_owner(owner_val);
-
-	if (tc_set_cfh_to_path(kern_arg->path, &name, false) < 0) {
-		goto exit_pathinval;
-	}
-
-	kern_arg->opok_handle =
-	    &resoparray[opcnt].nfs_resop4_u.opopen.OPEN4res_u.resok4;
-
-	kern_arg->opok_handle->attrset = empty_bitmap;
-	tc_get_clientid(&cid);
-
-	input_attr->attrmask = empty_bitmap;
-
-        open_type = tc_open_flags_to_access(flags);
-
-	if ((flags & O_CREAT) != 0) {
-		kern_arg->attrib.mode = unix2fsal_mode((mode_t)0644);
-		FSAL_SET_MASK(kern_arg->attrib.mask, ATTR_MODE);
-
-		if (FSAL_TEST_MASK(kern_arg->attrib.mask, ATTR_MODE)) {
-			kern_arg->attrib.mode &=
-			    ~op_ctx->fsal_export->ops->fs_umask(
-				op_ctx->fsal_export);
-		}
-
-		if (fs_fsalattr_to_fattr4(&kern_arg->attrib, input_attr) == -1)
-			return fsalstat(ERR_FSAL_INVAL, -1);
-
-		LogDebug(COMPONENT_FSAL, "do_ktcopen() Bitmap: "
-					 "%d%d%d, len:%u\n",
-			 input_attr->attrmask.map[0],
-			 input_attr->attrmask.map[1],
-			 input_attr->attrmask.map[2],
-			 input_attr->attrmask.bitmap4_len);
-
-		COMPOUNDV4_ARG_ADD_OP_TCOPEN_CREATE(opcnt, argoparray, 0, cid,
-						    *input_attr, name,
-						    owner_val, owner_len);
-	} else {
-		COMPOUNDV4_ARG_ADD_OP_OPEN_NOCREATE(opcnt, argoparray, 0, cid,
-						    name, owner_val, owner_len,
-						    open_type);
-	}
-
-	kern_arg->fhok_handle =
-	    &resoparray[opcnt].nfs_resop4_u.opgetfh.GETFH4res_u.resok4;
-
-	kern_arg->fhok_handle->object.nfs_fh4_val = malloc(NFS4_FHSIZE);
-	kern_arg->fhok_handle->object.nfs_fh4_len = NFS4_FHSIZE;
-	COMPOUNDV4_ARG_ADD_OP_GETFH(opcnt, argoparray);
-
-	return fsalstat(ERR_FSAL_NO_ERROR, 0);
-
-exit_pathinval:
-	return fsalstat(ERR_FSAL_INVAL, 0);
-}
-
-/*
- * tc version of open system call
- * Should be called only if new fd can be allocated
- * Caller has to make sure incr_seqid() is called if this succeeds
- *
- * flags currently supports O_RDONLY, O_WRONLY, O_RDWR and O_CREAT
- */
-static fsal_status_t ktcopen(struct tcopen_kargs *kern_arg, int flags)
-{
-	int rc;
-	fsal_status_t st;
-	fattr4 *input_attr = NULL;
-
-	LogDebug(COMPONENT_FSAL, "ktcopen() called\n");
-
-        tc_start_compound(true);
-
-	input_attr = calloc(1, sizeof(fattr4));
-
-	st = do_ktcopen(kern_arg, flags, input_attr);
-
-	if (FSAL_IS_ERROR(st)) {
-		NFS4_ERR("do_ktcopen failed: major=%d, minor=%d\n", st.major,
-			 st.minor);
-		goto exit;
-	}
-
-	rc = fs_nfsv4_call(op_ctx->creds, NULL);
-
-	st = fsalstat(ERR_FSAL_NO_ERROR, 0);
-
-	if (rc != NFS4_OK) {
-		NFS4_ERR("fs_nfsv4_call() returned error: %d\n", rc);
-		st = nfsstat4_to_fsal(rc);
-		goto exit;
-	}
-
-exit:
-	free(input_attr);
-	return st;
-}
-
-/*
- * Close an already opened file
- * Sets the current fh to fh4 and closes sid, seqid has to be passed from fd
- */
-static fsal_status_t ktcclose(const nfs_fh4 *fh4, stateid4 *sid, seqid4 *seqid)
-{
-	fsal_status_t st;
-
-	st = tc_do_close(op_ctx->creds, fh4, sid, seqid, op_ctx->fsal_export);
-
-	return st;
 }
 
 static inline CREATE4resok *tc_prepare_mkdir(const char *name, fattr4 *fattr)
@@ -3550,6 +3397,7 @@ static tc_res tc_nfs4_openv(struct tc_attrs *attrs, int count, int *flags,
                         goto exit;
                 }
 		if (flags[i] & O_CREAT) {
+                        /* bit-and umask with mode */
 			tc_attrs_to_fattr4(&attrs[i], &fattrs[i]);
 		}
 		tc_prepare_open(name, flags[i], new_auto_buf(64), &fattrs[i]);
@@ -4448,8 +4296,6 @@ void fs_handle_ops_init(struct fsal_obj_ops *ops)
 	ops->status = fs_status;
 	ops->tc_readv = tc_nfs4_readv;
 	ops->tc_writev = tc_nfs4_writev;
-	ops->tc_open = ktcopen;
-	ops->tc_close = ktcclose;
         ops->tc_getattrsv = tc_nfs4_getattrsv;
         ops->tc_setattrsv = tc_nfs4_setattrsv;
         ops->tc_mkdirv = tc_nfs4_mkdirv;

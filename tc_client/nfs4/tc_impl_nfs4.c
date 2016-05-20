@@ -532,11 +532,11 @@ exit:
 static int nfs4_close_impl(struct tc_kfd *tcfd, void *args)
 {
 	struct gsh_export *export = op_ctx->export;
-	fsal_status_t fsal_status = { 0, 0 };
+	tc_res tcres;
 
-	fsal_status = export->fsal_export->obj_ops->tc_close(
-	    &tcfd->fh, &tcfd->stateid, &tcfd->seqid);
-	if (FSAL_IS_ERROR(fsal_status)) {
+	tcres = export->fsal_export->obj_ops->tc_closev(
+	    &tcfd->fh, 1, &tcfd->stateid, &tcfd->seqid);
+	if (!tc_okay(tcres)) {
 		return (int)EAGAIN;
 	}
 

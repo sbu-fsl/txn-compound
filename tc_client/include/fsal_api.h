@@ -1315,10 +1315,6 @@ struct fsal_obj_ops {
 /* Multiple open..write..close in a single compound */
 	tc_res (*tc_writev)(struct tc_iovec *iovs, int count);
 
-	fsal_status_t (*tc_open)(struct tcopen_kargs *kern_arg, int flags);
-
-	fsal_status_t (*tc_close)(const nfs_fh4 *fh4, stateid4 *sid, seqid4 *seqid);
-
 	tc_res (*tc_openv)(struct tc_attrs *attrs, int count, int *flags,
 			   stateid4 *sids);
 
