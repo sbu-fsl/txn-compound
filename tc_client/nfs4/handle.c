@@ -965,7 +965,7 @@ static int fs_compoundv4_call(struct fs_rpc_io_context *pcontext,
  */
 static int fs_compoundv4_execute(const char *caller,
 				 const struct user_cred *creds,
-				 nfsstat4 *nfsstat)
+				 int *nfsstat)
 {
 	enum clnt_stat rc;
 	struct fs_rpc_io_context *ctx;
@@ -1003,7 +1003,7 @@ static int fs_compoundv4_execute(const char *caller,
 
 	if (rc == RPC_SUCCESS) {
                if (nfsstat != NULL) {
-                        *nfsstat = res.status;
+                        *nfsstat = nfsstat4_to_errno(res.status);
                } else {
                        rc = res.status;
                }
