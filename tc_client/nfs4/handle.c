@@ -978,6 +978,7 @@ static int fs_compoundv4_execute(const char *caller,
 		.resarray.resarray_val = resoparray,
 		.resarray.resarray_len = opcnt
 	};
+        TC_DECLARE_COUNTER(rpc);
 
 	pthread_mutex_lock(&context_lock);
 	while (glist_empty(&free_contexts))
@@ -987,6 +988,8 @@ static int fs_compoundv4_execute(const char *caller,
 	glist_del(&ctx->calls);
 	pthread_mutex_unlock(&context_lock);
 
+        TC_START_COUNTER(rpc);
+
 	do {
 		rc = fs_compoundv4_call(ctx, creds, &arg, &res);
 		if (rc != RPC_SUCCESS)
@@ -995,6 +998,8 @@ static int fs_compoundv4_execute(const char *caller,
 			fs_rpc_need_sock();
 	} while ((rc == RPC_CANTRECV && (ctx->ioresult == -EAGAIN))
 		 || (rc == RPC_CANTSEND));
+
+	TC_STOP_COUNTER(rpc, 1, rc == RPC_SUCCESS);
 
 	pthread_mutex_lock(&context_lock);
 	pthread_cond_signal(&need_context);

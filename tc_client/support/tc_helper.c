@@ -24,8 +24,37 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <pthread.h>
 #include <fcntl.h>
 #include "tc_api.h"
+
+static struct tc_func_counter *tc_all_counters = NULL;
+static pthread_mutex_t tc_counter_lock = PTHREAD_MUTEX_INITIALIZER;
+
+void tc_register_counter(struct tc_func_counter *tfc)
+{
+	if (tfc->next == NULL) {
+		pthread_mutex_lock(&tc_counter_lock);
+		tfc->next = tc_all_counters;
+		tc_all_counters = tfc;
+		pthread_mutex_unlock(&tc_counter_lock);
+	}
+}
+
+void tc_iterate_counters(bool (*tfc_reader)(struct tc_func_counter *tfc,
+					    void *arg),
+			 void *arg)
+{
+	struct tc_func_counter *tfc;
+
+	pthread_mutex_lock(&tc_counter_lock);
+	for (tfc = tc_all_counters; tfc; tfc = tfc->next) {
+		if (!tfc_reader(tfc, arg)) {
+			break;
+		}
+	}
+	pthread_mutex_unlock(&tc_counter_lock);
+}
 
 void free_iovec(struct tc_iovec *iovec, int count)
 {

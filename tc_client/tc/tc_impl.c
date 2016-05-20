@@ -23,34 +23,87 @@
 #include <sys/time.h>
 #include <linux/limits.h>
 #include <assert.h>
+#include <stdio.h>
 #include "tc_api.h"
 #include "posix/tc_impl_posix.h"
 #include "nfs4/tc_impl_nfs4.h"
 #include "path_utils.h"
 #include "common_types.h"
 #include "sys/stat.h"
+#include "tc_helper.h"
 
 static tc_res TC_OKAY = { .index = -1, .err_no = 0, };
 
 static bool TC_IMPL_IS_NFS4 = false;
 
+static pthread_t tc_counter_thread;
+static const char *tc_counter_path = "/tmp/tc-counters.txt";
+static int tc_counter_running = 1;
 
 const struct tc_attrs_masks TC_ATTRS_MASK_ALL = TC_MASK_INIT_ALL;
 const struct tc_attrs_masks TC_ATTRS_MASK_NONE = TC_MASK_INIT_NONE;
 
+bool tc_counter_printer(struct tc_func_counter *tcf, void *arg)
+{
+	buf_t *pbuf = (buf_t *)arg;
+	buf_appendf(pbuf, "%u %u %llu %llu ",
+		    __sync_fetch_and_or(&tcf->calls, 0),
+		    __sync_fetch_and_or(&tcf->failures, 0),
+		    __sync_fetch_and_or(&tcf->micro_ops, 0),
+		    __sync_fetch_and_or(&tcf->time_ns, 0));
+	return true;
+}
+
+static void *output_tc_counters(void *arg)
+{
+	char buf[4096];
+	buf_t bf = BUF_INITIALIZER(buf, 4096);
+
+	FILE *pfile = fopen(tc_counter_path, "w");
+	while (__sync_fetch_and_or(&tc_counter_running, 0)) {
+		buf_reset(&bf);
+		tc_iterate_counters(tc_counter_printer, &bf);
+		buf_append_char(&bf, '\n');
+		fwrite(bf.data, 1, bf.size, pfile);
+		fflush(pfile);
+		sleep(TC_COUNTER_OUTPUT_INTERVAL);
+	}
+	fclose(pfile);
+	return NULL;
+}
+
 /* Not thread-safe */
 void *tc_init(const char *config_path, const char *log_path, uint16_t export_id)
 {
+	void *context;
+	int retval;
+
 	TC_IMPL_IS_NFS4 = (config_path !=  NULL);
 	if (TC_IMPL_IS_NFS4) {
-		return nfs4_init(config_path, log_path, export_id);
+		context = nfs4_init(config_path, log_path, export_id);
 	} else {
-		return posix_init(config_path, log_path);
+		context = posix_init(config_path, log_path);
 	}
+
+	if (!context) {
+		return NULL;
+	}
+
+	retval =
+	    pthread_create(&tc_counter_thread, NULL, &output_tc_counters, NULL);
+	if (retval != 0) {
+		fprintf(stderr, "failed to create tc_counter thread: %s\n",
+			strerror(retval));
+		tc_deinit(context);
+		return NULL;
+	}
+
+	return context;
 }
 
 void tc_deinit(void *module)
 {
+	__sync_fetch_and_sub(&tc_counter_running, 1);
 	if (TC_IMPL_IS_NFS4) {
 		nfs4_deinit(module);
 	}

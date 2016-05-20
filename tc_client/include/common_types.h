@@ -26,6 +26,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <errno.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -267,8 +268,14 @@ static inline int buf_appendf(buf_t *pbuf, const char *format, ...)
 	va_start(args, format);
 	n = vsnprintf(buf_end(pbuf), buf_remaining(pbuf), format, args);
 	va_end(args);
+	if (n < 0) {
+		return n;
+	} else if (n > buf_remaining(pbuf)) {
+		return -ENOMEM;
+	}
 
 	pbuf->size += n;
+	assert(pbuf->size <= pbuf->capacity);
 
 	return n;
 }
