@@ -197,6 +197,34 @@ TEST(PathUtilsTest, DirAndBaseName) {
 	EXPECT_EQ(0, cmpslice(tc_path_basename(P), mkslice(P + 4, 1)));
 
 	P = "noslash";
-	EXPECT_EQ(0, cmpslice(tc_path_dirname(P), mkslice(P, 0)));
-	EXPECT_EQ(0, cmpslice(tc_path_basename(P), mkslice(P, strlen(P))));
+	EXPECT_EQ(0, cmpslice(tc_path_dirname(P), toslice("")));
+	EXPECT_EQ(0, cmpslice(tc_path_basename(P), toslice("noslash")));
+
+	P = "/a/b/c/";
+	EXPECT_EQ(0, cmpslice(tc_path_dirname(P), toslice("/a/b")));
+	EXPECT_EQ(0, cmpslice(tc_path_basename(P), toslice("c")));
+
+	P = "/foo";
+	EXPECT_EQ(0, cmpslice(tc_path_dirname(P), toslice("/")));
+	EXPECT_EQ(0, cmpslice(tc_path_basename(P), toslice("foo")));
+
+	P = "/";
+	EXPECT_EQ(0, cmpslice(tc_path_dirname(P), toslice("/")));
+	EXPECT_EQ(0, cmpslice(tc_path_basename(P), toslice("/")));
+
+	P = "///";
+	EXPECT_EQ(0, cmpslice(tc_path_dirname(P), toslice("/")));
+	EXPECT_EQ(0, cmpslice(tc_path_basename(P), toslice("/")));
+
+	P = "";
+	EXPECT_EQ(0, tc_path_dirname(P).size);
+	EXPECT_EQ(0, tc_path_basename(P).size);
+
+	P = "/a/b//";
+	EXPECT_EQ(0, cmpslice(tc_path_dirname(P), toslice("/a")));
+	EXPECT_EQ(0, cmpslice(tc_path_basename(P), toslice("b")));
+
+	P = "../a";
+	EXPECT_EQ(0, cmpslice(tc_path_dirname(P), toslice("..")));
+	EXPECT_EQ(0, cmpslice(tc_path_basename(P), toslice("a")));
 }

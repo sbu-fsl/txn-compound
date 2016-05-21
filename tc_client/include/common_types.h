@@ -178,6 +178,40 @@ static inline slice_t toslice(const char *d)
 	return sl;
 }
 
+static inline slice_t *slice_lstrip(slice_t *sl, char c)
+{
+	int i;
+
+	for (i = 0; i < sl->size && sl->data[i] == c; ++i)
+		;
+	sl->data += i;
+	sl->size -= i;
+	return sl;
+}
+
+static inline slice_t *slice_rstrip(slice_t *sl, char c)
+{
+	while (sl->size > 0 && sl->data[sl->size - 1] == c)
+		sl->size--;
+	return sl;
+}
+
+static inline ssize_t slice_lindex(slice_t sl, char c)
+{
+	ssize_t i;
+	for (i = 0; i < sl.size && sl.data[i] != c; ++i)
+		;
+	return i == sl.size ? -1 : i;
+}
+
+static inline ssize_t slice_rindex(slice_t sl, char c)
+{
+	ssize_t i;
+	for (i = sl.size - 1; i >= 0 && sl.data[i] != c; --i)
+		;
+	return i;
+}
+
 static inline slice_t asslice(const buf_t *pbuf)
 {
 	return mkslice(pbuf->data, pbuf->size);
