@@ -389,6 +389,7 @@ struct tc_attrs_masks
 	unsigned int has_size : 1;  /* file size, in bytes */
 	unsigned int has_nlink : 1; /* number of hard links */
 	unsigned int has_fileid : 1;
+	unsigned int has_blocks : 1;	/* number of 512B blocks */
 	unsigned int has_uid : 1;   /* user ID of owner */
 	unsigned int has_gid : 1;   /* group ID of owner */
 	unsigned int has_rdev : 1;  /* device ID of block or char special
@@ -409,6 +410,7 @@ struct tc_attrs
 	size_t size;   /* file size, in bytes */
 	nlink_t nlink; /* number of hard links */
 	uint64_t fileid;
+	blkcnt_t blocks;    /* number of 512B blocks */
 	uid_t uid;
 	gid_t gid;
 	dev_t rdev;
@@ -493,19 +495,6 @@ static inline void tc_set_up_creation(struct tc_attrs *newobj, const char *name,
 	newobj->gid = getegid();
 }
 
-static inline void tc_attrs_mask_set(struct tc_attrs_masks *masks)
-{
-	masks->has_mode = true;
-	masks->has_size = true;
-	masks->has_nlink = true;
-	masks->has_uid = true;
-	masks->has_gid = true;
-	masks->has_rdev = true;
-	masks->has_atime = true;
-	masks->has_mtime = true;
-	masks->has_ctime = true;
-}
-
 static inline void tc_stat2attrs(const struct stat *st, struct tc_attrs *attrs)
 {
 	if (attrs->masks.has_mode)
@@ -522,6 +511,8 @@ static inline void tc_stat2attrs(const struct stat *st, struct tc_attrs *attrs)
 		attrs->gid = st->st_gid;
 	if (attrs->masks.has_rdev)
 		attrs->rdev = st->st_rdev;
+	if (attrs->masks.has_blocks)
+		attrs->blocks = st->st_blocks;
 	if (attrs->masks.has_atime) {
 		attrs->atime.tv_sec = st->st_atime;
 		attrs->atime.tv_nsec = 0;
@@ -546,6 +537,8 @@ static inline void tc_attrs2stat(const struct tc_attrs *attrs, struct stat *st)
 		st->st_nlink = attrs->nlink;
 	if (attrs->masks.has_fileid)
 		st->st_ino = (ino_t)attrs->fileid;
+	if (attrs->masks.has_blocks)
+		st->st_blocks = attrs->blocks;
 	if (attrs->masks.has_uid)
 		st->st_uid = attrs->uid;
 	if (attrs->masks.has_gid)
@@ -568,7 +561,7 @@ extern const struct tc_attrs_masks TC_ATTRS_MASK_NONE;
 		.has_mode = true, .has_size = true, .has_nlink = true,         \
 		.has_fileid = true, .has_uid = true, .has_gid = true,          \
 		.has_rdev = true, .has_atime = true, .has_mtime = true,        \
-		.has_ctime = true,                                             \
+		.has_ctime = true, .has_blocks = true                          \
 	}
 
 #define TC_MASK_INIT_NONE                                                      \
@@ -576,7 +569,7 @@ extern const struct tc_attrs_masks TC_ATTRS_MASK_NONE;
 		.has_mode = false, .has_size = false, .has_nlink = false,      \
 		.has_fileid = false, .has_uid = false, .has_gid = false,       \
 		.has_rdev = false, .has_atime = false, .has_mtime = false,     \
-		.has_ctime = false,                                            \
+		.has_ctime = false, .has_blocks = false                        \
 	}
 
 /**

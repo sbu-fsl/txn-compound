@@ -3311,6 +3311,10 @@ void fattr4_to_tc_attrs(const fattr4 *attr4, struct tc_attrs *tca)
                 tca->masks.has_ctime = true;
                 tca->ctime = attrlist.ctime;
         }
+        if (attrlist.mask & ATTR_SPACEUSED) {
+                tca->masks.has_blocks = true;
+                tca->blocks = attrlist.spaceused / 512;
+        }
 
         set_mode_type(&tca->mode, attrlist.type);
 }
