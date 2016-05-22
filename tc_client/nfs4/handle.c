@@ -378,6 +378,14 @@ static void tc_attr_masks_to_bitmap(const struct tc_attrs_masks *masks,
                 bm->map[1] |= PXY_ATTR_BIT2(FATTR4_NUMLINKS);
                 bm->bitmap4_len = MAX(bm->bitmap4_len, 2);
         }
+        if (masks->has_fileid) {
+                bm->map[0] |= PXY_ATTR_BIT(FATTR4_FILEID);
+                bm->bitmap4_len = MAX(bm->bitmap4_len, 1);
+        }
+        if (masks->has_blocks) {
+                bm->map[1] |= PXY_ATTR_BIT2(FATTR4_SPACE_USED);
+                bm->bitmap4_len = MAX(bm->bitmap4_len, 2);
+        }
         if (masks->has_uid) {
                 bm->map[1] |= PXY_ATTR_BIT2(FATTR4_OWNER);
                 bm->bitmap4_len = MAX(bm->bitmap4_len, 2);
@@ -3190,6 +3198,10 @@ void tc_attrs_to_fattr4(const struct tc_attrs *tca, fattr4 *attr4)
         if (tca->masks.has_fileid) {
                 attrlist.mask |= ATTR_FILEID;
                 attrlist.fileid = tca->fileid;
+        }
+        if (tca->masks.has_blocks) {
+                attrlist.mask |= ATTR_SPACEUSED;
+                attrlist.spaceused = tca->blocks * 512;
         }
         if (tca->masks.has_uid) {
                 attrlist.mask |= ATTR_OWNER;
