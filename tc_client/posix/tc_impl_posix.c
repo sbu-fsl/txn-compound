@@ -280,49 +280,6 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 	return result;
 }
 
-/*
- * Copy the struct stat to tc_attrs
- *
- * @st - stat structure
- * @attr_obj - tc_attrs object to be filled with the
- * stats structure values
- */
-void copy_attrs(const struct stat *st, struct tc_attrs *attr_obj)
-{
-	if (attr_obj->masks.has_mode)
-		attr_obj->mode = st->st_mode;
-
-	if (attr_obj->masks.has_size)
-		attr_obj->size = st->st_size;
-
-	if (attr_obj->masks.has_nlink)
-		attr_obj->nlink = st->st_nlink;
-
-	if (attr_obj->masks.has_uid)
-		attr_obj->uid = st->st_uid;
-
-	if (attr_obj->masks.has_gid)
-		attr_obj->gid = st->st_gid;
-
-	if (attr_obj->masks.has_rdev)
-		attr_obj->rdev = st->st_rdev;
-
-	if (attr_obj->masks.has_atime) {
-		attr_obj->atime.tv_sec = st->st_atime;
-		attr_obj->atime.tv_nsec = 0;
-	}
-
-	if (attr_obj->masks.has_mtime) {
-		attr_obj->mtime.tv_sec = st->st_mtime;
-		attr_obj->mtime.tv_nsec = 0;
-	}
-
-	if (attr_obj->masks.has_ctime) {
-		attr_obj->ctime.tv_sec = st->st_ctime;
-		attr_obj->ctime.tv_nsec = 0;
-	}
-}
-
 /**
  * Get attributes of files
  *
@@ -359,7 +316,7 @@ tc_res posix_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 		}
 
 		/* copy stat output */
-		copy_attrs(&st, cur_attr);
+		tc_stat2attrs(&st, cur_attr);
 
 		i++;
 	}
