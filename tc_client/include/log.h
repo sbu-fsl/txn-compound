@@ -195,7 +195,7 @@ int enable_log_facility(char *name);
 int disable_log_facility(char *name);
 int set_log_destination(char *name, char *dest);
 int set_log_level(char *name, log_levels_t max_level);
-void set_const_log_str();
+void set_const_log_str(void);
 
 struct log_component_info {
 	const char *comp_name;	/* component name */
