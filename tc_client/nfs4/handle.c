@@ -82,7 +82,7 @@ static pthread_cond_t need_context = PTHREAD_COND_INITIALIZER;
 
 static struct session_slot_table *sess_slot_tbl;
 
-#define MAX_NUM_OPS_PER_COMPOUND 128
+#define MAX_NUM_OPS_PER_COMPOUND 256
 static __thread nfs_argop4 argoparray[MAX_NUM_OPS_PER_COMPOUND];
 static __thread nfs_resop4 resoparray[MAX_NUM_OPS_PER_COMPOUND];
 static __thread int opcnt;
@@ -1180,7 +1180,8 @@ static int fs_create_session()
 					       .ca_maxresponsesize = 1049480,
 					       .ca_maxresponsesize_cached =
 						   4616,
-					       .ca_maxoperations = 64,
+					       .ca_maxoperations =
+						   MAX_NUM_OPS_PER_COMPOUND,
 					       .ca_maxrequests = 128 };
 
 	channel_attrs4 csa_back_chan_attrs = { .ca_headerpadsize = 0,
