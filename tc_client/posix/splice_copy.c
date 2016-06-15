@@ -42,7 +42,7 @@ ssize_t splice_copy_file(const char *src, size_t offset, size_t count,
 			close(srcfd);
 			return -errno;
 		}
-		count = st.st_size;
+		count = st.st_size - offset;
 	}
 
 	dstfd = open(dst, O_WRONLY | O_CREAT);

@@ -817,7 +817,7 @@ TYPED_TEST_P(TcTest, CopyFiles)
 	pairs[1].src_offset = 0;
 	pairs[1].dst_path = "DestinationFile2.txt";
 	pairs[1].dst_offset = 0;
-	pairs[1].length = N;
+	pairs[1].length = 0;  // 0 means from src_offset to EOF
 
 	// create source files
 	tc_iov4creation(&iov[0], pairs[0].src_path, N, getRandomBytes(N));
@@ -846,6 +846,48 @@ TYPED_TEST_P(TcTest, CopyFiles)
 	free(iov[1].data);
 	free(read_iov[0].data);
 	free(read_iov[1].data);
+}
+
+TYPED_TEST_P(TcTest, CopyFirstHalfAsSecondHalf)
+{
+	const int N = 8096;
+	struct tc_extent_pair pairs[2];
+	struct tc_iovec iov;
+	struct tc_iovec read_iov;
+
+	pairs[0].src_path = "OriginalFile.txt";
+	pairs[0].src_offset = 0;
+	pairs[0].dst_path = "ReversedFile.txt";
+	pairs[0].dst_offset = N / 2;
+	pairs[0].length = N / 2;
+
+	pairs[1].src_path = "OriginalFile.txt";
+	pairs[1].src_offset = N / 2;
+	pairs[1].dst_path = "ReversedFile.txt";
+	pairs[1].dst_offset = 0;
+	pairs[1].length = 0;  // 0 means from src_offset to EOF, i.e., N/2
+
+	// create source files
+	tc_iov4creation(&iov, pairs[0].src_path, N, getRandomBytes(N));
+	EXPECT_NOTNULL(iov.data);
+	EXPECT_OK(tc_writev(&iov, 1, false));
+
+	// remove dest files
+	Removev(&pairs[0].dst_path, 1);
+
+	// reverse a file using copy
+	EXPECT_OK(tc_copyv(pairs, 2, false));
+
+	tc_iov2path(&read_iov, pairs[1].dst_path, 0, N, (char *)malloc(N));
+	EXPECT_NOTNULL(read_iov.data);
+
+	EXPECT_OK(tc_readv(&read_iov, 1, false));
+
+	EXPECT_EQ(0, memcmp(iov.data, read_iov.data + N / 2, N / 2));
+	EXPECT_EQ(0, memcmp(iov.data + N / 2, read_iov.data, N / 2));
+
+	free(iov.data);
+	free(read_iov.data);
 }
 
 TYPED_TEST_P(TcTest, ListAnEmptyDirectory)
@@ -1106,6 +1148,7 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   SuccesiveReads,
 			   SuccesiveWrites,
 			   CopyFiles,
+			   CopyFirstHalfAsSecondHalf,
 			   ListAnEmptyDirectory,
 			   List2ndLevelDir,
 			   ShuffledRdWr,

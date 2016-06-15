@@ -720,6 +720,10 @@ struct tc_extent_pair
 	const char *dst_path;
 	size_t src_offset;
 	size_t dst_offset;
+	/**
+	 * When length is 0, it means the effective length is current file size
+	 * of the source file substracted by src_offset.
+	 */
 	size_t length;
 };
 
