@@ -7545,6 +7545,24 @@ extern "C" {
 	}
 
 	static inline bool
+	xdr_write_response4(XDR *xdrs, write_response4 *objp)
+	{
+		register int32_t *buf;
+
+		if (!xdr_count4(xdrs, &objp->wr_ids))
+			return false;
+		if (!xdr_stateid4(xdrs, &objp->wr_callback_id))
+			return false;
+		if (!xdr_length4(xdrs, &objp->wr_count))
+			return false;
+		if (!xdr_stable_how4(xdrs, &objp->wr_committed))
+			return false;
+		if (!xdr_verifier4(xdrs, objp->wr_writeverf))
+			return false;
+		return true;
+	}
+
+	static inline bool
 	xdr_data4(XDR *xdrs, data4 *objp)
 	{
 		register int32_t *buf;
@@ -7910,6 +7928,55 @@ extern "C" {
 		return true;
 	}
 
+	static inline bool xdr_COPY4args(XDR *xdrs, COPY4args *objp)
+	{
+		if (!xdr_stateid4(xdrs, &objp->ca_src_stateid))
+			return false;
+		if (!xdr_stateid4(xdrs, &objp->ca_dst_stateid))
+			return false;
+		if (!xdr_offset4(xdrs, &objp->ca_src_offset))
+			return false;
+		if (!xdr_offset4(xdrs, &objp->ca_dst_offset))
+			return false;
+		if (!xdr_length4(xdrs, &objp->ca_count))
+			return false;
+		if (!inline_xdr_enum(xdrs, (enum_t *)&objp->ca_type))
+			return false;
+		switch (objp->ca_type) {
+		case NL4_NAME:
+			if (!xdr_utf8str_cis(xdrs, &objp->ca_name))
+				return false;
+			break;
+		case NL4_URL:
+			if (!xdr_utf8str_cis(xdrs, &objp->ca_url))
+				return false;
+			break;
+		case NL4_NETADDR:
+			if (!xdr_netaddr4(xdrs, &objp->ca_addr))
+				return false;
+			break;
+		default:
+			break;
+		}
+		return true;
+	}
+
+	static inline bool xdr_COPY4res(XDR *xdrs, COPY4res *objp)
+	{
+		if (!xdr_nfsstat4(xdrs, &objp->cr_status))
+			return false;
+		switch (objp->cr_status) {
+		case NFS4_OK:
+			if (!xdr_write_response4(xdrs,
+						 &objp->COPY4res_u.cr_resok4))
+				return false;
+			break;
+		default:
+			break;
+		}
+		return true;
+	}
+
 /* new operations for NFSv4.1 */
 
 	static inline bool xdr_nfs_opnum4(XDR * xdrs, nfs_opnum4 *objp)
@@ -8235,6 +8302,10 @@ extern "C" {
 			break;
 
 		case NFS4_OP_COPY:
+			if (!xdr_COPY4args(xdrs, &objp->nfs_argop4_u.opcopy))
+				return false;
+			break;
+
 		case NFS4_OP_OFFLOAD_ABORT:
 		case NFS4_OP_COPY_NOTIFY:
 		case NFS4_OP_OFFLOAD_REVOKE:
@@ -8541,8 +8612,11 @@ extern "C" {
 			    (xdrs, &objp->nfs_resop4_u.opio_advise))
 				return false;
 			break;
-
 		case NFS4_OP_COPY:
+			if (!xdr_COPY4res(xdrs, &objp->nfs_resop4_u.opcopy))
+				return false;
+			break;
+
 		case NFS4_OP_OFFLOAD_ABORT:
 		case NFS4_OP_COPY_NOTIFY:
 		case NFS4_OP_OFFLOAD_REVOKE:

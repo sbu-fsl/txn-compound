@@ -64,6 +64,7 @@ ssize_t splice_copy(const char *src, size_t src_offset, const char *dst,
 	int srcfd;
 	int dstfd;
 	int copied;
+	struct stat st;
 
 	srcfd = open(src, O_RDONLY);
 	if (srcfd < 0) {
@@ -74,6 +75,14 @@ ssize_t splice_copy(const char *src, size_t src_offset, const char *dst,
 	if (dstfd < 0) {
 		close(srcfd);
 		return -errno;
+	}
+
+	if (count == 0) {
+		if (fstat(srcfd, &st) < 0) {
+			close(srcfd);
+			return -errno;
+		}
+		count = st.st_size - src_offset;
 	}
 
 	copied = splice_fcopy(srcfd, src_offset, dstfd, dst_offset, count);
