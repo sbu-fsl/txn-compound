@@ -1007,7 +1007,7 @@ static int fs_compoundv4_execute(const char *caller,
 	} while ((rc == RPC_CANTRECV && (ctx->ioresult == -EAGAIN))
 		 || (rc == RPC_CANTSEND));
 
-	TC_STOP_COUNTER(rpc, 1, rc == RPC_SUCCESS);
+	TC_STOP_COUNTER(rpc, opcnt, rc == RPC_SUCCESS);
 
 	pthread_mutex_lock(&context_lock);
 	pthread_cond_signal(&need_context);

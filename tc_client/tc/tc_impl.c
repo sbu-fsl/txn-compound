@@ -43,14 +43,15 @@ static int tc_counter_running = 1;
 const struct tc_attrs_masks TC_ATTRS_MASK_ALL = TC_MASK_INIT_ALL;
 const struct tc_attrs_masks TC_ATTRS_MASK_NONE = TC_MASK_INIT_NONE;
 
-bool tc_counter_printer(struct tc_func_counter *tcf, void *arg)
+bool tc_counter_printer(struct tc_func_counter *tfc, void *arg)
 {
 	buf_t *pbuf = (buf_t *)arg;
-	buf_appendf(pbuf, "%u %u %llu %llu ",
-		    __sync_fetch_and_or(&tcf->calls, 0),
-		    __sync_fetch_and_or(&tcf->failures, 0),
-		    __sync_fetch_and_or(&tcf->micro_ops, 0),
-		    __sync_fetch_and_or(&tcf->time_ns, 0));
+	buf_appendf(pbuf, "%s %u %u %llu %llu ",
+		    tfc->name,
+		    __sync_fetch_and_or(&tfc->calls, 0),
+		    __sync_fetch_and_or(&tfc->failures, 0),
+		    __sync_fetch_and_or(&tfc->micro_ops, 0),
+		    __sync_fetch_and_or(&tfc->time_ns, 0));
 	return true;
 }
 
@@ -112,11 +113,18 @@ void tc_deinit(void *module)
 
 tc_file *tc_openv(const char **paths, int count, int *flags, mode_t *modes)
 {
+	tc_file *tcfs;
+	TC_DECLARE_COUNTER(open);
+
+	TC_START_COUNTER(open);
 	if (TC_IMPL_IS_NFS4) {
-		return nfs4_openv(paths, count, flags, modes);
+		tcfs = nfs4_openv(paths, count, flags, modes);
 	} else {
-		return posix_openv(paths, count, flags, modes);
+		tcfs = posix_openv(paths, count, flags, modes);
 	}
+	TC_STOP_COUNTER(open, count, tcfs != NULL);
+
+	return tcfs;
 }
 
 tc_file *tc_openv_simple(const char **paths, int count, int flags, mode_t mode)
@@ -133,20 +141,34 @@ tc_file *tc_openv_simple(const char **paths, int count, int flags, mode_t mode)
 
 tc_res tc_closev(tc_file *tcfs, int count)
 {
+	tc_res tcres;
+	TC_DECLARE_COUNTER(close);
+
+	TC_START_COUNTER(close);
 	if (TC_IMPL_IS_NFS4) {
-		return nfs4_closev(tcfs, count);
+		tcres = nfs4_closev(tcfs, count);
 	} else {
-		return posix_closev(tcfs, count);
+		tcres = posix_closev(tcfs, count);
 	}
+	TC_STOP_COUNTER(close, count, tc_okay(tcres));
+
+	return tcres;
 }
 
 off_t tc_fseek(tc_file *tcf, off_t offset, int whence)
 {
+	off_t res;
+	TC_DECLARE_COUNTER(seek);
+
+	TC_START_COUNTER(seek);
 	if (TC_IMPL_IS_NFS4) {
-		return nfs4_fseek(tcf, offset, whence);
+		res = nfs4_fseek(tcf, offset, whence);
 	} else {
-		return posix_fseek(tcf, offset, whence);
+		res = posix_fseek(tcf, offset, whence);
 	}
+	TC_STOP_COUNTER(seek, 1, res != -1);
+
+	return res;
 }
 
 tc_file* tc_open_by_path(int dirfd, const char *pathname, int flags, mode_t mode)
@@ -162,9 +184,13 @@ int tc_close(tc_file *tcf)
 tc_res tc_readv(struct tc_iovec *reads, int count, bool is_transaction)
 {
 	int i;
+	tc_res tcres;
+	TC_DECLARE_COUNTER(read);
 
+	TC_START_COUNTER(read);
 	for (i = 0; i < count; ++i) {
 		if (reads[i].is_creation) {
+			TC_STOP_COUNTER(read, count, false);
 			return tc_failure(i, EINVAL);
 		}
 	}
@@ -173,28 +199,45 @@ tc_res tc_readv(struct tc_iovec *reads, int count, bool is_transaction)
 	 * back-end file system.
 	 */
 	if (TC_IMPL_IS_NFS4) {
-		return nfs4_readv(reads, count, is_transaction);
+		tcres = nfs4_readv(reads, count, is_transaction);
 	} else {
-		return posix_readv(reads, count, is_transaction);
+		tcres = posix_readv(reads, count, is_transaction);
 	}
+	TC_STOP_COUNTER(read, count, tc_okay(tcres));
+
+	return tcres;
 }
 
 tc_res tc_writev(struct tc_iovec *writes, int count, bool is_transaction)
 {
+	tc_res tcres;
+	TC_DECLARE_COUNTER(write);
+
+	TC_START_COUNTER(write);
 	if (TC_IMPL_IS_NFS4) {
-		return nfs4_writev(writes, count, is_transaction);
+		tcres = nfs4_writev(writes, count, is_transaction);
 	} else {
-		return posix_writev(writes, count, is_transaction);
+		tcres = posix_writev(writes, count, is_transaction);
 	}
+	TC_STOP_COUNTER(write, count, tc_okay(tcres));
+
+	return tcres;
 }
 
 tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
+	tc_res tcres;
+	TC_DECLARE_COUNTER(getattrs);
+
+	TC_START_COUNTER(getattrs);
 	if (TC_IMPL_IS_NFS4) {
-		return nfs4_getattrsv(attrs, count, is_transaction);
+		tcres = nfs4_getattrsv(attrs, count, is_transaction);
 	} else {
-		return posix_getattrsv(attrs, count, is_transaction);
+		tcres = posix_getattrsv(attrs, count, is_transaction);
 	}
+	TC_STOP_COUNTER(getattrs, count, tc_okay(tcres));
+
+	return tcres;
 }
 
 static int tc_stat_impl(tc_file tcf, struct stat *buf, bool readlink)
@@ -261,11 +304,18 @@ int tc_lstat(const char *path, struct stat *buf)
 
 tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
+	tc_res tcres;
+	TC_DECLARE_COUNTER(setattrs);
+
+	TC_START_COUNTER(setattrs);
 	if (TC_IMPL_IS_NFS4) {
-		return nfs4_setattrsv(attrs, count, is_transaction);
+		tcres = nfs4_setattrsv(attrs, count, is_transaction);
 	} else {
-		return posix_setattrsv(attrs, count, is_transaction);
+		tcres = posix_setattrsv(attrs, count, is_transaction);
 	}
+	TC_STOP_COUNTER(setattrs, count, tc_okay(tcres));
+
+	return tcres;
 }
 
 struct _tc_attrs_array {
@@ -335,31 +385,52 @@ tc_res tc_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
 		   int max_entries, bool recursive, tc_listdirv_cb cb,
 		   void *cbarg, bool is_transaction)
 {
+	tc_res tcres;
+	TC_DECLARE_COUNTER(listdir);
+
+	TC_START_COUNTER(listdir);
 	if (TC_IMPL_IS_NFS4) {
-		return nfs4_listdirv(dirs, count, masks, max_entries, recursive,
+		tcres = nfs4_listdirv(dirs, count, masks, max_entries, recursive,
 				     cb, cbarg, is_transaction);
 	} else {
-		return posix_listdirv(dirs, count, masks, max_entries,
+		tcres = posix_listdirv(dirs, count, masks, max_entries,
 				      recursive, cb, cbarg, is_transaction);
 	}
+	TC_STOP_COUNTER(listdir, count, tc_okay(tcres));
+
+	return tcres;
 }
 
 tc_res tc_renamev(tc_file_pair *pairs, int count, bool is_transaction)
 {
+	tc_res tcres;
+	TC_DECLARE_COUNTER(rename);
+
+	TC_START_COUNTER(rename);
 	if (TC_IMPL_IS_NFS4) {
-		return nfs4_renamev(pairs, count, is_transaction);
+		tcres = nfs4_renamev(pairs, count, is_transaction);
 	} else {
-		return posix_renamev(pairs, count, is_transaction);
+		tcres = posix_renamev(pairs, count, is_transaction);
 	}
+	TC_STOP_COUNTER(rename, count, tc_okay(tcres));
+
+	return tcres;
 }
 
 tc_res tc_removev(tc_file *files, int count, bool is_transaction)
 {
+	tc_res tcres;
+	TC_DECLARE_COUNTER(remove);
+
+	TC_START_COUNTER(remove);
 	if (TC_IMPL_IS_NFS4) {
-		return nfs4_removev(files, count, is_transaction);
+		tcres = nfs4_removev(files, count, is_transaction);
 	} else {
-		return posix_removev(files, count, is_transaction);
+		tcres = posix_removev(files, count, is_transaction);
 	}
+	TC_STOP_COUNTER(remove, count, tc_okay(tcres));
+
+	return tcres;
 }
 
 int tc_unlink(const char *path)
@@ -384,15 +455,21 @@ tc_res tc_unlinkv(const char **paths, int count)
 tc_res tc_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)
 {
 	int i;
+	tc_res tcres;
+	TC_DECLARE_COUNTER(mkdir);
 
+	TC_START_COUNTER(mkdir);
 	for (i = 0; i < count; ++i) {
 		assert(dirs[i].masks.has_mode);
 	}
 	if (TC_IMPL_IS_NFS4) {
-		return nfs4_mkdirv(dirs, count, is_transaction);
+		tcres = nfs4_mkdirv(dirs, count, is_transaction);
 	} else {
-		return posix_mkdirv(dirs, count, is_transaction);
+		tcres = posix_mkdirv(dirs, count, is_transaction);
 	}
+	TC_STOP_COUNTER(mkdir, count, tc_okay(tcres));
+
+	return tcres;
 }
 
 static tc_res posix_ensure_dir(slice_t *comps, int n, mode_t mode)
@@ -501,31 +578,52 @@ exit:
 
 tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 {
+	tc_res tcres;
+	TC_DECLARE_COUNTER(copy);
+
+	TC_START_COUNTER(copy);
 	if (TC_IMPL_IS_NFS4) {
-		return nfs4_copyv(pairs, count, is_transaction);
+		tcres = nfs4_copyv(pairs, count, is_transaction);
 	} else {
-		return posix_copyv(pairs, count, is_transaction);
+		tcres = posix_copyv(pairs, count, is_transaction);
 	}
+	TC_STOP_COUNTER(copy, count, tc_okay(tcres));
+
+	return tcres;
 }
 
 tc_res tc_symlinkv(const char **oldpaths, const char **newpaths, int count,
 		   bool istxn)
 {
+	tc_res tcres;
+	TC_DECLARE_COUNTER(symlink);
+
+	TC_START_COUNTER(symlink);
 	if (TC_IMPL_IS_NFS4) {
-		return nfs4_symlinkv(oldpaths, newpaths, count, istxn);
+		tcres = nfs4_symlinkv(oldpaths, newpaths, count, istxn);
 	} else {
-		return posix_symlinkv(oldpaths, newpaths, count, istxn);
+		tcres = posix_symlinkv(oldpaths, newpaths, count, istxn);
 	}
+	TC_STOP_COUNTER(symlink, count, tc_okay(tcres));
+
+	return tcres;
 }
 
 tc_res tc_readlinkv(const char **paths, char **bufs, size_t *bufsizes,
 		    int count, bool istxn)
 {
+	tc_res tcres;
+	TC_DECLARE_COUNTER(readlink);
+
+	TC_START_COUNTER(readlink);
 	if (TC_IMPL_IS_NFS4) {
-		return nfs4_readlinkv(paths, bufs, bufsizes, count, istxn);
+		tcres = nfs4_readlinkv(paths, bufs, bufsizes, count, istxn);
 	} else {
-		return posix_readlinkv(paths, bufs, bufsizes, count, istxn);
+		tcres = posix_readlinkv(paths, bufs, bufsizes, count, istxn);
 	}
+	TC_STOP_COUNTER(readlink, count, tc_okay(tcres));
+
+	return tcres;
 }
 
 tc_res tc_write_adb(struct tc_adb *patterns, int count, bool is_transaction)
