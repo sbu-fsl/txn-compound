@@ -24,7 +24,7 @@ void file_dist(int count, int *values, double locality) {
     double stddev = (1 - locality) * count / 10;
     std::normal_distribution<double> distribution(count / 2.0, stddev);
     for (int i = 0; i < count; ++i) {
-      values[i] = ((int)abs(distribution(generator))) % count;
+      values[i] = ((int)abs((int)distribution(generator))) % count;
     }
   }
 }
