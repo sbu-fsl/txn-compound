@@ -89,6 +89,7 @@ void *tc_init(const char *config_path, const char *log_path, uint16_t export_id)
 		return NULL;
 	}
 
+	tc_counter_running = 1;
 	retval =
 	    pthread_create(&tc_counter_thread, NULL, &output_tc_counters, NULL);
 	if (retval != 0) {

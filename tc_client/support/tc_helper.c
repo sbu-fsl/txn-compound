@@ -33,7 +33,8 @@ static pthread_mutex_t tc_counter_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void tc_register_counter(struct tc_func_counter *tfc)
 {
-	if (tfc->next == NULL) {
+	if (!tfc->registered) {
+		tfc->registered = true;
 		pthread_mutex_lock(&tc_counter_lock);
 		tfc->next = tc_all_counters;
 		tc_all_counters = tfc;

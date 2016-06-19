@@ -44,6 +44,7 @@ struct tc_func_counter {
 	uint64_t micro_ops;  /* # of operations (or RPC bytes) */
 	uint64_t time_ns;    /* the total time in calling these functions */
 	struct tc_func_counter *next;
+	bool registered;
 };
 
 void tc_register_counter(struct tc_func_counter *tfc);
@@ -61,7 +62,10 @@ void tc_iterate_counters(bool (*tfc_reader)(struct tc_func_counter *tfc,
 							  .calls = 0,          \
 							  .micro_ops = 0,      \
 							  .time_ns = 0,        \
-							  .next = NULL, };     \
+							  .next = NULL,        \
+							  .registered =        \
+							      false };         \
+	static bool nm##_registered = false;                                   \
 	tc_register_counter(&nm##_tc_counter)
 
 #define TC_START_COUNTER(nm)                                                   \
