@@ -756,13 +756,13 @@ static inline bool tx_symlinkv(const char **oldpaths, const char **newpaths,
 	return tc_okay(tc_symlinkv(oldpaths, newpaths, count, true));
 }
 
-tc_res tc_readlinkv(const char **paths, char **bufs, size_t *bufsizes,
+tc_res tc_readlinkv(tc_file *tc_fs, char **bufs, size_t *bufsizes,
 		    int count, bool istxn);
 
-static inline bool tx_readlinkv(const char **paths, char **bufs,
+static inline bool tx_readlinkv(tc_file *tc_fs, char **bufs,
 				size_t *bufsizes, int count)
 {
-	return tc_okay(tc_readlinkv(paths, bufs, bufsizes, count, true));
+	return tc_okay(tc_readlinkv(tc_fs, bufs, bufsizes, count, true));
 }
 
 static inline int tc_symlink(const char *oldpath, const char *newpath)
@@ -770,9 +770,9 @@ static inline int tc_symlink(const char *oldpath, const char *newpath)
 	return tc_symlinkv(&oldpath, &newpath, 1, false).err_no;
 }
 
-static inline int tc_readlink(const char *path, char *buf, size_t bufsize)
+static inline int tc_readlink(tc_file tcf, char *buf, size_t bufsize)
 {
-	return tc_readlinkv(&path, &buf, &bufsize, 1, false).err_no;
+	return tc_readlinkv(&tcf, &buf, &bufsize, 1, false).err_no;
 }
 
 /**

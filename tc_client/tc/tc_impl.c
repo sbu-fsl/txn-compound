@@ -269,7 +269,7 @@ static int tc_stat_impl(tc_file tcf, struct stat *buf, bool readlink)
 
 	while (S_ISLNK(tca.mode)) {
 		path = tca.file.path;
-		ret = tc_readlink(path, linkbuf, PATH_MAX);
+		ret = tc_readlink(tcf, linkbuf, PATH_MAX);
 		if (ret != 0) {
 			return ret;
 		}
@@ -609,18 +609,33 @@ tc_res tc_symlinkv(const char **oldpaths, const char **newpaths, int count,
 	return tcres;
 }
 
-tc_res tc_readlinkv(const char **paths, char **bufs, size_t *bufsizes,
+tc_res tc_readlinkv(tc_file *tc_fs, char **bufs, size_t *bufsizes,
 		    int count, bool istxn)
 {
 	tc_res tcres;
-	TC_DECLARE_COUNTER(readlink);
+	char **paths = alloca(sizeof(char*) * count);
 
+	TC_DECLARE_COUNTER(readlink);
 	TC_START_COUNTER(readlink);
-	if (TC_IMPL_IS_NFS4) {
-		tcres = nfs4_readlinkv(paths, bufs, bufsizes, count, istxn);
-	} else {
-		tcres = posix_readlinkv(paths, bufs, bufsizes, count, istxn);
+
+
+	for (int i = 0; i < count; i++) {
+		assert(tc_fs[i].type == TC_FILE_PATH);
+		char *path = alloca(sizeof(char) * PATH_MAX);
+		if(tc_fs[i].fd == TC_FD_ABS) {
+			strncpy(path, tc_fs[i].path, PATH_MAX);
+		} else if (tc_fs[i].fd == TC_FD_CWD) {
+			tc_path_join(tc_getcwd(), tc_fs[i].path, path, PATH_MAX);
+		}
+		paths[i] = path;
 	}
+
+	if (TC_IMPL_IS_NFS4) {
+		tcres = nfs4_readlinkv((const char**)paths, bufs, bufsizes, count, istxn);
+	} else {
+		tcres = posix_readlinkv((const char**)paths, bufs, bufsizes, count, istxn);
+	}
+
 	TC_STOP_COUNTER(readlink, count, tc_okay(tcres));
 
 	return tcres;

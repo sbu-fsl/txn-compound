@@ -1064,6 +1064,8 @@ TYPED_TEST_P(TcTest, SymlinkBasics)
 				"TcTest-SymlinkBasics/003.link",
 				"TcTest-SymlinkBasics/004.link",
 				"TcTest-SymlinkBasics/005.link", };
+	#define NUM_LINKS sizeof(LINKS)/sizeof(LINKS[0])
+	tc_file link_files[NUM_LINKS];
 	const char *CONTENTS[] = { "001.file", "002.file", "003.file",
 				   "004.file", "005.file", };
 	const int N = sizeof(TARGETS) / sizeof(TARGETS[0]);
@@ -1082,7 +1084,11 @@ TYPED_TEST_P(TcTest, SymlinkBasics)
 
 	EXPECT_OK(tc_symlinkv(CONTENTS, LINKS, N, false));
 
-	EXPECT_OK(tc_readlinkv(LINKS, bufs, bufsizes, N, false));
+	for (int i = 0; i < NUM_LINKS; i++) {
+		link_files[i] = tc_file_from_path(LINKS[i]);
+	}
+
+	EXPECT_OK(tc_readlinkv(link_files, bufs, bufsizes, N, false));
 
 	for (int i = 0; i < N; ++i) {
 		EXPECT_EQ(strlen(CONTENTS[i]), bufsizes[i]);
