@@ -288,14 +288,14 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
  * @is_transaction: whether to execute the compound as a transaction
  */
 
-tc_res posix_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
+tc_res posix_lgetattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	int fd = -1, i = 0, res = 0;
 	struct tc_attrs *cur_attr = NULL;
 	tc_res result = { .index = -1, .err_no = 0 };
 	struct stat st;
 
-	POSIX_WARN("posix_getattrsv() called \n");
+	POSIX_WARN("posix_lgetattrsv() called \n");
 
 	while (i < count) {
 		cur_attr = attrs + i;
@@ -310,7 +310,7 @@ tc_res posix_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 			perror("");
 			POSIX_WARN("file path : %s\n", cur_attr->file.path);
 			result = tc_failure(i, errno);
-			POSIX_WARN("posix_getattrsv() failed at index : %d\n",
+			POSIX_WARN("posix_lgetattrsv() failed at index : %d\n",
 				   result.index);
 			break;
 		}

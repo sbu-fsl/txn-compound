@@ -1321,7 +1321,7 @@ struct fsal_obj_ops {
 	tc_res (*tc_closev)(const nfs_fh4 *fh4s, int count, stateid4 *sids,
 			    seqid4 *seqs);
 
-	tc_res (*tc_getattrsv)(struct tc_attrs *attrs, int count);
+	tc_res (*tc_lgetattrsv)(struct tc_attrs *attrs, int count);
 
 	tc_res (*tc_setattrsv)(struct tc_attrs *attrs, int count);
 

@@ -3508,7 +3508,7 @@ exit:
         return tcres;
 }
 
-static tc_res tc_nfs4_getattrsv(struct tc_attrs *attrs, int count)
+static tc_res tc_nfs4_lgetattrsv(struct tc_attrs *attrs, int count)
 {
         int rc;
         tc_res tcres;
@@ -3518,7 +3518,7 @@ static tc_res tc_nfs4_getattrsv(struct tc_attrs *attrs, int count)
 	int j = 0;      /* index of NFS operations */
 	char *fattr_blobs; /* an array of FATTR_BLOB_SZ-sized buffers */
 
-        NFS4_DEBUG("tc_nfs4_getattrsv");
+        NFS4_DEBUG("tc_nfs4_lgetattrsv");
         assert(count >= 1);
         tc_start_compound(true);
         fattr_blobs = (char *)malloc(count * FATTR_BLOB_SZ);
@@ -4313,7 +4313,7 @@ void fs_handle_ops_init(struct fsal_obj_ops *ops)
 	ops->status = fs_status;
 	ops->tc_readv = tc_nfs4_readv;
 	ops->tc_writev = tc_nfs4_writev;
-        ops->tc_getattrsv = tc_nfs4_getattrsv;
+        ops->tc_lgetattrsv = tc_nfs4_lgetattrsv;
         ops->tc_setattrsv = tc_nfs4_setattrsv;
         ops->tc_mkdirv = tc_nfs4_mkdirv;
         ops->tc_listdirv = tc_nfs4_listdirv;

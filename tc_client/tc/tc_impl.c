@@ -226,16 +226,89 @@ tc_res tc_writev(struct tc_iovec *writes, int count, bool is_transaction)
 
 tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
-	tc_res tcres;
-	TC_DECLARE_COUNTER(getattrs);
+	tc_res res;
+	tc_file link_fs[count];
+	int original_indices[count];
 
-	TC_START_COUNTER(getattrs);
-	if (TC_IMPL_IS_NFS4) {
-		tcres = nfs4_getattrsv(attrs, count, is_transaction);
-	} else {
-		tcres = posix_getattrsv(attrs, count, is_transaction);
+	char **bufs = alloca(sizeof(char*) * count);
+	size_t *bufsizes = alloca(sizeof(size_t) * count);
+
+	bool link_passed = false;
+	int link_count = 0;
+
+	//First, need to determine what is and isn't a symlink so we know what to pass into readlink
+	res = tc_lgetattrsv(attrs, count, false);
+	if (!tc_okay(res)) {
+		return res;
 	}
-	TC_STOP_COUNTER(getattrs, count, tc_okay(tcres));
+
+	for (int i = 0; i < count; i++) {
+		if (attrs[i].mode & S_IFMT == S_IFLNK) {
+			link_passed = true;
+			link_fs[link_count] = attrs[link_count].file;
+			bufs[link_count] = alloca(sizeof(char) * PATH_MAX);
+			bufsizes[link_count] = PATH_MAX;
+
+			//Save original index into attrs so we can overwrite this data
+			//with the attrs of what the link points to later
+			original_indices[link_count] = i;
+
+			link_count++;	
+		}
+	}
+	
+	//if nothing was a symlink, then our prior call to tc_lgetattrsv() sufficed, so we're done
+	if (!link_passed) {
+		return res;
+	}
+
+	
+	res = tc_readlinkv(link_fs, bufs, bufsizes, link_count, false);
+	if (!tc_okay(res)) {
+		// should not fail
+		// error here is unexpected, cannot just be returned
+		// logging?
+		assert(false);
+	}
+
+	struct tc_attrs linked_attrs[link_count];
+
+	for (int i = 0; i < link_count; i++) {
+		linked_attrs[i].file = tc_file_from_path(bufs[i]);
+	}
+	
+	//getattrs of files symlinks point to
+	res = tc_lgetattrsv(linked_attrs, link_count, is_transaction);
+	if (!tc_okay(res)) {
+		//Not sure what to do since an error here
+		//would indicate a problem with accessing what the symlink points to,
+		//not with the original file that was passed in
+
+		//res.index would also be incorrect, I believe
+
+		//return res;
+	}
+	
+	//Overwrite attrs of symlinks with attrs of what they point to
+	for (int i = 0; i < link_count; i++) {
+		attrs[original_indices[i]] = linked_attrs[i];
+	}
+
+	return res;
+}
+
+tc_res tc_lgetattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
+{
+	tc_res tcres;
+	TC_DECLARE_COUNTER(lgetattrs);
+
+	TC_START_COUNTER(lgetattrs);
+	if (TC_IMPL_IS_NFS4) {
+		tcres = nfs4_lgetattrsv(attrs, count, is_transaction);
+	} else {
+		tcres = posix_lgetattrsv(attrs, count, is_transaction);
+	}
+	TC_STOP_COUNTER(lgetattrs, count, tc_okay(tcres));
 
 	return tcres;
 }
@@ -483,7 +556,7 @@ static tc_res posix_ensure_dir(slice_t *comps, int n, mode_t mode)
 	for (i = 0; i < n; ++i) {
 		tc_path_append(path, comps[i]);
 		attrs.file = tc_file_from_path(asstr(path));
-		tcres = posix_getattrsv(&attrs, 1, false);
+		tcres = posix_lgetattrsv(&attrs, 1, false);
 		if (tc_okay(tcres)) {
 			continue;
 		}

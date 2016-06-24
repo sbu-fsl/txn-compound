@@ -71,7 +71,7 @@ tc_res posix_writev(struct tc_iovec *writes, int write_count,
  * @count: the count of tc_attrs in the preceding array
  * @is_transaction: whether to execute the compound as a transaction
  */
-tc_res posix_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction);
+tc_res posix_lgetattrsv(struct tc_attrs *attrs, int count, bool is_transaction);
 
 /**
  * Set attributes of files.

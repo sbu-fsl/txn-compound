@@ -580,10 +580,16 @@ extern const struct tc_attrs_masks TC_ATTRS_MASK_NONE;
  * @is_transaction: whether to execute the compound as a transaction
  */
 tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction);
+tc_res tc_lgetattrsv(struct tc_attrs *attrs, int count, bool is_transaction);
 
 static inline bool tx_getattrsv(struct tc_attrs *attrs, int count)
 {
 	return tc_okay(tc_getattrsv(attrs, count, true));
+}
+
+static inline bool tx_lgetattrsv(struct tc_attrs *attrs, int count)
+{
+	return tc_okay(tc_lgetattrsv(attrs, count, true));
 }
 
 int tc_stat(const char *path, struct stat *buf);
