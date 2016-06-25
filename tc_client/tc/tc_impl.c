@@ -248,10 +248,7 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 				paths[link_count] = file.path;
 			} else if (file.fd == TC_FD_CWD) {
 				char *path = alloca(sizeof(char) * PATH_MAX);
-				char *cwd = tc_getcwd();
-				int len = strlen(cwd) + strlen(file.path) + 1;
-				assert(len <= PATH_MAX);
-				tc_path_join(cwd, file.path, path, len);
+				tc_path_join(tc_getcwd(), file.path, path, PATH_MAX);
 				paths[link_count] = path;
 			}
 			bufs[link_count] = alloca(sizeof(char) * PATH_MAX);
