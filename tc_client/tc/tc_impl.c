@@ -227,16 +227,14 @@ tc_res tc_writev(struct tc_iovec *writes, int count, bool is_transaction)
 tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	tc_res res;
-	tc_file link_fs[count];
+	char *paths[count];
 	int original_indices[count];
 
 	char **bufs = alloca(sizeof(char*) * count);
 	size_t *bufsizes = alloca(sizeof(size_t) * count);
 
-	bool link_passed = false;
 	int link_count = 0;
 
-	//First, need to determine what is and isn't a symlink so we know what to pass into readlink
 	res = tc_lgetattrsv(attrs, count, false);
 	if (!tc_okay(res)) {
 		return res;
@@ -244,8 +242,18 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 
 	for (int i = 0; i < count; i++) {
 		if (attrs[i].mode & S_IFMT == S_IFLNK) {
-			link_passed = true;
-			link_fs[link_count] = attrs[link_count].file;
+			tc_file file = attrs[i].file;
+			assert(file.type == TC_FILE_PATH);
+			if (file.fd == TC_FD_ABS) {
+				paths[link_count] = file.path;
+			} else if (file.fd == TC_FD_CWD) {
+				char *path = alloca(sizeof(char) * PATH_MAX);
+				char *cwd = tc_getcwd();
+				int len = strlen(cwd) + strlen(file.path) + 1;
+				assert(len <= PATH_MAX);
+				tc_path_join(cwd, file.path, path, len);
+				paths[link_count] = path;
+			}
 			bufs[link_count] = alloca(sizeof(char) * PATH_MAX);
 			bufsizes[link_count] = PATH_MAX;
 
@@ -258,38 +266,30 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	}
 	
 	//if nothing was a symlink, then our prior call to tc_lgetattrsv() sufficed, so we're done
-	if (!link_passed) {
+	if (link_count == 0) {
 		return res;
 	}
 
 	
-	res = tc_readlinkv(link_fs, bufs, bufsizes, link_count, false);
+	res = tc_readlinkv((const char**) paths, bufs, bufsizes, link_count, false);
 	if (!tc_okay(res)) {
-		// should not fail
-		// error here is unexpected, cannot just be returned
-		// logging?
-		assert(false);
+		return res;
 	}
 
+	//Cannot be moved to top of function
+	//since it relies on link_count being the proper length
 	struct tc_attrs linked_attrs[link_count];
 
 	for (int i = 0; i < link_count; i++) {
 		linked_attrs[i].file = tc_file_from_path(bufs[i]);
 	}
 	
-	//getattrs of files symlinks point to
 	res = tc_lgetattrsv(linked_attrs, link_count, is_transaction);
 	if (!tc_okay(res)) {
-		//Not sure what to do since an error here
-		//would indicate a problem with accessing what the symlink points to,
-		//not with the original file that was passed in
-
-		//res.index would also be incorrect, I believe
-
-		//return res;
+		res.index = original_indices[res.index];
+		return res;
 	}
 	
-	//Overwrite attrs of symlinks with attrs of what they point to
 	for (int i = 0; i < link_count; i++) {
 		attrs[original_indices[i]] = linked_attrs[i];
 	}
