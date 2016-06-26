@@ -228,6 +228,7 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	tc_res res;
 	char *paths[count];
+	struct tc_attrs *linked_attrs;
 	int original_indices[count];
 
 	char **bufs = alloca(sizeof(char*) * count);
@@ -273,15 +274,15 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 		return res;
 	}
 
-	//Cannot be moved to top of function
-	//since it relies on link_count being the proper length
-	struct tc_attrs linked_attrs[link_count];
+	linked_attrs = alloca(sizeof(struct tc_attrs) * link_count);
 
 	for (int i = 0; i < link_count; i++) {
 		linked_attrs[i].file = tc_file_from_path(bufs[i]);
 	}
 	
 	res = tc_lgetattrsv(linked_attrs, link_count, is_transaction);
+	//TODO: what if tc_lgetattrsv() returns another symlink (symlink to symlink)?
+
 	if (!tc_okay(res)) {
 		res.index = original_indices[res.index];
 		return res;
@@ -290,6 +291,7 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	for (int i = 0; i < link_count; i++) {
 		attrs[original_indices[i]] = linked_attrs[i];
 	}
+
 
 	return res;
 }
