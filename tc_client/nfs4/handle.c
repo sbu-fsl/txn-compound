@@ -3563,7 +3563,7 @@ exit:
         return tcres;
 }
 
-static tc_res tc_nfs4_setattrsv(struct tc_attrs *attrs, int count)
+static tc_res tc_nfs4_lsetattrsv(struct tc_attrs *attrs, int count)
 {
         int rc;
         tc_res tcres;
@@ -3574,7 +3574,7 @@ static tc_res tc_nfs4_setattrsv(struct tc_attrs *attrs, int count)
         fattr4 *fattrs; /* input attrs to set */
 	char *fattr_blobs; /* an array of FATTR_BLOB_SZ-sized buffers */
 
-        NFS4_DEBUG("tc_nfs4_setattrsv");
+        NFS4_DEBUG("tc_nfs4_lsetattrsv");
         tc_start_compound(true);
 	fattrs = alloca(count * sizeof(fattr4));           /* on stack */
         fattr_blobs = alloca(count * FATTR_BLOB_SZ);
@@ -3608,7 +3608,7 @@ static tc_res tc_nfs4_setattrsv(struct tc_attrs *attrs, int count)
                 }
                 switch (resoparray[j].resop) {
                 case NFS4_OP_SETATTR:
-                        NFS4_DEBUG("SETATTR at %d succeeded", j);
+                        NFS4_DEBUG("LSETATTR at %d succeeded", j);
                         break;
                 case NFS4_OP_GETATTR:
 			new_fattrs = &resoparray[j]
@@ -4314,7 +4314,7 @@ void fs_handle_ops_init(struct fsal_obj_ops *ops)
 	ops->tc_readv = tc_nfs4_readv;
 	ops->tc_writev = tc_nfs4_writev;
         ops->tc_lgetattrsv = tc_nfs4_lgetattrsv;
-        ops->tc_setattrsv = tc_nfs4_setattrsv;
+        ops->tc_lsetattrsv = tc_nfs4_lsetattrsv;
         ops->tc_mkdirv = tc_nfs4_mkdirv;
         ops->tc_listdirv = tc_nfs4_listdirv;
         ops->tc_renamev = tc_nfs4_renamev;

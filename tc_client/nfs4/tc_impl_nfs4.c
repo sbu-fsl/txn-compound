@@ -683,7 +683,7 @@ tc_res nfs4_lgetattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	return res;
 }
 
-tc_res nfs4_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
+tc_res nfs4_lsetattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	struct gsh_export *exp = op_ctx->export;
 	tc_res res;
@@ -694,7 +694,7 @@ tc_res nfs4_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 		return tc_failure(0, ENOMEM);
 	}
 
-	res = exp->fsal_export->obj_ops->tc_setattrsv(attrs, count);
+	res = exp->fsal_export->obj_ops->tc_lsetattrsv(attrs, count);
 	nfs4_restore_tc_files(attrs, count, saved_tcfs);
 
 	return res;

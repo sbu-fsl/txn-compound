@@ -415,13 +415,13 @@ exit:
  * @count: the count of tc_attrs in the preceding array
  * @is_transaction: whether to execute the compound as a transaction
  */
-tc_res posix_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
+tc_res posix_lsetattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	int fd = -1, i = 0;
 	struct tc_attrs *cur_attr = NULL;
 	tc_res result = { .index = -1, .err_no = 0 };
 
-	POSIX_WARN("posix_setattrsv() called \n");
+	POSIX_WARN("posix_lsetattrsv() called \n");
 
 	while (i < count) {
 		cur_attr = attrs + i;
@@ -431,7 +431,7 @@ tc_res posix_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 		 */
 		if (helper_set_attrs(cur_attr) < 0) {
 			result = tc_failure(i, errno);
-			POSIX_WARN("posix_setattrsv() failed at index : %d\n",
+			POSIX_WARN("posix_lsetattrsv() failed at index : %d\n",
 				   result.index);
 			break;
 		}

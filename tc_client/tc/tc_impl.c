@@ -376,16 +376,77 @@ int tc_lstat(const char *path, struct stat *buf)
 
 tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
-	tc_res tcres;
-	TC_DECLARE_COUNTER(setattrs);
+	tc_res res;
+	char *paths[count];
+	struct tc_attrs link_attrs[count];
+	int original_indices[count];
 
-	TC_START_COUNTER(setattrs);
-	if (TC_IMPL_IS_NFS4) {
-		tcres = nfs4_setattrsv(attrs, count, is_transaction);
-	} else {
-		tcres = posix_setattrsv(attrs, count, is_transaction);
+	char **bufs = alloca(sizeof(char*) * count);
+	size_t *bufsizes = alloca(sizeof(size_t) * count);
+
+	int link_count = 0;
+
+	memcpy(link_attrs, attrs, sizeof(struct tc_attrs) * count);
+
+	res = tc_lgetattrsv(link_attrs, count, false);
+	if (!tc_okay(res)) {
+		return res;
 	}
-	TC_STOP_COUNTER(setattrs, count, tc_okay(tcres));
+
+	for (int i = 0; i < count; i++) {
+		if (link_attrs[i].mode & S_IFMT == S_IFLNK) {
+			tc_file file = link_attrs[i].file;
+			assert(file.type == TC_FILE_PATH);
+			if (file.fd == TC_FD_ABS) {
+				paths[link_count] = file.path;
+			} else if (file.fd == TC_FD_CWD) {
+				char *path = alloca(sizeof(char) * PATH_MAX);
+				tc_path_join(tc_getcwd(), file.path, path, PATH_MAX);
+				paths[link_count] = path;
+			}
+			bufs[link_count] = alloca(sizeof(char) * PATH_MAX);
+			bufsizes[link_count] = PATH_MAX;
+			original_indices[link_count] = i;
+
+			link_count++;	
+		}
+	}
+	
+	//if nothing was a symlink, then just call tc_lsetattrsv()
+	if (link_count == 0) {
+		res = tc_lsetattrsv(attrs, count, false);
+		return res;
+	}
+
+	
+	res = tc_readlinkv((const char**) paths, bufs, bufsizes, link_count, false);
+	//TODO: what if tc_readlinkv() returns another symlink (symlink to symlink)?
+
+	if (!tc_okay(res)) {
+		return res;
+	}
+
+	for (int i = 0; i < link_count; i++) {
+		attrs[original_indices[i]].file = tc_file_from_path(bufs[i]);
+	}
+	
+	res = tc_lsetattrsv(attrs, link_count, is_transaction);
+
+	return res;
+}
+
+tc_res tc_lsetattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
+{
+	tc_res tcres;
+	TC_DECLARE_COUNTER(lsetattrs);
+
+	TC_START_COUNTER(lsetattrs);
+	if (TC_IMPL_IS_NFS4) {
+		tcres = nfs4_lsetattrsv(attrs, count, is_transaction);
+	} else {
+		tcres = posix_lsetattrsv(attrs, count, is_transaction);
+	}
+	TC_STOP_COUNTER(lsetattrs, count, tc_okay(tcres));
 
 	return tcres;
 }

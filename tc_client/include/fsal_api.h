@@ -1323,7 +1323,7 @@ struct fsal_obj_ops {
 
 	tc_res (*tc_lgetattrsv)(struct tc_attrs *attrs, int count);
 
-	tc_res (*tc_setattrsv)(struct tc_attrs *attrs, int count);
+	tc_res (*tc_lsetattrsv)(struct tc_attrs *attrs, int count);
 
 	fsal_status_t (*tc_destroysession)();
 /**

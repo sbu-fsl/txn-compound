@@ -610,6 +610,13 @@ static inline bool tx_setattrsv(struct tc_attrs *attrs, int count)
 	return tc_okay(tc_setattrsv(attrs, count, true));
 }
 
+tc_res tc_lsetattrsv(struct tc_attrs *attrs, int count, bool is_transaction);
+
+static inline bool tx_lsetattrsv(struct tc_attrs *attrs, int count)
+{
+	return tc_okay(tc_lsetattrsv(attrs, count, true));
+}
+
 /**
  * List the content of a directory.
  *
