@@ -227,6 +227,7 @@ tc_res tc_writev(struct tc_iovec *writes, int count, bool is_transaction)
 tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	tc_res res;
+	char *cwd;
 	char *paths[count];
 	tc_file original_files[count];
 	struct tc_attrs_masks old_masks[count];
@@ -254,6 +255,7 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 
 	res = tc_lgetattrsv(attrs, count, false);
 
+	cwd = tc_getcwd();
 	for (int i = 0; i < count; i++) {
 		if (S_ISLNK(attrs[i].mode)) {
 			tc_file file = attrs[i].file;
@@ -262,7 +264,7 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 				paths[link_count] = file.path;
 			} else if (file.fd == TC_FD_CWD) {
 				char *path = alloca(sizeof(char) * PATH_MAX);
-				tc_path_join(tc_getcwd(), file.path, path, PATH_MAX);
+				tc_path_join(cwd, file.path, path, PATH_MAX);
 				paths[link_count] = path;
 			}
 			bufs[link_count] = alloca(sizeof(char) * PATH_MAX);
@@ -272,6 +274,7 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 			link_count++;	
 		}
 	}
+	free(cwd);
 
 	for (int i = 0; i < old_mode_count; i++) {
 		attrs[mode_original_indices[i]].mode = old_modes[i];
@@ -390,6 +393,7 @@ int tc_lstat(const char *path, struct stat *buf)
 tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	tc_res res;
+	char *cwd;
 	char *paths[count];
 	tc_file original_files[count];
 	struct tc_attrs_masks old_masks[count];
@@ -410,6 +414,7 @@ tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 
 	res = tc_lgetattrsv(attrs, count, false);
 
+	cwd = tc_getcwd();
 	for (int i = 0; i < count; i++) {
 		if (S_ISLNK(attrs[i].mode)) {
 			tc_file file = attrs[i].file;
@@ -418,7 +423,7 @@ tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 				paths[link_count] = file.path;
 			} else if (file.fd == TC_FD_CWD) {
 				char *path = alloca(sizeof(char) * PATH_MAX);
-				tc_path_join(tc_getcwd(), file.path, path, PATH_MAX);
+				tc_path_join(cwd, file.path, path, PATH_MAX);
 				paths[link_count] = path;
 			}
 			bufs[link_count] = alloca(sizeof(char) * PATH_MAX);
@@ -430,6 +435,7 @@ tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 		attrs[i].masks = old_masks[i];
 		attrs[i].mode = old_modes[i];
 	}
+	free(cwd);
 
 	if (!tc_okay(res)) {
 		return res;
