@@ -228,21 +228,34 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	tc_res res;
 	char *paths[count];
-	struct tc_attrs *linked_attrs;
+	tc_file original_files[count];
+	struct tc_attrs_masks old_masks[count];
+	mode_t old_modes[count];
+	int mode_original_indices[count];
 	int original_indices[count];
 
-	char **bufs = alloca(sizeof(char*) * count);
-	size_t *bufsizes = alloca(sizeof(size_t) * count);
+	char *bufs[count];
+	size_t bufsizes[count];
 
+	int old_mode_count = 0;
 	int link_count = 0;
 
-	res = tc_lgetattrsv(attrs, count, false);
-	if (!tc_okay(res)) {
-		return res;
+	for (int i = 0; i < count; i++) {
+		// if caller doesn't want to get a mode, save old mode before passing attrs
+		// into lgetattrsv to determine if files are symlinks
+		if (!attrs[i].masks.has_mode) {
+			old_modes[old_mode_count] = attrs[i].mode;
+			old_masks[old_mode_count] = attrs[i].masks;
+			attrs[i].masks.has_mode = true;
+			mode_original_indices[old_mode_count] = i;
+			old_mode_count++;
+		}
 	}
 
+	res = tc_lgetattrsv(attrs, count, false);
+
 	for (int i = 0; i < count; i++) {
-		if (attrs[i].mode & S_IFMT == S_IFLNK) {
+		if (S_ISLNK(attrs[i].mode)) {
 			tc_file file = attrs[i].file;
 			assert(file.type == TC_FILE_PATH);
 			if (file.fd == TC_FD_ABS) {
@@ -254,44 +267,44 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 			}
 			bufs[link_count] = alloca(sizeof(char) * PATH_MAX);
 			bufsizes[link_count] = PATH_MAX;
-
-			//Save original index into attrs so we can overwrite this data
-			//with the attrs of what the link points to later
 			original_indices[link_count] = i;
 
 			link_count++;	
 		}
 	}
-	
+
+	for (int i = 0; i < old_mode_count; i++) {
+		attrs[mode_original_indices[i]].mode = old_modes[i];
+		attrs[mode_original_indices[i]].masks = old_masks[i];	
+	}
+
 	//if nothing was a symlink, then our prior call to tc_lgetattrsv() sufficed, so we're done
-	if (link_count == 0) {
+	if (!tc_okay(res) || link_count == 0) {
 		return res;
 	}
 
 	
 	res = tc_readlinkv((const char**) paths, bufs, bufsizes, link_count, false);
+	//TODO: what if tc_readlinkv() returns another symlink (symlink to symlink)?
+
 	if (!tc_okay(res)) {
 		return res;
 	}
 
-	linked_attrs = alloca(sizeof(struct tc_attrs) * link_count);
-
 	for (int i = 0; i < link_count; i++) {
-		linked_attrs[i].file = tc_file_from_path(bufs[i]);
+		original_files[i] = attrs[original_indices[i]].file;
+		attrs[original_indices[i]].file = tc_file_from_path(bufs[i]);
 	}
 	
-	res = tc_lgetattrsv(linked_attrs, link_count, is_transaction);
-	//TODO: what if tc_lgetattrsv() returns another symlink (symlink to symlink)?
+	res = tc_lgetattrsv(attrs, link_count, is_transaction);
 
 	if (!tc_okay(res)) {
 		res.index = original_indices[res.index];
-		return res;
-	}
-	
-	for (int i = 0; i < link_count; i++) {
-		attrs[original_indices[i]] = linked_attrs[i];
 	}
 
+	for (int i = 0; i < link_count; i++) {
+		attrs[original_indices[i]].file = original_files[i];
+	}
 
 	return res;
 }
@@ -324,7 +337,7 @@ static int tc_stat_impl(tc_file tcf, struct stat *buf, bool readlink)
 		.masks = TC_ATTRS_MASK_ALL,
 	};
 
-	tcres = tc_getattrsv(&tca, 1, false);
+	tcres = tc_lgetattrsv(&tca, 1, false);
 	if (!tc_okay(tcres)) {
 		return tcres.err_no;
 	}
@@ -349,7 +362,7 @@ static int tc_stat_impl(tc_file tcf, struct stat *buf, bool readlink)
 		tc_path_joinall(link_target, PATH_MAX, path, "..", linkbuf);
 
 		tca.file.path = link_target;
-		tcres = tc_getattrsv(&tca, 1, false);
+		tcres = tc_lgetattrsv(&tca, 1, false);
 		if (!tc_okay(tcres)) {
 			return tcres.err_no;
 		}
@@ -378,24 +391,28 @@ tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	tc_res res;
 	char *paths[count];
-	struct tc_attrs link_attrs[count];
+	tc_file original_files[count];
+	struct tc_attrs_masks old_masks[count];
+	mode_t old_modes[count];
 	int original_indices[count];
 
-	char **bufs = alloca(sizeof(char*) * count);
-	size_t *bufsizes = alloca(sizeof(size_t) * count);
+	char *bufs[count];
+	size_t bufsizes[count];
 
 	int link_count = 0;
 
-	memcpy(link_attrs, attrs, sizeof(struct tc_attrs) * count);
-
-	res = tc_lgetattrsv(link_attrs, count, false);
-	if (!tc_okay(res)) {
-		return res;
+	for (int i = 0; i < count; i++) {
+		old_modes[i] = attrs[i].mode;
+		old_masks[i] = attrs[i].masks;
+		attrs[i].masks = TC_ATTRS_MASK_NONE;
+		attrs[i].masks.has_mode = true;
 	}
 
+	res = tc_lgetattrsv(attrs, count, false);
+
 	for (int i = 0; i < count; i++) {
-		if (link_attrs[i].mode & S_IFMT == S_IFLNK) {
-			tc_file file = link_attrs[i].file;
+		if (S_ISLNK(attrs[i].mode)) {
+			tc_file file = attrs[i].file;
 			assert(file.type == TC_FILE_PATH);
 			if (file.fd == TC_FD_ABS) {
 				paths[link_count] = file.path;
@@ -410,15 +427,14 @@ tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 
 			link_count++;	
 		}
+		attrs[i].masks = old_masks[i];
+		attrs[i].mode = old_modes[i];
 	}
-	
-	//if nothing was a symlink, then just call tc_lsetattrsv()
-	if (link_count == 0) {
-		res = tc_lsetattrsv(attrs, count, false);
+
+	if (!tc_okay(res)) {
 		return res;
 	}
 
-	
 	res = tc_readlinkv((const char**) paths, bufs, bufsizes, link_count, false);
 	//TODO: what if tc_readlinkv() returns another symlink (symlink to symlink)?
 
@@ -427,10 +443,19 @@ tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	}
 
 	for (int i = 0; i < link_count; i++) {
+		original_files[i] = attrs[original_indices[i]].file;
 		attrs[original_indices[i]].file = tc_file_from_path(bufs[i]);
 	}
 	
-	res = tc_lsetattrsv(attrs, link_count, is_transaction);
+	res = tc_lsetattrsv(attrs, count, is_transaction);
+
+	if (!tc_okay(res)) {
+		res.index = original_indices[res.index];
+	}
+
+	for (int i = 0; i < link_count; i++) {
+		attrs[original_indices[i]].file = original_files[i];
+	}
 
 	return res;
 }

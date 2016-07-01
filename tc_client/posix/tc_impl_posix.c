@@ -346,6 +346,10 @@ static int helper_set_attrs(struct tc_attrs *attrs)
 
 	/* set the mode */
 	if (attrs->masks.has_mode) {
+		if (S_ISLNK(attrs->mode)) {
+			POSIX_WARN("set_attrs() failed : cannot chmod symlink\n");
+			return -1;
+		}
 		if (attrs->file.type == TC_FILE_PATH)
 			res = chmod(attrs->file.path, attrs->mode);
 		else
@@ -368,9 +372,8 @@ static int helper_set_attrs(struct tc_attrs *attrs)
 
 	/* set the UID and GID */
 	if (attrs->masks.has_uid || attrs->masks.has_gid) {
-
 		if (attrs->file.type == TC_FILE_PATH)
-			res = chown(attrs->file.path, attrs->uid, attrs->gid);
+			res = lchown(attrs->file.path, attrs->uid, attrs->gid);
 		else
 			res = fchown(attrs->file.fd, attrs->uid, attrs->gid);
 
@@ -382,7 +385,7 @@ static int helper_set_attrs(struct tc_attrs *attrs)
 	if (attrs->masks.has_atime || attrs->masks.has_mtime) {
 
 		if (attrs->file.type == TC_FILE_PATH)
-			stat(attrs->file.path, &s);
+			lstat(attrs->file.path, &s);
 		else
 			fstat(attrs->file.fd, &s);
 
@@ -396,7 +399,7 @@ static int helper_set_attrs(struct tc_attrs *attrs)
 			TIMEVAL_TO_TIMESPEC(&times[1], &attrs->mtime);
 
 		if (attrs->file.type == TC_FILE_PATH)
-			res = utimes(attrs->file.path, times);
+			res = lutimes(attrs->file.path, times);
 		else
 			res = futimes(attrs->file.fd, times);
 

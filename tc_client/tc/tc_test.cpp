@@ -430,6 +430,63 @@ TYPED_TEST_P(TcTest, AttrsTestPath)
 	free(attrs2);
 }
 
+/**
+ * TC-Set/Get Attributes test
+ * with symlinks
+ */
+TYPED_TEST_P(TcTest, AttrsTestSymlinks)
+{
+	const char *PATHS[] = { "AttrsTestSymlinks-Linked1.txt",
+			       "AttrsTestSymlinks-Linked2.txt",
+			       "AttrsTestSymlinks-Linked3.txt" };
+	const char *LPATHS[] = { "AttrsTestSymlinks-Link1.txt",
+			       "AttrsTestSymlinks-Link2.txt",
+			       "AttrsTestSymlinks-Link3.txt" };
+	tc_res res = { 0 };
+	struct tc_iovec iov;
+	int i;
+	const int count = 3;
+	struct tc_attrs *attrs1 = (tc_attrs *)calloc(count, sizeof(tc_attrs));
+	struct tc_attrs *attrs2 = (tc_attrs *)calloc(count, sizeof(tc_attrs));
+
+	EXPECT_NOTNULL(attrs1);
+	EXPECT_NOTNULL(attrs2);
+
+	Removev(PATHS, count);
+	Removev(LPATHS, count);
+
+	EXPECT_OK(tc_symlinkv(PATHS, LPATHS, count, false));
+
+	for (i = 0; i < count; ++i) {
+		tc_iov4creation(&iov, PATHS[i], 100, getRandomBytes(100));
+		EXPECT_NOTNULL(iov.data);
+		EXPECT_OK(tc_writev(&iov, 1, false));
+		attrs1[i].file = tc_file_from_path(LPATHS[i]);
+		attrs2[i].file = tc_file_from_path(LPATHS[i]);
+	}
+
+	attrs1 = set_tc_attrs(attrs1, count);
+	EXPECT_OK(tc_setattrsv(attrs1, count, false));
+
+	for (i = 0; i < count; ++i) {
+		attrs2[i].masks = attrs1[i].masks;
+	}
+	EXPECT_OK(tc_getattrsv(attrs2, count, false));
+
+	EXPECT_TRUE(compare(attrs1, attrs2, count));
+
+	attrs1[0].gid = 88;
+
+	EXPECT_OK(tc_lsetattrsv(attrs1, count, false));
+	EXPECT_OK(tc_getattrsv(attrs2, count, false));
+	EXPECT_FALSE(compare(attrs1, attrs2, count));
+	EXPECT_OK(tc_lgetattrsv(attrs2, count, false));
+	EXPECT_TRUE(compare(attrs1, attrs2, count));
+
+	free(attrs1);
+	free(attrs2);
+}
+
 /*
  * TC-Set/Get Attributes test
  * using File Descriptor
@@ -1139,6 +1196,7 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   TestFileDesc,
 			   AttrsTestPath,
 			   AttrsTestFileDesc,
+			   AttrsTestSymlinks,
 			   ListDirContents,
 			   ListDirRecursively,
 			   RenameFile,
