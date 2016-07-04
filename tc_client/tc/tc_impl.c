@@ -444,7 +444,7 @@ tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	}
 
 	res = tc_readlinkv(paths, bufs, bufsizes, link_count, false);
-	//TODO: what if tc_readlinkv() returns another symlink (symlink to symlink)?
+	//TODO: what if tc_readlinkv() returns symlinks (symlink to symlink)?
 
 	if (!tc_okay(res)) {
 		return res;
@@ -678,8 +678,11 @@ static tc_res nfs4_ensure_dir(slice_t *comps, int n, mode_t mode)
 
 	dirs = alloca(n * sizeof(*dirs));
 	dirs[0].file = tc_file_from_path(new_auto_str(comps[0]));
+	dirs[0].masks = TC_ATTRS_MASK_NONE;
+	dirs[0].masks.has_mode = true;
 	for (i = 1; i < n; ++i) {
 		dirs[i].file = tc_file_from_cfh(new_auto_str(comps[i]));
+		dirs[i].masks = dirs[0].masks;
 	}
 
 	tcres = tc_getattrsv(dirs, n, false);
