@@ -307,7 +307,6 @@ tc_res posix_lgetattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 			res = fstat(cur_attr->file.fd, &st);
 
 		if (res < 0) {
-			perror("");
 			POSIX_WARN("file path : %s\n", cur_attr->file.path);
 			result = tc_failure(i, errno);
 			POSIX_WARN("posix_lgetattrsv() failed at index : %d\n",
