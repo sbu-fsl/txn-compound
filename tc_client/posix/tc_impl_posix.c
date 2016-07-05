@@ -44,7 +44,7 @@ void* posix_init(const char* config_file, const char* log_file) {
 	SetNameFunction("posix");
 	SetNameHost("localhost");
 	init_logging(log_file, NIV_EVENT);
-	return NULL;
+	return (void*) log_file;
 }
 
 tc_file *posix_openv(const char **paths, int count, int *flags, mode_t *modes)
