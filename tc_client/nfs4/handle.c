@@ -366,7 +366,9 @@ static struct bitmap4 lease_bits = {
 static void tc_attr_masks_to_bitmap(const struct tc_attrs_masks *masks,
                                     bitmap4 *bm)
 {
+        memset(bm, 0, sizeof(*bm));
         if (masks->has_mode) {
+                bm->map[0] |= PXY_ATTR_BIT(FATTR4_TYPE);
                 bm->map[1] |= PXY_ATTR_BIT2(FATTR4_MODE);
                 bm->bitmap4_len = MAX(bm->bitmap4_len, 2);
         }
@@ -2246,13 +2248,14 @@ static inline CREATE4resok *tc_prepare_mkdir(const char *name, fattr4 *fattr)
 /**
  * Set up the GETATTR operation.
  */
-static inline GETATTR4resok *tc_prepare_getattr(char *fattr_blob)
+static inline GETATTR4resok *tc_prepare_getattr(char *fattr_blob,
+						const struct bitmap4 *bm4)
 {
 	GETATTR4resok *atok;
 
 	atok = fs_fill_getattr_reply(resoparray + opcnt, fattr_blob,
 				     FATTR_BLOB_SZ);
-	COMPOUNDV4_ARG_ADD_OP_GETATTR(opcnt, argoparray, fs_bitmap_getattr);
+	COMPOUNDV4_ARG_ADD_OP_GETATTR(opcnt, argoparray, *bm4);
 
         return atok;
 }
@@ -2427,7 +2430,7 @@ static fsal_status_t fs_mkdir(struct fsal_obj_handle *dir_hdl, const char *name,
 
 	fhok = tc_prepare_getfh(padfilehandle);
 
-	atok = tc_prepare_getattr(fattr_blob);
+	atok = tc_prepare_getattr(fattr_blob, &fs_bitmap_getattr);
 
 	rc = fs_nfsv4_call(op_ctx->creds, NULL);
 	nfs4_Fattr_Free(&input_attr);
@@ -3190,6 +3193,7 @@ void tc_attrs_to_fattr4(const struct tc_attrs *tca, fattr4 *attr4)
 
         if (tca->masks.has_mode) {
                 attrlist.mask |= ATTR_MODE;
+                attrlist.mask |= ATTR_TYPE;
                 attrlist.mode = tca->mode;
         }
         if (tca->masks.has_size) {
@@ -3419,7 +3423,8 @@ static tc_res tc_nfs4_openv(struct tc_attrs *attrs, int count, int *flags,
 		}
 		tc_prepare_open(name, flags[i], new_auto_buf(64), &fattrs[i]);
 		tc_prepare_getfh(fh_buffers + i * NFS4_FHSIZE);
-		tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ);
+		tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ,
+				   &fs_bitmap_getattr);
 	}
 
 	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
@@ -3517,20 +3522,24 @@ static tc_res tc_nfs4_lgetattrsv(struct tc_attrs *attrs, int count)
 	int i = 0;      /* index of tc_iovec */
 	int j = 0;      /* index of NFS operations */
 	char *fattr_blobs; /* an array of FATTR_BLOB_SZ-sized buffers */
+        struct bitmap4 *bitmaps;
 
         NFS4_DEBUG("tc_nfs4_lgetattrsv");
         assert(count >= 1);
         tc_start_compound(true);
         fattr_blobs = (char *)malloc(count * FATTR_BLOB_SZ);
         assert(fattr_blobs);
+	bitmaps = alloca(count * sizeof(*bitmaps));
 
-        for (i = 0; i < count; ++i) {
+	for (i = 0; i < count; ++i) {
 		rc = tc_set_current_fh(&attrs[i].file, NULL);
 		if (rc < 0) {
                         tcres = tc_failure(i, ERR_FSAL_INVAL);
                         goto exit;
                 }
-		tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ);
+		tc_attr_masks_to_bitmap(&attrs[i].masks, bitmaps + i);
+		tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ,
+				   bitmaps + i);
 	}
 
 	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
@@ -3573,13 +3582,15 @@ static tc_res tc_nfs4_lsetattrsv(struct tc_attrs *attrs, int count)
 	int j = 0;      /* index of NFS operations */
         fattr4 *fattrs; /* input attrs to set */
 	char *fattr_blobs; /* an array of FATTR_BLOB_SZ-sized buffers */
+        struct bitmap4 *bitmaps;
 
         NFS4_DEBUG("tc_nfs4_lsetattrsv");
         tc_start_compound(true);
 	fattrs = alloca(count * sizeof(fattr4));           /* on stack */
         fattr_blobs = alloca(count * FATTR_BLOB_SZ);
+	bitmaps = alloca(count * sizeof(*bitmaps));
 
-        for (i = 0; i < count; ++i) {
+	for (i = 0; i < count; ++i) {
                 tc_attrs_to_fattr4(&attrs[i], &fattrs[i]);
                 rc = tc_set_current_fh(&attrs[i].file, NULL);
                 if (rc < 0) {
@@ -3587,8 +3598,10 @@ static tc_res tc_nfs4_lsetattrsv(struct tc_attrs *attrs, int count)
                         goto exit;
                 }
                 tc_prepare_setattr(&fattrs[i]);
-                tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ);
-        }
+		tc_attr_masks_to_bitmap(&attrs[i].masks, bitmaps + i);
+		tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ,
+				   bitmaps + i);
+	}
 
 	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
@@ -3666,7 +3679,8 @@ static tc_res tc_nfs4_mkdirv(struct tc_attrs *dirs, int count)
 
 		tc_prepare_getfh(fh_buffers + i * NFS4_FHSIZE);
 
-		tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ);
+		tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ,
+                                   &fs_bitmap_getattr);
 	}
 
 	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
@@ -3780,7 +3794,8 @@ static inline void dequeue_dir_to_list(struct glist_head *dir_queue)
 static int tc_parse_dir_entries(struct glist_head *dir_queue,
 				struct tc_dir_to_list *parent,
 				const entry4 *entries, int *limit,
-                                bool recursive, tc_listdirv_cb cb, void *cbarg)
+                                bool recursive, bool has_mode,
+                                tc_listdirv_cb cb, void *cbarg)
 {
 	bool success;
 	char *path;
@@ -3799,6 +3814,7 @@ static int tc_parse_dir_entries(struct glist_head *dir_queue,
 		assert(ret > 0);
 		attrs.file = tc_file_from_path(asstr(&buf));
 		fattr4_to_tc_attrs(&entries->attrs, &attrs);
+                attrs.masks.has_mode = has_mode;
 		success = cb(&attrs, parent->path, cbarg);
 		if (!success) {
 			free(path);
@@ -3823,7 +3839,7 @@ static int tc_parse_dir_entries(struct glist_head *dir_queue,
 }
 
 static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
-			     const bitmap4 *bitmap, bool recursive,
+                             struct tc_attrs_masks masks, bool recursive,
 			     tc_listdirv_cb cb, void *cbarg)
 {
 	struct tc_dir_to_list *next_dle;
@@ -3838,8 +3854,13 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 	int i = 0, j;
 	int rc;
 	static const int MAX_READDIRS_PER_COMPOUND = 16;
+        bool has_mode = masks.has_mode;
+        bitmap4 bitmap = fs_bitmap_readdir;
 
 	tc_start_compound(true);
+
+        masks.has_mode = true;  // to detect directory
+        tc_attr_masks_to_bitmap(&masks, &bitmap);
 
 	glist_for_each_entry(dle, dir_queue, list)
 	{
@@ -3849,7 +3870,7 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 		} else {
 			tc_prepare_putfh(&dle->fh);
 		}
-		tc_prepare_readdir(&dle->cookie, bitmap);
+		tc_prepare_readdir(&dle->cookie, &bitmap);
 		if (++i >= MAX_READDIRS_PER_COMPOUND)
 			break;
 	}
@@ -3881,9 +3902,9 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 			rdok =
 			    &resoparray[j]
 				 .nfs_resop4_u.opreaddir.READDIR4res_u.resok4;
-			rc = tc_parse_dir_entries(dir_queue, dle,
-						  rdok->reply.entries, limit,
-						  recursive, cb, cbarg);
+			rc = tc_parse_dir_entries(
+			    dir_queue, dle, rdok->reply.entries, limit,
+			    recursive, has_mode, cb, cbarg);
 			if (rc < 0) {
 				tcres = tc_failure(i, rc);
 				goto exit;
@@ -3920,9 +3941,6 @@ tc_res tc_nfs4_listdirv(const char **dirs, int count,
         int i = 0;
 	tc_res tcres = { .err_no = 0 };
 	GLIST_HEAD(dir_queue);
-        bitmap4 bitmap = fs_bitmap_readdir;
-
-        tc_attr_masks_to_bitmap(&masks, &bitmap);
 
         /**
          * The API uses "0" as "unlimited" whereas the implementation uses "-1"
@@ -3944,7 +3962,7 @@ tc_res tc_nfs4_listdirv(const char **dirs, int count,
          * encounter the subdirectory.
          */
 	while (!glist_empty(&dir_queue)) {
-		tcres = tc_do_listdirv(&dir_queue, &max_entries, &bitmap,
+		tcres = tc_do_listdirv(&dir_queue, &max_entries, masks,
 				       recursive, cb, cbarg);
 		if (!tc_okay(tcres)) {
 			goto exit;

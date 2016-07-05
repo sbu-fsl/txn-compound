@@ -254,91 +254,83 @@ TYPED_TEST_P(TcTest, TestFileDesc)
  * Compare the attributes once set, to check if set properly
  */
 
-bool compare(tc_attrs *usr, tc_attrs *check, int count)
+bool compare_attrs(tc_attrs *attrs1, tc_attrs *attrs2, int count)
 {
 	int i = 0;
-	tc_attrs *written = NULL;
-	tc_attrs *read = NULL;
+	tc_attrs *a = NULL;
+	tc_attrs *b = NULL;
 
-	while (i < count) {
-
-		written = usr + i;
-		read = check + i;
-
-		if (written->masks.has_mode) {
-			if (!written->mode & read->mode) {
-				TCTEST_WARN("Mode does not match\n");
-				TCTEST_WARN(" %d %d\n", written->mode,
-					   read->mode);
-
-				return false;
-			}
+	for (i = 0; i < count; ++i) {
+		a = attrs1 + i;
+		b = attrs2 + i;
+		if (a->masks.has_mode != b->masks.has_mode)
+			return false;
+		if (a->masks.has_mode &&
+		    (a->mode & (S_IRWXU | S_IRWXG | S_IRWXO)) !=
+		    (b->mode & (S_IRWXU | S_IRWXG | S_IRWXO))) {
+			TCTEST_WARN("Mode does not match: %x vs %x\n",
+				    a->mode, b->mode);
+			TCTEST_WARN("TYPE BITS: %x vs %x\n", (a->mode & S_IFMT),
+				    (b->mode & S_IFMT));
+			TCTEST_WARN("OWNER BITS: %x vs %x\n",
+				    (a->mode & S_IRWXU), (b->mode & S_IRWXU));
+			TCTEST_WARN("GROUP BITS: %x vs %x\n",
+				    (a->mode & S_IRWXO), (b->mode & S_IRWXO));
+			return false;
 		}
 
-		if (written->masks.has_rdev) {
-			if (memcmp((void *)&(written->rdev),
-				   (void *)&(read->rdev), sizeof(read->rdev))) {
-				TCTEST_WARN("rdev does not match\n");
-				TCTEST_WARN(" %d %d\n", written->rdev,
-					   read->rdev);
-
-				return false;
-			}
+		if (a->masks.has_rdev != b->masks.has_rdev)
+			return false;
+		if (a->masks.has_rdev && a->rdev != b->rdev) {
+			TCTEST_WARN("rdev does not match\n");
+			TCTEST_WARN(" %d %d\n", a->rdev, b->rdev);
+			return false;
 		}
 
-		if (written->masks.has_nlink) {
-			if (written->nlink != read->nlink) {
-				TCTEST_WARN("nlink does not match\n");
-				TCTEST_WARN(" %d %d\n", written->nlink,
-					   read->nlink);
-
-				return false;
-			}
+		if (a->masks.has_nlink != b->masks.has_nlink)
+			return false;
+		if (a->masks.has_nlink && a->nlink != b->nlink) {
+			TCTEST_WARN("nlink does not match\n");
+			TCTEST_WARN(" %d %d\n", a->nlink, b->nlink);
+			return false;
 		}
 
-		if (written->masks.has_uid) {
-			if (written->uid != read->uid) {
-				TCTEST_WARN("uid does not match\n");
-				TCTEST_WARN(" %d %d\n", written->uid, read->uid);
-
-				return false;
-			}
+		if (a->masks.has_uid != b->masks.has_uid)
+			return false;
+		if (a->masks.has_uid && a->uid != b->uid) {
+			TCTEST_WARN("uid does not match\n");
+			TCTEST_WARN(" %d %d\n", a->uid, b->uid);
+			return false;
 		}
 
-		if (written->masks.has_gid) {
-			if (written->gid != read->gid) {
-				TCTEST_WARN("gid does not match\n");
-				TCTEST_WARN(" %d %d\n", written->gid, read->gid);
-
-				return false;
-			}
+		if (a->masks.has_gid != b->masks.has_gid)
+			return false;
+		if (a->masks.has_gid && a->gid != b->gid) {
+			TCTEST_WARN("gid does not match\n");
+			TCTEST_WARN(" %d %d\n", a->gid, b->gid);
+			return false;
 		}
 
-		if (written->masks.has_ctime) {
-			if (memcmp((void *)&(written->ctime),
-				   (void *)&(read->ctime),
-				   sizeof(read->ctime))) {
-				TCTEST_WARN("ctime does not match\n");
-				TCTEST_WARN(" %d %d\n", written->ctime,
-					   read->ctime);
-
-				return false;
-			}
+		if (a->masks.has_ctime != b->masks.has_ctime)
+			return false;
+		if (a->masks.has_ctime &&
+		    memcmp((void *)&(a->ctime), (void *)&(b->ctime),
+			   sizeof(b->ctime))) {
+			TCTEST_WARN("ctime does not match\n");
+			TCTEST_WARN(" %d %d\n", a->ctime,
+				   b->ctime);
+			return false;
 		}
 
-		if (written->masks.has_mtime) {
-			if (memcmp((void *)&(written->mtime),
-				   (void *)&(read->mtime),
-				   sizeof(read->mtime))) {
-				TCTEST_WARN("mtime does not match\n");
-				TCTEST_WARN(" %d %d\n", written->mtime,
-					   read->mtime);
-
-				return false;
-			}
+		if (a->masks.has_mtime != b->masks.has_mtime)
+			return false;
+		if (a->masks.has_mtime &&
+		    memcmp((void *)&(a->mtime), (void *)&(b->mtime),
+			   sizeof(b->mtime))) {
+			TCTEST_WARN("mtime does not match\n");
+			TCTEST_WARN(" %d %d\n", a->mtime, b->mtime);
+			return false;
 		}
-
-		i++;
 	}
 
 	return true;
@@ -424,7 +416,7 @@ TYPED_TEST_P(TcTest, AttrsTestPath)
 	}
 	EXPECT_OK(tc_getattrsv(attrs2, count, false));
 
-	EXPECT_TRUE(compare(attrs1, attrs2, count));
+	EXPECT_TRUE(compare_attrs(attrs1, attrs2, count));
 
 	free(attrs1);
 	free(attrs2);
@@ -461,27 +453,27 @@ TYPED_TEST_P(TcTest, AttrsTestSymlinks)
 		tc_iov4creation(&iov, PATHS[i], 100, getRandomBytes(100));
 		EXPECT_NOTNULL(iov.data);
 		EXPECT_OK(tc_writev(&iov, 1, false));
+
 		attrs1[i].file = tc_file_from_path(LPATHS[i]);
-		attrs2[i].file = tc_file_from_path(LPATHS[i]);
+		tc_attrs_set_mode(&attrs1[i], S_IRUSR);
+		tc_attrs_set_atime(&attrs1[i], totimespec(time(NULL), 0));
+		attrs2[i] = attrs1[i];
 	}
 
-	attrs1 = set_tc_attrs(attrs1, count);
 	EXPECT_OK(tc_setattrsv(attrs1, count, false));
-
-	for (i = 0; i < count; ++i) {
-		attrs2[i].masks = attrs1[i].masks;
-	}
 	EXPECT_OK(tc_getattrsv(attrs2, count, false));
+	EXPECT_TRUE(compare_attrs(attrs1, attrs2, count));
 
-	EXPECT_TRUE(compare(attrs1, attrs2, count));
-
-	attrs1[0].gid = 88;
-
-	EXPECT_OK(tc_lsetattrsv(attrs1, count, false));
-	EXPECT_OK(tc_getattrsv(attrs2, count, false));
-	EXPECT_FALSE(compare(attrs1, attrs2, count));
+	tc_attrs_set_mode(&attrs1[0], S_IRUSR | S_IRGRP);
+	EXPECT_OK(tc_setattrsv(attrs1, count, false));
 	EXPECT_OK(tc_lgetattrsv(attrs2, count, false));
-	EXPECT_TRUE(compare(attrs1, attrs2, count));
+
+	EXPECT_FALSE(S_IROTH & attrs1[0].mode);
+	EXPECT_TRUE(S_IROTH & attrs2[0].mode);
+	EXPECT_FALSE(compare_attrs(attrs1, attrs2, count));
+
+	EXPECT_OK(tc_getattrsv(attrs2, count, false));
+	EXPECT_TRUE(compare_attrs(attrs1, attrs2, count));
 
 	free(attrs1);
 	free(attrs2);
@@ -521,7 +513,7 @@ TYPED_TEST_P(TcTest, AttrsTestFileDesc)
 	}
 	EXPECT_OK(tc_getattrsv(attrs2, count, false));
 
-	EXPECT_TRUE(compare(attrs1, attrs2, count));
+	EXPECT_TRUE(compare_attrs(attrs1, attrs2, count));
 
 	tc_closev(tcfs, count);
 
@@ -563,7 +555,7 @@ TYPED_TEST_P(TcTest, ListDirContents)
 	    TC_ATTRS_MASK_ALL;
 	EXPECT_OK(tc_getattrsv(read_attrs, count, false));
 
-	EXPECT_TRUE(compare(contents, read_attrs, count));
+	EXPECT_TRUE(compare_attrs(contents, read_attrs, count));
 
 	tc_free_attrs(contents, count, true);
 	free(read_attrs);
