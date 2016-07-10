@@ -561,6 +561,29 @@ TYPED_TEST_P(TcTest, ListDirContents)
 	free(read_attrs);
 }
 
+TYPED_TEST_P(TcTest, ListLargeDir)
+{
+	EXPECT_OK(tc_ensure_dir("TcTest-ListLargeDir", 0755, 0));
+	buf_t *name = new_auto_buf(PATH_MAX);
+	const int N = 512;
+	for (int i = 1; i <= N; ++i) {
+		buf_printf(name, "TcTest-ListLargeDir/large-file%05d", i);
+		tc_touch(asstr(name), i);
+	}
+
+	tc_attrs *contents;
+	int count = 0;
+	EXPECT_OK(tc_listdir("TcTest-ListLargeDir", TC_ATTRS_MASK_ALL, 0,
+			     false, &contents, &count));
+	EXPECT_EQ(N, count);
+	qsort(contents, count, sizeof(*contents), tc_cmp_attrs_by_name);
+	for (int i = 1; i <= N; ++i) {
+		buf_printf(name, "TcTest-ListLargeDir/large-file%05d", i);
+		EXPECT_STREQ(asstr(name), contents[i - 1].file.path);
+	}
+	tc_free_attrs(contents, count, true);
+}
+
 TYPED_TEST_P(TcTest, ListDirRecursively)
 {
 	EXPECT_OK(tc_ensure_dir("TcTest-ListDirRecursively/00/00", 0755, 0));
@@ -1190,6 +1213,7 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   AttrsTestFileDesc,
 			   AttrsTestSymlinks,
 			   ListDirContents,
+			   ListLargeDir,
 			   ListDirRecursively,
 			   RenameFile,
 			   RemoveFileTest,
