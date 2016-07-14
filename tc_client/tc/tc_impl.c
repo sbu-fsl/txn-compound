@@ -754,6 +754,48 @@ tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 
 	TC_START_COUNTER(copy);
 	if (TC_IMPL_IS_NFS4) {
+		struct tc_attrs attrs[count];
+		const char *paths[count];
+		int original_indices[count];
+
+		char *bufs[count];
+		size_t bufsizes[count];
+
+		int link_count = 0;
+		int i;
+
+		for (i = 0; i < count; i++) {
+			attrs[i].file = tc_file_from_path(pairs[i].src_path);
+			attrs[i].masks = TC_ATTRS_MASK_NONE;
+			attrs[i].masks.has_mode = true;
+		}
+
+		tcres = tc_lgetattrsv(attrs, count, false);
+		if (!tc_okay(tcres)) {
+			return tcres;
+		}
+
+		for (i = 0; i < count; i++) {
+			if (S_ISLNK(attrs[i].mode))	{
+				paths[link_count] = pairs[i].src_path;
+				bufs[link_count] = alloca(sizeof(char) * PATH_MAX);
+				bufsizes[link_count] = PATH_MAX;
+
+				original_indices[link_count] = i;
+				link_count++;
+			}
+		}
+
+		tcres = tc_readlinkv(paths, bufs, bufsizes, link_count, false);
+		if (!tc_okay(tcres)) {
+			tcres.index = original_indices[tcres.index];
+			return tcres;
+		}
+
+		for (i = 0; i < link_count; i++) {
+			pairs[original_indices[i]].src_path = bufs[i];
+		}
+
 		tcres = nfs4_copyv(pairs, count, is_transaction);
 	} else {
 		tcres = posix_copyv(pairs, count, is_transaction);
