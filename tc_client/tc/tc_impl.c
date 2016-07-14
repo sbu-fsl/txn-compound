@@ -292,6 +292,7 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	//TODO: what if tc_readlinkv() returns another symlink (symlink to symlink)?
 
 	if (!tc_okay(res)) {
+		res.index = original_indices[res.index];
 		return res;
 	}
 
@@ -447,6 +448,7 @@ tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	//TODO: what if tc_readlinkv() returns symlinks (symlink to symlink)?
 
 	if (!tc_okay(res)) {
+		res.index = original_indices[res.index];
 		return res;
 	}
 
