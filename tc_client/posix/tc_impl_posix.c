@@ -581,12 +581,6 @@ tc_res posix_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)
 
 		i++;
 	}
-	result = posix_lsetattrsv(dirs, count, false);
-	if (!tc_okay(result)) {
-		return result;
-	}
-
-	result = posix_lgetattrsv(dirs, count, false);
 
 	return result;
 }
