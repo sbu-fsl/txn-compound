@@ -742,6 +742,7 @@ tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 	if (TC_IMPL_IS_NFS4) {
 		struct tc_attrs attrs[count];
 		const char *paths[count];
+		const char *original_paths[count];
 		int original_indices[count];
 
 		char *bufs[count];
@@ -779,10 +780,16 @@ tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 		}
 
 		for (i = 0; i < link_count; i++) {
+			original_paths[i] = pairs[original_indices[i]].src_path;
 			pairs[original_indices[i]].src_path = bufs[i];
 		}
 
 		tcres = nfs4_copyv(pairs, count, is_transaction);
+
+		for (i = 0; i < link_count; i++) {
+			pairs[original_indices[i]].src_path = original_paths[i];
+		}
+
 	} else {
 		tcres = posix_copyv(pairs, count, is_transaction);
 	}
