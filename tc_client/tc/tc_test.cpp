@@ -40,6 +40,7 @@
 
 #include "tc_api.h"
 #include "tc_helper.h"
+#include "path_utils.h"
 #include "test_util.h"
 #include "util/fileutil.h"
 #include "log.h"
@@ -897,6 +898,76 @@ TYPED_TEST_P(TcTest, CopyFiles)
 	free(read_iov[1].data);
 }
 
+TYPED_TEST_P(TcTest, CopyLargeDirectory)
+{
+	int i;
+	int count;
+	struct tc_attrs *contents;
+	struct tc_attrs_masks masks = TC_ATTRS_MASK_NONE;
+	struct tc_extent_pair *dir_copy_pairs = NULL;
+	const char **oldpaths = NULL;
+	const char **newpaths = NULL;
+	struct tc_attrs *copied_attrs;
+	char *dst_path;
+	int file_count = 0;
+	//Cannot be larger than 9999 or will not fit in str
+	#define FILE_COUNT 10
+	#define FILE_LENGTH_BYTES (10)
+	struct tc_iovec iov[FILE_COUNT];
+
+	EXPECT_OK(tc_ensure_dir("TcTest-CopyLargeDirectory", 0755, NULL));
+	EXPECT_OK(tc_ensure_dir("TcTest-CopyLargeDirectory-Dest", 0755, NULL));
+
+	for (i = 0; i < FILE_COUNT; i++) {
+		char *path = (char*) alloca(PATH_MAX);
+		char *str = (char*) alloca(5);
+		sprintf(str, "%d", i);
+		tc_path_join("TcTest-CopyLargeDirectory", str, path, PATH_MAX);
+		tc_iov4creation(&iov[i], path, i, getRandomBytes(FILE_LENGTH_BYTES));
+		EXPECT_NOTNULL(iov[i].data);
+	}
+	EXPECT_OK(tc_writev(iov, FILE_COUNT, false));
+
+	masks.has_mode = true;
+
+	EXPECT_OK(tc_listdir("TcTest-CopyLargeDirectory", masks, 0, true, &contents, &count));
+
+	dir_copy_pairs = (struct tc_extent_pair*) alloca (sizeof (struct tc_extent_pair) * count);
+	copied_attrs = (struct tc_attrs*) alloca (sizeof (struct tc_attrs) * count);
+
+	for (i = 0; i < count; i++) {
+		dst_path = (char *) malloc(sizeof(char) * PATH_MAX);
+		const char *dst_suffix = contents[i].file.path;
+
+		while (*dst_suffix++ != '/')
+
+		tc_path_join("TcTest-CopyLargeDirectory-Dest", dst_suffix, dst_path, PATH_MAX);
+
+		if (!S_ISDIR(contents[i].mode)) {
+			printf("%s -> %s\n", contents[i].file.path, dst_path);
+			dir_copy_pairs[file_count].src_path = contents[i].file.path;
+			dir_copy_pairs[file_count].dst_path = dst_path;
+			dir_copy_pairs[file_count].src_offset = 0;
+			dir_copy_pairs[file_count].dst_offset = 0;
+			dir_copy_pairs[file_count].length = 0;
+
+			file_count++;
+		} else {
+			printf("created dir: %s\n", dst_path);
+			EXPECT_OK(tc_ensure_dir (dst_path, 0755, NULL));
+			free(dst_path);
+		}
+
+	}
+
+
+	printf("%d\n", file_count);
+	EXPECT_OK(tc_copyv(dir_copy_pairs, file_count, false));
+	for (i = 0; i < file_count; i++) {
+		free((char *) dir_copy_pairs[i].dst_path);
+	}
+}
+
 TYPED_TEST_P(TcTest, CopyFirstHalfAsSecondHalf)
 {
 	const int N = 8096;
@@ -1206,7 +1277,8 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   RdWrLargeThanRPCLimit,
 			   CompressDeepPaths,
 			   SymlinkBasics,
-			   TcStatBasics);
+			   TcStatBasics,
+			   CopyLargeDirectory);
 
 typedef ::testing::Types<TcNFS4Impl, TcPosixImpl> TcImpls;
 INSTANTIATE_TYPED_TEST_CASE_P(TC, TcTest, TcImpls);
