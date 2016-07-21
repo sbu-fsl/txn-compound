@@ -130,6 +130,8 @@ do { \
 		op->nfs_argop4_u.opcopy.ca_src_offset = src_offset;            \
 		op->nfs_argop4_u.opcopy.ca_dst_offset = dst_offset;            \
 		op->nfs_argop4_u.opcopy.ca_count = count;                      \
+                op->nfs_argop4_u.opcopy.ca_netloc_len = 0;                     \
+                op->nfs_argop4_u.opcopy.ca_netlocs = NULL;                     \
 	} while (0)
 
 #define COMPOUNDV4_ARG_ADD_OP_GETFH(opcnt, argarray) \

@@ -3856,6 +3856,7 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 	static const int MAX_READDIRS_PER_COMPOUND = 16;
         bool has_mode = masks.has_mode;
         bitmap4 bitmap = fs_bitmap_readdir;
+        bool incomplete = false;
 
 	tc_start_compound(true);
 
@@ -3899,6 +3900,10 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 				.nfs_resop4_u.opgetfh.GETFH4res_u.resok4.object;
 			break;
 		case NFS4_OP_READDIR:
+                        /* To avoid out-of-order callbacks, we stop processing
+                         * the directories after the first incomplete directory
+                         * in the compound. */
+                        if (incomplete) break;
 			rdok =
 			    &resoparray[j]
 				 .nfs_resop4_u.opreaddir.READDIR4res_u.resok4;
@@ -3918,6 +3923,8 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 					free((char *)dle->path);
 				}
 				free(dle);
+			} else {
+				incomplete = true;
 			}
 			dle = next_dle;
                         if (*limit == 0) {
