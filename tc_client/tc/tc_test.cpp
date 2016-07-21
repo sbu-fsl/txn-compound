@@ -935,7 +935,7 @@ TYPED_TEST_P(TcTest, CopyLargeDirectory)
 	int file_count = 0;
 	//Cannot be larger than 9999 or will not fit in str
 	#define FILE_COUNT 10
-	#define FILE_LENGTH_BYTES (10)
+	#define FILE_LENGTH_BYTES (100)
 	struct tc_iovec iov[FILE_COUNT];
 
 	EXPECT_OK(tc_ensure_dir("TcTest-CopyLargeDirectory", 0755, NULL));
@@ -946,7 +946,7 @@ TYPED_TEST_P(TcTest, CopyLargeDirectory)
 		char *str = (char*) alloca(5);
 		sprintf(str, "%d", i);
 		tc_path_join("TcTest-CopyLargeDirectory", str, path, PATH_MAX);
-		tc_iov4creation(&iov[i], path, i, getRandomBytes(FILE_LENGTH_BYTES));
+		tc_iov4creation(&iov[i], path, FILE_LENGTH_BYTES, getRandomBytes(FILE_LENGTH_BYTES));
 		EXPECT_NOTNULL(iov[i].data);
 	}
 	EXPECT_OK(tc_writev(iov, FILE_COUNT, false));
@@ -967,7 +967,6 @@ TYPED_TEST_P(TcTest, CopyLargeDirectory)
 		tc_path_join("TcTest-CopyLargeDirectory-Dest", dst_suffix, dst_path, PATH_MAX);
 
 		if (!S_ISDIR(contents[i].mode)) {
-			printf("%s -> %s\n", contents[i].file.path, dst_path);
 			dir_copy_pairs[file_count].src_path = contents[i].file.path;
 			dir_copy_pairs[file_count].dst_path = dst_path;
 			dir_copy_pairs[file_count].src_offset = 0;
@@ -976,7 +975,6 @@ TYPED_TEST_P(TcTest, CopyLargeDirectory)
 
 			file_count++;
 		} else {
-			printf("created dir: %s\n", dst_path);
 			EXPECT_OK(tc_ensure_dir (dst_path, 0755, NULL));
 			free(dst_path);
 		}
@@ -984,7 +982,6 @@ TYPED_TEST_P(TcTest, CopyLargeDirectory)
 	}
 
 
-	printf("%d\n", file_count);
 	EXPECT_OK(tc_copyv(dir_copy_pairs, file_count, false));
 	for (i = 0; i < file_count; i++) {
 		free((char *) dir_copy_pairs[i].dst_path);
