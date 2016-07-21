@@ -2538,6 +2538,15 @@ extern "C" {
 	};
 	typedef enum netloc_type4 netloc_type4;
 
+	typedef struct {
+		netloc_type4 nl_type;
+		union {
+			utf8str_cis nl_name;
+			utf8str_cis nl_url;
+			netaddr4    nl_addr;
+		};
+	} netloc4;
+
 	enum data_content4 {
 		NFS4_CONTENT_DATA = 0,
 		NFS4_CONTENT_APP_DATA_HOLE = 1,
@@ -2682,11 +2691,9 @@ extern "C" {
 		offset4         ca_src_offset;
 		offset4         ca_dst_offset;
 		length4         ca_count;
-		netloc_type4        ca_type;
-		union {
-			utf8str_cis ca_name;
-			utf8str_cis ca_url;
-			netaddr4    ca_addr;
+		struct {
+			u_int ca_netloc_len;
+			netloc4* ca_netlocs;
 		};
 	};
 	typedef struct COPY4args COPY4args;
@@ -7600,6 +7607,30 @@ extern "C" {
 		return true;
 	}
 
+	static inline bool
+	xdr_netloc4(XDR *xdrs, netloc4 *objp)
+	{
+		if (!inline_xdr_enum(xdrs, (enum_t *)&objp->nl_type))
+			return false;
+		switch (objp->nl_type) {
+		case NL4_NAME:
+			if (!xdr_utf8str_cis(xdrs, &objp->nl_name))
+				return false;
+			break;
+		case NL4_URL:
+			if (!xdr_utf8str_cis(xdrs, &objp->nl_url))
+				return false;
+			break;
+		case NL4_NETADDR:
+			if (!xdr_netaddr4(xdrs, &objp->nl_addr))
+				return false;
+			break;
+		default:
+			return false;
+		}
+		return true;
+	}
+
         /* new to NFS end-to-end integrity */
         static inline bool
         xdr_nfs_protection_type4(XDR *xdrs, nfs_protection_type4 *objp)
@@ -7940,24 +7971,10 @@ extern "C" {
 			return false;
 		if (!xdr_length4(xdrs, &objp->ca_count))
 			return false;
-		if (!inline_xdr_enum(xdrs, (enum_t *)&objp->ca_type))
+		if (!xdr_array(xdrs, (char **)&objp->ca_netlocs,
+			       (u_int *)&objp->ca_netloc_len, ~0,
+			       sizeof(netloc4), (xdrproc_t)xdr_netloc4))
 			return false;
-		switch (objp->ca_type) {
-		case NL4_NAME:
-			if (!xdr_utf8str_cis(xdrs, &objp->ca_name))
-				return false;
-			break;
-		case NL4_URL:
-			if (!xdr_utf8str_cis(xdrs, &objp->ca_url))
-				return false;
-			break;
-		case NL4_NETADDR:
-			if (!xdr_netaddr4(xdrs, &objp->ca_addr))
-				return false;
-			break;
-		default:
-			break;
-		}
 		return true;
 	}
 
