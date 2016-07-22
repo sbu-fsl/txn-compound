@@ -106,7 +106,7 @@ tc_res posix_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
 
 tc_res posix_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction);
 
-tc_res posix_copyv(struct tc_extent_pair *pairs, int count,
+tc_res posix_lcopyv(struct tc_extent_pair *pairs, int count,
 		   bool is_transaction);
 
 tc_res posix_symlinkv(const char **oldpaths, const char **newpaths, int count,

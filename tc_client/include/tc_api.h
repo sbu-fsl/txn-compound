@@ -748,6 +748,7 @@ struct tc_extent_pair
  * @is_transaction: whether to execute the compound as a transaction
  */
 tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction);
+tc_res tc_lcopyv(struct tc_extent_pair *pairs, int count, bool is_transaction);
 
 static inline bool tx_copyv(struct tc_extent_pair *pairs, int count)
 {

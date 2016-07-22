@@ -4081,7 +4081,7 @@ exit:
         return tcres;
 }
 
-static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
+static tc_res tc_nfs4_lcopyv(struct tc_extent_pair *pairs, int count)
 {
 	int rc;
 	tc_res tcres;
@@ -4344,7 +4344,7 @@ void fs_handle_ops_init(struct fsal_obj_ops *ops)
         ops->tc_listdirv = tc_nfs4_listdirv;
         ops->tc_renamev = tc_nfs4_renamev;
         ops->tc_removev = tc_nfs4_removev;
-        ops->tc_copyv = tc_nfs4_copyv;
+        ops->tc_lcopyv = tc_nfs4_lcopyv;
         ops->tc_symlinkv = tc_nfs4_symlinkv;
         ops->tc_readlinkv = tc_nfs4_readlinkv;
         ops->tc_chdir = tc_nfs4_chdir;

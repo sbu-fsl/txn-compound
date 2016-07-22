@@ -717,7 +717,7 @@ tc_res posix_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
 	return tcres;
 }
 
-tc_res posix_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
+tc_res posix_lcopyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 {
 	int i;
 	ssize_t ret;
