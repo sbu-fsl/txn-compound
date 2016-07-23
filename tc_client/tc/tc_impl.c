@@ -289,6 +289,7 @@ bool resolve_symlinks(struct syminfo *syms, int count, tc_res *err) {
 	}
 
 	*err = tc_readlinkv(paths, bufs, bufsizes, path_count, false);
+	//TODO: what if tc_readlinkv() returns symlinks (symlink to symlink)?
 	if (!tc_okay(*err)) {
 		err->index = paths_original_indices[attrs_original_indices[err->index]];
 		return false;
@@ -473,71 +474,43 @@ int tc_lstat(const char *path, struct stat *buf)
 
 tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
+	struct syminfo syminfo[count];
 	tc_res res;
-	const char *paths[count];
-	tc_file original_files[count];
-	struct tc_attrs_masks old_masks[count];
-	mode_t old_modes[count];
-	int original_indices[count];
-
-	char *bufs[count];
-	size_t bufsizes[count];
-
-	int link_count = 0;
 	int i;
+	bool had_link;
 
-	for (i = 0; i < count; i++) {
-		old_modes[i] = attrs[i].mode;
-		old_masks[i] = attrs[i].masks;
-		attrs[i].masks = TC_ATTRS_MASK_NONE;
-		attrs[i].masks.has_mode = true;
-	}
-
-	res = tc_lgetattrsv(attrs, count, false);
-
-	for (i = 0; i < count; i++) {
-		if (S_ISLNK(attrs[i].mode)) {
-			tc_file file = attrs[i].file;
-			assert(file.type == TC_FILE_PATH);
-
-			paths[link_count] = file.path;
-
-			bufs[link_count] = alloca(sizeof(char) * PATH_MAX);
-			bufsizes[link_count] = PATH_MAX;
-			original_indices[link_count] = i;
-
-			link_count++;
+	for(i = 0; i < count; i++) {
+		if (attrs[i].file.type == TC_FILE_PATH) {
+			syminfo[i].src_path = attrs[i].file.path;
+		} else {
+			syminfo[i].src_path = NULL;
 		}
-		attrs[i].masks = old_masks[i];
-		attrs[i].mode = old_modes[i];
 	}
 
+	had_link = resolve_symlinks(syminfo, count, &res);
 	if (!tc_okay(res)) {
 		return res;
 	}
 
-	res = tc_readlinkv(paths, bufs, bufsizes, link_count, false);
-	//TODO: what if tc_readlinkv() returns symlinks (symlink to symlink)?
-
-	if (!tc_okay(res)) {
-		res.index = original_indices[res.index];
-		return res;
+	if (!had_link) {
+		return tc_lsetattrsv(attrs, count, is_transaction);
 	}
 
-	for (i = 0; i < link_count; i++) {
-		original_files[i] = attrs[original_indices[i]].file;
-		attrs[original_indices[i]].file = tc_file_from_path(bufs[i]);
+	for (i = 0; i < count; i++) {
+		if (syminfo[i].target_path)	{
+			attrs[i].file.path = syminfo[i].target_path;
+		}
 	}
 
 	res = tc_lsetattrsv(attrs, count, is_transaction);
 
-	if (!tc_okay(res)) {
-		res.index = original_indices[res.index];
+	for (i = 0; i < count; i++) {
+		if (syminfo[i].target_path)	{
+			attrs[i].file.path = syminfo[i].src_path;
+		}
 	}
 
-	for (i = 0; i < link_count; i++) {
-		attrs[original_indices[i]].file = original_files[i];
-	}
+	free_syminfo(syminfo, count);
 
 	return res;
 }
