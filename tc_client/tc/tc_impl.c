@@ -256,6 +256,10 @@ bool resolve_symlinks(struct syminfo *syms, int count, tc_res *err) {
 		}
 	}
 
+	if (attrs_count == 0) {
+		return false;
+	}
+
 	*err = tc_lgetattrsv(attrs, attrs_count, false);
 	if (!tc_okay(*err)) {
 		err->index = attrs_original_indices[err->index];
@@ -296,7 +300,7 @@ bool resolve_symlinks(struct syminfo *syms, int count, tc_res *err) {
 	}
 
 	for (i = 0; i < path_count; i++) {
-		syms[attrs_original_indices[paths_original_indices[path_count]]].target_path = bufs[i];
+		syms[attrs_original_indices[paths_original_indices[i]]].target_path = bufs[i];
 	}
 
 	return true;
