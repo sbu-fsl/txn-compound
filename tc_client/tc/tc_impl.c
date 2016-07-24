@@ -105,7 +105,18 @@ void *tc_init(const char *config_path, const char *log_path, uint16_t export_id)
 
 void tc_deinit(void *module)
 {
+	buf_t *pbuf = new_auto_buf(4096);
+	FILE *pfile;
+
 	__sync_fetch_and_sub(&tc_counter_running, 1);
+	tc_iterate_counters(tc_counter_printer, pbuf);
+	buf_append_char(pbuf, '\n');
+
+	pfile = fopen(tc_counter_path, "a+");
+	assert(pfile);
+	fwrite(pbuf->data, 1, pbuf->size, pfile);
+	fclose(pfile);
+
 	if (TC_IMPL_IS_NFS4) {
 		nfs4_deinit(module);
 	}
