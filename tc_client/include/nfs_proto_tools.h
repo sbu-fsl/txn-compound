@@ -174,17 +174,18 @@ static inline int check_for_rdattr_error(struct bitmap4 *attr_request)
  *
  */
 
+#define OFFSET(x) ((x) >> 5)
+#define BIT(x) ((x) & 31)
+
 static inline int next_attr_from_bitmap(struct bitmap4 *bits, int last_attr)
 {
-	int offset, bit;
+	int offset, bit, rest_bits;
 
-	for (offset = (last_attr + 1) / 32;
+	for (offset = OFFSET(last_attr + 1);
 	     offset >= 0 && offset < bits->bitmap4_len; offset++) {
-		if ((bits->map[offset] & (-1 << ((last_attr + 1) % 32))) != 0) {
-			for (bit = (last_attr + 1) % 32; bit < 32; bit++) {
-				if (bits->map[offset] & (1 << bit))
-					return offset * 32 + bit;
-			}
+		rest_bits = (bits->map[offset] & (-1 << BIT(last_attr + 1)));
+		if (rest_bits != 0) {
+			return (offset << 5) + ffs(rest_bits) - 1;
 		}
 		last_attr = -1;
 	}
@@ -193,34 +194,37 @@ static inline int next_attr_from_bitmap(struct bitmap4 *bits, int last_attr)
 
 static inline bool attribute_is_set(struct bitmap4 *bits, int attr)
 {
-	int offset = attr / 32;
+	int offset = OFFSET(attr);
 
 	if (offset >= bits->bitmap4_len)
 		return FALSE;
-	return (bits->map[offset] & (1 << (attr % 32))) != 0;
+	return (bits->map[offset] & (1 << BIT(attr))) != 0;
 }
 
 static inline bool set_attribute_in_bitmap(struct bitmap4 *bits, int attr)
 {
-	int offset = attr / 32;
+	int offset = OFFSET(attr);
 
 	if (offset >= 3)
 		return FALSE;	/* over upper bound */
 	if (offset >= bits->bitmap4_len)
 		bits->bitmap4_len = offset + 1;	/* roll into the next word */
-	bits->map[offset] |= (1 << (attr % 32));
+	bits->map[offset] |= (1 << BIT(attr));
 	return TRUE;
 }
 
 static inline bool clear_attribute_in_bitmap(struct bitmap4 *bits, int attr)
 {
-	int offset = attr / 32;
+	int offset = OFFSET(attr);
 
 	if (offset >= bits->bitmap4_len)
 		return FALSE;
-	bits->map[offset] &= ~(1 << (attr % 32));
+	bits->map[offset] &= ~(1 << BIT(attr));
 	return TRUE;
 }
+
+#undef OFFSET
+#undef BIT
 
 void nfs_SetWccData(const struct pre_op_attr *before_attr,
 		    cache_entry_t *entry,
