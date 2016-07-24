@@ -3803,6 +3803,7 @@ static int tc_parse_dir_entries(struct glist_head *dir_queue,
 	int ret;
 	struct tc_attrs attrs;
 	int n = 0;
+        TC_DECLARE_COUNTER(listdircb);
 
 	while (entries && (*limit == -1 || *limit > 0)) {
 		path = malloc(PATH_MAX);
@@ -3815,7 +3816,11 @@ static int tc_parse_dir_entries(struct glist_head *dir_queue,
 		attrs.file = tc_file_from_path(asstr(&buf));
 		fattr4_to_tc_attrs(&entries->attrs, &attrs);
                 attrs.masks.has_mode = has_mode;
+
+                TC_START_COUNTER(listdircb);
 		success = cb(&attrs, parent->path, cbarg);
+                TC_STOP_COUNTER(listdircb, 1, success);
+
 		if (!success) {
 			free(path);
 			return -1;
