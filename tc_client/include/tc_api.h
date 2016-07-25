@@ -707,6 +707,8 @@ static inline bool tx_removev(tc_file *files, int count)
 	return tc_okay(tc_removev(files, count, true));
 }
 
+tc_res tc_removev_by_paths(const char **paths, int count);
+
 int tc_unlink(const char *pathname);
 tc_res tc_unlinkv(const char **pathnames, int count);
 
@@ -862,6 +864,11 @@ static inline bool tx_write_adb(struct tc_adb *patterns, int count)
  * directory, and leaf will be set to the name of the leaf node.
  */
 tc_res tc_ensure_dir(const char *dir, mode_t mode, slice_t *leaf);
+
+/**
+ * Remove a list of file-system objects (files or directories).
+ */
+tc_res tc_rm(const char **objs, int count, bool recursive);
 
 #ifdef __cplusplus
 }

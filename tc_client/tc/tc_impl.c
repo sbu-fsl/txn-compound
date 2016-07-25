@@ -105,7 +105,18 @@ void *tc_init(const char *config_path, const char *log_path, uint16_t export_id)
 
 void tc_deinit(void *module)
 {
+	buf_t *pbuf = new_auto_buf(4096);
+	FILE *pfile;
+
 	__sync_fetch_and_sub(&tc_counter_running, 1);
+	tc_iterate_counters(tc_counter_printer, pbuf);
+	buf_append_char(pbuf, '\n');
+
+	pfile = fopen(tc_counter_path, "a+");
+	assert(pfile);
+	fwrite(pbuf->data, 1, pbuf->size, pfile);
+	fclose(pfile);
+
 	if (TC_IMPL_IS_NFS4) {
 		nfs4_deinit(module);
 	}
@@ -605,6 +616,8 @@ tc_res tc_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
 	tc_res tcres;
 	TC_DECLARE_COUNTER(listdir);
 
+	if (count == 0) return TC_OKAY;
+
 	TC_START_COUNTER(listdir);
 	if (TC_IMPL_IS_NFS4) {
 		tcres = nfs4_listdirv(dirs, count, masks, max_entries, recursive,
@@ -907,4 +920,29 @@ char *tc_getcwd()
 	} else {
 		return posix_getcwd();
 	}
+}
+
+tc_res tc_removev_by_paths(const char **paths, int count)
+{
+	tc_res tcres;
+	int i, j, n;
+	const size_t REMOVE_LIMIT = 8;
+
+	tc_file files[REMOVE_LIMIT];
+	for (i = 0; i < count; ) {
+		n = ((count - i) > REMOVE_LIMIT) ? REMOVE_LIMIT : (count - i);
+		for (j = 0; j < n; ++j) {
+			files[j] = tc_file_from_path(paths[i+ j]);
+		}
+
+		tcres = tc_removev(files, n, false);
+		if (!tc_okay(tcres)) {
+			tcres.index += i;
+			return tcres;
+		}
+
+		i += n;
+	}
+
+	return TC_OKAY;
 }
