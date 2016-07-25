@@ -42,6 +42,8 @@ static int tc_counter_running = 1;
 
 const struct tc_attrs_masks TC_ATTRS_MASK_ALL = TC_MASK_INIT_ALL;
 const struct tc_attrs_masks TC_ATTRS_MASK_NONE = TC_MASK_INIT_NONE;
+//Max number of files tc_copyv() can copy due to rpc 1M limit
+const int COPYV_MAX_FILES = 16;
 
 bool tc_counter_printer(struct tc_func_counter *tfc, void *arg)
 {
@@ -809,7 +811,25 @@ exit:
 	return tcres;
 }
 
-tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
+tc_res tc_lcopyv_impl(struct tc_extent_pair *pairs, int count, bool is_transaction)
+{
+	tc_res tcres;
+	TC_DECLARE_COUNTER(lcopy);
+
+	TC_START_COUNTER(lcopy);
+
+	assert(count <= COPYV_MAX_FILES);
+	if (TC_IMPL_IS_NFS4) {
+		tcres = nfs4_lcopyv(pairs, count, is_transaction);
+	} else {
+		tcres = posix_lcopyv(pairs, count, is_transaction);
+	}
+	TC_STOP_COUNTER(lcopy, count, tc_okay(tcres));
+
+	return tcres;
+}
+
+tc_res tc_copyv_impl(struct tc_extent_pair *pairs, int count, bool is_transaction)
 {
 	struct syminfo syminfo[count];
 	tc_res res;
@@ -826,7 +846,7 @@ tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 	}
 
 	if (!had_link) {
-		return tc_lcopyv(pairs, count, is_transaction);
+		return tc_lcopyv_impl(pairs, count, is_transaction);
 	}
 
 	for (i = 0; i < count; i++) {
@@ -835,7 +855,7 @@ tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 		}
 	}
 
-	res = tc_lcopyv(pairs, count, is_transaction);
+	res = tc_lcopyv_impl(pairs, count, is_transaction);
 
 	for (i = 0; i < count; i++) {
 		if (syminfo[i].target_path)	{
@@ -848,20 +868,32 @@ tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 	return res;
 }
 
+tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
+{
+	tc_res res;
+	int i;
+	for(i = 0; i < count; i += COPYV_MAX_FILES) {
+		res = tc_copyv_impl(&pairs[i], MIN(COPYV_MAX_FILES, count - i), is_transaction);
+		if (!tc_okay(res)) {
+			res.index += i;
+			return res;
+		}
+	}
+	return res;
+}
+
 tc_res tc_lcopyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 {
-	tc_res tcres;
-	TC_DECLARE_COUNTER(lcopy);
-
-	TC_START_COUNTER(lcopy);
-	if (TC_IMPL_IS_NFS4) {
-		tcres = nfs4_lcopyv(pairs, count, is_transaction);
-	} else {
-		tcres = posix_lcopyv(pairs, count, is_transaction);
+	tc_res res;
+	int i;
+	for(i = 0; i < count; i += COPYV_MAX_FILES) {
+		res = tc_lcopyv_impl(&pairs[i], MIN(COPYV_MAX_FILES, count - i), is_transaction);
+		if (!tc_okay(res)) {
+			res.index += i;
+			return res;
+		}
 	}
-	TC_STOP_COUNTER(lcopy, count, tc_okay(tcres));
-
-	return tcres;
+	return res;
 }
 
 tc_res tc_symlinkv(const char **oldpaths, const char **newpaths, int count,
