@@ -1206,6 +1206,35 @@ TYPED_TEST_P(TcTest, TcStatBasics)
 	EXPECT_FALSE(is_same_stat(&st1, &st3));
 }
 
+TYPED_TEST_P(TcTest, TcRmBasic)
+{
+#define TCRM_PREFIX "/vfs0/tc_nfs4_test/TcRmBasic"
+	EXPECT_OK(tc_ensure_dir(TCRM_PREFIX "/dir-a/subdir-a1", 0755, NULL));
+	EXPECT_OK(tc_ensure_dir(TCRM_PREFIX "/dir-a/subdir-a2", 0755, NULL));
+	EXPECT_OK(tc_ensure_dir(TCRM_PREFIX "/dir-b/subdir-b1", 0755, NULL));
+
+	tc_touch(TCRM_PREFIX "/dir-a/subdir-a1/a1-file1", 4_KB);
+	tc_touch(TCRM_PREFIX "/dir-a/subdir-a1/a1-file2", 4_KB);
+	tc_touch(TCRM_PREFIX "/dir-a/subdir-a1/a1-file3", 4_KB);
+	tc_touch(TCRM_PREFIX "/dir-a/subdir-a2/a2-file1", 4_KB);
+	tc_touch(TCRM_PREFIX "/dir-a/subdir-a2/a2-file2", 4_KB);
+	tc_touch(TCRM_PREFIX "/dir-b/subdir-b1/b1-file1", 4_KB);
+	tc_touch(TCRM_PREFIX "/dir-b/subdir-b1/b1-file2", 4_KB);
+	tc_touch(TCRM_PREFIX "/dir-b/subdir-b1/b1-file3", 4_KB);
+	tc_touch(TCRM_PREFIX "/file1", 4_KB);
+	tc_touch(TCRM_PREFIX "/file2", 4_KB);
+
+	const char *objs[4] = {
+		TCRM_PREFIX "/dir-a",
+		TCRM_PREFIX "/dir-b",
+		TCRM_PREFIX "/file1",
+		TCRM_PREFIX "/file2",
+	};
+
+	EXPECT_OK(tc_rm(objs, 4, true));
+#undef TCRM_PREFIX
+}
+
 REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   WritevCanCreateFiles,
 			   TestFileDesc,
@@ -1230,7 +1259,8 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   RdWrLargeThanRPCLimit,
 			   CompressDeepPaths,
 			   SymlinkBasics,
-			   TcStatBasics);
+			   TcStatBasics,
+			   TcRmBasic);
 
 typedef ::testing::Types<TcNFS4Impl, TcPosixImpl> TcImpls;
 INSTANTIATE_TYPED_TEST_CASE_P(TC, TcTest, TcImpls);
