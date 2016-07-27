@@ -870,7 +870,7 @@ tc_res tc_copyv_impl(struct tc_extent_pair *pairs, int count, bool is_transactio
 
 tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 {
-	tc_res res;
+	tc_res res = TC_OKAY;
 	int i;
 	for(i = 0; i < count; i += COPYV_MAX_FILES) {
 		res = tc_copyv_impl(&pairs[i], MIN(COPYV_MAX_FILES, count - i), is_transaction);
@@ -884,7 +884,7 @@ tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 
 tc_res tc_lcopyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 {
-	tc_res res;
+	tc_res res = TC_OKAY;
 	int i;
 	for(i = 0; i < count; i += COPYV_MAX_FILES) {
 		res = tc_lcopyv_impl(&pairs[i], MIN(COPYV_MAX_FILES, count - i), is_transaction);
