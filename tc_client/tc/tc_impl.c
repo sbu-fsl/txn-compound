@@ -814,9 +814,9 @@ exit:
 tc_res tc_lcopyv_impl(struct tc_extent_pair *pairs, int count, bool is_transaction)
 {
 	tc_res tcres;
-	TC_DECLARE_COUNTER(lcopy);
+	TC_DECLARE_COUNTER(lcopy_impl);
 
-	TC_START_COUNTER(lcopy);
+	TC_START_COUNTER(lcopy_impl);
 
 	assert(count <= COPYV_MAX_FILES);
 	if (TC_IMPL_IS_NFS4) {
@@ -824,7 +824,7 @@ tc_res tc_lcopyv_impl(struct tc_extent_pair *pairs, int count, bool is_transacti
 	} else {
 		tcres = posix_lcopyv(pairs, count, is_transaction);
 	}
-	TC_STOP_COUNTER(lcopy, count, tc_okay(tcres));
+	TC_STOP_COUNTER(lcopy_impl, count, tc_okay(tcres));
 
 	return tcres;
 }

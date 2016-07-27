@@ -866,6 +866,11 @@ static inline bool tx_write_adb(struct tc_adb *patterns, int count)
 tc_res tc_ensure_dir(const char *dir, mode_t mode, slice_t *leaf);
 
 /**
+ * Copy a directory to a new destination
+ */
+tc_res tc_cp_recursive(const char *src_dir, const char *dst_dir);
+
+/**
  * Remove a list of file-system objects (files or directories).
  */
 tc_res tc_rm(const char **objs, int count, bool recursive);

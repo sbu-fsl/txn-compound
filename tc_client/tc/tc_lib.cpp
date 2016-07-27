@@ -22,6 +22,8 @@
 #include <unistd.h>
 
 #include "tc_api.h"
+#include "tc_helper.h"
+#include "path_utils.h"
 
 #include <algorithm>
 #include <queue>
@@ -31,6 +33,11 @@ using std::vector;
 using std::queue;
 
 struct rm_cb_args {
+	vector<const char *> *dirs;
+	vector<const char *> *files;
+};
+
+struct cp_cb_args {
 	vector<const char *> *dirs;
 	vector<const char *> *files;
 };
@@ -53,6 +60,100 @@ static void free_paths(vector<const char *> *paths, bool empty = true)
 		free((char *)p);
 	}
 	if (empty) paths->clear();
+}
+
+static bool cp_list_callback(const struct tc_attrs *entry, const char *dir,
+			     void *cbarg)
+{
+	struct cp_cb_args *args = (struct cp_cb_args *)cbarg;
+	if (S_ISDIR(entry->mode)) {
+		args->dirs->push_back(strdup(entry->file.path));
+	} else {
+		args->files->push_back(strdup(entry->file.path));
+	}
+	return true;
+}
+
+tc_res tc_cp_mkdirs(const char *src_dir, const char **dirs, int count, const char *dst_dir)
+{
+	struct tc_attrs attrs[count];
+	for (int i = 0; i < count; i++) {
+		char *path = (char*) alloca(sizeof(char) * PATH_MAX);
+		const char *suffix = dirs[i];
+		for (int j = 0; *suffix != '\0' && *suffix == src_dir[j]; j++, suffix++);
+
+		tc_path_join(dst_dir, suffix, path, PATH_MAX);
+		attrs[i].file = tc_file_from_path(path);
+		attrs[i].masks = TC_ATTRS_MASK_NONE;
+		attrs[i].masks.has_mode = true;
+		attrs[i].mode = 0755;
+	}
+	tc_res res = tc_mkdirv(attrs, count, false);
+	if (!tc_okay(res)) {
+		printf("mkdirv: %s (%s)\n", strerror(res.err_no), attrs[res.index].file.path);
+	}
+	return res;
+}
+
+tc_res tc_cp_files(const char *src_dir, const char **srcs, int count, const char *dst_dir)
+{
+	struct tc_extent_pair pairs[count];
+	for (int i = 0; i < count; i++) {
+		char *path = (char*) alloca(sizeof(char) * PATH_MAX);
+		const char *suffix = srcs[i];
+		for (int j = 0; *suffix != '\0' && *suffix == src_dir[j]; j++, suffix++);
+
+		pairs[i].src_path = srcs[i];
+		tc_path_join(dst_dir, suffix, path, PATH_MAX);
+		pairs[i].dst_path = path;
+		pairs[i].src_offset = 0;
+		pairs[i].dst_offset = 0;
+		pairs[i].length = 0;
+	}
+	tc_res res = tc_copyv(pairs, count, false);
+	if (!tc_okay(res)) {
+		printf("tc_copyv: %s (%s)\n", strerror(res.err_no), pairs[res.index].dst_path);
+	}
+	return res;
+}
+
+tc_res tc_cp_recursive(const char *src_dir, const char *dst)
+{
+	vector<const char *> dirs;
+	vector<const char *> files_to_copy;
+	struct tc_attrs_masks listdir_mask = TC_ATTRS_MASK_NONE;
+	listdir_mask.has_mode = true;
+	struct cp_cb_args cbargs;
+	cbargs.dirs = &dirs;
+	cbargs.files = &files_to_copy;
+
+	dirs.push_back(strdup(src_dir));
+
+	int created = 0;  // index to directories created so far
+	while (created < dirs.size() || !files_to_copy.empty()) {
+		tc_res tcres;
+		const int LISTDIR_LIMIT = 8;
+		int n = std::min<int>(LISTDIR_LIMIT, dirs.size() - created);
+		tcres = tc_listdirv(dirs.data() + created, n, listdir_mask, 0,
+				    false, cp_list_callback, &cbargs, false);
+		if (!tc_okay(tcres)) {
+			return tcres;
+		}
+
+		tcres = tc_cp_mkdirs(src_dir, dirs.data() + created, n, dst);
+		if (!tc_okay(tcres)) {
+		    return tcres;
+		}
+		created += n;
+
+		tcres = tc_cp_files(src_dir, files_to_copy.data(), files_to_copy.size(), dst);
+		files_to_copy.clear();
+		if (!tc_okay(tcres)) {
+			return tcres;
+		}
+	}
+
+	return tc_failure(0, 0);
 }
 
 // TODO: handle when "recursive" is false
