@@ -43,7 +43,7 @@ static int tc_counter_running = 1;
 const struct tc_attrs_masks TC_ATTRS_MASK_ALL = TC_MASK_INIT_ALL;
 const struct tc_attrs_masks TC_ATTRS_MASK_NONE = TC_MASK_INIT_NONE;
 //Max number of files tc_copyv() can copy due to rpc 1M limit
-const int COPYV_MAX_FILES = 16;
+const int COPYV_MAX_FILES = 8;
 
 bool tc_counter_printer(struct tc_func_counter *tfc, void *arg)
 {
