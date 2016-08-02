@@ -535,7 +535,6 @@ static void tc_start_compound(bool has_sequence)
 
         assert(opcnt == 0);
         assert(tc_bufcnt == 0);
-        assert(tc_curpath_comps_n == 0);
 
 	/**
 	 * We free the slot first, in case the previous compound allocated slot
@@ -1880,7 +1879,7 @@ static char *tc_get_abspath_from_cwd(const char *rel_path)
         cwd = tc_get_cwd();
         abs_path = tc_alloc_buf(PATH_MAX);
         assert(abs_path);
-        tc_path_join(cwd->path, rel_path, abs_path);
+        tc_path_join(cwd->path, rel_path, abs_path, PATH_MAX);
         tc_put_cwd(cwd);
 
         return abs_path;
@@ -1892,7 +1891,7 @@ static char *tc_get_abspath_from_cfh(const char *rel_path)
 
         abs_path = tc_alloc_buf(PATH_MAX);
         assert(abs_path);
-        tc_path_join(tc_curpath, rel_path, abs_path);
+        tc_path_join(tc_curpath, rel_path, abs_path, PATH_MAX);
 
         return abs_path;
 }
@@ -1945,45 +1944,62 @@ static int tc_set_cfh_from_cwd(slice_t *comps, int compcnt)
         return compcnt + 1;
 }
 
+static bool tc_compress_path(const char *path, slice_t **comps, size_t *comps_n,
+			     const char **abs_path)
+{
+        bool res;
+        size_t short_comps_n;
+        slice_t *short_comps;
+        char *short_path;
+
+        *comps_n = tc_path_tokenize(path, comps);
+        if (tc_curpath[0] == 0) {
+                return false;
+        }
+
+        if (path[0] != '/') {
+                *abs_path = path;
+        } else {
+                *abs_path = tc_get_abspath_from_cwd(path);
+        }
+
+        short_path = tc_alloc_buf(PATH_MAX);
+        if (!short_path) return false;
+        if (tc_path_rebase(tc_curpath, *abs_path, short_path, PATH_MAX) < 0)
+                return false;
+
+        short_comps_n = tc_path_tokenize(short_path, &short_comps);
+        if (short_comps_n < *comps_n) {
+                *comps_n = short_comps_n;
+                *comps = short_comps;
+                free(comps);
+                res = true;
+        } else {
+                free(short_comps);
+                res = false;
+        }
+
+        return res;
+}
+
 static int tc_set_cfh_to_path(const char *path, slice_t *leaf,
 			      bool update_curpath)
 {
-        bool is_abs_path = path[0] == '/';
         const char *abs_path;
-        char *compressed_path;
         slice_t *comps;
         size_t comps_n;
-        slice_t *compressed_comps;
-        size_t compressed_n;
+        bool compressed;
         int r;
 
-        if (!is_abs_path) {
-                abs_path = tc_get_abspath_from_cwd(path);
+        compressed = tc_compress_path(path, &comps, &comps_n, &abs_path);
+        if (leaf) *leaf = comps[--comps_n];
+        if (compressed) {
+                tc_prepare_lookups(comps, comps_n);
+                r = comps_n;
+        } else if (path[0] == '/') {
+                r = tc_set_cfh_from_root(comps, comps_n);
         } else {
-                abs_path = path;
-        }
-
-        comps_n = tc_path_tokenize(path, &comps);
-        if (tc_curpath[0] == 0) {
-        }
-
-        compressed_path = tc_alloc_buf(PATH_MAX);
-        assert(compressed_path);
-        r = tc_path_rebase(tc_curpath, abs_path, compressed_path, PATH_MAX);
-	if (r < 0 || (compressed_n = tc_path_tokenize(
-			  compressed_path, &compressed_comps)) > comps_n) {
-		NFS4_ERR("failed to rebase path %s onto %s: $s",
-                         abs_path, tc_curpath, strerror(-r));
-                if (leaf) *leaf = comps[--comps_n];
-                if (is_abs_path) {
-                        r = tc_set_cfh_from_root(comps, comps_n);
-                } else {
-                        r = tc_set_cfh_from_cwd(comps, comps_n);
-                }
-        } else {
-                if (leaf) *leaf = compressed_comps[--compressed_n];
-                tc_prepare_lookups(compressed_comps, compressed_n);
-                r = compressed_n;
+                r = tc_set_cfh_from_cwd(comps, comps_n);
         }
 
         if (update_curpath) {
@@ -4098,7 +4114,7 @@ static tc_res tc_nfs4_renamev(tc_file_pair *pairs, int count)
         tc_start_compound(true);
 
         for (i = 0; i < count; ++i) {
-                rc = tc_set_saved_fh(&pairs[i].src_file, &srcname);
+                rc = tc_set_saved_fh(&pairs[i].src_file, &srcname, false);
                 if (rc < 0) {
                         tcres = tc_failure(i, ERR_FSAL_INVAL);
                         goto exit;
