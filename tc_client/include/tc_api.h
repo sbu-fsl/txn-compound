@@ -868,7 +868,7 @@ tc_res tc_ensure_dir(const char *dir, mode_t mode, slice_t *leaf);
 /**
  * Copy a directory to a new destination
  */
-tc_res tc_cp_recursive(const char *src_dir, const char *dst_dir);
+tc_res tc_cp_recursive(const char *src_dir, const char *dst, bool symlink);
 
 /**
  * Remove a list of file-system objects (files or directories).

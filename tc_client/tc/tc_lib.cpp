@@ -95,29 +95,50 @@ tc_res tc_cp_mkdirs(const char *src_dir, const char **dirs, int count, const cha
 	return res;
 }
 
-tc_res tc_cp_files(const char *src_dir, const char **srcs, int count, const char *dst_dir)
+tc_res tc_cp_files(const char *src_dir, const char **srcs, int count, const char *dst_dir, bool symlink)
 {
-	struct tc_extent_pair pairs[count];
+	tc_res res;
+	struct tc_extent_pair *pairs;
+	const char **dst_paths;
+
+	if (symlink) {
+		dst_paths = (const char **) alloca(sizeof(char*) * count);
+	} else {
+		pairs = (struct tc_extent_pair*) alloca(sizeof(struct tc_extent_pair) * count);
+	}
+
 	for (int i = 0; i < count; i++) {
 		char *path = (char*) alloca(sizeof(char) * PATH_MAX);
 		const char *suffix = srcs[i];
 		for (int j = 0; *suffix != '\0' && *suffix == src_dir[j]; j++, suffix++);
 
-		pairs[i].src_path = srcs[i];
 		tc_path_join(dst_dir, suffix, path, PATH_MAX);
-		pairs[i].dst_path = path;
-		pairs[i].src_offset = 0;
-		pairs[i].dst_offset = 0;
-		pairs[i].length = 0;
+
+		if (symlink) {
+			dst_paths[i] = path;
+		} else {
+			pairs[i].src_path = srcs[i];
+			pairs[i].dst_path = path;
+			pairs[i].src_offset = 0;
+			pairs[i].dst_offset = 0;
+			pairs[i].length = 0;
+		}
 	}
-	tc_res res = tc_copyv(pairs, count, false);
-	if (!tc_okay(res)) {
-		printf("tc_copyv: %s (%s)\n", strerror(res.err_no), pairs[res.index].dst_path);
+	if (symlink) {
+		res = tc_symlinkv(srcs, dst_paths, count, false);
+		if (!tc_okay(res)) {
+			printf("tc_symlinkv: %s (%s -> %s)\n", strerror(res.err_no), srcs[res.index], dst_paths[res.index]);
+		}
+	} else {
+		res = tc_copyv(pairs, count, false);
+		if (!tc_okay(res)) {
+			printf("tc_lcopyv: %s (%s)\n", strerror(res.err_no), pairs[res.index].src_path);
+		}
 	}
 	return res;
 }
 
-tc_res tc_cp_recursive(const char *src_dir, const char *dst)
+tc_res tc_cp_recursive(const char *src_dir, const char *dst, bool symlink)
 {
 	vector<const char *> dirs;
 	vector<const char *> files_to_copy;
@@ -146,7 +167,7 @@ tc_res tc_cp_recursive(const char *src_dir, const char *dst)
 		}
 		created += n;
 
-		tcres = tc_cp_files(src_dir, files_to_copy.data(), files_to_copy.size(), dst);
+		tcres = tc_cp_files(src_dir, files_to_copy.data(), files_to_copy.size(), dst, symlink);
 		files_to_copy.clear();
 		if (!tc_okay(tcres)) {
 			return tcres;
