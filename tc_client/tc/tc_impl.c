@@ -313,17 +313,17 @@ bool resolve_symlinks(struct syminfo *syms, int count, tc_res *err) {
 	}
 
 	for (i = 0; i < path_count; i++) {
-		struct syminfo sym = syms[attrs_original_indices[paths_original_indices[i]]];
-		if (bufs[i][0] != '/') {
+		struct syminfo *sym = &syms[attrs_original_indices[paths_original_indices[i]]];
+		if (sym->src_path[0] == '/' && bufs[i][0] != '/') {
 			char *path = malloc(sizeof(char) * PATH_MAX);
-			slice_t dirname = tc_path_dirname(strdup(sym.src_path));
+			slice_t dirname = tc_path_dirname(strdup(sym->src_path));
 			((char*) dirname.data)[dirname.size] = '\0';
 			tc_path_join(dirname.data, bufs[i], path, PATH_MAX);
 			free(bufs[i]);
 			free((char*)dirname.data);
-			sym.target_path = path;
+			sym->target_path = path;
 		} else {
-			sym.target_path = bufs[i];
+			sym->target_path = bufs[i];
 		}
 	}
 
