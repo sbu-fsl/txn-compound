@@ -479,6 +479,22 @@ TYPED_TEST_P(TcTest, AttrsTestSymlinks)
 	free(attrs1);
 	free(attrs2);
 }
+/**
+ * TC-cp-recursive test
+ * with symlinks (cp -sr)
+ */
+TYPED_TEST_P(TcTest, RecursiveSymlinkTest)
+{
+	char src_path[PATH_MAX];
+	char link_path[PATH_MAX];
+	char *cwd = tc_getcwd();
+	tc_path_join(cwd, "TcTest-ListLargeDir", src_path, PATH_MAX);
+	tc_path_join(cwd, "TcTest-RecursiveSymlink", link_path, PATH_MAX);
+	free(cwd);
+	const char *objs[] = {link_path};
+	tc_rm(objs, 1, false);
+	EXPECT_OK(tc_cp_recursive(src_path, link_path, true));
+}
 
 /*
  * TC-Set/Get Attributes test
@@ -1329,6 +1345,7 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   SymlinkBasics,
 			   TcStatBasics,
 			   CopyLargeDirectory,
+			   RecursiveSymlinkTest,
 			   TcRmBasic);
 
 typedef ::testing::Types<TcNFS4Impl, TcPosixImpl> TcImpls;
