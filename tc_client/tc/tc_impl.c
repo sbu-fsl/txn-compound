@@ -910,7 +910,7 @@ tc_res tc_lcopyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 tc_res tc_symlinkv(const char **oldpaths, const char **newpaths, int count,
 		   bool istxn)
 {
-	tc_res tcres;
+	tc_res tcres = TC_OKAY;
 	TC_DECLARE_COUNTER(symlink);
 
 	TC_START_COUNTER(symlink);
