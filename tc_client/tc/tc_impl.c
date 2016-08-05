@@ -915,7 +915,13 @@ tc_res tc_symlinkv(const char **oldpaths, const char **newpaths, int count,
 
 	TC_START_COUNTER(symlink);
 	if (TC_IMPL_IS_NFS4) {
-		tcres = nfs4_symlinkv(oldpaths, newpaths, count, istxn);
+		for (int i = 0; i < count; i += 8) {
+			tcres = nfs4_symlinkv(&oldpaths[i], &newpaths[i], MIN(8, count - i), istxn);
+			if (!tc_okay(tcres)) {
+				tcres.index += i;
+				return tcres;
+			}
+		}
 	} else {
 		tcres = posix_symlinkv(oldpaths, newpaths, count, istxn);
 	}
