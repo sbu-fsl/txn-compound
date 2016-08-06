@@ -82,11 +82,14 @@ static pthread_cond_t need_context = PTHREAD_COND_INITIALIZER;
 
 static struct session_slot_table *sess_slot_tbl;
 
+static pthread_once_t tc_once;
+static pthread_key_t tc_compound_resources;
+
 #define MAX_NUM_OPS_PER_COMPOUND 256
 static __thread nfs_argop4 argoparray[MAX_NUM_OPS_PER_COMPOUND];
 static __thread nfs_resop4 resoparray[MAX_NUM_OPS_PER_COMPOUND];
-static __thread int opcnt;
-static __thread bool slot_allocated;
+static __thread int opcnt = 0;
+static __thread bool slot_allocated = false;
 
 static __thread char tc_curpath[PATH_MAX + 1];
 static __thread char tc_savedpath[PATH_MAX + 1];
@@ -540,12 +543,32 @@ static inline void tc_append_curpath(slice_t name)
         }
 }
 
-static void tc_start_compound(bool has_sequence)
+static void tc_cleanup_compound(void *unused)
+{
+        opcnt = 0;
+        while (tc_bufcnt) {
+                free(tc_bufs[--tc_bufcnt]);
+        }
+        tc_reset_curpath();
+}
+
+static void tc_pthread_init(void)
+{
+	if (pthread_key_create(&tc_compound_resources, tc_cleanup_compound)) {
+		NFS4_ERR("failed to install tc_cleanup_compound(): %s",
+			 strerror(errno));
+	}
+}
+
+static void tc_reset_compound(bool has_sequence)
 {
 	SEQUENCE4args *sa;
 
-        assert(opcnt == 0);
-        assert(tc_bufcnt == 0);
+        if (pthread_once(&tc_once, tc_pthread_init)) {
+                NFS4_ERR("pthread_once failed: %s", strerror(errno));
+        }
+
+        tc_cleanup_compound(NULL);
 
 	/**
 	 * We free the slot first, in case the previous compound allocated slot
@@ -568,15 +591,6 @@ static void tc_start_compound(bool has_sequence)
 		sa->sa_cachethis = false;
 		++opcnt;
 	}
-}
-
-static void tc_end_compound()
-{
-        opcnt = 0;
-        while (tc_bufcnt) {
-                free(tc_bufs[--tc_bufcnt]);
-        }
-        tc_reset_curpath();
 }
 
 static inline bool tc_has_enough_ops(int nops)
@@ -1142,7 +1156,7 @@ static int fs_setclientid(clientid4 *resultclientid, uint32_t *lease_time)
 	cbkern.cb_location.r_addr = buf;
 	//cbkern.cb_location.r_addr = "127.0.0.1";
 
-	tc_start_compound(false);
+	tc_reset_compound(false);
 	sok = &resoparray->nfs_resop4_u.opsetclientid.SETCLIENTID4res_u.resok4;
 	argoparray->argop = NFS4_OP_SETCLIENTID;
 	argoparray->nfs_argop4_u.opsetclientid.client = nfsclientid;
@@ -1154,7 +1168,7 @@ static int fs_setclientid(clientid4 *resultclientid, uint32_t *lease_time)
 	if (rc != NFS4_OK)
 		return -1;
 
-	tc_start_compound(false);
+	tc_reset_compound(false);
 	argoparray->argop = NFS4_OP_SETCLIENTID_CONFIRM;
 	argoparray->nfs_argop4_u.opsetclientid_confirm.clientid = sok->clientid;
 	memcpy(
@@ -1192,7 +1206,7 @@ static fsal_status_t fs_destroy_session()
 {
         int rc;
 
-        tc_start_compound(false);
+        tc_reset_compound(false);
 
         argoparray->argop = NFS4_OP_DESTROY_SESSION;
         memcpy(&argoparray->nfs_argop4_u.opdestroy_session.dsa_sessionid,
@@ -1213,7 +1227,7 @@ static int fs_reclaim_complete()
 {
         int rc;
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 
 	argoparray[opcnt].argop = NFS4_OP_RECLAIM_COMPLETE;
 	argoparray[opcnt].nfs_argop4_u.opreclaim_complete.rca_one_fs = false;
@@ -1287,7 +1301,7 @@ static int fs_create_session()
 	eia_flags |=
 	    (EXCHGID4_FLAG_SUPP_MOVED_REFER | EXCHGID4_FLAG_BIND_PRINC_STATEID);
 
-        tc_start_compound(false);
+        tc_reset_compound(false);
 
 	eia = &argoparray[opcnt].nfs_argop4_u.opexchange_id;
 	argoparray[opcnt++].argop = NFS4_OP_EXCHANGE_ID;
@@ -1326,7 +1340,7 @@ static int fs_create_session()
 
 	csa_flags |= CREATE_SESSION4_FLAG_PERSIST;
 
-        tc_start_compound(false);
+        tc_reset_compound(false);
 
 	csa = &argoparray[opcnt].nfs_argop4_u.opcreate_session;
 	argoparray[opcnt++].argop = NFS4_OP_CREATE_SESSION;
@@ -1384,7 +1398,7 @@ static void *fs_clientid_renewer(void *Arg)
 			/* Simply renew the client id you've got */
 			LogDebug(COMPONENT_FSAL, "Renewing client id %lx",
 				 fs_clientid);
-                        tc_start_compound(false);
+                        tc_reset_compound(false);
 			argoparray->argop = NFS4_OP_RENEW;
 			argoparray->nfs_argop4_u.oprenew.clientid = fs_clientid;
                         ++opcnt;
@@ -1526,7 +1540,7 @@ static fsal_status_t fs_root_lookup_impl(struct fsal_export *export,
 	if (!handle)
 		return fsalstat(ERR_FSAL_INVAL, 0);
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 
 	COMPOUNDV4_ARG_ADD_OP_PUTROOTFH(opcnt, argoparray);
 
@@ -1573,7 +1587,7 @@ static fsal_status_t fs_lookup_impl(struct fsal_obj_handle *parent,
 	if (!handle)
 		return fsalstat(ERR_FSAL_INVAL, 0);
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 
 	if (!parent) {
 		COMPOUNDV4_ARG_ADD_OP_PUTROOTFH(opcnt, argoparray);
@@ -1649,7 +1663,7 @@ static fsal_status_t fs_do_close(const struct user_cred *creds,
 	if (is_special_stateid(sid))
 		return fsalstat(ERR_FSAL_NO_ERROR, 0);
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, *fh4);
 	COMPOUNDV4_ARG_ADD_OP_CLOSE(opcnt, argoparray, sid);
@@ -1675,7 +1689,7 @@ static fsal_status_t fs_open_confirm(const struct user_cred *cred,
 	nfs_argop4 *op;
 	OPEN_CONFIRM4resok *conok;
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, *fh4);
 
@@ -1745,7 +1759,7 @@ static fsal_status_t fs_create(struct fsal_obj_handle *dir_hdl,
 	if (fs_fsalattr_to_fattr4(attrib, &input_attr) == -1)
 		return fsalstat(ERR_FSAL_INVAL, -1);
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 
 	ph = container_of(dir_hdl, struct fs_obj_handle, obj);
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
@@ -1827,7 +1841,7 @@ static fsal_status_t fs_read_state(const nfs_fh4 *fh4, const nfs_fh4 *fh4_1,
 		buffer_size =
 		    op_ctx->fsal_export->ops->fs_maxread(op_ctx->fsal_export);
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, *fh4);
 	rok = &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
@@ -1924,7 +1938,7 @@ static int tc_set_cfh_from_cfh(const char *path, slice_t *leaf)
 
         tc_prepare_lookups(comps, compcnt);
 
-        tc_set_curpath(tc_get_abspath_from_cwd(path), leaf != NULL);
+        tc_set_curpath(tc_get_abspath_from_cfh(path), leaf != NULL);
 
         return compcnt;
 }
@@ -1968,15 +1982,15 @@ static bool tc_compress_path(const char *path, slice_t **comps, size_t *comps_n,
         slice_t *short_comps;
         char *short_path;
 
-        *comps_n = tc_path_tokenize(path, comps);
-        if (tc_curpath[0] == 0) {
-                return false;
-        }
-
         if (path[0] != '/') {
                 *abs_path = path;
         } else {
                 *abs_path = tc_get_abspath_from_cwd(path);
+        }
+        *comps_n = tc_path_tokenize(path, comps);
+
+        if (tc_curpath[0] == 0) {
+                return false;
         }
 
         short_path = tc_alloc_buf(PATH_MAX);
@@ -2224,7 +2238,7 @@ static tc_res tc_nfs4_readv(struct tc_iovec *iovs, int count)
 
 	LogDebug(COMPONENT_FSAL, "ktcread() called\n");
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 
 	for (i = 0; i < count; ++i) {
 		tc_open_file_if_necessary(&iovs[i].file, O_RDONLY,
@@ -2316,7 +2330,7 @@ static tc_res tc_nfs4_writev(struct tc_iovec *iovs, int count)
 
 	LogDebug(COMPONENT_FSAL, "ktcwrite() called\n");
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 
 	input_attr = calloc(count, sizeof(fattr4));
 
@@ -2573,7 +2587,7 @@ static fsal_status_t fs_mkdir(struct fsal_obj_handle *dir_hdl, const char *name,
 	if (fs_fsalattr_to_fattr4(attrib, &input_attr) == -1)
 		return fsalstat(ERR_FSAL_INVAL, -1);
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 
 	ph = container_of(dir_hdl, struct fs_obj_handle, obj);
         tc_prepare_putfh(&ph->fh4);
@@ -2649,7 +2663,7 @@ static fsal_status_t fs_mknod(struct fsal_obj_handle *dir_hdl,
 	if (fs_fsalattr_to_fattr4(attrib, &input_attr) == -1)
 		return fsalstat(ERR_FSAL_INVAL, -1);
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 
 	ph = container_of(dir_hdl, struct fs_obj_handle, obj);
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
@@ -2713,7 +2727,7 @@ static fsal_status_t fs_symlink(struct fsal_obj_handle *dir_hdl,
 	if (fs_fsalattr_to_fattr4(attrib, &input_attr) == -1)
 		return fsalstat(ERR_FSAL_INVAL, -1);
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 	ph = container_of(dir_hdl, struct fs_obj_handle, obj);
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
 
@@ -2763,7 +2777,7 @@ static fsal_status_t fs_readlink(struct fsal_obj_handle *obj_hdl,
 	struct fs_obj_handle *ph;
 	READLINK4resok *rlok;
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 	ph = container_of(obj_hdl, struct fs_obj_handle, obj);
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
 
@@ -2811,7 +2825,7 @@ static fsal_status_t fs_link(struct fsal_obj_handle *obj_hdl,
 	tgt = container_of(obj_hdl, struct fs_obj_handle, obj);
 	dst = container_of(destdir_hdl, struct fs_obj_handle, obj);
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, tgt->fh4);
         tc_prepare_savefh();
@@ -2843,7 +2857,7 @@ static fsal_status_t fs_do_readdir(struct fs_obj_handle *ph,
 	READDIR4resok *rdok;
 	fsal_status_t st = { ERR_FSAL_NO_ERROR, 0 };
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
 	rdok = &resoparray[opcnt].nfs_resop4_u.opreaddir.READDIR4res_u.resok4;
 	rdok->reply.entries = NULL;
@@ -2911,7 +2925,7 @@ static fsal_status_t fs_rename(struct fsal_obj_handle *olddir_hdl,
 	struct fs_obj_handle *src;
 	struct fs_obj_handle *tgt;
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 	src = container_of(olddir_hdl, struct fs_obj_handle, obj);
 	tgt = container_of(newdir_hdl, struct fs_obj_handle, obj);
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, src->fh4);
@@ -2933,7 +2947,7 @@ static fsal_status_t fs_getattrs_impl(const struct user_cred *creds,
 	GETATTR4resok *atok;
 	char fattr_blob[FATTR_BLOB_SZ];
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, *filehandle);
 
 	atok = fs_fill_getattr_reply(resoparray + opcnt, fattr_blob,
@@ -2991,7 +3005,7 @@ static fsal_status_t fs_setattrs(struct fsal_obj_handle *obj_hdl,
 	if (fs_fsalattr_to_fattr4(attrs, &input_attr) == -1)
 		return fsalstat(ERR_FSAL_INVAL, EINVAL);
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
 
 	resoparray[opcnt].nfs_resop4_u.opsetattr.attrsset = empty_bitmap;
@@ -3034,7 +3048,7 @@ static fsal_status_t fs_unlink(struct fsal_obj_handle *dir_hdl,
 	char fattr_blob[FATTR_BLOB_SZ];
 	struct attrlist dirattr = {0};
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 	ph = container_of(dir_hdl, struct fs_obj_handle, obj);
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
 	COMPOUNDV4_ARG_ADD_OP_REMOVE(opcnt, argoparray, (char *)name);
@@ -3166,7 +3180,7 @@ static fsal_status_t fs_read(struct fsal_obj_handle *obj_hdl,
 		buffer_size =
 		    op_ctx->fsal_export->ops->fs_maxread(op_ctx->fsal_export);
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
 	rok = &resoparray[opcnt].nfs_resop4_u.opread.READ4res_u.resok4;
 	rok->data.data_val = buffer;
@@ -3208,7 +3222,7 @@ static fsal_status_t fs_write(struct fsal_obj_handle *obj_hdl,
 		size =
 		    op_ctx->fsal_export->ops->fs_maxwrite(op_ctx->fsal_export);
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
 	wok = &resoparray[opcnt].nfs_resop4_u.opwrite.WRITE4res_u.resok4;
@@ -3253,7 +3267,7 @@ fsal_status_t fs_read_plus(struct fsal_obj_handle *obj_hdl,
                 buffer_size =
                       op_ctx->fsal_export->ops->fs_maxread(op_ctx->fsal_export);
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
         COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
         rp4res = &resoparray[opcnt].nfs_resop4_u.opread_plus;
         rpr4 = &rp4res->rpr_resok4;
@@ -3301,7 +3315,7 @@ fsal_status_t fs_write_plus(struct fsal_obj_handle *obj_hdl,
                 size =
                     op_ctx->fsal_export->ops->fs_maxwrite(op_ctx->fsal_export);
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
 
         wp4res = &resoparray[opcnt].nfs_resop4_u.opwrite_plus;
@@ -3546,7 +3560,7 @@ static tc_res tc_nfs4_openv(struct tc_attrs *attrs, int count, int *flags,
 
 	NFS4_DEBUG("tc_nfs4_openv");
 	assert(count >= 1);
-        tc_start_compound(true);
+        tc_reset_compound(true);
 	fattrs = alloca(count * sizeof(fattr4));
 	memset(fattrs, 0, count * sizeof(fattr4));
 	fattr_blobs = (char *)alloca(count * FATTR_BLOB_SZ);
@@ -3612,7 +3626,6 @@ exit:
         for (i = 0; i < count; ++i) {
                 nfs4_Fattr_Free(&fattrs[i]);
         }
-        tc_end_compound();
         return tcres;
 }
 
@@ -3625,7 +3638,7 @@ static tc_res tc_nfs4_closev(const nfs_fh4 *fh4s, int count, stateid4 *sids,
 
 	NFS4_DEBUG("tc_nfs4_closev");
 	assert(count >= 1);
-        tc_start_compound(true);
+        tc_reset_compound(true);
 
 	for (i = 0; i < count; ++i) {
 		// ignore stateless open
@@ -3650,7 +3663,6 @@ static tc_res tc_nfs4_closev(const nfs_fh4 *fh4s, int count, stateid4 *sids,
         }
 
 exit:
-        tc_end_compound();
         return tcres;
 }
 
@@ -3667,7 +3679,7 @@ static tc_res tc_nfs4_lgetattrsv(struct tc_attrs *attrs, int count)
 
         NFS4_DEBUG("tc_nfs4_lgetattrsv");
         assert(count >= 1);
-        tc_start_compound(true);
+        tc_reset_compound(true);
         fattr_blobs = (char *)malloc(count * FATTR_BLOB_SZ);
         assert(fattr_blobs);
 	bitmaps = alloca(count * sizeof(*bitmaps));
@@ -3708,7 +3720,6 @@ static tc_res tc_nfs4_lgetattrsv(struct tc_attrs *attrs, int count)
 	}
 
 exit:
-        tc_end_compound();
         free(fattr_blobs);
         return tcres;
 }
@@ -3726,7 +3737,7 @@ static tc_res tc_nfs4_lsetattrsv(struct tc_attrs *attrs, int count)
         struct bitmap4 *bitmaps;
 
         NFS4_DEBUG("tc_nfs4_lsetattrsv");
-        tc_start_compound(true);
+        tc_reset_compound(true);
 	fattrs = alloca(count * sizeof(fattr4));           /* on stack */
         fattr_blobs = alloca(count * FATTR_BLOB_SZ);
 	bitmaps = alloca(count * sizeof(*bitmaps));
@@ -3801,7 +3812,7 @@ static tc_res tc_nfs4_mkdirv(struct tc_attrs *dirs, int count)
         /* allocate space */
         NFS4_DEBUG("making %d directories", count);
         assert(count >= 1);
-        tc_start_compound(true);
+        tc_reset_compound(true);
 	input_attrs = alloca(count * sizeof(fattr4));   /* on stack */
         memset(input_attrs, 0, count * sizeof(fattr4));
 	fattr_blobs = alloca(count * FATTR_BLOB_SZ);    /* on stack */
@@ -4004,7 +4015,7 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
         bitmap4 bitmap = fs_bitmap_readdir;
         bool incomplete = false;
 
-	tc_start_compound(true);
+	tc_reset_compound(true);
 
         masks.has_mode = true;  // to detect directory
         tc_attr_masks_to_bitmap(&masks, &bitmap);
@@ -4140,7 +4151,7 @@ static tc_res tc_nfs4_renamev(tc_file_pair *pairs, int count)
         slice_t dstname;
 
         NFS4_DEBUG("tc_nfs4_renamev");
-        tc_start_compound(true);
+        tc_reset_compound(true);
 
         for (i = 0; i < count; ++i) {
                 rc = tc_set_saved_fh(&pairs[i].src_file, &srcname);
@@ -4191,7 +4202,7 @@ static tc_res tc_nfs4_removev(tc_file *files, int count)
         slice_t name;
 
         NFS4_DEBUG("tc_nfs4_removev");
-        tc_start_compound(true);
+        tc_reset_compound(true);
 
         for (i = 0; i < count; ++i) {
                 rc = tc_set_current_fh(&files[i], &name);
@@ -4243,7 +4254,7 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
         attrs4 = calloc(count, sizeof(*attrs4));
         assert(attrs4);
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 	for (i = 0; i < count; ++i) {
 		tc_set_cfh_to_path(pairs[i].src_path, &srcname);
 		tc_prepare_open(srcname, O_RDONLY, new_auto_buf(64),
@@ -4315,7 +4326,7 @@ static tc_res tc_nfs4_symlinkv(const char **oldpaths, const char **newpaths,
 	attrs4 = calloc(count, sizeof(*attrs4));
 	assert(attrs4);
 
-	tc_start_compound(true);
+	tc_reset_compound(true);
 	for (i = 0; i < count; ++i) {
 		tc_set_cfh_to_path(newpaths[i], &name);
 		pname = new_auto_str(name);
@@ -4365,7 +4376,7 @@ tc_res tc_nfs4_readlinkv(const char **paths, char **bufs, size_t *bufsizes,
 
 	NFS4_DEBUG("tc_nfs4_readlinkv");
 
-	tc_start_compound(true);
+	tc_reset_compound(true);
 	for (i = 0; i < count; ++i) {
 		tc_set_cfh_to_path(paths[i], NULL);
 		tc_prepare_readlink(bufs[i], bufsizes[i]);
@@ -4408,19 +4419,26 @@ static int tc_nfs4_chdir(const char *path)
 	int rc;
 	struct tc_cwd_data *cwd;
 	GETFH4resok *fhok;
+        slice_t *comps;
+        size_t compcnt;
 
 	NFS4_DEBUG("tc_nfs4_chdir");
 
 	cwd = malloc(sizeof(*cwd));
 	if (!cwd) {
-		tc_end_compound();
 		return -ENOMEM;
 	}
 	cwd->refcount = 1; // grap a refcount
 	memmove(cwd->path, path, strlen(path));
 
-        tc_start_compound(true);
-	rc = tc_set_cfh_to_path(path, NULL);
+        tc_reset_compound(true);
+
+        compcnt = tc_path_tokenize(path, &comps);
+        if (path[0] == '/') {
+                rc = tc_set_cfh_from_root(comps, compcnt);
+        } else {
+                rc = tc_set_cfh_from_cwd(comps, compcnt);
+        }
 	fhok = tc_prepare_getfh(cwd->fhbuf);
 
 	rc = fs_nfsv4_call(op_ctx->creds, NULL);
@@ -4647,7 +4665,7 @@ fsal_status_t kernel_lookupplus(const char *path, struct fsal_obj_handle **handl
 	if (!pcopy)
 		return fsalstat(ERR_FSAL_NOMEM, ENOMEM);
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 
 	COMPOUNDV4_ARG_ADD_OP_PUTROOTFH(opcnt, argoparray);
 
@@ -4735,7 +4753,7 @@ fsal_status_t fs_get_dynamic_info(struct fsal_export *exp_hdl,
 
 	ph = container_of(obj_hdl, struct fs_obj_handle, obj);
 
-        tc_start_compound(true);
+        tc_reset_compound(true);
 
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, ph->fh4);
 	atok =
