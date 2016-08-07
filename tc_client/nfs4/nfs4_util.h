@@ -28,8 +28,6 @@
 #include <fcntl.h>
 #include <pthread.h>
 
-#define TC_COMPRESS_PATH 1
-
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -384,9 +384,6 @@ tc_res nfs4_do_iovec(struct tc_iovec *iovs, int count, bool istxn,
 	struct tc_iov_array iova = TC_IOV_ARRAY_INITIALIZER(iovs, count);
 	struct tc_iov_array *parts;
 	tc_res tcres;
-#ifdef TC_COMPRESS_PATH
-	tc_file *saved_tcfs;
-#endif
 
 	for (i = 0; i < count; ++i) {
 		iovs[i].is_eof = false;
@@ -403,17 +400,11 @@ tc_res nfs4_do_iovec(struct tc_iovec *iovs, int count, bool istxn,
 	parts = tc_split_iov_array(&iova, CPD_LIMIT, &nparts);
 
 	for (i = 0; i < nparts; ++i) {
-#ifdef TC_COMPRESS_PATH
-		saved_tcfs = nfs4_compress_paths(parts[i].iovs, parts[i].size);
-#endif
 		tcres = fn(parts[i].iovs, parts[i].size, istxn);
 		if (!tc_okay(tcres)) {
 			/* TODO: FIX tcres */
 			goto exit;
 		}
-#ifdef TC_COMPRESS_PATH
-		nfs4_decompress_paths(parts[i].iovs, parts[i].size, saved_tcfs);
-#endif
 	}
 
 exit:
