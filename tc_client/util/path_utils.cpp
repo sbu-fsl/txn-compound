@@ -30,8 +30,8 @@ using util::Slice;
 
 static std::vector<Slice> tc_get_path_components(Slice path)
 {
-	assert(!path.empty());
 	std::vector<Slice> components;
+	if (path.empty()) return components;
 	bool is_absolute = path[0] == '/';
 	const char *start = path.data();
 	path.trim('/');

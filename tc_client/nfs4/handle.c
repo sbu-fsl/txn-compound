@@ -534,14 +534,10 @@ static inline void tc_append_curpath(slice_t name)
 		   tc_curpath);
 }
 
-static inline void tc_set_curpath(const char *path, bool strip_leaf)
+static inline void tc_set_curpath(slice_t path)
 {
-        slice_t sl;
-
-        sl = toslice(path);
-        if (strip_leaf) sl = tc_path_dirname_s(sl);
         tc_curpath[0] = '\0';
-        tc_append_curpath(sl);
+        tc_append_curpath(path);
 }
 
 static inline void tc_reset_curpath()
@@ -605,7 +601,7 @@ static inline bool tc_has_enough_ops(int nops)
         return opcnt + nops <= MAX_NUM_OPS_PER_COMPOUND;
 }
 
-static char* tc_alloc_buf(size_t bytes)
+static char* tc_alloca(size_t bytes)
 {
         if (tc_bufcnt == MAX_BUFS_PER_COMPOUND) {
                 NFS4_ERR("Reached maximum number of buffers per compound: %d",
@@ -619,6 +615,11 @@ static char* tc_alloc_buf(size_t bytes)
         }
         tc_bufs[tc_bufcnt++] = b;
         return b;
+}
+
+static buf_t* tc_alloca_buf(size_t bytes)
+{
+        return init_buf(tc_alloca(bytes + sizeof(buf_t)), bytes);
 }
 
 static int fs_got_rpc_reply(struct fs_rpc_io_context *ctx, int sock, int sz,
@@ -1908,44 +1909,50 @@ static inline void tc_prepare_lookups(slice_t *comps, int compcnt)
 	}
 }
 
-static char *tc_get_abspath_from_cwd(const char *rel_path)
+static slice_t tc_get_abspath_from_cwd(slice_t rel_path)
 {
         struct tc_cwd_data *cwd;
-        char *abs_path;
+        buf_t *abs_path;
 
         cwd = tc_get_cwd();
-        abs_path = tc_alloc_buf(PATH_MAX);
+        abs_path = tc_alloca_buf(PATH_MAX);
         assert(abs_path);
-        tc_path_join(cwd->path, rel_path, abs_path, PATH_MAX);
+        tc_path_join_s(toslice(cwd->path), rel_path, abs_path);
         tc_put_cwd(cwd);
 
-        return abs_path;
+        return asslice(abs_path);
 }
 
-static char *tc_get_abspath_from_cfh(const char *rel_path)
+static slice_t tc_get_abspath_from_cfh(slice_t rel_path)
 {
-        char *abs_path;
+        buf_t *abs_path;
 
-        abs_path = tc_alloc_buf(PATH_MAX);
+        abs_path = tc_alloca_buf(PATH_MAX);
         assert(abs_path);
-        tc_path_join(tc_curpath, rel_path, abs_path, PATH_MAX);
+        tc_path_join_s(toslice(tc_curpath), rel_path, abs_path);
 
-        return abs_path;
+        return asslice(abs_path);
 }
 
 static int tc_set_cfh_from_cfh(const char *path, slice_t *leaf)
 {
         slice_t *comps;
+        slice_t p;
         int compcnt;
 
-        compcnt = tc_path_tokenize(path, &comps);
-        if (leaf) *leaf = comps[--compcnt];
+        if (leaf) {
+                tc_path_dir_base(path, &p, leaf);
+        } else {
+                p = toslice(path);
+        }
+
+        compcnt = tc_path_tokenize_s(p, &comps);
 
         if (!tc_has_enough_ops(compcnt)) return -1;
 
         tc_prepare_lookups(comps, compcnt);
 
-        tc_set_curpath(tc_get_abspath_from_cfh(path), leaf != NULL);
+        tc_set_curpath(tc_get_abspath_from_cfh(p));
 
         return compcnt;
 }
@@ -1970,7 +1977,7 @@ static int tc_set_cfh_from_cwd(slice_t *comps, int compcnt)
         if (!tc_has_enough_ops(compcnt + 1)) return -1;
 
         cwd = tc_get_cwd();
-        cwdfh.nfs_fh4_val = tc_alloc_buf(NFS4_FHSIZE);
+        cwdfh.nfs_fh4_val = tc_alloca(NFS4_FHSIZE);
         cwdfh.nfs_fh4_len = cwd->fh.nfs_fh4_len;
 	memmove(cwdfh.nfs_fh4_val, cwd->fh.nfs_fh4_val, cwd->fh.nfs_fh4_len);
         tc_put_cwd(cwd);
@@ -1981,31 +1988,31 @@ static int tc_set_cfh_from_cwd(slice_t *comps, int compcnt)
         return compcnt + 1;
 }
 
-static bool tc_compress_path(const char *path, slice_t **comps, int *comps_n,
-			     const char **abs_path)
+static bool tc_compress_path(slice_t path, slice_t **comps, int *comps_n,
+			     slice_t *abs_path)
 {
         bool res;
         int short_comps_n;
         slice_t *short_comps;
-        char *short_path;
+        buf_t *short_path;
 
-        if (path[0] == '/') {
+        if (path.size > 0 && path.data[0] == '/') {
                 *abs_path = path;
         } else {
                 *abs_path = tc_get_abspath_from_cwd(path);
         }
-        *comps_n = tc_path_tokenize(path, comps);
+        *comps_n = tc_path_tokenize_s(path, comps);
 
         if (tc_curpath[0] == 0) {
                 return false;
         }
 
-        short_path = tc_alloc_buf(PATH_MAX);
+        short_path = tc_alloca_buf(PATH_MAX);
         if (!short_path) return false;
-        if (tc_path_rebase(tc_curpath, *abs_path, short_path, PATH_MAX) < 0)
+        if (tc_path_rebase_s(toslice(tc_curpath), *abs_path, short_path) < 0)
                 return false;
 
-        short_comps_n = tc_path_tokenize(short_path, &short_comps);
+        short_comps_n = tc_path_tokenize_s(asslice(short_path), &short_comps);
         if (short_comps_n < *comps_n) {
                 *comps_n = short_comps_n;
                 free(*comps);
@@ -2039,14 +2046,20 @@ static int tc_set_cfh_to_path_plain(const char *path)
 
 static int tc_set_cfh_to_path(const char *path, slice_t *leaf)
 {
-        const char *abs_path;
+        slice_t abs_path;
         slice_t *comps;
         int comps_n;
         bool compressed;
+        slice_t p;
         int r;
 
-        compressed = tc_compress_path(path, &comps, &comps_n, &abs_path);
-        if (leaf) *leaf = comps[--comps_n];
+        if (leaf) {
+                tc_path_dir_base(path, &p, leaf);
+        } else {
+                p = toslice(path);
+        }
+
+        compressed = tc_compress_path(p, &comps, &comps_n, &abs_path);
         if (compressed) {
                 tc_prepare_lookups(comps, comps_n);
                 r = comps_n;
@@ -2057,7 +2070,7 @@ static int tc_set_cfh_to_path(const char *path, slice_t *leaf)
         }
 
         if (r >= 0) {
-                tc_set_curpath(abs_path, leaf != NULL);
+                tc_set_curpath(abs_path);
         }
         free(comps);
 
