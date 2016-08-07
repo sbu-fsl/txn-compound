@@ -81,7 +81,8 @@ int tc_path_distance_s(slice_t src, slice_t dst);
  *
  * Return the size of the resultant "path".
  */
-int tc_path_rebase(const char *base, const char *path, char *buf, size_t buf_size);
+int tc_path_rebase(const char *base, const char *path, char *buf,
+		   size_t buf_size);
 int tc_path_rebase_s(slice_t base, slice_t path, buf_t *pbuf);
 
 /**
@@ -91,12 +92,20 @@ int tc_path_rebase_s(slice_t base, slice_t path, buf_t *pbuf);
  *
  * Return the length of the joined path.
  */
-int tc_path_join(const char *path1, const char *path2, char *buf, size_t buf_size);
+int tc_path_join(const char *path1, const char *path2, char *buf,
+		 size_t buf_size);
 int tc_path_join_s(slice_t path1, slice_t path2, buf_t *pbuf);
 int tc_path_append(buf_t *pbuf, slice_t comp);
 
 slice_t tc_path_dirname_s(slice_t path);
 slice_t tc_path_basename_s(slice_t path);
+
+/**
+ * Break path into dirname and basename.
+ *
+ * Return if a path separator is found '/'.
+ */
+bool tc_path_dir_base_s(slice_t path, slice_t *dir, slice_t *base);
 
 static inline slice_t tc_path_dirname(const char *path)
 {
@@ -106,6 +115,12 @@ static inline slice_t tc_path_dirname(const char *path)
 static inline slice_t tc_path_basename(const char *path)
 {
 	return tc_path_basename_s(toslice(path));
+}
+
+static inline bool tc_path_dir_base(const char *path, slice_t *dir,
+				    slice_t *base)
+{
+	return tc_path_dir_base_s(toslice(path), dir, base);
 }
 
 int _tc_path_joinall_impl(char *buf, size_t buf_size, int n, ...);

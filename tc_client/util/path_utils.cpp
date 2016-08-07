@@ -289,37 +289,47 @@ int tc_path_rebase(const char *base, const char *path, char *buf,
 	return n;
 }
 
-slice_t tc_path_dirname_s(slice_t path)
+bool tc_path_dir_base_s(slice_t path, slice_t *dir, slice_t *base)
 {
 	ssize_t i;
 
-	if (path.size == 0)
-		return path;
+	if (path.size == 0) {
+		fillslice(dir, NULL, 0);
+		fillslice(base, NULL, 0);
+		return false;
+	}
 
 	slice_rstrip(&path, '/');
-	if (path.size == 0 && path.data[0] == '/')
-		return mkslice(path.data, 1);
+	if (path.size == 0 && path.data[0] == '/') {
+		// parent is root
+		fillslice(dir, path.data, 1);
+		fillslice(base, NULL, 0);
+		return true;
+	}
 
 	i = slice_rindex(path, '/');
 
-	if (i == 0 && path.data[0] == '/')
-		return mkslice(path.data, 1);
+	if (i < 0) {
+		fillslice(dir, NULL, 0);
+		fillslice(base, path.data, path.size);
+		return false;
+	} else {
+		fillslice(dir, path.data, i == 0 ? 1 : i);  // keep '/' for root
+		fillslice(base, path.data + i + 1, path.size - i - 1);
+		return true;
+	}
+}
 
-	return mkslice(path.data, i < 0 ? 0 : i);
+slice_t tc_path_dirname_s(slice_t path)
+{
+	slice_t dir, base;
+	tc_path_dir_base_s(path, &dir, &base);
+	return dir;
 }
 
 slice_t tc_path_basename_s(slice_t path)
 {
-	ssize_t i;
-
-	if (path.size == 0)
-		return path;
-
-	slice_rstrip(&path, '/');
-	if (path.size == 0 && path.data[0] == '/')
-		return mkslice(path.data, 1);
-
-	i = slice_rindex(path, '/');
-
-	return mkslice(path.data + i + 1, path.size - i - 1);
+	slice_t dir, base;
+	tc_path_dir_base_s(path, &dir, &base);
+	return base;
 }
