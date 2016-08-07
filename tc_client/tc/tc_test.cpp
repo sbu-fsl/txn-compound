@@ -429,11 +429,11 @@ TYPED_TEST_P(TcTest, AttrsTestPath)
 TYPED_TEST_P(TcTest, AttrsTestSymlinks)
 {
 	const char *PATHS[] = { "AttrsTestSymlinks-Linked1.txt",
-			       "AttrsTestSymlinks-Linked2.txt",
-			       "AttrsTestSymlinks-Linked3.txt" };
+				"AttrsTestSymlinks-Linked2.txt",
+				"AttrsTestSymlinks-Linked3.txt" };
 	const char *LPATHS[] = { "AttrsTestSymlinks-Link1.txt",
-			       "AttrsTestSymlinks-Link2.txt",
-			       "AttrsTestSymlinks-Link3.txt" };
+				 "AttrsTestSymlinks-Link2.txt",
+				 "AttrsTestSymlinks-Link3.txt" };
 	tc_res res = { 0 };
 	struct tc_iovec iov;
 	int i;

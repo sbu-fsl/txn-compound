@@ -550,7 +550,6 @@ static inline void tc_reset_curpath()
 
 static void tc_cleanup_compound(void *unused)
 {
-        NFS4_DEBUG("opcnt: %d; tc_bufcnt: %d", opcnt, tc_bufcnt);
         opcnt = 0;
         while (tc_bufcnt) {
                 free(tc_bufs[--tc_bufcnt]);
@@ -617,9 +616,6 @@ static char* tc_alloc_buf(size_t bytes)
                 return NULL;
         }
         tc_bufs[tc_bufcnt++] = b;
-        if (tc_bufcnt > 20) {
-                NFS4_DEBUG("large tc_bufcnt: opcnt: %d; tc_bufcnt: %d", opcnt, tc_bufcnt);
-        }
         return b;
 }
 
@@ -1983,11 +1979,11 @@ static int tc_set_cfh_from_cwd(slice_t *comps, int compcnt)
         return compcnt + 1;
 }
 
-static bool tc_compress_path(const char *path, slice_t **comps, size_t *comps_n,
+static bool tc_compress_path(const char *path, slice_t **comps, int *comps_n,
 			     const char **abs_path)
 {
         bool res;
-        size_t short_comps_n;
+        int short_comps_n;
         slice_t *short_comps;
         char *short_path;
 
@@ -2010,8 +2006,8 @@ static bool tc_compress_path(const char *path, slice_t **comps, size_t *comps_n,
         short_comps_n = tc_path_tokenize(short_path, &short_comps);
         if (short_comps_n < *comps_n) {
                 *comps_n = short_comps_n;
+                free(*comps);
                 *comps = short_comps;
-                free(comps);
                 res = true;
         } else {
                 free(short_comps);
@@ -2021,11 +2017,29 @@ static bool tc_compress_path(const char *path, slice_t **comps, size_t *comps_n,
         return res;
 }
 
+/* No compression or updating tc_curpath. */
+static int tc_set_cfh_to_path_plain(const char *path)
+{
+        int rc;
+        slice_t *comps;
+        size_t compcnt;
+
+        compcnt = tc_path_tokenize(path, &comps);
+        if (path[0] == '/') {
+                rc = tc_set_cfh_from_root(comps, compcnt);
+        } else {
+                rc = tc_set_cfh_from_cwd(comps, compcnt);
+        }
+        free(comps);
+
+        return rc;
+}
+
 static int tc_set_cfh_to_path(const char *path, slice_t *leaf)
 {
         const char *abs_path;
         slice_t *comps;
-        size_t comps_n;
+        int comps_n;
         bool compressed;
         int r;
 
@@ -2043,6 +2057,7 @@ static int tc_set_cfh_to_path(const char *path, slice_t *leaf)
         if (r >= 0) {
                 tc_set_curpath(abs_path, leaf != NULL);
         }
+        free(comps);
 
         return r;
 }
@@ -4387,7 +4402,7 @@ tc_res tc_nfs4_readlinkv(const char **paths, char **bufs, size_t *bufsizes,
 
 	tc_reset_compound(true);
 	for (i = 0; i < count; ++i) {
-		tc_set_cfh_to_path(paths[i], NULL);
+                tc_set_cfh_to_path_plain(paths[i]);
 		tc_prepare_readlink(bufs[i], bufsizes[i]);
 	}
 
@@ -4428,8 +4443,6 @@ static int tc_nfs4_chdir(const char *path)
 	int rc;
 	struct tc_cwd_data *cwd;
 	GETFH4resok *fhok;
-        slice_t *comps;
-        size_t compcnt;
 
 	NFS4_DEBUG("tc_nfs4_chdir");
 
@@ -4442,12 +4455,7 @@ static int tc_nfs4_chdir(const char *path)
 
         tc_reset_compound(true);
 
-        compcnt = tc_path_tokenize(path, &comps);
-        if (path[0] == '/') {
-                rc = tc_set_cfh_from_root(comps, compcnt);
-        } else {
-                rc = tc_set_cfh_from_cwd(comps, compcnt);
-        }
+        tc_set_cfh_to_path_plain(path);
 	fhok = tc_prepare_getfh(cwd->fhbuf);
 
 	rc = fs_nfsv4_call(op_ctx->creds, NULL);
