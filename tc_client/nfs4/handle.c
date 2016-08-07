@@ -2043,7 +2043,7 @@ static int tc_set_cfh_to_path(const char *path, slice_t *leaf, bool save)
         }
 
         if (save) {
-                tc_prepare_savefh(&p);
+                tc_prepare_savefh(&abs_path);
                 r += 1;
         }
 
