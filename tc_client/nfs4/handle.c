@@ -518,33 +518,39 @@ static void tc_update_sequence(nfs_argop4 *arg, nfs_resop4 *res, bool sent)
 	slot_allocated = false;
 }
 
+static inline void tc_append_curpath(slice_t name)
+{
+        int n = strnlen(tc_curpath, PATH_MAX);
+        assert(n + name.size + 1 < PATH_MAX);
+        if (n == 0) {
+                strncpy(tc_curpath, name.data, name.size);
+                tc_curpath[name.size] = '\0';
+        } else {
+                tc_curpath[n] = '/';
+                strncpy(tc_curpath + n + 1, name.data, name.size);
+                tc_curpath[name.size + n + 1] = '\0';
+        }
+}
+
 static inline void tc_set_curpath(const char *path, bool strip_leaf)
 {
         slice_t sl;
 
         sl = toslice(path);
         if (strip_leaf) sl = tc_path_dirname_s(sl);
-        memmove(tc_curpath, sl.data, sl.size);
+        tc_curpath[0] = '\0';
+        tc_append_curpath(sl);
 }
 
 static inline void tc_reset_curpath()
 {
         tc_curpath[0] = 0;
-}
-
-static inline void tc_append_curpath(slice_t name)
-{
-        int n = strlen(tc_curpath);
-        if (n == 0) {
-                strncpy(tc_curpath, name.data, name.size);
-        } else {
-                tc_curpath[n] = '/';
-                strncpy(tc_curpath + n + 1, name.data, name.size);
-        }
+        tc_savedpath[0] = 0;
 }
 
 static void tc_cleanup_compound(void *unused)
 {
+        NFS4_DEBUG("opcnt: %d; tc_bufcnt: %d", opcnt, tc_bufcnt);
         opcnt = 0;
         while (tc_bufcnt) {
                 free(tc_bufs[--tc_bufcnt]);
@@ -564,9 +570,9 @@ static void tc_reset_compound(bool has_sequence)
 {
 	SEQUENCE4args *sa;
 
-        if (pthread_once(&tc_once, tc_pthread_init)) {
-                NFS4_ERR("pthread_once failed: %s", strerror(errno));
-        }
+        /*if (pthread_once(&tc_once, tc_pthread_init)) {*/
+                /*NFS4_ERR("pthread_once failed: %s", strerror(errno));*/
+        /*}*/
 
         tc_cleanup_compound(NULL);
 
@@ -611,6 +617,9 @@ static char* tc_alloc_buf(size_t bytes)
                 return NULL;
         }
         tc_bufs[tc_bufcnt++] = b;
+        if (tc_bufcnt > 20) {
+                NFS4_DEBUG("large tc_bufcnt: opcnt: %d; tc_bufcnt: %d", opcnt, tc_bufcnt);
+        }
         return b;
 }
 
@@ -2093,14 +2102,14 @@ static int tc_set_current_fh(const tc_file *tcf, slice_t *leaf)
 static inline void tc_prepare_savefh()
 {
         COMPOUNDV4_ARG_ADD_OP_SAVEFH(opcnt, argoparray);
-        strcpy(tc_savedpath, tc_curpath);
+        strncpy(tc_savedpath, tc_curpath, PATH_MAX);
 }
 
 static inline void tc_prepare_restorefh()
 {
 
 	COMPOUNDV4_ARG_ADD_OP_RESTOREFH(opcnt, argoparray);
-        strcpy(tc_curpath, tc_savedpath);
+        strncpy(tc_curpath, tc_savedpath, PATH_MAX);
 }
 
 static int tc_set_saved_fh(const tc_file *tcf, slice_t *leaf)
@@ -4429,7 +4438,7 @@ static int tc_nfs4_chdir(const char *path)
 		return -ENOMEM;
 	}
 	cwd->refcount = 1; // grap a refcount
-	memmove(cwd->path, path, strlen(path));
+        strncpy(cwd->path, path, PATH_MAX);
 
         tc_reset_compound(true);
 
