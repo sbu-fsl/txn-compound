@@ -530,6 +530,8 @@ static inline void tc_append_curpath(slice_t name)
                 strncpy(tc_curpath + n + 1, name.data, name.size);
                 tc_curpath[name.size + n + 1] = '\0';
         }
+	NFS4_DEBUG("curpath append %.*s to %s\n", name.size, name.data,
+		   tc_curpath);
 }
 
 static inline void tc_set_curpath(const char *path, bool strip_leaf)
@@ -569,9 +571,9 @@ static void tc_reset_compound(bool has_sequence)
 {
 	SEQUENCE4args *sa;
 
-        /*if (pthread_once(&tc_once, tc_pthread_init)) {*/
-                /*NFS4_ERR("pthread_once failed: %s", strerror(errno));*/
-        /*}*/
+        if (pthread_once(&tc_once, tc_pthread_init)) {
+                NFS4_ERR("pthread_once failed: %s", strerror(errno));
+        }
 
         tc_cleanup_compound(NULL);
 
@@ -1987,7 +1989,7 @@ static bool tc_compress_path(const char *path, slice_t **comps, int *comps_n,
         slice_t *short_comps;
         char *short_path;
 
-        if (path[0] != '/') {
+        if (path[0] == '/') {
                 *abs_path = path;
         } else {
                 *abs_path = tc_get_abspath_from_cwd(path);
