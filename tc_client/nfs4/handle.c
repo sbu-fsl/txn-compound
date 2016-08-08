@@ -2003,12 +2003,17 @@ static bool tc_compress_path(slice_t path, slice_t **comps, int *comps_n,
 
 static inline void tc_prepare_savefh(slice_t *p)
 {
-        COMPOUNDV4_ARG_ADD_OP_SAVEFH(opcnt, argoparray);
-        if (p) {
-                tc_save_path(*p);
-        } else {
-                tc_saved_path[0] = '\0';  // clear saved path
-        }
+	if (opcnt == 0 || argoparray[opcnt - 1].argop != NFS4_OP_RESTOREFH) {
+		COMPOUNDV4_ARG_ADD_OP_SAVEFH(opcnt, argoparray);
+	}
+	if (p) {
+		NFS4_DEBUG("setting tc_saved_path: from %s to %.*s",
+			   tc_saved_path, p->size, p->data);
+		tc_save_path(*p);
+	} else {
+		NFS4_DEBUG("empty tc_saved_path: %s", tc_saved_path);
+		tc_saved_path[0] = '\0'; // clear saved path
+	}
 }
 
 static inline void tc_prepare_restorefh()
