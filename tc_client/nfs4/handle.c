@@ -97,6 +97,78 @@ static __thread char tc_saved_path[PATH_MAX + 1];
 static __thread int tc_bufcnt;
 static __thread char* tc_bufs[MAX_BUFS_PER_COMPOUND];
 
+static const bool NFS4_CHANGE_CFH[] = {
+	[0] = false,
+	[1] = false,
+	[2] = false,
+	[NFS4_OP_ACCESS] = false,
+	[NFS4_OP_CLOSE] = false,
+	[NFS4_OP_COMMIT] = false,
+	[NFS4_OP_CREATE] = true,
+	[NFS4_OP_DELEGPURGE] = false,
+	[NFS4_OP_DELEGRETURN] = false,
+	[NFS4_OP_GETATTR] = false,
+	[NFS4_OP_GETFH] = false,
+	[NFS4_OP_LINK] = false,
+	[NFS4_OP_LOCK] = false,
+	[NFS4_OP_LOCKT] = false,
+	[NFS4_OP_LOCKU] = false,
+	[NFS4_OP_LOOKUP] = true,
+	[NFS4_OP_LOOKUPP] = true,
+	[NFS4_OP_NVERIFY] = false,
+	[NFS4_OP_OPEN] = true,
+	[NFS4_OP_OPENATTR] = false,
+	[NFS4_OP_OPEN_CONFIRM] = false,
+	[NFS4_OP_OPEN_DOWNGRADE] = false,
+	[NFS4_OP_PUTFH] = true,
+	[NFS4_OP_PUTPUBFH] = true,
+	[NFS4_OP_PUTROOTFH] = true,
+	[NFS4_OP_READ] = false,
+	[NFS4_OP_READDIR] = false,
+	[NFS4_OP_READLINK] = false,
+	[NFS4_OP_REMOVE] = false,
+	[NFS4_OP_RENAME] = false,
+	[NFS4_OP_RENEW] = false,
+	[NFS4_OP_RESTOREFH] = true,
+	[NFS4_OP_SAVEFH] = false,
+	[NFS4_OP_SECINFO] = false,
+	[NFS4_OP_SETATTR] = false,
+	[NFS4_OP_SETCLIENTID] = false,
+	[NFS4_OP_SETCLIENTID_CONFIRM] = false,
+	[NFS4_OP_VERIFY] = false,
+	[NFS4_OP_WRITE] = false,
+	[NFS4_OP_RELEASE_LOCKOWNER] = false,
+	[NFS4_OP_BACKCHANNEL_CTL] = false,
+	[NFS4_OP_BIND_CONN_TO_SESSION] = false,
+	[NFS4_OP_EXCHANGE_ID] = false,
+	[NFS4_OP_CREATE_SESSION] = false,
+	[NFS4_OP_DESTROY_SESSION] = false,
+	[NFS4_OP_FREE_STATEID] = false,
+	[NFS4_OP_GET_DIR_DELEGATION] = false,
+	[NFS4_OP_GETDEVICEINFO] = false,
+	[NFS4_OP_GETDEVICELIST] = false,
+	[NFS4_OP_LAYOUTCOMMIT] = false,
+	[NFS4_OP_LAYOUTGET] = false,
+	[NFS4_OP_LAYOUTRETURN] = false,
+	[NFS4_OP_SECINFO_NO_NAME] = false,
+	[NFS4_OP_SEQUENCE] = false,
+	[NFS4_OP_SET_SSV] = false,
+	[NFS4_OP_TEST_STATEID] = false,
+	[NFS4_OP_WANT_DELEGATION] = false,
+	[NFS4_OP_DESTROY_CLIENTID] = false,
+	[NFS4_OP_RECLAIM_COMPLETE] = false,
+	/* NFSv4.2 */
+	[NFS4_OP_COPY] = false,
+	[NFS4_OP_OFFLOAD_ABORT] = false,
+	[NFS4_OP_COPY_NOTIFY] = false,
+	[NFS4_OP_OFFLOAD_REVOKE] = false,
+	[NFS4_OP_OFFLOAD_STATUS] = false,
+	[NFS4_OP_WRITE_PLUS] = false,
+	[NFS4_OP_READ_PLUS] = false,
+	[NFS4_OP_SEEK] = false,
+	[NFS4_OP_IO_ADVISE] = false,
+};
+
 /*
  * Protects the "free_contexts" list and the "need_context" condition.
  */
@@ -2001,11 +2073,57 @@ static bool tc_compress_path(slice_t path, slice_t **comps, int *comps_n,
         return res;
 }
 
+/**
+ * Return true if there is a preceding SAVEFH and CFH has NOT changed since the
+ * SAVEFH; return false if there no preceding SAVEFH or CFH has changed since
+ * the SAVEFH.
+ */
+static inline bool tc_cfh_not_changed_since_savefh()
+{
+	int i;
+
+	for (i = opcnt - 1; i >= 0; --i) {
+		if (argoparray[i].argop == NFS4_OP_SAVEFH) {
+			return true;
+		} else if (argoparray[i].argop == NFS4_OP_RESTOREFH) {
+			continue; // skip RESTOREFH
+		} else if (NFS4_CHANGE_CFH[argoparray[i].argop]) {
+			return false;
+		}
+	}
+
+	return false;
+}
+
+/**
+ * Return true if there is a preceding RESTOREFH and CFH has NOT changed since
+ * the RESTOREFH; return false if there no preceding RESTOREFH or CFH has
+ * changed since the RESTOREFH.
+ */
+static inline bool tc_cfh_not_changed_since_restorefh()
+{
+        int i;
+
+        for (i = opcnt - 1; i >= 0; --i) {
+                if (argoparray[i].argop == NFS4_OP_RESTOREFH) {
+                        return true;
+                } else if (NFS4_CHANGE_CFH[argoparray[i].argop]) {
+                        return false;
+                }
+        }
+
+        return false;
+}
+
 static inline void tc_prepare_savefh(slice_t *p)
 {
-	if (opcnt == 0 || argoparray[opcnt - 1].argop != NFS4_OP_RESTOREFH) {
-		COMPOUNDV4_ARG_ADD_OP_SAVEFH(opcnt, argoparray);
+
+	if (tc_cfh_not_changed_since_savefh() ||
+	    tc_cfh_not_changed_since_restorefh()) {
+		return;
 	}
+
+        COMPOUNDV4_ARG_ADD_OP_SAVEFH(opcnt, argoparray);
 	if (p) {
 		NFS4_DEBUG("setting tc_saved_path: from %s to %.*s",
 			   tc_saved_path, p->size, p->data);
@@ -2018,7 +2136,12 @@ static inline void tc_prepare_savefh(slice_t *p)
 
 static inline void tc_prepare_restorefh()
 {
-	COMPOUNDV4_ARG_ADD_OP_RESTOREFH(opcnt, argoparray);
+        // We only need to restore FH if the CFH has been changed after the
+        // previous SAVEFH.
+        if (tc_cfh_not_changed_since_savefh()) {
+                return;
+        }
+        COMPOUNDV4_ARG_ADD_OP_RESTOREFH(opcnt, argoparray);
 }
 
 static int tc_set_cfh_to_path(const char *path, slice_t *leaf, bool save)

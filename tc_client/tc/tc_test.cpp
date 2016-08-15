@@ -1124,6 +1124,22 @@ TYPED_TEST_P(TcTest, CompressDeepPaths)
 	delete[] attrs;
 }
 
+// Checked unnecessary SAVEFH and RESTOREFH are not used thanks to
+// optimization.
+TYPED_TEST_P(TcTest, CompressPathForRemove)
+{
+	tc_ensure_dir("TcTest-CompressPathForRemove/a/b/c/d", 0755, NULL);
+	tc_file *files = (tc_file *)alloca(4 * sizeof(tc_file));
+	for (int i = 0; i < 4; ++i) {
+		char *path = (char *)alloca(PATH_MAX);
+		snprintf(path, PATH_MAX,
+			 "TcTest-CompressPathForRemove/a/b/c/d/%d", i);
+		tc_touch(path, 4_KB);
+		files[i] = tc_file_from_path(path);
+	}
+	EXPECT_OK(tc_removev(files, 4, false));
+}
+
 TYPED_TEST_P(TcTest, SymlinkBasics)
 {
 	const char *TARGETS[] = { "TcTest-SymlinkBasics/001.file",
@@ -1258,6 +1274,7 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   ParallelRdWrAFile,
 			   RdWrLargeThanRPCLimit,
 			   CompressDeepPaths,
+			   CompressPathForRemove,
 			   SymlinkBasics,
 			   TcStatBasics,
 			   TcRmBasic);
