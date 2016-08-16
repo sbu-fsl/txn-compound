@@ -2706,6 +2706,7 @@ static inline COPY4res *tc_prepare_copy(size_t src_offset, size_t dst_offset,
 {
 	COPY4res *cpres;
 
+        if (!tc_has_enough_ops(1)) return NULL;
 	cpres = &resoparray[opcnt].nfs_resop4_u.opcopy;
 	COMPOUNDV4_ARG_ADD_OP_COPY(opcnt, argoparray, src_offset, dst_offset,
 				   count);
@@ -4471,7 +4472,7 @@ exit:
 static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 {
 	int rc;
-	tc_res tcres;
+	tc_res tcres = { .err_no = 0 };
 	nfsstat4 op_status;
 	int i = 0; /* index of tc_iovec */
 	int j = 0; /* index of NFS operations */
@@ -4503,7 +4504,7 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 				    pairs[i].length) &&
 		    tc_prepare_close(NULL, NULL) && tc_prepare_restorefh() &&
 		    tc_prepare_close(NULL, NULL);
-                if (!r) {
+		if (!r) {
                         opcnt = saved_opcnt;
                         count = i;
                         break;

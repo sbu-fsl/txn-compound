@@ -887,17 +887,11 @@ TYPED_TEST_P(TcTest, CopyFiles)
 	struct tc_iovec iov[2];
 	struct tc_iovec read_iov[2];
 
-	pairs[0].src_path = "SourceFile1.txt";
-	pairs[0].src_offset = 0;
-	pairs[0].dst_path = "DestinationFile1.txt";
-	pairs[0].dst_offset = 0;
-	pairs[0].length = N;
-
-	pairs[1].src_path = "SourceFile2.txt";
-	pairs[1].src_offset = 0;
-	pairs[1].dst_path = "DestinationFile2.txt";
-	pairs[1].dst_offset = 0;
-	pairs[1].length = 0;  // 0 means from src_offset to EOF
+	tc_fill_extent_pair(&pairs[0], "SourceFile1.txt", 0,
+			    "DestinationFile1.txt", 0, N);
+	tc_fill_extent_pair(&pairs[1], "SourceFile2.txt", 0,
+			    "DestinationFile2.txt", 0,
+			    0); // 0 means from src_offset to EOF
 
 	// create source files
 	tc_iov4creation(&iov[0], pairs[0].src_path, N, getRandomBytes(N));
@@ -968,6 +962,26 @@ TYPED_TEST_P(TcTest, CopyFirstHalfAsSecondHalf)
 
 	free(iov.data);
 	free(read_iov.data);
+}
+
+TYPED_TEST_P(TcTest, CopyManyFiles)
+{
+	const int NFILES = 64;
+	struct tc_extent_pair pairs[NFILES];
+	for (int i = 0; i < NFILES; ++i) {
+		char *path = (char *)alloca(PATH_MAX);
+		snprintf(path, PATH_MAX, "CopyMany/a%d/b/c/d/e/f/g/h", i);
+		tc_ensure_dir(path, 0755, NULL);
+
+		snprintf(path, PATH_MAX, "CopyMany/a%d/b/c/d/e/f/g/h/foo", i);
+		tc_touch(path, 4_KB);
+
+		char *dest_file = (char *)alloca(PATH_MAX);
+		snprintf(dest_file, PATH_MAX, "CopyMany/foo%d", i);
+		tc_fill_extent_pair(&pairs[i], path, 0, dest_file, 0, 0);
+	}
+
+	EXPECT_OK(tc_copyv(pairs, NFILES, false));
 }
 
 TYPED_TEST_P(TcTest, ListAnEmptyDirectory)
@@ -1305,6 +1319,7 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   SuccesiveWrites,
 			   CopyFiles,
 			   CopyFirstHalfAsSecondHalf,
+			   CopyManyFiles,
 			   ListAnEmptyDirectory,
 			   List2ndLevelDir,
 			   ShuffledRdWr,

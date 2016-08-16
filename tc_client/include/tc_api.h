@@ -742,6 +742,18 @@ struct tc_extent_pair
 	size_t length;
 };
 
+static inline void tc_fill_extent_pair(struct tc_extent_pair *tcep,
+				       const char *spath, size_t soff,
+				       const char *dpath, size_t doff,
+				       size_t len)
+{
+	tcep->src_path = spath;
+	tcep->dst_path = dpath;
+	tcep->src_offset = soff;
+	tcep->dst_offset = doff;
+	tcep->length = len;
+}
+
 /**
  * Copy the file from "src_path" to "dst_path" for each of "pairs".
  *
