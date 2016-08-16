@@ -57,7 +57,11 @@ tc_file *posix_openv(const char **paths, int count, int *flags, mode_t *modes)
 	if (tcfs) {
 		for (i = 0; i < count; ++i) {
 			tcfs[i].type = TC_FILE_DESCRIPTOR;
-			fd = open(paths[i], flags[i], modes[i]);
+			if (modes) {
+				fd = open(paths[i], flags[i], modes[i]);
+			} else {
+				fd = open(paths[i], flags[i]);
+			}
 			tcfs[i].fd = fd >= 0 ? fd : -errno;
 		}
 	}
