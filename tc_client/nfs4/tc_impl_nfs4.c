@@ -576,6 +576,7 @@ tc_res nfs4_closev(tc_file *files, int count)
 		    fh4s + finished, n - finished, sids + finished,
 		    seqs + finished);
 		if (!tc_okay(tcres)) {
+			tcres.index += finished;
 			break;
 		}
 		for (i = finished; i < tcres.index + finished; ++i) {
@@ -760,11 +761,20 @@ tc_res nfs4_renamev(tc_file_pair *pairs, int count, bool is_transaction)
 tc_res nfs4_removev(tc_file *files, int count, bool is_transaction)
 {
 	struct gsh_export *exp = op_ctx->export;
-	tc_res res;
+	tc_res tcres;
+	int finished;
 
-	res = exp->fsal_export->obj_ops->tc_removev(files, count);
+	for (finished = 0; finished < count; ) {
+		tcres = exp->fsal_export->obj_ops->tc_removev(files + finished,
+							      count - finished);
+		if (!tc_okay(tcres)) {
+			tcres.index += finished;
+			break;
+		}
+		finished += tcres.index;
+	}
 
-	return res;
+	return tcres;
 }
 
 tc_res nfs4_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)

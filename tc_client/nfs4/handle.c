@@ -1124,6 +1124,11 @@ static int fs_compoundv4_execute(const char *caller,
 	};
         TC_DECLARE_COUNTER(rpc);
 
+        if (opcnt == 0) {
+                *nfsstat = NFS4_OK;
+                return RPC_SUCCESS;
+        }
+
 	pthread_mutex_lock(&context_lock);
 	while (glist_empty(&free_contexts))
 		pthread_cond_wait(&need_context, &context_lock);
@@ -2689,6 +2694,7 @@ static inline REMOVE4resok *tc_prepare_remove(char *name)
 {
         REMOVE4resok *rmok;
 
+        if (!tc_has_enough_ops(1)) return NULL;
 	rmok = &resoparray[opcnt].nfs_resop4_u.opremove.REMOVE4res_u.resok4;
 	COMPOUNDV4_ARG_ADD_OP_REMOVE(opcnt, argoparray, name);
 
@@ -3836,12 +3842,6 @@ static tc_res tc_nfs4_closev(const nfs_fh4 *fh4s, int count, stateid4 *sids,
 		}
 	}
 
-	if (opcnt == 0) {
-		tcres.index = count;
-		tcres.err_no = 0;
-		goto exit;
-	}
-
 	tcres.index = count;
 	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
@@ -4409,48 +4409,58 @@ exit:
 
 static tc_res tc_nfs4_removev(tc_file *files, int count)
 {
-        int rc;
-        tc_res tcres;
+	int rc;
+	tc_res tcres;
 	nfsstat4 op_status;
-	int i = 0;      /* index of tc_iovec */
-	int j = 0;      /* index of NFS operations */
-        slice_t name;
+	int i = 0; /* index of tc_iovec */
+	int j = 0; /* index of NFS operations */
+	slice_t name;
+	bool r;
+	int saved_opcnt;
 
-        NFS4_DEBUG("tc_nfs4_removev");
-        tc_reset_compound(true);
+	NFS4_DEBUG("tc_nfs4_removev");
+	tc_reset_compound(true);
 
-        for (i = 0; i < count; ++i) {
-                rc = tc_set_current_fh(&files[i], &name, true);
-                if (rc < 0) {
-                        tcres = tc_failure(i, ERR_FSAL_INVAL);
-                        goto exit;
-                }
-                tc_prepare_remove(new_auto_str(name));
-        }
+	for (i = 0; i < count; ++i) {
+		if (files[i].type == TC_FILE_NULL)
+			continue;
+		saved_opcnt = opcnt;
+		r = tc_set_current_fh(&files[i], &name, true) &&
+		    tc_prepare_remove(new_auto_str(name));
+		if (!r) {
+			opcnt = saved_opcnt;
+			count = i;
+			break;
+		}
+	}
 
+	tcres.index = count;
 	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
-                NFS4_ERR("rpc failed: %d", rc);
-                tcres = tc_failure(0, rc);
-                goto exit;
-        }
+		NFS4_ERR("rpc failed: %d", rc);
+		tcres = tc_failure(0, rc);
+		goto exit;
+	}
 
-        i = 0;
-        for (j = 0; j < opcnt; ++j) {
-                op_status = get_nfs4_op_status(&resoparray[j]);
-                if (op_status != NFS4_OK) {
+	i = 0;
+	for (j = 0; j < opcnt; ++j) {
+		op_status = get_nfs4_op_status(&resoparray[j]);
+		if (op_status != NFS4_OK) {
 			NFS4_ERR("NFS operation (%d) failed: %d",
 				 resoparray[j].resop, op_status);
 			tcres = tc_failure(i, nfsstat4_to_errno(op_status));
-                        goto exit;
-                }
-                if (resoparray[j].resop == NFS4_OP_REMOVE) {
-                        ++i;
-                }
-        }
+			goto exit;
+		}
+		if (resoparray[j].resop == NFS4_OP_REMOVE) {
+			// ignore invalid files
+			while (files[i].type == TC_FILE_NULL)
+				++i;
+			++i;
+		}
+	}
 
 exit:
-        return tcres;
+	return tcres;
 }
 
 static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)

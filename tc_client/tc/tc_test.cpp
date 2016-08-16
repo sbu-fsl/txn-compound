@@ -95,15 +95,28 @@ static tc_iovec *build_iovec(tc_file *files, int count, int offset)
 
 static char *getRandomBytes(int N);
 
-void tc_touch(const char *path, int size)
+static void tc_touchv(const char **paths, int count, int filesize)
 {
-	tc_iovec iov;
+	tc_iovec *iovs;
+	char *buf;
 
-	tc_iov4creation(&iov, path, size, (size ? getRandomBytes(size) : NULL));
-	EXPECT_OK(tc_writev(&iov, 1, false));
-	if (iov.data) {
-		free(iov.data);
+	iovs = (tc_iovec *)alloca(count * sizeof(*iovs));
+	buf = filesize ? getRandomBytes(filesize) : NULL;
+
+	for (int i = 0; i < count; ++i) {
+		tc_iov4creation(&iovs[i], paths[i], filesize, buf);
 	}
+
+	EXPECT_OK(tc_writev(iovs, count, false));
+
+	if (buf) {
+		free(buf);
+	}
+}
+
+static inline void tc_touch(const char *path, int size)
+{
+	tc_touchv(&path, 1, size);
 }
 
 class TcPosixImpl {
@@ -1192,6 +1205,7 @@ TYPED_TEST_P(TcTest, RequestDoesNotFitIntoOneCompound)
 	tc_file *files = tc_openv(paths, NFILES, flags, NULL);
 	EXPECT_NOTNULL(files);
 	EXPECT_OK(tc_closev(files, NFILES));
+	EXPECT_OK(tc_unlinkv(paths, NFILES));
 }
 
 static bool is_same_stat(const struct stat *st1, const struct stat *st2)
