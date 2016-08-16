@@ -1943,7 +1943,7 @@ static fsal_status_t fs_read_state(const nfs_fh4 *fh4, const nfs_fh4 *fh4_1,
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
-static inline bool tc_prepare_putfh(nfs_fh4 *fh)
+static inline bool tc_prepare_putfh(const nfs_fh4 *fh)
 {
 	if (!tc_has_enough_ops(1))
 		return false;
@@ -2612,11 +2612,15 @@ static inline GETFH4resok *tc_prepare_getfh(char *fh)
         return fhok;
 }
 
-static inline bool tc_prepare_close()
+static inline bool tc_prepare_close(seqid4 *seqid, stateid4 *sid)
 {
 	if (!tc_has_enough_ops(1))
 		return false;
-	COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
+	if (seqid) {
+		COMPOUNDV4_ARG_ADD_OP_TCCLOSE(opcnt, argoparray, *seqid, *sid);
+	} else {
+		COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
+	}
 	return true;
 }
 
@@ -3807,38 +3811,64 @@ exit:
 static tc_res tc_nfs4_closev(const nfs_fh4 *fh4s, int count, stateid4 *sids,
 			     seqid4 *seqs)
 {
-        int i;
+	nfsstat4 op_status;
+	int i = 0; /* index of "fh4s" */
+	int j = 0; /* index of NFS operations */
 	int rc;
-	tc_res tcres = { .err_no = 0 };
+	bool r;
+	int saved_opcnt;
+	tc_res tcres;
 
 	NFS4_DEBUG("tc_nfs4_closev");
-	assert(count >= 1);
-        tc_reset_compound(true);
+	tc_reset_compound(true);
 
 	for (i = 0; i < count; ++i) {
 		// ignore stateless open
-                if (!is_special_stateid(sids + i)) {
-			COMPOUNDV4_ARG_ADD_OP_PUTFH(
-			    opcnt, argoparray, fh4s[i]);
-			COMPOUNDV4_ARG_ADD_OP_TCCLOSE(opcnt,
-						      argoparray,
-						      seqs[i], sids[i]);
+		if (!is_special_stateid(sids + i)) {
+			saved_opcnt = opcnt;
+			r = tc_prepare_putfh(&fh4s[i]) &&
+			    tc_prepare_close(&seqs[i], &sids[i]);
+			if (!r) {
+				opcnt = saved_opcnt;
+				count = i;
+				break;
+			}
 		}
-        }
+	}
 
-	rc = fs_nfsv4_call(op_ctx->creds, NULL);
-	if (rc != NFS4_OK) {
-                NFS4_ERR("rpc failed: %d", rc);
-                tcres = tc_failure(0, rc);
-                goto exit;
-        }
+	if (opcnt == 0) {
+		tcres.index = count;
+		tcres.err_no = 0;
+		goto exit;
+	}
 
-        for (i = 0; i < count; ++i) {
-                sids[i].seqid++;
-        }
+	tcres.index = count;
+	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
+	if (rc != RPC_SUCCESS) {
+		NFS4_ERR("rpc failed: %d", rc);
+		tcres = tc_failure(0, rc);
+		goto exit;
+	}
+
+	i = 0;
+	for (j = 0; j < opcnt; ++j) {
+		op_status = get_nfs4_op_status(&resoparray[j]);
+		if (op_status != NFS4_OK) {
+			NFS4_ERR("NFS operation (%d) failed: %d",
+				 resoparray[j].resop, op_status);
+			tcres = tc_failure(i, nfsstat4_to_errno(op_status));
+			goto exit;
+		}
+		if (resoparray[j].resop == NFS4_OP_CLOSE) {
+			while (i < count && is_special_stateid(&sids[i]))
+				++i;
+			sids[i].seqid++;
+			++i;
+		}
+	}
 
 exit:
-        return tcres;
+	return tcres;
 }
 
 static tc_res tc_nfs4_lgetattrsv(struct tc_attrs *attrs, int count)
@@ -4456,8 +4486,8 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 				    new_auto_buf(64), &attrs4[i]) &&
 		    tc_prepare_copy(pairs[i].src_offset, pairs[i].dst_offset,
 				    pairs[i].length) &&
-		    tc_prepare_close() && tc_prepare_restorefh() &&
-		    tc_prepare_close();
+		    tc_prepare_close(NULL, NULL) && tc_prepare_restorefh() &&
+		    tc_prepare_close(NULL, NULL);
                 if (!r) {
                         opcnt = saved_opcnt;
                         count = i;

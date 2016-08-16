@@ -499,7 +499,7 @@ tc_file *nfs4_openv(const char **paths, int count, int *flags, mode_t *modes)
 		    attrs + finished, count - finished, flags + finished,
 		    sids + finished);
 		if (!tc_okay(tcres)) {
-			free(tcfs);
+			nfs4_closev(tcfs, finished);
 			tcfs = NULL;
 			goto exit;
 		}
@@ -551,30 +551,48 @@ tc_res nfs4_closev(tc_file *files, int count)
 	stateid4 *sids;
 	seqid4 *seqs;
 	int i;
+	int n;
 	struct tc_kfd *tcfd;
+	int finished;
 
 	fh4s = alloca(count * sizeof(*fh4s));
 	sids = alloca(count * sizeof(*sids));
 	seqs = alloca(count * sizeof(*seqs));
 
+	n = 0;
 	for (i = 0; i < count; ++i) {
-		tcfd = tc_get_fd_struct(files[i].fd, false);
-		fh4s[i] = tcfd->fh;
-		sids[i] = tcfd->stateid;
-		seqs[i] = tcfd->seqid;
-		tc_put_fd_struct(&tcfd);
+		if (files[i].type != TC_FILE_NULL) {
+			assert(files[i].type == TC_FILE_DESCRIPTOR);
+			tcfd = tc_get_fd_struct(files[i].fd, false);
+			fh4s[n] = tcfd->fh;
+			sids[n] = tcfd->stateid;
+			seqs[n++] = tcfd->seqid;
+			tc_put_fd_struct(&tcfd);
+		}
 	}
 
-	tcres =
-	    export->fsal_export->obj_ops->tc_closev(fh4s, count, sids, seqs);
-	if (tc_okay(tcres)) {
-		for (i = 0; i < count; ++i) {
+	for (finished = 0; finished < n; ) {
+		tcres = export->fsal_export->obj_ops->tc_closev(
+		    fh4s + finished, n - finished, sids + finished,
+		    seqs + finished);
+		if (!tc_okay(tcres)) {
+			break;
+		}
+		for (i = finished; i < tcres.index + finished; ++i) {
+			tc_free_fd(files[i].fd);
+			files[i].type = TC_FILE_NULL;
+		}
+		finished += tcres.index;
+	}
+
+	for (i = 0; i < count; ++i) {
+		if (files[i].type != TC_FILE_NULL) {
 			tc_free_fd(files[i].fd);
 		}
-		free(files);
-		files = NULL;
 	}
-
+	if (tc_okay(tcres)) {
+		free(files);
+	}
 	return tcres;
 }
 

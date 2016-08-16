@@ -60,7 +60,8 @@ void *tc_init(const char *config_path, const char *log_path,
 void tc_deinit(void *module);
 
 enum TC_FILETYPE {
-	TC_FILE_DESCRIPTOR = 1,
+	TC_FILE_NULL = 0,
+	TC_FILE_DESCRIPTOR,
 	TC_FILE_PATH,
 	TC_FILE_HANDLE,
 	TC_FILE_CURRENT,
@@ -75,8 +76,9 @@ enum TC_FILETYPE {
 #define FILEID_NFS_FH_TYPE 0x1001
 
 /**
- * "type" is one of the five file types; "fd" and "path_or_handle" depend on
+ * "type" is one of the six file types; "fd" and "path_or_handle" depend on
  * the file type:
+ *	0. A "type" value of TC_FILE_NULL means the tc_file is invalid or emtpy.
  *
  *	1. When "type" is TC_FILE_DESCRIPTOR, "fd" identifies the file we are
  *	operating on.

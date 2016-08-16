@@ -85,11 +85,12 @@ do { \
 		nfs_argop4 *op = argarray + opcnt;                             \
 		opcnt++;                                                       \
 		op->argop = NFS4_OP_CLOSE;                                     \
-		op->nfs_argop4_u.opclose.seqid = __seqid;                      \
-		__seqid++;                                                     \
-		op->nfs_argop4_u.opclose.open_stateid.seqid = __stateid.seqid; \
+		op->nfs_argop4_u.opclose.seqid = (__seqid);                    \
+		(__seqid)++;                                                   \
+		op->nfs_argop4_u.opclose.open_stateid.seqid =                  \
+		    (__stateid).seqid;                                         \
 		memcpy(op->nfs_argop4_u.opclose.open_stateid.other,            \
-		       __stateid.other, 12);                                   \
+		       (__stateid).other, 12);                                 \
 	} while (0)
 
 #define COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argarray)                   \
