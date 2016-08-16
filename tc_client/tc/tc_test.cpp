@@ -1136,16 +1136,23 @@ TYPED_TEST_P(TcTest, CompressDeepPaths)
 // optimization.
 TYPED_TEST_P(TcTest, CompressPathForRemove)
 {
-	tc_ensure_dir("TcTest-CompressPathForRemove/a/b/c/d", 0755, NULL);
-	tc_file *files = (tc_file *)alloca(4 * sizeof(tc_file));
-	for (int i = 0; i < 4; ++i) {
-		char *path = (char *)alloca(PATH_MAX);
-		snprintf(path, PATH_MAX,
-			 "TcTest-CompressPathForRemove/a/b/c/d/%d", i);
-		tc_touch(path, 4_KB);
-		files[i] = tc_file_from_path(path);
+	tc_ensure_dir("TcTest-CompressPathForRemove/a/b/c/d1", 0755, NULL);
+	tc_ensure_dir("TcTest-CompressPathForRemove/a/b/c/d2", 0755, NULL);
+	const int FILES_PER_DIR = 8;
+	tc_file *files = (tc_file *)alloca(FILES_PER_DIR * 2 * sizeof(tc_file));
+	for (int i = 0; i < FILES_PER_DIR; ++i) {
+		char *p1 = (char *)alloca(PATH_MAX);
+		snprintf(p1, PATH_MAX,
+			 "TcTest-CompressPathForRemove/a/b/c/d1/%d", i);
+		char *p2 = (char *)alloca(PATH_MAX);
+		snprintf(p2, PATH_MAX,
+			 "TcTest-CompressPathForRemove/a/b/c/d2/%d", i);
+		const char *paths[2] = {p1, p2};
+		tc_touchv(paths, 2, 4_KB);
+		files[i] = tc_file_from_path(p1);
+		files[i + FILES_PER_DIR] = tc_file_from_path(p2);
 	}
-	EXPECT_OK(tc_removev(files, 4, false));
+	EXPECT_OK(tc_removev(files, FILES_PER_DIR * 2, false));
 }
 
 TYPED_TEST_P(TcTest, SymlinkBasics)
