@@ -709,8 +709,6 @@ static inline bool tx_removev(tc_file *files, int count)
 	return tc_okay(tc_removev(files, count, true));
 }
 
-tc_res tc_removev_by_paths(const char **paths, int count);
-
 int tc_unlink(const char *pathname);
 tc_res tc_unlinkv(const char **pathnames, int count);
 

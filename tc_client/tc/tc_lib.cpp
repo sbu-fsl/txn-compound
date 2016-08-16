@@ -90,10 +90,10 @@ tc_res tc_rm(const char **objs, int count, bool recursive)
 		}
 	}
 
-	int emptied = 0;  // index to directoried emptied so far
+	int emptied = 0;  // index to directories emptied so far
 	while (emptied < dirs.size() || !files_to_remove.empty()) {
-		tc_res tcres = tc_removev_by_paths(files_to_remove.data(),
-						   files_to_remove.size());
+		tc_res tcres =
+		    tc_unlinkv(files_to_remove.data(), files_to_remove.size());
 		if (!tc_okay(tcres)) {
 			return tcres;
 		}
@@ -113,7 +113,7 @@ tc_res tc_rm(const char **objs, int count, bool recursive)
 
 	while (!dirs.empty()) {
 		vector<const char*> dirs_to_remove(dirs.rbegin(), dirs.rend());
-		tc_res tcres = tc_removev_by_paths(dirs_to_remove.data(), dirs.size());
+		tc_res tcres = tc_unlinkv(dirs_to_remove.data(), dirs.size());
 		if (!tc_okay(tcres)) {
 			return tcres;
 		}

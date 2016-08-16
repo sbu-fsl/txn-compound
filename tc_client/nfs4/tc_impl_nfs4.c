@@ -546,7 +546,7 @@ static int nfs4_close_impl(struct tc_kfd *tcfd, void *args)
 tc_res nfs4_closev(tc_file *files, int count)
 {
 	struct gsh_export *export = op_ctx->export;
-	tc_res tcres;
+	tc_res tcres = { .index = count, .err_no = 0 };
 	nfs_fh4 *fh4s;
 	stateid4 *sids;
 	seqid4 *seqs;
@@ -761,7 +761,7 @@ tc_res nfs4_renamev(tc_file_pair *pairs, int count, bool is_transaction)
 tc_res nfs4_removev(tc_file *files, int count, bool is_transaction)
 {
 	struct gsh_export *exp = op_ctx->export;
-	tc_res tcres;
+	tc_res tcres = { .err_no = 0 };
 	int finished;
 
 	for (finished = 0; finished < count; ) {

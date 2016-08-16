@@ -831,28 +831,3 @@ char *tc_getcwd()
 		return posix_getcwd();
 	}
 }
-
-tc_res tc_removev_by_paths(const char **paths, int count)
-{
-	tc_res tcres;
-	int i, j, n;
-	const size_t REMOVE_LIMIT = 8;
-
-	tc_file files[REMOVE_LIMIT];
-	for (i = 0; i < count; ) {
-		n = ((count - i) > REMOVE_LIMIT) ? REMOVE_LIMIT : (count - i);
-		for (j = 0; j < n; ++j) {
-			files[j] = tc_file_from_path(paths[i+ j]);
-		}
-
-		tcres = tc_removev(files, n, false);
-		if (!tc_okay(tcres)) {
-			tcres.index += i;
-			return tcres;
-		}
-
-		i += n;
-	}
-
-	return TC_OKAY;
-}
