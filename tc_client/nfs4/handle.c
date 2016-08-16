@@ -3873,17 +3873,19 @@ exit:
 
 static tc_res tc_nfs4_lgetattrsv(struct tc_attrs *attrs, int count)
 {
-        int rc;
-        tc_res tcres;
+	int rc;
+	tc_res tcres;
 	nfsstat4 op_status;
 	GETATTR4resok *atok;
-        slice_t name;
-	int i = 0;      /* index of tc_iovec */
-	int j = 0;      /* index of NFS operations */
+	slice_t name;
+	int i = 0;	 /* index of tc_iovec */
+	int j = 0;	 /* index of NFS operations */
 	char *fattr_blobs; /* an array of FATTR_BLOB_SZ-sized buffers */
-        struct bitmap4 *bitmaps;
+	struct bitmap4 *bitmaps;
+	bool r;
+	int saved_opcnt;
 
-        NFS4_DEBUG("tc_nfs4_lgetattrsv");
+	NFS4_DEBUG("tc_nfs4_lgetattrsv");
         assert(count >= 1);
         tc_reset_compound(true);
         fattr_blobs = (char *)malloc(count * FATTR_BLOB_SZ);
@@ -3891,19 +3893,20 @@ static tc_res tc_nfs4_lgetattrsv(struct tc_attrs *attrs, int count)
 	bitmaps = alloca(count * sizeof(*bitmaps));
 
 	for (i = 0; i < count; ++i) {
-		rc = tc_set_current_fh(&attrs[i].file, &name, true);
-		if (rc < 0) {
-                        tcres = tc_failure(i, ERR_FSAL_INVAL);
-                        goto exit;
-                }
-                if (name.size != 0) {
-                        tc_prepare_lookups(&name, 1);
-                }
+                saved_opcnt = opcnt;
 		tc_attr_masks_to_bitmap(&attrs[i].masks, bitmaps + i);
-		tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ,
-				   bitmaps + i);
+		r = tc_set_current_fh(&attrs[i].file, &name, true) &&
+		    tc_prepare_lookups(&name, 1) &&
+		    tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ,
+				       bitmaps + i);
+		if (!r) {
+			opcnt = saved_opcnt;
+			count = i;
+			break;
+		}
 	}
 
+        tcres.index = count;
 	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
                 NFS4_ERR("rpc failed: %d", rc);
@@ -3935,18 +3938,20 @@ exit:
 
 static tc_res tc_nfs4_lsetattrsv(struct tc_attrs *attrs, int count)
 {
-        int rc;
-        tc_res tcres;
+	int rc;
+	tc_res tcres;
 	nfsstat4 op_status;
 	fattr4 *new_fattrs;
-	int i = 0;      /* index of tc_iovec */
-	int j = 0;      /* index of NFS operations */
-        fattr4 *fattrs; /* input attrs to set */
+	int i = 0;	 /* index of tc_iovec */
+	int j = 0;	 /* index of NFS operations */
+	fattr4 *fattrs;    /* input attrs to set */
 	char *fattr_blobs; /* an array of FATTR_BLOB_SZ-sized buffers */
-        struct bitmap4 *bitmaps;
-        slice_t name;
+	struct bitmap4 *bitmaps;
+	slice_t name;
+	bool r;
+	int saved_opcnt;
 
-        NFS4_DEBUG("tc_nfs4_lsetattrsv");
+	NFS4_DEBUG("tc_nfs4_lsetattrsv");
         tc_reset_compound(true);
 	fattrs = alloca(count * sizeof(fattr4));           /* on stack */
         fattr_blobs = alloca(count * FATTR_BLOB_SZ);
@@ -3954,20 +3959,20 @@ static tc_res tc_nfs4_lsetattrsv(struct tc_attrs *attrs, int count)
 
 	for (i = 0; i < count; ++i) {
                 tc_attrs_to_fattr4(&attrs[i], &fattrs[i]);
-                rc = tc_set_current_fh(&attrs[i].file, &name, true);
-                if (rc < 0) {
-                        tcres = tc_failure(i, ERR_FSAL_INVAL);
-                        goto exit;
-                }
-                if (name.size != 0) {
-                        tc_prepare_lookups(&name, 1);
-                }
-                tc_prepare_setattr(&fattrs[i]);
 		tc_attr_masks_to_bitmap(&attrs[i].masks, bitmaps + i);
-		tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ,
-				   bitmaps + i);
+		r = tc_set_current_fh(&attrs[i].file, &name, true) &&
+		    tc_prepare_lookups(&name, 1) &&
+		    tc_prepare_setattr(&fattrs[i]) &&
+		    tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ,
+				       bitmaps + i);
+		if (!r) {
+			opcnt = saved_opcnt;
+			count = i;
+			break;
+		}
 	}
 
+        tcres.index = count;
 	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
                 NFS4_ERR("rpc failed: %d", rc);

@@ -687,35 +687,53 @@ static void nfs4_restore_tc_files(struct tc_attrs *attrs, int count,
 tc_res nfs4_lgetattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	struct gsh_export *exp = op_ctx->export;
-	tc_res res;
+	tc_res tcres = { .index = count, .err_no = 0 };
 	tc_file *saved_tcfs;
+	int finished;
 
 	saved_tcfs = nfs4_process_tc_files(attrs, count);
 	if (!saved_tcfs) {
 		return tc_failure(0, ENOMEM);
 	}
 
-	res = exp->fsal_export->obj_ops->tc_lgetattrsv(attrs, count);
-	nfs4_restore_tc_files(attrs, count, saved_tcfs);
+	for (finished = 0; finished < count; ) {
+		tcres = exp->fsal_export->obj_ops->tc_lgetattrsv(
+		    attrs + finished, count - finished);
+		if (!tc_okay(tcres)) {
+			tcres.index += finished;
+			break;
+		}
+		finished += tcres.index;
+	}
 
-	return res;
+	nfs4_restore_tc_files(attrs, count, saved_tcfs);
+	return tcres;
 }
 
 tc_res nfs4_lsetattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	struct gsh_export *exp = op_ctx->export;
-	tc_res res;
+	tc_res tcres = { .index = count, .err_no = 0 };
 	tc_file *saved_tcfs;
+	int finished;
 
 	saved_tcfs = nfs4_process_tc_files(attrs, count);
 	if (!saved_tcfs) {
 		return tc_failure(0, ENOMEM);
 	}
 
-	res = exp->fsal_export->obj_ops->tc_lsetattrsv(attrs, count);
-	nfs4_restore_tc_files(attrs, count, saved_tcfs);
+	for (finished = 0; finished < count; ) {
+		tcres = exp->fsal_export->obj_ops->tc_lsetattrsv(
+		    attrs + finished, count - finished);
+		if (!tc_okay(tcres)) {
+			tcres.index += finished;
+			break;
+		}
+		finished += tcres.index;
+	}
 
-	return res;
+	nfs4_restore_tc_files(attrs, count, saved_tcfs);
+	return tcres;
 }
 
 tc_res nfs4_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)

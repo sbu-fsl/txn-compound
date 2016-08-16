@@ -1194,6 +1194,7 @@ TYPED_TEST_P(TcTest, RequestDoesNotFitIntoOneCompound)
 	const int NFILES = 64; // 64 * 8 == 512
 	const char *paths[NFILES];
 	int flags[NFILES];
+	struct tc_attrs attrs[NFILES];
 	for (int i = 0; i < NFILES; ++i) {
 		char *path = (char *)alloca(PATH_MAX);
 		snprintf(path, PATH_MAX, "DontFit/a%03d/b/c/d/e/f/g/h", i);
@@ -1201,10 +1202,12 @@ TYPED_TEST_P(TcTest, RequestDoesNotFitIntoOneCompound)
 		snprintf(path, PATH_MAX, "DontFit/a%03d/b/c/d/e/f/g/h/file", i);
 		paths[i] = path;
 		flags[i] = O_WRONLY | O_CREAT;
+		attrs[i].file = tc_file_from_path(path);
 	}
 	tc_file *files = tc_openv(paths, NFILES, flags, NULL);
 	EXPECT_NOTNULL(files);
 	EXPECT_OK(tc_closev(files, NFILES));
+	EXPECT_OK(tc_getattrsv(attrs, NFILES, false));
 	EXPECT_OK(tc_unlinkv(paths, NFILES));
 }
 
