@@ -97,6 +97,7 @@ static __thread char tc_saved_path[PATH_MAX + 1];
 static __thread int tc_bufcnt;
 static __thread char* tc_bufs[MAX_BUFS_PER_COMPOUND];
 
+/* Whether or not if the operation change current FH. */
 static const bool NFS4_CHANGE_CFH[] = {
 	[0] = false,
 	[1] = false,
@@ -1942,20 +1943,29 @@ static fsal_status_t fs_read_state(const nfs_fh4 *fh4, const nfs_fh4 *fh4_1,
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
-static inline void tc_prepare_putfh(nfs_fh4 *fh)
+static inline bool tc_prepare_putfh(nfs_fh4 *fh)
 {
+	if (!tc_has_enough_ops(1))
+		return false;
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, *fh);
+	return true;
 }
 
-static inline void tc_prepare_lookups(slice_t *comps, int compcnt)
+static inline bool tc_prepare_lookups(slice_t *comps, int compcnt)
 {
         int i;
+        bool r = true;
+        int saved_opcnt = opcnt;
 
         for (i = 0; i < compcnt; ++i) {
                 if (comps[i].size == 0)
                         continue;
                 if (comps[i].data[0] == '.' && comps[i].size == 1)
                         continue;
+                if (!tc_has_enough_ops(1)) {
+                        r = false;
+                        break;
+                }
 		if (strncmp(comps[i].data, "..", comps[i].size) == 0) {
 			COMPOUNDV4_ARG_ADD_OP_LOOKUPP(opcnt, argoparray);
 		} else {
@@ -1964,6 +1974,8 @@ static inline void tc_prepare_lookups(slice_t *comps, int compcnt)
 							 comps[i].size);
 		}
 	}
+        if (!r) opcnt = saved_opcnt;
+        return r;
 }
 
 static slice_t tc_get_abspath_from_cwd(slice_t rel_path)
@@ -1980,7 +1992,7 @@ static slice_t tc_get_abspath_from_cwd(slice_t rel_path)
         return asslice(abs_path);
 }
 
-static int tc_set_cfh_from_cfh(const char *path, slice_t *leaf)
+static bool tc_set_cfh_from_cfh(const char *path, slice_t *leaf)
 {
         slice_t *comps;
         slice_t p;
@@ -1994,31 +2006,32 @@ static int tc_set_cfh_from_cfh(const char *path, slice_t *leaf)
 
         compcnt = tc_path_tokenize_s(p, &comps);
 
-        if (!tc_has_enough_ops(compcnt)) return -1;
-
-        tc_prepare_lookups(comps, compcnt);
-
-        return compcnt;
+        return tc_prepare_lookups(comps, compcnt);
 }
 
-static int tc_set_cfh_from_root(slice_t *comps, int compcnt)
+static bool tc_set_cfh_from_root(slice_t *comps, int compcnt)
 {
-        if (!tc_has_enough_ops(compcnt + 1)) return -1;
+        int saved_opcnt = opcnt;
+        bool r;
 
+        if (!tc_has_enough_ops(1)) return false;
         COMPOUNDV4_ARG_ADD_OP_PUTROOTFH(opcnt, argoparray);
         comps[0].data++;  // skip the leading '/'
         comps[0].size--;
-        tc_prepare_lookups(comps, compcnt);
+        r = tc_prepare_lookups(comps, compcnt);
 
-        return compcnt + 1;
+        if (!r) opcnt = saved_opcnt;
+        return r;
 }
 
-static int tc_set_cfh_from_cwd(slice_t *comps, int compcnt)
+static bool tc_set_cfh_from_cwd(slice_t *comps, int compcnt)
 {
         nfs_fh4 cwdfh;
         struct tc_cwd_data *cwd;
+        bool r;
+        int saved_opcnt = opcnt;
 
-        if (!tc_has_enough_ops(compcnt + 1)) return -1;
+        if (!tc_has_enough_ops(1)) return false;
 
         cwd = tc_get_cwd();
         cwdfh.nfs_fh4_val = tc_alloca(NFS4_FHSIZE);
@@ -2027,9 +2040,10 @@ static int tc_set_cfh_from_cwd(slice_t *comps, int compcnt)
         tc_put_cwd(cwd);
 
 	tc_prepare_putfh(&cwdfh);
-        tc_prepare_lookups(comps, compcnt);
+        r = tc_prepare_lookups(comps, compcnt);
 
-        return compcnt + 1;
+        if (!r) opcnt = saved_opcnt;
+        return r;
 }
 
 static bool tc_compress_path(slice_t path, slice_t **comps, int *comps_n,
@@ -2056,7 +2070,7 @@ static bool tc_compress_path(slice_t path, slice_t **comps, int *comps_n,
 	if (tc_path_rebase_s(toslice(tc_saved_path), *abs_path, short_path) < 0)
 		return false;
 
-	NFS4_DEBUG("path compressed from %.*s to %.*s based on %s",
+	NFS4_DEBUG("relative path of %.*s is %.*s based on %s",
 		   abs_path->size, abs_path->data, short_path->size,
 		   short_path->data, tc_saved_path);
 	short_comps_n = tc_path_tokenize_s(asslice(short_path), &short_comps);
@@ -2115,13 +2129,15 @@ static inline bool tc_cfh_not_changed_since_restorefh()
         return false;
 }
 
-static inline void tc_prepare_savefh(slice_t *p)
+static inline bool tc_prepare_savefh(slice_t *p)
 {
 
 	if (tc_cfh_not_changed_since_savefh() ||
 	    tc_cfh_not_changed_since_restorefh()) {
-		return;
+		return true;
 	}
+
+        if (!tc_has_enough_ops(1)) return false;
 
         COMPOUNDV4_ARG_ADD_OP_SAVEFH(opcnt, argoparray);
 	if (p) {
@@ -2132,26 +2148,30 @@ static inline void tc_prepare_savefh(slice_t *p)
 		NFS4_DEBUG("empty tc_saved_path: %s", tc_saved_path);
 		tc_saved_path[0] = '\0'; // clear saved path
 	}
+        return true;
 }
 
-static inline void tc_prepare_restorefh()
+static inline bool tc_prepare_restorefh()
 {
         // We only need to restore FH if the CFH has been changed after the
         // previous SAVEFH.
         if (tc_cfh_not_changed_since_savefh()) {
-                return;
+                return true;
         }
+        if (!tc_has_enough_ops(1)) return false;
         COMPOUNDV4_ARG_ADD_OP_RESTOREFH(opcnt, argoparray);
+        return true;
 }
 
-static int tc_set_cfh_to_path(const char *path, slice_t *leaf, bool save)
+static bool tc_set_cfh_to_path(const char *path, slice_t *leaf, bool save)
 {
         slice_t abs_path;
         slice_t *comps;
         int comps_n;
         bool compressed;
         slice_t p;
-        int r;
+        bool r;
+        int saved_opcnt = opcnt;
 
         if (leaf) {
                 tc_path_dir_base(path, &p, leaf);
@@ -2161,34 +2181,35 @@ static int tc_set_cfh_to_path(const char *path, slice_t *leaf, bool save)
 
         compressed = tc_compress_path(p, &comps, &comps_n, &abs_path);
         if (compressed) {
-                tc_prepare_restorefh();
-                tc_prepare_lookups(comps, comps_n);
-                r = comps_n + 1;
-        } else if (path[0] == '/') {
+		r = tc_prepare_restorefh() &&
+		    tc_prepare_lookups(comps, comps_n);
+	} else if (path[0] == '/') {
                 r = tc_set_cfh_from_root(comps, comps_n);
         } else {
                 r = tc_set_cfh_from_cwd(comps, comps_n);
         }
 
-        if (save) {
-                tc_prepare_savefh(&abs_path);
-                r += 1;
-        }
+	if (r && save) {
+                r = tc_prepare_savefh(&abs_path);
+	}
 
-        free(comps);
+	free(comps);
 
+        if (!r) opcnt = saved_opcnt;
         return r;
 }
 
-static int tc_set_cfh_to_handle(const struct file_handle *h)
+static bool tc_set_cfh_to_handle(const struct file_handle *h)
 {
 	nfs_fh4 fh4;
+
+        if (!tc_has_enough_ops(1)) return false;
 
 	fh4.nfs_fh4_len = h->handle_bytes;
 	fh4.nfs_fh4_val = (char *)h->f_handle;
 	COMPOUNDV4_ARG_ADD_OP_PUTFH(opcnt, argoparray, fh4);
 
-	return 1;
+	return true;
 }
 
 /**
@@ -2206,45 +2227,49 @@ static int tc_set_cfh_to_handle(const struct file_handle *h)
  * TODO: add support of other tc_file types; currently only TC_FILE_PATH is
  * supported.
  *
- * Returns the number of lookups appended to "argoparray".  If "leaf" is not
- * NULL, it will be set to the leaf component of the path.
+ * Returns whether operations are successfully appended to "argoparray" for
+ * setting current FH.  Return false if there is not enough space in the
+ * compound for the operation.  If "leaf" is not NULL, it will be set to the
+ * leaf component of the path.
  */
-static int tc_set_current_fh(const tc_file *tcf, slice_t *leaf, bool save)
+static bool tc_set_current_fh(const tc_file *tcf, slice_t *leaf, bool save)
 {
-        int rc;
+        bool r;
+        int saved_opcnt = opcnt;
 
         if (tcf->type == TC_FILE_CURRENT) {
-                rc = tc_set_cfh_from_cfh(tcf->path, leaf);
+                r = tc_set_cfh_from_cfh(tcf->path, leaf);
         } else if (tcf->type == TC_FILE_HANDLE) {
-                rc = tc_set_cfh_to_handle(tcf->handle);
+                r = tc_set_cfh_to_handle(tcf->handle);
                 fillslice(leaf, NULL, 0);
 	} else if (tcf->type == TC_FILE_DESCRIPTOR) {
-		tc_prepare_putfh(((struct nfs4_fd_data *)tcf->fd_data)->fh4);
-                rc = 1;
-                fillslice(leaf, NULL, 0);
+		r = tc_prepare_putfh(((struct nfs4_fd_data *)tcf->fd_data)->fh4);
+		fillslice(leaf, NULL, 0);
 	} else if (tcf->type == TC_FILE_PATH) {
-		rc = tc_set_cfh_to_path(tcf->path, leaf, save);
+		r = tc_set_cfh_to_path(tcf->path, leaf, save);
 	} else {
 		NFS4_ERR("unsupported type: %d", tcf->type);
-		rc = -1;
+                assert(false);
 	}
 
-	return rc;
+        if (!r) opcnt = saved_opcnt;
+	return r;
 }
 
-static int tc_set_saved_fh(const tc_file *tcf, slice_t *leaf)
+static bool tc_set_saved_fh(const tc_file *tcf, slice_t *leaf)
 {
-        int rc;
+        bool r;
+        int saved_opcnt = opcnt;
 
         if (tcf->type == TC_FILE_PATH) {
-                rc = tc_set_cfh_to_path(tcf->path, leaf, true);
+                r = tc_set_cfh_to_path(tcf->path, leaf, true);
         } else {
-                rc = tc_set_current_fh(tcf, leaf, false);
-                tc_prepare_savefh(NULL);
-                rc += 1;
+		r = tc_set_current_fh(tcf, leaf, false) &&
+		    tc_prepare_savefh(NULL);
         }
 
-        return rc;
+        if (!r) opcnt = saved_opcnt;
+        return r;
 }
 
 static nfsstat4 get_nfs4_op_status(const nfs_resop4 *op_res)
@@ -2547,6 +2572,8 @@ static inline GETATTR4resok *tc_prepare_getattr(char *fattr_blob,
 {
 	GETATTR4resok *atok;
 
+        if (!tc_has_enough_ops(1)) return NULL;
+
 	atok = fs_fill_getattr_reply(resoparray + opcnt, fattr_blob,
 				     FATTR_BLOB_SZ);
 	COMPOUNDV4_ARG_ADD_OP_GETATTR(opcnt, argoparray, *bm4);
@@ -2575,12 +2602,22 @@ static inline GETFH4resok *tc_prepare_getfh(char *fh)
 {
 	GETFH4resok *fhok;
 
+        if (!tc_has_enough_ops(1)) return NULL;
+
 	fhok = &resoparray[opcnt].nfs_resop4_u.opgetfh.GETFH4res_u.resok4;
 	fhok->object.nfs_fh4_val = fh;
 	fhok->object.nfs_fh4_len = NFS4_FHSIZE;
 	COMPOUNDV4_ARG_ADD_OP_GETFH(opcnt, argoparray);
 
         return fhok;
+}
+
+static inline bool tc_prepare_close()
+{
+	if (!tc_has_enough_ops(1))
+		return false;
+	COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
+	return true;
 }
 
 /**
@@ -2594,6 +2631,8 @@ static inline OPEN4resok *tc_prepare_open(slice_t name, int flags,
 	OPEN4resok *opok;
 	clientid4 cid;
 	OPEN4args *args;
+
+        if (!tc_has_enough_ops(1)) return NULL;
 
 	tc_new_state_owner(owner_pbuf);
 	tc_get_clientid(&cid);
@@ -2887,6 +2926,8 @@ static fsal_status_t fs_symlink(struct fsal_obj_handle *dir_hdl,
 static READLINK4resok *tc_prepare_readlink(char *buf, size_t buf_size)
 {
 	READLINK4resok *rlok;
+
+        if (!tc_has_enough_ops(1)) return NULL;
 
 	rlok = &resoparray[opcnt].nfs_resop4_u.opreadlink.READLINK4res_u.resok4;
 	rlok->link.utf8string_val = buf;
@@ -3685,6 +3726,8 @@ static tc_res tc_nfs4_openv(struct tc_attrs *attrs, int count, int *flags,
 	char *fh_buffers;
 	nfs_fh4 fh;
 	OPEN4resok *opok;
+        bool r;
+        int saved_opcnt;
 
 	NFS4_DEBUG("tc_nfs4_openv");
 	assert(count >= 1);
@@ -3695,21 +3738,25 @@ static tc_res tc_nfs4_openv(struct tc_attrs *attrs, int count, int *flags,
 	fh_buffers = alloca(count * NFS4_FHSIZE); /* on stack */
 
 	for (i = 0; i < count; ++i) {
-		rc = tc_set_current_fh(&attrs[i].file, &name, true);
-		if (rc < 0) {
-                        tcres = tc_failure(i, ERR_FSAL_INVAL);
-                        goto exit;
-                }
 		if (flags[i] & O_CREAT) {
-                        /* bit-and umask with mode */
+			/* bit-and umask with mode */
 			tc_attrs_to_fattr4(&attrs[i], &fattrs[i]);
 		}
-		tc_prepare_open(name, flags[i], new_auto_buf(64), &fattrs[i]);
-		tc_prepare_getfh(fh_buffers + i * NFS4_FHSIZE);
-		tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ,
-				   &fs_bitmap_getattr);
+		saved_opcnt = opcnt;
+		r = tc_set_current_fh(&attrs[i].file, &name, true) &&
+		    tc_prepare_open(name, flags[i], new_auto_buf(64),
+				    &fattrs[i]) &&
+		    tc_prepare_getfh(fh_buffers + i * NFS4_FHSIZE) &&
+		    tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ,
+				       &fs_bitmap_getattr);
+		if (!r) {
+			opcnt = saved_opcnt;
+			count = i;
+			break;
+		}
 	}
 
+	tcres.index = count;
 	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
                 NFS4_ERR("rpc failed: %d", rc);
@@ -4387,6 +4434,8 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 	slice_t dstname;
         struct tc_attrs tca;
         fattr4 *attrs4;
+        bool r;
+        int saved_opcnt;
 
 	NFS4_DEBUG("tc_nfs4_copyv");
         attrs4 = calloc(count, sizeof(*attrs4));
@@ -4394,27 +4443,29 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 
         tc_reset_compound(true);
 	for (i = 0; i < count; ++i) {
-		tc_set_cfh_to_path(pairs[i].src_path, &srcname, false);
-		tc_prepare_open(srcname, O_RDONLY, new_auto_buf(64),
-				NULL);
-                tc_prepare_savefh(NULL);
-
-		tc_set_cfh_to_path(pairs[i].dst_path, &dstname, false);
                 tc_set_up_creation(&tca, new_auto_str(dstname), 0755);
 		tc_attrs_to_fattr4(&tca, &attrs4[i]);
-		tc_prepare_open(dstname, O_WRONLY | O_CREAT,
-				new_auto_buf(64), &attrs4[i]);
 
-		tc_prepare_copy(pairs[i].src_offset,
-				pairs[i].dst_offset, pairs[i].length);
-
-		COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt,
-						    argoparray);
-                tc_prepare_restorefh();
-		COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt,
-						    argoparray);
+                saved_opcnt = opcnt;
+		r = tc_set_cfh_to_path(pairs[i].src_path, &srcname, false) &&
+		    tc_prepare_open(srcname, O_RDONLY, new_auto_buf(64),
+				    NULL) &&
+		    tc_prepare_savefh(NULL) &&
+		    tc_set_cfh_to_path(pairs[i].dst_path, &dstname, false) &&
+		    tc_prepare_open(dstname, O_WRONLY | O_CREAT,
+				    new_auto_buf(64), &attrs4[i]) &&
+		    tc_prepare_copy(pairs[i].src_offset, pairs[i].dst_offset,
+				    pairs[i].length) &&
+		    tc_prepare_close() && tc_prepare_restorefh() &&
+		    tc_prepare_close();
+                if (!r) {
+                        opcnt = saved_opcnt;
+                        count = i;
+                        break;
+                }
 	}
 
+        tcres.index = count;
 	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
                 NFS4_ERR("rpc failed: %d", rc);
@@ -4512,16 +4563,18 @@ tc_res tc_nfs4_readlinkv(const char **paths, char **bufs, size_t *bufsizes,
 	size_t lksize;
 	int i = 0; /* index of tc_iovec */
 	int j = 0; /* index of NFS operations */
+        bool r;
 
 	NFS4_DEBUG("tc_nfs4_readlinkv");
 
 	tc_reset_compound(true);
 	for (i = 0; i < count; ++i) {
-                tc_set_cfh_to_path(paths[i], &name, true);
-                tc_prepare_lookups(&name, 1);
-		tc_prepare_readlink(bufs[i], bufsizes[i]);
+		r = tc_set_cfh_to_path(paths[i], &name, true) &&
+		    tc_prepare_lookups(&name, 1) &&
+		    tc_prepare_readlink(bufs[i], bufsizes[i]);
 	}
 
+        tcres.index = count;
 	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
 		NFS4_ERR("rpc failed: %d", rc);

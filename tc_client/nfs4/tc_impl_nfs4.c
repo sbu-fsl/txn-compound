@@ -469,6 +469,7 @@ tc_res nfs4_writev(struct tc_iovec *iovs, int count, bool istxn)
 tc_file *nfs4_openv(const char **paths, int count, int *flags, mode_t *modes)
 {
 	int i;
+	int finished;
 	tc_res tcres;
 	tc_file *tcfs;
 	struct gsh_export *export = op_ctx->export;
@@ -492,21 +493,28 @@ tc_file *nfs4_openv(const char **paths, int count, int *flags, mode_t *modes)
 		}
 	}
 
-	tcres =
-	    export->fsal_export->obj_ops->tc_openv(attrs, count, flags, sids);
-	if (!tc_okay(tcres)) {
-		tcfs = NULL;
-		goto exit;
-	}
-
 	tcfs = calloc(count, sizeof(*tcfs));
-	for (i = 0; i < count; ++i) {
-		fh4.nfs_fh4_len = attrs[i].file.handle->handle_bytes;
-		fh4.nfs_fh4_val = (char *)attrs[i].file.handle->f_handle;
-		tcfd = tc_get_fd_struct(tc_alloc_fd(sids + i, &fh4), false);
-		tcfd->filesize = attrs[i].size;
-		tcfs[i] = tc_file_from_fd(tcfd->fd);
-		tc_put_fd_struct(&tcfd);
+	for (finished = 0; finished < count; ) {
+		tcres = export->fsal_export->obj_ops->tc_openv(
+		    attrs + finished, count - finished, flags + finished,
+		    sids + finished);
+		if (!tc_okay(tcres)) {
+			free(tcfs);
+			tcfs = NULL;
+			goto exit;
+		}
+
+		for (i = finished; i < finished + tcres.index; ++i) {
+			fh4.nfs_fh4_len = attrs[i].file.handle->handle_bytes;
+			fh4.nfs_fh4_val =
+			    (char *)attrs[i].file.handle->f_handle;
+			tcfd = tc_get_fd_struct(tc_alloc_fd(sids + i, &fh4),
+						false);
+			tcfd->filesize = attrs[i].size;
+			tcfs[i] = tc_file_from_fd(tcfd->fd);
+			tc_put_fd_struct(&tcfd);
+		}
+		finished += tcres.index;
 	}
 
 exit:

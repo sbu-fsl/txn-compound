@@ -652,16 +652,13 @@ TYPED_TEST_P(TcTest, RenameFile)
  */
 TYPED_TEST_P(TcTest, RemoveFileTest)
 {
-	int i = 0;
 	const char *path[] = { "rename1.txt", "rename2.txt",
 			       "rename3.txt", "rename4.txt" };
 
 	tc_file *file = (tc_file *)calloc(4, sizeof(tc_file));
 
-	while (i < 4) {
+	for (int i = 0; i < 4; ++i) {
 		file[i] = tc_file_from_path(path[i]);
-
-		i++;
 	}
 
 	EXPECT_OK(tc_removev(file, 4, false));
@@ -674,7 +671,6 @@ TYPED_TEST_P(TcTest, RemoveFileTest)
  */
 TYPED_TEST_P(TcTest, MakeDirectory)
 {
-	int i = 0;
 	mode_t mode[] = { S_IRWXU, S_IRUSR | S_IRGRP | S_IROTH,
 			  S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH };
 	const char *path[] = { "a", "b", "c" };
@@ -682,9 +678,8 @@ TYPED_TEST_P(TcTest, MakeDirectory)
 
 	Removev(path, 3);
 
-	while (i < 3) {
+	for (int i = 0; i < 3; ++i) {
 		tc_set_up_creation(&dirs[i], path[i], 0755);
-		i++;
 	}
 
 	EXPECT_OK(tc_mkdirv(dirs, 3, false));
@@ -1181,6 +1176,24 @@ TYPED_TEST_P(TcTest, SymlinkBasics)
 	delete[] bufsizes;
 }
 
+TYPED_TEST_P(TcTest, RequestDoesNotFitIntoOneCompound)
+{
+	const int NFILES = 64; // 64 * 8 == 512
+	const char *paths[NFILES];
+	int flags[NFILES];
+	for (int i = 0; i < NFILES; ++i) {
+		char *path = (char *)alloca(PATH_MAX);
+		snprintf(path, PATH_MAX, "DontFit/a%03d/b/c/d/e/f/g/h", i);
+		tc_ensure_dir(path, 0755, NULL);
+		snprintf(path, PATH_MAX, "DontFit/a%03d/b/c/d/e/f/g/h/file", i);
+		paths[i] = path;
+		flags[i] = O_WRONLY | O_CREAT;
+	}
+	tc_file *files = tc_openv(paths, NFILES, flags, NULL);
+	EXPECT_NOTNULL(files);
+	EXPECT_OK(tc_closev(files, NFILES));
+}
+
 static bool is_same_stat(const struct stat *st1, const struct stat *st2)
 {
 	return st1->st_ino == st2->st_ino
@@ -1277,7 +1290,8 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   CompressPathForRemove,
 			   SymlinkBasics,
 			   TcStatBasics,
-			   TcRmBasic);
+			   TcRmBasic,
+			   RequestDoesNotFitIntoOneCompound);
 
 typedef ::testing::Types<TcNFS4Impl, TcPosixImpl> TcImpls;
 INSTANTIATE_TYPED_TEST_CASE_P(TC, TcTest, TcImpls);
