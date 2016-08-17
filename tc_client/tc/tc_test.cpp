@@ -1258,20 +1258,23 @@ TYPED_TEST_P(TcTest, RequestDoesNotFitIntoOneCompound)
 	const char *paths[NFILES];
 	int flags[NFILES];
 	struct tc_attrs attrs[NFILES];
+	const char *new_paths[NFILES];
+	struct tc_file_pair pairs[NFILES];
 	for (int i = 0; i < NFILES; ++i) {
-		char *path = (char *)alloca(PATH_MAX);
-		snprintf(path, PATH_MAX, "DontFit/a%03d/b/c/d/e/f/g/h", i);
-		tc_ensure_dir(path, 0755, NULL);
-		snprintf(path, PATH_MAX, "DontFit/a%03d/b/c/d/e/f/g/h/file", i);
-		paths[i] = path;
+		paths[i] = new_auto_path("DontFit/a%03d/b/c/d/e/f/g/h/file", i);
+		tc_ensure_parent_dir(paths[i]);
 		flags[i] = O_WRONLY | O_CREAT;
-		attrs[i].file = tc_file_from_path(path);
+		attrs[i].file = tc_file_from_path(paths[i]);
+		new_paths[i] = new_auto_path("DontFit/file-%d", i);
+		pairs[i].src_file = tc_file_from_path(paths[i]);
+		pairs[i].dst_file = tc_file_from_path(new_paths[i]);
 	}
 	tc_file *files = tc_openv(paths, NFILES, flags, NULL);
 	EXPECT_NOTNULL(files);
 	EXPECT_OK(tc_closev(files, NFILES));
 	EXPECT_OK(tc_getattrsv(attrs, NFILES, false));
-	EXPECT_OK(tc_unlinkv(paths, NFILES));
+	EXPECT_OK(tc_renamev(pairs, NFILES, false));
+	EXPECT_OK(tc_unlinkv(new_paths, NFILES));
 }
 
 static bool is_same_stat(const struct stat *st1, const struct stat *st2)
