@@ -424,22 +424,6 @@ tc_res nfs4_readv(struct tc_iovec *iovs, int count, bool istxn) {
 	return nfs4_do_iovec(iovs, count, istxn, nfs4_do_readv);
 }
 
-static void tc_update_file_cursor(struct tc_kfd *tcfd, struct tc_iovec *write)
-{
-	if (write->offset == TC_OFFSET_CUR) {
-		tcfd->offset += write->length;
-		if (tcfd->offset > tcfd->filesize) {
-			tcfd->filesize = tcfd->offset;
-		}
-	} else if (write->offset == TC_OFFSET_END) {
-		tcfd->filesize += write->length;
-	} else {
-		if (write->offset + write->length > tcfd->filesize) {
-			tcfd->filesize = write->offset + write->length;
-		}
-	}
-}
-
 /*
  * arg - Array of writes for one or more files
  *       Contains file-path, write length, offset, etc.
@@ -522,8 +506,8 @@ tc_file *nfs4_openv(const char **paths, int count, int *flags, mode_t *modes)
 			fh4.nfs_fh4_len = attrs[i].file.handle->handle_bytes;
 			fh4.nfs_fh4_val =
 			    (char *)attrs[i].file.handle->f_handle;
-			tcfd = tc_get_fd_struct(tc_alloc_fd(sids + i, &fh4),
-						false);
+			tcfd =
+			    tc_get_fd_struct(tc_alloc_fd(sids + i, &fh4), true);
 			tcfd->filesize = attrs[i].size;
 			tcfs[i] = tc_file_from_fd(tcfd->fd);
 			tc_put_fd_struct(&tcfd);

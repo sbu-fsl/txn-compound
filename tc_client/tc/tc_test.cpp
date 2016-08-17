@@ -744,7 +744,7 @@ TYPED_TEST_P(TcTest, Append)
 /**
  * Successive reads
  */
-TYPED_TEST_P(TcTest, SuccesiveReads)
+TYPED_TEST_P(TcTest, SuccessiveReads)
 {
 	const char *path = "TcTest-SuccesiveReads.txt";
 	struct tc_iovec iov;
@@ -797,54 +797,43 @@ TYPED_TEST_P(TcTest, SuccesiveReads)
 /**
  * Successive writes
  */
-TYPED_TEST_P(TcTest, SuccesiveWrites)
+TYPED_TEST_P(TcTest, SuccessiveWrites)
 {
-	//const char *path = "WritevCanCreateFiles10.txt";
-	//int fd[2], i = 0, N = 4096;
-	//off_t offset = 0;
-	//void *data = calloc(1, N);
-	//tc_res res;
-
-	/*
+	const char *path = "SuccesiveWrites.dat";
+	char *data = (char *)getRandomBytes(16_KB);
+	/**
 	 * open file one for actual writing
 	 * other descriptor to verify
 	 */
-	//fd[0] = open(path, O_WRONLY | O_CREAT);
-	//fd[1] = open(path, O_RDONLY);
-	//EXPECT_FALSE(fd[0] < 0);
-	//EXPECT_FALSE(fd[1] < 0);
+	tc_file *tcf = tc_open(path, O_RDWR | O_CREAT, 0755);
+	EXPECT_NOTNULL(tcf);
+	tc_file *tcf2 = tc_open(path, O_RDONLY, 0);
+	EXPECT_NE(tcf->fd, tcf2->fd);
 
-	//struct tc_iovec *writev = NULL;
-	//writev = build_iovec(fd, 1, TC_OFFSET_CUR);
-	//EXPECT_FALSE(writev == NULL);
+	struct tc_iovec iov;
+	tc_iov2file(&iov, tcf, TC_OFFSET_CUR, 4_KB, data);
+	EXPECT_OK(tc_writev(&iov, 1, false));
+	tc_iov2file(&iov, tcf, TC_OFFSET_CUR, 4_KB, data + 4_KB);
+	EXPECT_OK(tc_writev(&iov, 1, false));
 
-	//while (i < 4) {
-		//[> get the current offset of the file <]
-		//offset = lseek(fd[0], 0, SEEK_CUR);
+	char *readbuf = (char *)malloc(16_KB);
+	tc_iov2file(&iov, tcf2, 0, 8_KB, readbuf);
+	EXPECT_OK(tc_readv(&iov, 1, false));
+	EXPECT_EQ(iov.length, 8_KB);
+	EXPECT_EQ(0, memcmp(data, readbuf, 8_KB));
 
-		//free(writev->data);
-		//writev->data = (void *)malloc(N);
+	tc_iov2file(&iov, tcf, TC_OFFSET_CUR, 8_KB, data + 8_KB);
+	EXPECT_OK(tc_writev(&iov, 1, false));
 
-		//res = tc_writev(writev, 1, false);
-		//EXPECT_TRUE(res.okay);
+	tc_iov2file(&iov, tcf2, 0, 16_KB, readbuf);
+	EXPECT_OK(tc_readv(&iov, 1, false));
+	EXPECT_EQ(iov.length, 16_KB);
+	EXPECT_EQ(0, memcmp(data, readbuf, 16_KB));
 
-		//TCTEST_WARN("Test read from offset : %d\n", offset);
-
-		//[> read the data from the file from the same offset <]
-		//int error = pread(fd[1], data, writev->length, offset);
-		//EXPECT_FALSE(error < 0);
-
-		//[> compare data written with just read data from the file <]
-		//error = memcmp(data, writev->data, writev->length);
-		//EXPECT_TRUE(error == 0);
-
-		//i++;
-	//}
-
-	//free(data);
-	//free_iovec(writev, 1);
-
-	//RemoveFile(&path, 1);
+	tc_close(tcf);
+	tc_close(tcf2);
+	free(data);
+	free(readbuf);
 }
 
 static char *getRandomBytes(int N)
