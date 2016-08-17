@@ -2372,7 +2372,7 @@ static nfsstat4 get_nfs4_op_status(const nfs_resop4 *op_res)
 	return NFS4ERR_IO;
 }
 
-static inline void tc_prepare_rdwr(struct tc_iovec *iov, bool write);
+static inline bool tc_prepare_rdwr(struct tc_iovec *iov, bool write);
 
 static bool tc_open_file_if_necessary(const tc_file *tcf, int flags,
 				      buf_t *pbuf_owner, fattr4 *attrs4,
@@ -2396,15 +2396,24 @@ static tc_res tc_nfs4_readv(struct tc_iovec *iovs, int count)
 	int i = 0;      /* index of tc_iovec */
 	int j = 0;      /* index of NFS operations */
         const tc_file *opened_file = NULL;
+        bool r;
+        int saved_opcnt;
 
 	LogDebug(COMPONENT_FSAL, "ktcread() called\n");
 
         tc_reset_compound(true);
 
 	for (i = 0; i < count; ++i) {
-		tc_open_file_if_necessary(&iovs[i].file, O_RDONLY,
-					  new_auto_buf(64), NULL, &opened_file);
-		tc_prepare_rdwr(&iovs[i], false);
+		saved_opcnt = opcnt;
+		r = tc_open_file_if_necessary(&iovs[i].file, O_RDONLY,
+					      new_auto_buf(64), NULL,
+					      &opened_file) &&
+		    tc_prepare_rdwr(&iovs[i], false);
+		if (!r) {
+			opcnt = saved_opcnt;
+			count = i;
+			break;
+		}
 	}
 
 	if (opened_file) {
@@ -2412,6 +2421,7 @@ static tc_res tc_nfs4_readv(struct tc_iovec *iovs, int count)
                 opened_file = NULL;
 	}
 
+        tcres.index = count;
 	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {    /* RPC failed */
                 NFS4_ERR("fs_nfsv4_call() returned error: %d\n", rc);
@@ -2443,12 +2453,14 @@ exit:
         return tcres;
 }
 
-static inline void tc_prepare_rdwr(struct tc_iovec *iov, bool write)
+static inline bool tc_prepare_rdwr(struct tc_iovec *iov, bool write)
 {
 	size_t offset = iov->offset;
 	struct nfs4_fd_data *fd_data;
 	const stateid4 *sid = &CURSID;
 	READ4resok *rok;
+
+        if (!tc_has_enough_ops(1)) return false;
 
 	if (iov->file.type == TC_FILE_DESCRIPTOR) {
 		fd_data = (struct nfs4_fd_data *)iov->file.fd_data;
@@ -2467,6 +2479,7 @@ static inline void tc_prepare_rdwr(struct tc_iovec *iov, bool write)
 		COMPOUNDV4_ARG_ADD_OP_READ_STATE(opcnt, argoparray, offset,
 						 iov->length, sid);
 	}
+        return true;
 }
 
 /*
@@ -2488,6 +2501,8 @@ static tc_res tc_nfs4_writev(struct tc_iovec *iovs, int count)
 	int i = 0;      /* index of tc_iovec */
 	int j = 0;      /* index of NFS operations */
         const tc_file *opened_file = NULL;
+        bool r;
+        int saved_opcnt;
 
 	LogDebug(COMPONENT_FSAL, "ktcwrite() called\n");
 
@@ -2496,11 +2511,17 @@ static tc_res tc_nfs4_writev(struct tc_iovec *iovs, int count)
 	input_attr = calloc(count, sizeof(fattr4));
 
 	for (i = 0; i < count; ++i) {
-		tc_open_file_if_necessary(
-		    &iovs[i].file,
-		    O_WRONLY | (iovs[i].is_creation ? O_CREAT : 0),
-		    new_auto_buf(64), &input_attr[i], &opened_file);
-		tc_prepare_rdwr(&iovs[i], true);
+		saved_opcnt = opcnt;
+		r = tc_open_file_if_necessary(
+			&iovs[i].file,
+			O_WRONLY | (iovs[i].is_creation ? O_CREAT : 0),
+			new_auto_buf(64), &input_attr[i], &opened_file) &&
+		    tc_prepare_rdwr(&iovs[i], true);
+		if (!r) {
+			opcnt = saved_opcnt;
+			count = i;
+			break;
+		}
 	}
 
 	if (opened_file) {
@@ -2508,6 +2529,7 @@ static tc_res tc_nfs4_writev(struct tc_iovec *iovs, int count)
                 opened_file = NULL;
 	}
 
+        tcres.index = count;
 	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
 		NFS4_ERR("fs_nfsv4_call() returned error: %d (%s)\n", rc,
@@ -2561,6 +2583,7 @@ static inline CREATE4resok *tc_prepare_mkdir(const char *name, fattr4 *fattr)
 {
 	CREATE4resok *crok;
 
+        if (!tc_has_enough_ops(1)) return NULL;
 	NFS4_DEBUG("op (%d) of compound: mkdir(\"%s\")", opcnt, name);
 	crok = &resoparray[opcnt].nfs_resop4_u.opcreate.CREATE4res_u.resok4;
 	crok->attrset = empty_bitmap;
@@ -2728,6 +2751,7 @@ static inline RENAME4resok *tc_prepare_rename(const slice_t *srcname,
 	RENAME4resok *rnok;
 	nfs_argop4 *op;
 
+        if (!tc_has_enough_ops(1)) return NULL;
 	op = argoparray + opcnt;
 	rnok = &resoparray[opcnt].nfs_resop4_u.oprename.RENAME4res_u.resok4;
 	op->argop = NFS4_OP_RENAME;
@@ -2874,12 +2898,15 @@ static fsal_status_t fs_mknod(struct fsal_obj_handle *dir_hdl,
 	return st;
 }
 
-static void tc_prepare_symlink(char *name, char *link_path, fattr4 *attrs)
+static inline bool tc_prepare_symlink(char *name, char *link_path,
+				      fattr4 *attrs)
 {
+        if (!tc_has_enough_ops(1)) return false;
 	resoparray[opcnt].nfs_resop4_u.opcreate.CREATE4res_u.resok4.attrset =
 	    empty_bitmap;
 	COMPOUNDV4_ARG_ADD_OP_SYMLINK(opcnt, argoparray, (char *)name,
 				      (char *)link_path, (*attrs));
+        return true;
 }
 
 static fsal_status_t fs_symlink(struct fsal_obj_handle *dir_hdl,
@@ -3688,25 +3715,26 @@ static bool tc_open_file_if_necessary(const tc_file *tcf, int flags,
 {
 	slice_t name;
 	struct tc_attrs attrs;
+        bool r = true;
+        int saved_opcnt = opcnt;
 
-        if (tcf->type == TC_FILE_DESCRIPTOR) {
-		tc_prepare_putfh(((struct nfs4_fd_data *)tcf->fd_data)->fh4);
-                return false;
-        }
+	if (tcf->type == TC_FILE_DESCRIPTOR) {
+		return tc_prepare_putfh(
+		    ((struct nfs4_fd_data *)tcf->fd_data)->fh4);
+	}
 
 	if (tcf->type == TC_FILE_CURRENT &&
 	    (tcf->path == NULL || strcmp(tcf->path, ".") == 0)) {
-		return false; /* no need to open */
+		return true; /* no need to open */
 	}
 
 	if (*opened_file) {
 		if (tc_cmp_file(tcf, *opened_file)) {
-			return false; /* no need to open */
+			return true; /* no need to open */
 		}
-		COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
+                /* close previously opened file first */
+		r = tc_prepare_close(NULL, NULL);
 	}
-
-        tc_set_current_fh(tcf, &name, true);
 
 	if (flags & O_CREAT) {
 		attrs.masks = TC_ATTRS_MASK_NONE;
@@ -3717,10 +3745,13 @@ static bool tc_open_file_if_necessary(const tc_file *tcf, int flags,
 	} else {
 		attrs4 = NULL;
 	}
-	tc_prepare_open(name, flags, pbuf_owner, attrs4);
 
+	r = r && tc_set_current_fh(tcf, &name, true) &&
+	    tc_prepare_open(name, flags, pbuf_owner, attrs4);
+
+	if (!r) opcnt = saved_opcnt;
 	*opened_file = tcf;
-	return true;
+	return r;
 }
 
 static tc_res tc_nfs4_openv(struct tc_attrs *attrs, int count, int *flags,
@@ -3959,6 +3990,7 @@ static tc_res tc_nfs4_lsetattrsv(struct tc_attrs *attrs, int count)
 	bitmaps = alloca(count * sizeof(*bitmaps));
 
 	for (i = 0; i < count; ++i) {
+                saved_opcnt = opcnt;
                 tc_attrs_to_fattr4(&attrs[i], &fattrs[i]);
 		tc_attr_masks_to_bitmap(&attrs[i].masks, bitmaps + i);
 		r = tc_set_current_fh(&attrs[i].file, &name, true) &&
@@ -4027,6 +4059,8 @@ static tc_res tc_nfs4_mkdirv(struct tc_attrs *dirs, int count)
         char *fattr_blobs;
 	GETATTR4resok *atok;
         slice_t name;
+        bool r;
+        int saved_opcnt;
 
         /* allocate space */
         NFS4_DEBUG("making %d directories", count);
@@ -4040,20 +4074,20 @@ static tc_res tc_nfs4_mkdirv(struct tc_attrs *dirs, int count)
         /* prepare compound requests */
         for (i = 0; i < count; ++i) {
                 tc_attrs_to_fattr4(&dirs[i], &input_attrs[i]);
-		rc = tc_set_current_fh(&dirs[i].file, &name, true);
-		if (rc < 0) {
-                        tcres = tc_failure(i, ERR_FSAL_INVAL);
-                        goto exit;
+                saved_opcnt = opcnt;
+		r = tc_set_current_fh(&dirs[i].file, &name, true) &&
+		    tc_prepare_mkdir(name.data, &input_attrs[i]) &&
+		    tc_prepare_getfh(fh_buffers + i * NFS4_FHSIZE) &&
+		    tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ,
+				       &fs_bitmap_getattr);
+                if (!r) {
+                        opcnt = saved_opcnt;
+                        count = i;
+                        break;
                 }
-
-		tc_prepare_mkdir(name.data, &input_attrs[i]);
-
-		tc_prepare_getfh(fh_buffers + i * NFS4_FHSIZE);
-
-		tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ,
-                                   &fs_bitmap_getattr);
 	}
 
+        tcres.index = count;
 	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
                 NFS4_ERR("rpc failed: %d", rc);
@@ -4370,24 +4404,25 @@ static tc_res tc_nfs4_renamev(tc_file_pair *pairs, int count)
 	int j = 0;      /* index of NFS operations */
         slice_t srcname;
         slice_t dstname;
+        bool r;
+        int saved_opcnt;
 
         NFS4_DEBUG("tc_nfs4_renamev");
         tc_reset_compound(true);
 
         for (i = 0; i < count; ++i) {
-                rc = tc_set_saved_fh(&pairs[i].src_file, &srcname);
-                if (rc < 0) {
-                        tcres = tc_failure(i, ERR_FSAL_INVAL);
-                        goto exit;
+                saved_opcnt = opcnt;
+		r = tc_set_saved_fh(&pairs[i].src_file, &srcname) &&
+		    tc_set_current_fh(&pairs[i].dst_file, &dstname, false) &&
+		    tc_prepare_rename(&srcname, &dstname);
+                if (!r) {
+                        opcnt = saved_opcnt;
+                        count = i;
+                        break;
                 }
-                rc = tc_set_current_fh(&pairs[i].dst_file, &dstname, false);
-                if (rc < 0) {
-                        tcres = tc_failure(i, ERR_FSAL_INVAL);
-                        goto exit;
-                }
-                tc_prepare_rename(&srcname, &dstname);
-        }
+	}
 
+        tcres.index = count;
         rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
         if (rc != RPC_SUCCESS) {
                 NFS4_ERR("rpc failed: %d", rc);
@@ -4556,6 +4591,8 @@ static tc_res tc_nfs4_symlinkv(const char **oldpaths, const char **newpaths,
 	fattr4 *attrs4;
 	slice_t name;
 	char *pname;
+        bool r;
+        int saved_opcnt;
 
 	NFS4_DEBUG("tc_nfs4_symlinkv");
 	attrs4 = calloc(count, sizeof(*attrs4));
@@ -4563,13 +4600,23 @@ static tc_res tc_nfs4_symlinkv(const char **oldpaths, const char **newpaths,
 
 	tc_reset_compound(true);
 	for (i = 0; i < count; ++i) {
-		tc_set_cfh_to_path(newpaths[i], &name, true);
-		pname = new_auto_str(name);
-		tc_set_up_creation(&tca, pname, 0755);
-		tc_attrs_to_fattr4(&tca, &attrs4[i]);
-		tc_prepare_symlink(pname, (char *)oldpaths[i], &attrs4[i]);
+                saved_opcnt = opcnt;
+		r = tc_set_cfh_to_path(newpaths[i], &name, true);
+                if (r) {
+                        pname = new_auto_str(name);
+                        tc_set_up_creation(&tca, pname, 0755);
+                        tc_attrs_to_fattr4(&tca, &attrs4[i]);
+			r = tc_prepare_symlink(pname, (char *)oldpaths[i],
+					       &attrs4[i]);
+		}
+                if (!r) {
+                        opcnt = saved_opcnt;
+                        count = i;
+                        break;
+                }
 	}
 
+        tcres.index = count;
 	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
 		NFS4_ERR("rpc failed: %d", rc);
@@ -4610,14 +4657,21 @@ tc_res tc_nfs4_readlinkv(const char **paths, char **bufs, size_t *bufsizes,
 	int i = 0; /* index of tc_iovec */
 	int j = 0; /* index of NFS operations */
         bool r;
+        int saved_opcnt;
 
 	NFS4_DEBUG("tc_nfs4_readlinkv");
 
 	tc_reset_compound(true);
 	for (i = 0; i < count; ++i) {
+                saved_opcnt = opcnt;
 		r = tc_set_cfh_to_path(paths[i], &name, true) &&
 		    tc_prepare_lookups(&name, 1) &&
 		    tc_prepare_readlink(bufs[i], bufsizes[i]);
+		if (!r) {
+                        opcnt = saved_opcnt;
+                        count = i;
+                        break;
+                }
 	}
 
         tcres.index = count;
