@@ -28,6 +28,7 @@
 #include <sys/types.h>
 #include <errno.h>
 #include <unistd.h>
+#include <stdarg.h>
 #include <fcntl.h>
 
 #include <algorithm>
@@ -42,6 +43,7 @@
 #include "tc_helper.h"
 #include "test_util.h"
 #include "util/fileutil.h"
+#include "path_utils.h"
 #include "log.h"
 
 #define TCTEST_ERR(fmt, args...) LogCrit(COMPONENT_TC_TEST, fmt, ##args)
@@ -53,6 +55,9 @@
 	EXPECT_TRUE(tc_okay(x)) << "Failed at " << x.index << ": "             \
 				<< strerror(x.err_no)
 #define EXPECT_NOTNULL(x) EXPECT_TRUE(x != NULL) << #x << " is NULL"
+
+#define new_auto_path(fmt, args...)                                            \
+	tc_format_path((char *)alloca(PATH_MAX), fmt, ##args)
 
 namespace
 {
@@ -117,6 +122,25 @@ static void tc_touchv(const char **paths, int count, int filesize)
 static inline void tc_touch(const char *path, int size)
 {
 	tc_touchv(&path, 1, size);
+}
+
+static inline char *tc_format_path(char *path, const char *format, ...)
+{
+	va_list args;
+
+	va_start(args, format);
+	vsnprintf(path, PATH_MAX, format, args);
+	va_end(args);
+
+	return path;
+}
+
+static inline void tc_ensure_parent_dir(const char *path)
+{
+	char dirpath[PATH_MAX];
+	slice_t dir = tc_path_dirname(path);
+	strncpy(dirpath, dir.data, dir.size);
+	tc_ensure_dir(dirpath, 0755, NULL);
 }
 
 class TcPosixImpl {
@@ -679,10 +703,7 @@ TYPED_TEST_P(TcTest, RemoveFileTest)
 	free(file);
 }
 
-/**
- * Make Directory Test
- */
-TYPED_TEST_P(TcTest, MakeDirectory)
+TYPED_TEST_P(TcTest, MakeDirectories)
 {
 	mode_t mode[] = { S_IRWXU, S_IRUSR | S_IRGRP | S_IROTH,
 			  S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH };
@@ -696,6 +717,22 @@ TYPED_TEST_P(TcTest, MakeDirectory)
 	}
 
 	EXPECT_OK(tc_mkdirv(dirs, 3, false));
+}
+
+TYPED_TEST_P(TcTest, MakeManyDirsDontFitInOneCompound)
+{
+	const int NDIRS = 64;
+	struct tc_attrs dirs[NDIRS];
+	EXPECT_TRUE(tc_rm_recursive("ManyDirs"));
+	for (int i = 0; i < NDIRS; ++i) {
+		char *path = (char *)alloca(PATH_MAX);
+		snprintf(path, PATH_MAX, "ManyDirs/a%d/b/c/d/e/f/g/h", i);
+		tc_ensure_dir(path, 0755, NULL);
+
+		snprintf(path, PATH_MAX, "ManyDirs/a%d/b/c/d/e/f/g/h/dir", i);
+		tc_set_up_creation(&dirs[i], path, 0755);
+	}
+	EXPECT_OK(tc_mkdirv(dirs, NDIRS, false));
 }
 
 /**
@@ -741,9 +778,6 @@ TYPED_TEST_P(TcTest, Append)
 	free(data_read);
 }
 
-/**
- * Successive reads
- */
 TYPED_TEST_P(TcTest, SuccessiveReads)
 {
 	const char *path = "TcTest-SuccesiveReads.txt";
@@ -794,9 +828,6 @@ TYPED_TEST_P(TcTest, SuccessiveReads)
 	tc_close(tcf);
 }
 
-/**
- * Successive writes
- */
 TYPED_TEST_P(TcTest, SuccessiveWrites)
 {
 	const char *path = "SuccesiveWrites.dat";
@@ -953,7 +984,7 @@ TYPED_TEST_P(TcTest, CopyFirstHalfAsSecondHalf)
 	free(read_iov.data);
 }
 
-TYPED_TEST_P(TcTest, CopyManyFiles)
+TYPED_TEST_P(TcTest, CopyManyFilesDontFitInOneCompound)
 {
 	const int NFILES = 64;
 	struct tc_extent_pair pairs[NFILES];
@@ -1144,12 +1175,10 @@ TYPED_TEST_P(TcTest, CompressPathForRemove)
 	const int FILES_PER_DIR = 8;
 	tc_file *files = (tc_file *)alloca(FILES_PER_DIR * 2 * sizeof(tc_file));
 	for (int i = 0; i < FILES_PER_DIR; ++i) {
-		char *p1 = (char *)alloca(PATH_MAX);
-		snprintf(p1, PATH_MAX,
-			 "TcTest-CompressPathForRemove/a/b/c/d1/%d", i);
-		char *p2 = (char *)alloca(PATH_MAX);
-		snprintf(p2, PATH_MAX,
-			 "TcTest-CompressPathForRemove/a/b/c/d2/%d", i);
+		char *p1 = new_auto_path(
+		    "TcTest-CompressPathForRemove/a/b/c/d1/%d", i);
+		char *p2 = new_auto_path(
+		    "TcTest-CompressPathForRemove/a/b/c/d2/%d", i);
 		const char *paths[2] = {p1, p2};
 		tc_touchv(paths, 2, 4_KB);
 		files[i] = tc_file_from_path(p1);
@@ -1197,6 +1226,30 @@ TYPED_TEST_P(TcTest, SymlinkBasics)
 	}
 	delete[] bufs;
 	delete[] bufsizes;
+}
+
+TYPED_TEST_P(TcTest, ManyLinksDontFitInOneCompound)
+{
+	const int NLINKS = 64;
+	const char *targets[NLINKS];
+	const char *links[NLINKS];
+	char *bufs[NLINKS];
+	size_t bufsizes[NLINKS];
+
+	EXPECT_TRUE(tc_rm_recursive("ManyLinks"));
+	for (int i = 0; i < NLINKS; ++i) {
+		targets[i] = new_auto_path("ManyLinks/file%d", i);
+		links[i] = new_auto_path("ManyLinks/a%d/b/c/d/e/f/h/link", i);
+		tc_ensure_parent_dir(links[i]);
+		bufs[i] = (char *)alloca(PATH_MAX);
+		bufsizes[i] = PATH_MAX;
+	}
+	tc_touchv(targets, NLINKS, 1_KB);
+	EXPECT_OK(tc_symlinkv(targets, links, NLINKS, false));
+	EXPECT_OK(tc_readlinkv(links, bufs, bufsizes, NLINKS, false));
+	for (int i = 0; i < NLINKS; ++i) {
+		EXPECT_STREQ(targets[i], bufs[i]);
+	}
 }
 
 TYPED_TEST_P(TcTest, RequestDoesNotFitIntoOneCompound)
@@ -1291,6 +1344,12 @@ TYPED_TEST_P(TcTest, TcRmBasic)
 #undef TCRM_PREFIX
 }
 
+TYPED_TEST_P(TcTest, TcRmRecursive)
+{
+	EXPECT_FALSE(tc_exists("NonExistDir"));
+	EXPECT_TRUE(tc_rm_recursive("NonExistDir"));
+}
+
 REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   WritevCanCreateFiles,
 			   TestFileDesc,
@@ -1302,13 +1361,14 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   ListDirRecursively,
 			   RenameFile,
 			   RemoveFileTest,
-			   MakeDirectory,
+			   MakeDirectories,
+			   MakeManyDirsDontFitInOneCompound,
 			   Append,
-			   SuccesiveReads,
-			   SuccesiveWrites,
+			   SuccessiveReads,
+			   SuccessiveWrites,
 			   CopyFiles,
 			   CopyFirstHalfAsSecondHalf,
-			   CopyManyFiles,
+			   CopyManyFilesDontFitInOneCompound,
 			   ListAnEmptyDirectory,
 			   List2ndLevelDir,
 			   ShuffledRdWr,
@@ -1317,8 +1377,10 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   CompressDeepPaths,
 			   CompressPathForRemove,
 			   SymlinkBasics,
+			   ManyLinksDontFitInOneCompound,
 			   TcStatBasics,
 			   TcRmBasic,
+			   TcRmRecursive,
 			   RequestDoesNotFitIntoOneCompound);
 
 typedef ::testing::Types<TcNFS4Impl, TcPosixImpl> TcImpls;

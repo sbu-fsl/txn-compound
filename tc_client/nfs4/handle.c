@@ -2579,15 +2579,16 @@ static inline uint32_t tc_open_flags_to_access(int flags)
 	}
 }
 
-static inline CREATE4resok *tc_prepare_mkdir(const char *name, fattr4 *fattr)
+static inline CREATE4resok *tc_prepare_mkdir(slice_t name, fattr4 *fattr)
 {
 	CREATE4resok *crok;
 
         if (!tc_has_enough_ops(1)) return NULL;
-	NFS4_DEBUG("op (%d) of compound: mkdir(\"%s\")", opcnt, name);
+	NFS4_DEBUG("op (%d) of compound: mkdir(\"%.*s\")", opcnt, name.size,
+		   name.data);
 	crok = &resoparray[opcnt].nfs_resop4_u.opcreate.CREATE4res_u.resok4;
 	crok->attrset = empty_bitmap;
-	COMPOUNDV4_ARG_ADD_OP_MKDIR(opcnt, argoparray, (char *)name, *fattr);
+	COMPOUNDV4_ARG_ADD_OP_MKDIR(opcnt, argoparray, name, *fattr);
 
 	return crok;
 }
@@ -2705,6 +2706,7 @@ static inline READDIR4resok *tc_prepare_readdir(nfs_cookie4 *cookie,
 {
 	READDIR4resok *rdok;
 
+        if (!tc_has_enough_ops(1)) return NULL;
 	rdok = &resoparray[opcnt].nfs_resop4_u.opreaddir.READDIR4res_u.resok4;
 	rdok->reply.entries = NULL;
 	COMPOUNDV4_ARG_ADD_OP_READDIR(opcnt, argoparray, *cookie,
@@ -2794,7 +2796,7 @@ static fsal_status_t fs_mkdir(struct fsal_obj_handle *dir_hdl, const char *name,
 	ph = container_of(dir_hdl, struct fs_obj_handle, obj);
         tc_prepare_putfh(&ph->fh4);
 
-        tc_prepare_mkdir(name, &input_attr);
+        tc_prepare_mkdir(toslice(name), &input_attr);
 
 	fhok = tc_prepare_getfh(padfilehandle);
 
@@ -4076,7 +4078,7 @@ static tc_res tc_nfs4_mkdirv(struct tc_attrs *dirs, int count)
                 tc_attrs_to_fattr4(&dirs[i], &input_attrs[i]);
                 saved_opcnt = opcnt;
 		r = tc_set_current_fh(&dirs[i].file, &name, true) &&
-		    tc_prepare_mkdir(name.data, &input_attrs[i]) &&
+		    tc_prepare_mkdir(name, &input_attrs[i]) &&
 		    tc_prepare_getfh(fh_buffers + i * NFS4_FHSIZE) &&
 		    tc_prepare_getattr(fattr_blobs + i * FATTR_BLOB_SZ,
 				       &fs_bitmap_getattr);

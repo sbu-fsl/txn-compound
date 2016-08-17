@@ -76,12 +76,21 @@ tc_res tc_rm(const char **objs, int count, bool recursive)
 			attrs[i].masks.has_mode = true;
 		}
 
-		tc_res tcres = tc_getattrsv(attrs.data(), count, false);
-		if (!tc_okay(tcres)) {
-			return tcres;
+		for (int i = 0; i < attrs.size(); ) {
+			tc_res tcres = tc_getattrsv(attrs.data() + i,
+						    attrs.size() - i, false);
+			if (tc_okay(tcres)) {
+				break;
+			} else if (tcres.err_no == ENOENT) {
+				// ignore not existed entries
+				attrs.erase(attrs.begin() + (i + tcres.index));
+				i += tcres.index - 1;
+			} else {
+				return tcres;
+			}
 		}
 
-		for (int i = 0; i < count; ++i) {
+		for (int i = 0; i < attrs.size(); ++i) {
 			if (S_ISDIR(attrs[i].mode)) {
 				dirs.push_back(strdup(objs[i]));
 			} else {

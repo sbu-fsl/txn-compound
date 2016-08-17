@@ -598,6 +598,12 @@ int tc_stat(const char *path, struct stat *buf);
 int tc_lstat(const char *path, struct stat *buf);
 int tc_fstat(tc_file *tcf, struct stat *buf);
 
+static inline bool tc_exists(const char *path)
+{
+	struct stat buf;
+	return tc_lstat(path, &buf) == 0;
+}
+
 /**
  * Set attributes of file objects.
  *
@@ -880,6 +886,11 @@ tc_res tc_ensure_dir(const char *dir, mode_t mode, slice_t *leaf);
  * Remove a list of file-system objects (files or directories).
  */
 tc_res tc_rm(const char **objs, int count, bool recursive);
+
+static inline bool tc_rm_recursive(const char *dir)
+{
+	return tc_okay(tc_rm(&dir, 1, true));
+}
 
 #ifdef __cplusplus
 }

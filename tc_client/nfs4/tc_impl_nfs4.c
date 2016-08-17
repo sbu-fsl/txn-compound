@@ -694,14 +694,13 @@ tc_res nfs4_lgetattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 		return tc_failure(0, ENOMEM);
 	}
 
-	for (finished = 0; finished < count; ) {
+	for (finished = 0; finished < count; finished += tcres.index) {
 		tcres = exp->fsal_export->obj_ops->tc_lgetattrsv(
 		    attrs + finished, count - finished);
 		if (!tc_okay(tcres)) {
 			tcres.index += finished;
 			break;
 		}
-		finished += tcres.index;
 	}
 
 	nfs4_restore_tc_files(attrs, count, saved_tcfs);
@@ -720,14 +719,13 @@ tc_res nfs4_lsetattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 		return tc_failure(0, ENOMEM);
 	}
 
-	for (finished = 0; finished < count; ) {
+	for (finished = 0; finished < count; finished += tcres.index) {
 		tcres = exp->fsal_export->obj_ops->tc_lsetattrsv(
 		    attrs + finished, count - finished);
 		if (!tc_okay(tcres)) {
 			tcres.index += finished;
 			break;
 		}
-		finished += tcres.index;
 	}
 
 	nfs4_restore_tc_files(attrs, count, saved_tcfs);
@@ -747,7 +745,8 @@ tc_res nfs4_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)
 	}
 
 	for (finished = 0; finished < count; finished += tcres.index) {
-		tcres = exp->fsal_export->obj_ops->tc_mkdirv(dirs, count);
+		tcres = exp->fsal_export->obj_ops->tc_mkdirv(dirs + finished,
+							     count - finished);
 		if (!tc_okay(tcres)) {
 			tcres.index += finished;
 			break;
