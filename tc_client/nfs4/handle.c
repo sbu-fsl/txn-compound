@@ -4265,7 +4265,7 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 	READDIR4resok *rdok;
 	int i = 0, j;
 	int rc;
-	static const int MAX_READDIRS_PER_COMPOUND = 16;
+	static const int MAX_READDIRS_PER_COMPOUND = 64;
         bool has_mode = masks.has_mode;
         bitmap4 bitmap = fs_bitmap_readdir;
         bool incomplete = false;
