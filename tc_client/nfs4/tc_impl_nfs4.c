@@ -149,8 +149,6 @@ void *nfs4_init(const char *config_path, const char *log_path,
 		 exp->export_id, exp->pseudopath, exp->fullpath,
 		 exp->FS_tag);
 
-	sleep(1);
-
 	// op_ctx is a symbol (pointer) from the shared library
 	op_ctx = calloc(1, sizeof(*op_ctx));
 	if (op_ctx == NULL) {
@@ -164,8 +162,6 @@ void *nfs4_init(const char *config_path, const char *log_path,
 
 	rc = nfs4_chdir(exp->fullpath);
 	assert(rc == 0);
-
-	sleep(1);
 
 	tc_init_fds();
 	return (void*)new_module;
