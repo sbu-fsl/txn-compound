@@ -140,6 +140,7 @@ static inline void tc_ensure_parent_dir(const char *path)
 	char dirpath[PATH_MAX];
 	slice_t dir = tc_path_dirname(path);
 	strncpy(dirpath, dir.data, dir.size);
+	dirpath[dir.size] = '\0';
 	tc_ensure_dir(dirpath, 0755, NULL);
 }
 

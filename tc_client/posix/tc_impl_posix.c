@@ -650,7 +650,7 @@ static int posix_listdir(struct glist_head *dir_queue, const char *dir,
 		cur_attr.masks = masks;
 
 		if (lstat(path, &st) < 0) {
-			POSIX_WARN("stat failed for file : %s/%s\n", dir,
+			POSIX_WARN("stat failed for file : %s/%s", dir,
 				   dp->d_name);
 			ret = -errno;
 			goto exit;
