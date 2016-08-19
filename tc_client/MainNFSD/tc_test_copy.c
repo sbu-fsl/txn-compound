@@ -31,6 +31,8 @@
 #include "nfs_init.h"
 #include "fsal.h"
 #include "log.h"
+#include "path_utils.h"
+#include <libgen.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>

@@ -768,6 +768,7 @@ static inline void tc_fill_extent_pair(struct tc_extent_pair *tcep,
  * @is_transaction: whether to execute the compound as a transaction
  */
 tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction);
+tc_res tc_lcopyv(struct tc_extent_pair *pairs, int count, bool is_transaction);
 
 static inline bool tx_copyv(struct tc_extent_pair *pairs, int count)
 {
@@ -881,6 +882,11 @@ static inline bool tx_write_adb(struct tc_adb *patterns, int count)
  * directory, and leaf will be set to the name of the leaf node.
  */
 tc_res tc_ensure_dir(const char *dir, mode_t mode, slice_t *leaf);
+
+/**
+ * Copy a directory to a new destination
+ */
+tc_res tc_cp_recursive(const char *src_dir, const char *dst, bool symlink);
 
 /**
  * Remove a list of file-system objects (files or directories).

@@ -803,14 +803,14 @@ tc_res nfs4_removev(tc_file *files, int count, bool is_transaction)
 	return tcres;
 }
 
-tc_res nfs4_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
+tc_res nfs4_lcopyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 {
 	struct gsh_export *exp = op_ctx->export;
 	tc_res tcres = { .err_no = 0 };
 	int finished;
 
 	for (finished = 0; finished < count; finished += tcres.index) {
-		tcres = exp->fsal_export->obj_ops->tc_copyv(pairs + finished,
+		tcres = exp->fsal_export->obj_ops->tc_lcopyv(pairs + finished,
 							    count - finished);
 		if (!tc_okay(tcres)) {
 			tcres.index += finished;

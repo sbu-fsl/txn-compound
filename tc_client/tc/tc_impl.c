@@ -235,10 +235,111 @@ tc_res tc_writev(struct tc_iovec *writes, int count, bool is_transaction)
 	return tcres;
 }
 
+
+struct syminfo {
+	const char *src_path; //path of file to be checked for symlink; can be NULL if file does not have path (eg, is fd)
+	char *target_path; //path symlink points to; NULL if src_path is found to not be a symlink
+};
+
+bool resolve_symlinks(struct syminfo *syms, int count, tc_res *err) {
+	int i;
+	struct tc_attrs attrs[count];
+	int attrs_original_indices[count];
+	int attrs_count = 0;
+	const char **paths;
+	int *paths_original_indices;
+	int path_count = 0;
+	char **bufs;
+	size_t *bufsizes;
+
+	*err = TC_OKAY;
+
+	for (i = 0; i < count; i++) {
+		struct syminfo sym = syms[i];
+		if (sym.src_path) {
+			attrs[attrs_count].file = tc_file_from_path(sym.src_path);
+			attrs[attrs_count].masks = TC_ATTRS_MASK_NONE;
+			attrs[attrs_count].masks.has_mode = true;
+			attrs_original_indices[attrs_count] = i;
+			attrs_count++;
+		} else {
+		    sym.target_path = NULL;
+		}
+	}
+
+	if (attrs_count == 0) {
+		return false;
+	}
+
+	*err = tc_lgetattrsv(attrs, attrs_count, false);
+	if (!tc_okay(*err)) {
+		err->index = attrs_original_indices[err->index];
+		return false;
+	}
+
+	paths = alloca(sizeof(char *) * attrs_count);
+
+	bufs = alloca(sizeof(char *) * attrs_count);
+	bufsizes = alloca(sizeof(size_t) * attrs_count);
+
+	paths_original_indices = alloca(sizeof(int) * attrs_count);
+
+	for (i = 0; i < attrs_count; i++) {
+		if (S_ISLNK(attrs[i].mode))	{
+			paths[path_count] = attrs[i].file.path;
+
+			bufs[path_count] = malloc(sizeof(char) * PATH_MAX);
+			bufsizes[path_count] = PATH_MAX;
+
+			paths_original_indices[path_count] = i;
+
+			path_count++;
+		} else {
+			syms[attrs_original_indices[i]].target_path = NULL;
+		}
+	}
+
+	if (path_count == 0) {
+		return false;
+	}
+
+	*err = tc_readlinkv(paths, bufs, bufsizes, path_count, false);
+	//TODO: what if tc_readlinkv() returns symlinks (symlink to symlink)?
+	if (!tc_okay(*err)) {
+		err->index = paths_original_indices[attrs_original_indices[err->index]];
+		return false;
+	}
+
+	for (i = 0; i < path_count; i++) {
+		struct syminfo *sym = &syms[attrs_original_indices[paths_original_indices[i]]];
+		if (sym->src_path[0] == '/' && bufs[i][0] != '/') {
+			char *path = malloc(sizeof(char) * PATH_MAX);
+			slice_t dirname = tc_path_dirname(strdup(sym->src_path));
+			((char*) dirname.data)[dirname.size] = '\0';
+			tc_path_join(dirname.data, bufs[i], path, PATH_MAX);
+			free(bufs[i]);
+			free((char*)dirname.data);
+			sym->target_path = path;
+		} else {
+			sym->target_path = bufs[i];
+		}
+	}
+
+	return true;
+}
+
+void free_syminfo(struct syminfo *syminfo, int count) {
+	int i;
+	for (i = 0; i < count; i++) {
+		if (syminfo[i].target_path != NULL) {
+			free(syminfo[i].target_path);
+		}
+	}
+}
+
 tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	tc_res res;
-	char *cwd;
 	const char *paths[count];
 	tc_file original_files[count];
 	struct tc_attrs_masks old_masks[count];
@@ -268,18 +369,13 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 
 	res = tc_lgetattrsv(attrs, count, false);
 
-	cwd = tc_getcwd();
 	for (i = 0; i < count; i++) {
 		if (S_ISLNK(attrs[i].mode)) {
 			tc_file file = attrs[i].file;
 			assert(file.type == TC_FILE_PATH);
-			if (file.fd == TC_FD_ABS) {
-				paths[link_count] = file.path;
-			} else if (file.fd == TC_FD_CWD) {
-				char *path = alloca(sizeof(char) * PATH_MAX);
-				tc_path_join(cwd, file.path, path, PATH_MAX);
-				paths[link_count] = path;
-			}
+
+			paths[link_count] = file.path;
+
 			bufs[link_count] = alloca(sizeof(char) * PATH_MAX);
 			bufsizes[link_count] = PATH_MAX;
 			original_indices[link_count] = i;
@@ -287,7 +383,6 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 			link_count++;
 		}
 	}
-	free(cwd);
 
 	for (i = 0; i < old_mode_count; i++) {
 		attrs[mode_original_indices[i]].mode = old_modes[i];
@@ -306,6 +401,7 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	// symlink)?
 
 	if (!tc_okay(res)) {
+		res.index = original_indices[res.index];
 		return res;
 	}
 
@@ -407,77 +503,43 @@ int tc_lstat(const char *path, struct stat *buf)
 
 tc_res tc_setattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
+	struct syminfo syminfo[count];
 	tc_res res;
-	char *cwd;
-	const char *paths[count];
-	tc_file original_files[count];
-	struct tc_attrs_masks old_masks[count];
-	mode_t old_modes[count];
-	int original_indices[count];
-
-	char *bufs[count];
-	size_t bufsizes[count];
-
-	int link_count = 0;
 	int i;
+	bool had_link;
 
-	for (i = 0; i < count; i++) {
-		old_modes[i] = attrs[i].mode;
-		old_masks[i] = attrs[i].masks;
-		attrs[i].masks = TC_ATTRS_MASK_NONE;
-		attrs[i].masks.has_mode = true;
-	}
-
-	res = tc_lgetattrsv(attrs, count, false);
-
-	cwd = tc_getcwd();
-	for (i = 0; i < count; i++) {
-		if (S_ISLNK(attrs[i].mode)) {
-			tc_file file = attrs[i].file;
-			assert(file.type == TC_FILE_PATH);
-			if (file.fd == TC_FD_ABS) {
-				paths[link_count] = file.path;
-			} else if (file.fd == TC_FD_CWD) {
-				char *path = alloca(sizeof(char) * PATH_MAX);
-				tc_path_join(cwd, file.path, path, PATH_MAX);
-				paths[link_count] = path;
-			}
-			bufs[link_count] = alloca(sizeof(char) * PATH_MAX);
-			bufsizes[link_count] = PATH_MAX;
-			original_indices[link_count] = i;
-
-			link_count++;
+	for(i = 0; i < count; i++) {
+		if (attrs[i].file.type == TC_FILE_PATH) {
+			syminfo[i].src_path = attrs[i].file.path;
+		} else {
+			syminfo[i].src_path = NULL;
 		}
-		attrs[i].masks = old_masks[i];
-		attrs[i].mode = old_modes[i];
 	}
-	free(cwd);
 
+	had_link = resolve_symlinks(syminfo, count, &res);
 	if (!tc_okay(res)) {
 		return res;
 	}
 
-	res = tc_readlinkv(paths, bufs, bufsizes, link_count, false);
-	//TODO: what if tc_readlinkv() returns symlinks (symlink to symlink)?
-
-	if (!tc_okay(res)) {
-		return res;
+	if (!had_link) {
+		return tc_lsetattrsv(attrs, count, is_transaction);
 	}
 
-	for (i = 0; i < link_count; i++) {
-		original_files[i] = attrs[original_indices[i]].file;
-		attrs[original_indices[i]].file = tc_file_from_path(bufs[i]);
+	for (i = 0; i < count; i++) {
+		if (syminfo[i].target_path)	{
+			attrs[i].file.path = syminfo[i].target_path;
+		}
 	}
 
 	res = tc_lsetattrsv(attrs, count, is_transaction);
 
-	if (!tc_okay(res)) {
-		res.index = original_indices[res.index];
+	for (i = 0; i < count; i++) {
+		if (syminfo[i].target_path)	{
+			attrs[i].file.path = syminfo[i].src_path;
+		}
 	}
 
-	for (i = 0; i < link_count; i++) {
-		attrs[original_indices[i]].file = original_files[i];
-	}
+	free_syminfo(syminfo, count);
 
 	return res;
 }
@@ -761,31 +823,78 @@ exit:
 	return tcres;
 }
 
-tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
+tc_res tc_lcopyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 {
 	tc_res tcres;
-	TC_DECLARE_COUNTER(copy);
+	TC_DECLARE_COUNTER(lcopy);
 
-	TC_START_COUNTER(copy);
+	TC_START_COUNTER(lcopy);
+
 	if (TC_IMPL_IS_NFS4) {
-		tcres = nfs4_copyv(pairs, count, is_transaction);
+		tcres = nfs4_lcopyv(pairs, count, is_transaction);
 	} else {
-		tcres = posix_copyv(pairs, count, is_transaction);
+		tcres = posix_lcopyv(pairs, count, is_transaction);
 	}
-	TC_STOP_COUNTER(copy, count, tc_okay(tcres));
+	TC_STOP_COUNTER(lcopy, count, tc_okay(tcres));
 
 	return tcres;
+}
+
+tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
+{
+	struct syminfo syminfo[count];
+	tc_res res;
+	int i;
+	bool had_link;
+
+	for(i = 0; i < count; i++) {
+		syminfo[i].src_path = pairs[i].src_path;
+	}
+
+	had_link = resolve_symlinks(syminfo, count, &res);
+	if (!tc_okay(res)) {
+		return res;
+	}
+
+	if (!had_link) {
+		return tc_lcopyv(pairs, count, is_transaction);
+	}
+
+	for (i = 0; i < count; i++) {
+		if (syminfo[i].target_path)	{
+			pairs[i].src_path = syminfo[i].target_path;
+		}
+	}
+
+	res = tc_lcopyv(pairs, count, is_transaction);
+
+	for (i = 0; i < count; i++) {
+		if (syminfo[i].target_path)	{
+			pairs[i].src_path = syminfo[i].src_path;
+		}
+	}
+
+	free_syminfo(syminfo, count);
+
+	return res;
 }
 
 tc_res tc_symlinkv(const char **oldpaths, const char **newpaths, int count,
 		   bool istxn)
 {
-	tc_res tcres;
+	tc_res tcres = TC_OKAY;
 	TC_DECLARE_COUNTER(symlink);
 
 	TC_START_COUNTER(symlink);
 	if (TC_IMPL_IS_NFS4) {
-		tcres = nfs4_symlinkv(oldpaths, newpaths, count, istxn);
+		int i;
+		for (i = 0; i < count; i += 8) {
+			tcres = nfs4_symlinkv(&oldpaths[i], &newpaths[i], MIN(8, count - i), istxn);
+			if (!tc_okay(tcres)) {
+				tcres.index += i;
+				return tcres;
+			}
+		}
 	} else {
 		tcres = posix_symlinkv(oldpaths, newpaths, count, istxn);
 	}

@@ -44,7 +44,7 @@ void* posix_init(const char* config_file, const char* log_file) {
 	SetNameFunction("posix");
 	SetNameHost("localhost");
 	init_logging(log_file, NIV_EVENT);
-	return NULL;
+	return (void*) log_file;
 }
 
 tc_file *posix_openv(const char **paths, int count, int *flags, mode_t *modes)
@@ -311,7 +311,6 @@ tc_res posix_lgetattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 			res = fstat(cur_attr->file.fd, &st);
 
 		if (res < 0) {
-			perror("");
 			POSIX_WARN("file path : %s\n", cur_attr->file.path);
 			result = tc_failure(i, errno);
 			POSIX_WARN("posix_lgetattrsv() failed at index : %d\n",
@@ -723,7 +722,7 @@ tc_res posix_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
 	return tcres;
 }
 
-tc_res posix_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
+tc_res posix_lcopyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 {
 	int i;
 	ssize_t ret;
