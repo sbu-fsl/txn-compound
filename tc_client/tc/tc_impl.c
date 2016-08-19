@@ -357,8 +357,9 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	int i;
 
 	for (i = 0; i < count; i++) {
-		// if caller doesn't want to get a mode, save old mode before passing attrs
-		// into lgetattrsv to determine if files are symlinks
+		// if caller doesn't want to get a mode, save old mode before
+		// passing attrs into lgetattrsv to determine if files are
+		// symlinks
 		if (!attrs[i].masks.has_mode) {
 			old_modes[old_mode_count] = attrs[i].mode;
 			old_masks[old_mode_count] = attrs[i].masks;
@@ -390,14 +391,16 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 		attrs[mode_original_indices[i]].masks = old_masks[i];
 	}
 
-	//if nothing was a symlink, then our prior call to tc_lgetattrsv() sufficed, so we're done
+	// if nothing was a symlink, then our prior call to tc_lgetattrsv()
+	// sufficed, so we're done
 	if (!tc_okay(res) || link_count == 0) {
 		return res;
 	}
 
 
 	res = tc_readlinkv(paths, bufs, bufsizes, link_count, false);
-	//TODO: what if tc_readlinkv() returns another symlink (symlink to symlink)?
+	// TODO: what if tc_readlinkv() returns another symlink (symlink to
+	// symlink)?
 
 	if (!tc_okay(res)) {
 		res.index = original_indices[res.index];
@@ -970,29 +973,4 @@ char *tc_getcwd()
 	} else {
 		return posix_getcwd();
 	}
-}
-
-tc_res tc_removev_by_paths(const char **paths, int count)
-{
-	tc_res tcres;
-	int i, j, n;
-	const size_t REMOVE_LIMIT = 8;
-
-	tc_file files[REMOVE_LIMIT];
-	for (i = 0; i < count; ) {
-		n = ((count - i) > REMOVE_LIMIT) ? REMOVE_LIMIT : (count - i);
-		for (j = 0; j < n; ++j) {
-			files[j] = tc_file_from_path(paths[i+ j]);
-		}
-
-		tcres = tc_removev(files, n, false);
-		if (!tc_okay(tcres)) {
-			tcres.index += i;
-			return tcres;
-		}
-
-		i += n;
-	}
-
-	return TC_OKAY;
 }

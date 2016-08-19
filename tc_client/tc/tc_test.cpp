@@ -28,6 +28,7 @@
 #include <sys/types.h>
 #include <errno.h>
 #include <unistd.h>
+#include <stdarg.h>
 #include <fcntl.h>
 
 #include <algorithm>
@@ -43,6 +44,7 @@
 #include "path_utils.h"
 #include "test_util.h"
 #include "util/fileutil.h"
+#include "path_utils.h"
 #include "log.h"
 
 #define TCTEST_ERR(fmt, args...) LogCrit(COMPONENT_TC_TEST, fmt, ##args)
@@ -54,6 +56,9 @@
 	EXPECT_TRUE(tc_okay(x)) << "Failed at " << x.index << ": "             \
 				<< strerror(x.err_no)
 #define EXPECT_NOTNULL(x) EXPECT_TRUE(x != NULL) << #x << " is NULL"
+
+#define new_auto_path(fmt, args...)                                            \
+	tc_format_path((char *)alloca(PATH_MAX), fmt, ##args)
 
 namespace
 {
@@ -96,15 +101,48 @@ static tc_iovec *build_iovec(tc_file *files, int count, int offset)
 
 static char *getRandomBytes(int N);
 
-void tc_touch(const char *path, int size)
+static void tc_touchv(const char **paths, int count, int filesize)
 {
-	tc_iovec iov;
+	tc_iovec *iovs;
+	char *buf;
 
-	tc_iov4creation(&iov, path, size, (size ? getRandomBytes(size) : NULL));
-	EXPECT_OK(tc_writev(&iov, 1, false));
-	if (iov.data) {
-		free(iov.data);
+	iovs = (tc_iovec *)alloca(count * sizeof(*iovs));
+	buf = filesize ? getRandomBytes(filesize) : NULL;
+
+	for (int i = 0; i < count; ++i) {
+		tc_iov4creation(&iovs[i], paths[i], filesize, buf);
 	}
+
+	EXPECT_OK(tc_writev(iovs, count, false));
+
+	if (buf) {
+		free(buf);
+	}
+}
+
+static inline void tc_touch(const char *path, int size)
+{
+	tc_touchv(&path, 1, size);
+}
+
+static inline char *tc_format_path(char *path, const char *format, ...)
+{
+	va_list args;
+
+	va_start(args, format);
+	vsnprintf(path, PATH_MAX, format, args);
+	va_end(args);
+
+	return path;
+}
+
+static inline void tc_ensure_parent_dir(const char *path)
+{
+	char dirpath[PATH_MAX];
+	slice_t dir = tc_path_dirname(path);
+	strncpy(dirpath, dir.data, dir.size);
+	dirpath[dir.size] = '\0';
+	tc_ensure_dir(dirpath, 0755, NULL);
 }
 
 class TcPosixImpl {
@@ -430,11 +468,11 @@ TYPED_TEST_P(TcTest, AttrsTestPath)
 TYPED_TEST_P(TcTest, AttrsTestSymlinks)
 {
 	const char *PATHS[] = { "AttrsTestSymlinks-Linked1.txt",
-			       "AttrsTestSymlinks-Linked2.txt",
-			       "AttrsTestSymlinks-Linked3.txt" };
+				"AttrsTestSymlinks-Linked2.txt",
+				"AttrsTestSymlinks-Linked3.txt" };
 	const char *LPATHS[] = { "AttrsTestSymlinks-Link1.txt",
-			       "AttrsTestSymlinks-Link2.txt",
-			       "AttrsTestSymlinks-Link3.txt" };
+				 "AttrsTestSymlinks-Link2.txt",
+				 "AttrsTestSymlinks-Link3.txt" };
 	tc_res res = { 0 };
 	struct tc_iovec iov;
 	int i;
@@ -653,16 +691,13 @@ TYPED_TEST_P(TcTest, RenameFile)
  */
 TYPED_TEST_P(TcTest, RemoveFileTest)
 {
-	int i = 0;
 	const char *path[] = { "rename1.txt", "rename2.txt",
 			       "rename3.txt", "rename4.txt" };
 
 	tc_file *file = (tc_file *)calloc(4, sizeof(tc_file));
 
-	while (i < 4) {
+	for (int i = 0; i < 4; ++i) {
 		file[i] = tc_file_from_path(path[i]);
-
-		i++;
 	}
 
 	EXPECT_OK(tc_removev(file, 4, false));
@@ -670,12 +705,8 @@ TYPED_TEST_P(TcTest, RemoveFileTest)
 	free(file);
 }
 
-/**
- * Make Directory Test
- */
-TYPED_TEST_P(TcTest, MakeDirectory)
+TYPED_TEST_P(TcTest, MakeDirectories)
 {
-	int i = 0;
 	mode_t mode[] = { S_IRWXU, S_IRUSR | S_IRGRP | S_IROTH,
 			  S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH };
 	const char *path[] = { "a", "b", "c" };
@@ -683,12 +714,27 @@ TYPED_TEST_P(TcTest, MakeDirectory)
 
 	Removev(path, 3);
 
-	while (i < 3) {
+	for (int i = 0; i < 3; ++i) {
 		tc_set_up_creation(&dirs[i], path[i], 0755);
-		i++;
 	}
 
 	EXPECT_OK(tc_mkdirv(dirs, 3, false));
+}
+
+TYPED_TEST_P(TcTest, MakeManyDirsDontFitInOneCompound)
+{
+	const int NDIRS = 64;
+	struct tc_attrs dirs[NDIRS];
+	EXPECT_TRUE(tc_rm_recursive("ManyDirs"));
+	for (int i = 0; i < NDIRS; ++i) {
+		char *path = (char *)alloca(PATH_MAX);
+		snprintf(path, PATH_MAX, "ManyDirs/a%d/b/c/d/e/f/g/h", i);
+		tc_ensure_dir(path, 0755, NULL);
+
+		snprintf(path, PATH_MAX, "ManyDirs/a%d/b/c/d/e/f/g/h/dir", i);
+		tc_set_up_creation(&dirs[i], path, 0755);
+	}
+	EXPECT_OK(tc_mkdirv(dirs, NDIRS, false));
 }
 
 /**
@@ -734,10 +780,7 @@ TYPED_TEST_P(TcTest, Append)
 	free(data_read);
 }
 
-/**
- * Successive reads
- */
-TYPED_TEST_P(TcTest, SuccesiveReads)
+TYPED_TEST_P(TcTest, SuccessiveReads)
 {
 	const char *path = "TcTest-SuccesiveReads.txt";
 	struct tc_iovec iov;
@@ -787,57 +830,43 @@ TYPED_TEST_P(TcTest, SuccesiveReads)
 	tc_close(tcf);
 }
 
-/**
- * Successive writes
- */
-TYPED_TEST_P(TcTest, SuccesiveWrites)
+TYPED_TEST_P(TcTest, SuccessiveWrites)
 {
-	//const char *path = "WritevCanCreateFiles10.txt";
-	//int fd[2], i = 0, N = 4096;
-	//off_t offset = 0;
-	//void *data = calloc(1, N);
-	//tc_res res;
-
-	/*
+	const char *path = "SuccesiveWrites.dat";
+	char *data = (char *)getRandomBytes(16_KB);
+	/**
 	 * open file one for actual writing
 	 * other descriptor to verify
 	 */
-	//fd[0] = open(path, O_WRONLY | O_CREAT);
-	//fd[1] = open(path, O_RDONLY);
-	//EXPECT_FALSE(fd[0] < 0);
-	//EXPECT_FALSE(fd[1] < 0);
+	tc_file *tcf = tc_open(path, O_RDWR | O_CREAT, 0755);
+	EXPECT_NOTNULL(tcf);
+	tc_file *tcf2 = tc_open(path, O_RDONLY, 0);
+	EXPECT_NE(tcf->fd, tcf2->fd);
 
-	//struct tc_iovec *writev = NULL;
-	//writev = build_iovec(fd, 1, TC_OFFSET_CUR);
-	//EXPECT_FALSE(writev == NULL);
+	struct tc_iovec iov;
+	tc_iov2file(&iov, tcf, TC_OFFSET_CUR, 4_KB, data);
+	EXPECT_OK(tc_writev(&iov, 1, false));
+	tc_iov2file(&iov, tcf, TC_OFFSET_CUR, 4_KB, data + 4_KB);
+	EXPECT_OK(tc_writev(&iov, 1, false));
 
-	//while (i < 4) {
-		//[> get the current offset of the file <]
-		//offset = lseek(fd[0], 0, SEEK_CUR);
+	char *readbuf = (char *)malloc(16_KB);
+	tc_iov2file(&iov, tcf2, 0, 8_KB, readbuf);
+	EXPECT_OK(tc_readv(&iov, 1, false));
+	EXPECT_EQ(iov.length, 8_KB);
+	EXPECT_EQ(0, memcmp(data, readbuf, 8_KB));
 
-		//free(writev->data);
-		//writev->data = (void *)malloc(N);
+	tc_iov2file(&iov, tcf, TC_OFFSET_CUR, 8_KB, data + 8_KB);
+	EXPECT_OK(tc_writev(&iov, 1, false));
 
-		//res = tc_writev(writev, 1, false);
-		//EXPECT_TRUE(res.okay);
+	tc_iov2file(&iov, tcf2, 0, 16_KB, readbuf);
+	EXPECT_OK(tc_readv(&iov, 1, false));
+	EXPECT_EQ(iov.length, 16_KB);
+	EXPECT_EQ(0, memcmp(data, readbuf, 16_KB));
 
-		//TCTEST_WARN("Test read from offset : %d\n", offset);
-
-		//[> read the data from the file from the same offset <]
-		//int error = pread(fd[1], data, writev->length, offset);
-		//EXPECT_FALSE(error < 0);
-
-		//[> compare data written with just read data from the file <]
-		//error = memcmp(data, writev->data, writev->length);
-		//EXPECT_TRUE(error == 0);
-
-		//i++;
-	//}
-
-	//free(data);
-	//free_iovec(writev, 1);
-
-	//RemoveFile(&path, 1);
+	tc_close(tcf);
+	tc_close(tcf2);
+	free(data);
+	free(readbuf);
 }
 
 static char *getRandomBytes(int N)
@@ -880,17 +909,11 @@ TYPED_TEST_P(TcTest, CopyFiles)
 	struct tc_iovec iov[2];
 	struct tc_iovec read_iov[2];
 
-	pairs[0].src_path = "SourceFile1.txt";
-	pairs[0].src_offset = 0;
-	pairs[0].dst_path = "DestinationFile1.txt";
-	pairs[0].dst_offset = 0;
-	pairs[0].length = N;
-
-	pairs[1].src_path = "SourceFile2.txt";
-	pairs[1].src_offset = 0;
-	pairs[1].dst_path = "DestinationFile2.txt";
-	pairs[1].dst_offset = 0;
-	pairs[1].length = 0;  // 0 means from src_offset to EOF
+	tc_fill_extent_pair(&pairs[0], "SourceFile1.txt", 0,
+			    "DestinationFile1.txt", 0, N);
+	tc_fill_extent_pair(&pairs[1], "SourceFile2.txt", 0,
+			    "DestinationFile2.txt", 0,
+			    0); // 0 means from src_offset to EOF
 
 	// create source files
 	tc_iov4creation(&iov[0], pairs[0].src_path, N, getRandomBytes(N));
@@ -1028,6 +1051,26 @@ TYPED_TEST_P(TcTest, CopyFirstHalfAsSecondHalf)
 
 	free(iov.data);
 	free(read_iov.data);
+}
+
+TYPED_TEST_P(TcTest, CopyManyFilesDontFitInOneCompound)
+{
+	const int NFILES = 64;
+	struct tc_extent_pair pairs[NFILES];
+	for (int i = 0; i < NFILES; ++i) {
+		char *path = (char *)alloca(PATH_MAX);
+		snprintf(path, PATH_MAX, "CopyMany/a%d/b/c/d/e/f/g/h", i);
+		tc_ensure_dir(path, 0755, NULL);
+
+		snprintf(path, PATH_MAX, "CopyMany/a%d/b/c/d/e/f/g/h/foo", i);
+		tc_touch(path, 4_KB);
+
+		char *dest_file = (char *)alloca(PATH_MAX);
+		snprintf(dest_file, PATH_MAX, "CopyMany/foo%d", i);
+		tc_fill_extent_pair(&pairs[i], path, 0, dest_file, 0, 0);
+	}
+
+	EXPECT_OK(tc_copyv(pairs, NFILES, false));
 }
 
 TYPED_TEST_P(TcTest, ListAnEmptyDirectory)
@@ -1192,6 +1235,27 @@ TYPED_TEST_P(TcTest, CompressDeepPaths)
 	delete[] attrs;
 }
 
+// Checked unnecessary SAVEFH and RESTOREFH are not used thanks to
+// optimization.
+TYPED_TEST_P(TcTest, CompressPathForRemove)
+{
+	tc_ensure_dir("TcTest-CompressPathForRemove/a/b/c/d1", 0755, NULL);
+	tc_ensure_dir("TcTest-CompressPathForRemove/a/b/c/d2", 0755, NULL);
+	const int FILES_PER_DIR = 8;
+	tc_file *files = (tc_file *)alloca(FILES_PER_DIR * 2 * sizeof(tc_file));
+	for (int i = 0; i < FILES_PER_DIR; ++i) {
+		char *p1 = new_auto_path(
+		    "TcTest-CompressPathForRemove/a/b/c/d1/%d", i);
+		char *p2 = new_auto_path(
+		    "TcTest-CompressPathForRemove/a/b/c/d2/%d", i);
+		const char *paths[2] = {p1, p2};
+		tc_touchv(paths, 2, 4_KB);
+		files[i] = tc_file_from_path(p1);
+		files[i + FILES_PER_DIR] = tc_file_from_path(p2);
+	}
+	EXPECT_OK(tc_removev(files, FILES_PER_DIR * 2, false));
+}
+
 TYPED_TEST_P(TcTest, SymlinkBasics)
 {
 	const char *TARGETS[] = { "TcTest-SymlinkBasics/001.file",
@@ -1231,6 +1295,55 @@ TYPED_TEST_P(TcTest, SymlinkBasics)
 	}
 	delete[] bufs;
 	delete[] bufsizes;
+}
+
+TYPED_TEST_P(TcTest, ManyLinksDontFitInOneCompound)
+{
+	const int NLINKS = 64;
+	const char *targets[NLINKS];
+	const char *links[NLINKS];
+	char *bufs[NLINKS];
+	size_t bufsizes[NLINKS];
+
+	EXPECT_TRUE(tc_rm_recursive("ManyLinks"));
+	for (int i = 0; i < NLINKS; ++i) {
+		targets[i] = new_auto_path("ManyLinks/file%d", i);
+		links[i] = new_auto_path("ManyLinks/a%d/b/c/d/e/f/h/link", i);
+		tc_ensure_parent_dir(links[i]);
+		bufs[i] = (char *)alloca(PATH_MAX);
+		bufsizes[i] = PATH_MAX;
+	}
+	tc_touchv(targets, NLINKS, 1_KB);
+	EXPECT_OK(tc_symlinkv(targets, links, NLINKS, false));
+	EXPECT_OK(tc_readlinkv(links, bufs, bufsizes, NLINKS, false));
+	for (int i = 0; i < NLINKS; ++i) {
+		EXPECT_STREQ(targets[i], bufs[i]);
+	}
+}
+
+TYPED_TEST_P(TcTest, RequestDoesNotFitIntoOneCompound)
+{
+	const int NFILES = 64; // 64 * 8 == 512
+	const char *paths[NFILES];
+	int flags[NFILES];
+	struct tc_attrs attrs[NFILES];
+	const char *new_paths[NFILES];
+	struct tc_file_pair pairs[NFILES];
+	for (int i = 0; i < NFILES; ++i) {
+		paths[i] = new_auto_path("DontFit/a%03d/b/c/d/e/f/g/h/file", i);
+		tc_ensure_parent_dir(paths[i]);
+		flags[i] = O_WRONLY | O_CREAT;
+		attrs[i].file = tc_file_from_path(paths[i]);
+		new_paths[i] = new_auto_path("DontFit/file-%d", i);
+		pairs[i].src_file = tc_file_from_path(paths[i]);
+		pairs[i].dst_file = tc_file_from_path(new_paths[i]);
+	}
+	tc_file *files = tc_openv(paths, NFILES, flags, NULL);
+	EXPECT_NOTNULL(files);
+	EXPECT_OK(tc_closev(files, NFILES));
+	EXPECT_OK(tc_getattrsv(attrs, NFILES, false));
+	EXPECT_OK(tc_renamev(pairs, NFILES, false));
+	EXPECT_OK(tc_unlinkv(new_paths, NFILES));
 }
 
 static bool is_same_stat(const struct stat *st1, const struct stat *st2)
@@ -1303,6 +1416,12 @@ TYPED_TEST_P(TcTest, TcRmBasic)
 #undef TCRM_PREFIX
 }
 
+TYPED_TEST_P(TcTest, TcRmRecursive)
+{
+	EXPECT_FALSE(tc_exists("NonExistDir"));
+	EXPECT_TRUE(tc_rm_recursive("NonExistDir"));
+}
+
 REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   WritevCanCreateFiles,
 			   TestFileDesc,
@@ -1314,22 +1433,28 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   ListDirRecursively,
 			   RenameFile,
 			   RemoveFileTest,
-			   MakeDirectory,
+			   MakeDirectories,
+			   MakeManyDirsDontFitInOneCompound,
 			   Append,
-			   SuccesiveReads,
-			   SuccesiveWrites,
+			   SuccessiveReads,
+			   SuccessiveWrites,
 			   CopyFiles,
 			   CopyFirstHalfAsSecondHalf,
+			   CopyManyFilesDontFitInOneCompound,
 			   ListAnEmptyDirectory,
 			   List2ndLevelDir,
 			   ShuffledRdWr,
 			   ParallelRdWrAFile,
 			   RdWrLargeThanRPCLimit,
 			   CompressDeepPaths,
+			   CompressPathForRemove,
 			   SymlinkBasics,
+			   ManyLinksDontFitInOneCompound,
 			   TcStatBasics,
 			   CopyLargeDirectory,
-			   TcRmBasic);
+			   TcRmBasic,
+			   TcRmRecursive,
+			   RequestDoesNotFitIntoOneCompound);
 
 typedef ::testing::Types<TcNFS4Impl, TcPosixImpl> TcImpls;
 INSTANTIATE_TYPED_TEST_CASE_P(TC, TcTest, TcImpls);

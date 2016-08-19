@@ -60,7 +60,8 @@ void *tc_init(const char *config_path, const char *log_path,
 void tc_deinit(void *module);
 
 enum TC_FILETYPE {
-	TC_FILE_DESCRIPTOR = 1,
+	TC_FILE_NULL = 0,
+	TC_FILE_DESCRIPTOR,
 	TC_FILE_PATH,
 	TC_FILE_HANDLE,
 	TC_FILE_CURRENT,
@@ -75,8 +76,9 @@ enum TC_FILETYPE {
 #define FILEID_NFS_FH_TYPE 0x1001
 
 /**
- * "type" is one of the five file types; "fd" and "path_or_handle" depend on
+ * "type" is one of the six file types; "fd" and "path_or_handle" depend on
  * the file type:
+ *	0. A "type" value of TC_FILE_NULL means the tc_file is invalid or emtpy.
  *
  *	1. When "type" is TC_FILE_DESCRIPTOR, "fd" identifies the file we are
  *	operating on.
@@ -596,6 +598,12 @@ int tc_stat(const char *path, struct stat *buf);
 int tc_lstat(const char *path, struct stat *buf);
 int tc_fstat(tc_file *tcf, struct stat *buf);
 
+static inline bool tc_exists(const char *path)
+{
+	struct stat buf;
+	return tc_lstat(path, &buf) == 0;
+}
+
 /**
  * Set attributes of file objects.
  *
@@ -707,8 +715,6 @@ static inline bool tx_removev(tc_file *files, int count)
 	return tc_okay(tc_removev(files, count, true));
 }
 
-tc_res tc_removev_by_paths(const char **paths, int count);
-
 int tc_unlink(const char *pathname);
 tc_res tc_unlinkv(const char **pathnames, int count);
 
@@ -741,6 +747,18 @@ struct tc_extent_pair
 	 */
 	size_t length;
 };
+
+static inline void tc_fill_extent_pair(struct tc_extent_pair *tcep,
+				       const char *spath, size_t soff,
+				       const char *dpath, size_t doff,
+				       size_t len)
+{
+	tcep->src_path = spath;
+	tcep->dst_path = dpath;
+	tcep->src_offset = soff;
+	tcep->dst_offset = doff;
+	tcep->length = len;
+}
 
 /**
  * Copy the file from "src_path" to "dst_path" for each of "pairs".
@@ -874,6 +892,11 @@ tc_res tc_cp_recursive(const char *src_dir, const char *dst, bool symlink);
  * Remove a list of file-system objects (files or directories).
  */
 tc_res tc_rm(const char **objs, int count, bool recursive);
+
+static inline bool tc_rm_recursive(const char *dir)
+{
+	return tc_okay(tc_rm(&dir, 1, true));
+}
 
 #ifdef __cplusplus
 }

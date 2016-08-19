@@ -149,8 +149,6 @@ void *nfs4_init(const char *config_path, const char *log_path,
 		 exp->export_id, exp->pseudopath, exp->fullpath,
 		 exp->FS_tag);
 
-	sleep(1);
-
 	// op_ctx is a symbol (pointer) from the shared library
 	op_ctx = calloc(1, sizeof(*op_ctx));
 	if (op_ctx == NULL) {
@@ -164,8 +162,6 @@ void *nfs4_init(const char *config_path, const char *log_path,
 
 	rc = nfs4_chdir(exp->fullpath);
 	assert(rc == 0);
-
-	sleep(1);
 
 	tc_init_fds();
 	return (void*)new_module;
@@ -210,24 +206,31 @@ void nfs4_deinit(void *arg)
  */
 tc_res nfs4_do_readv(struct tc_iovec *iovs, int read_count, bool istxn)
 {
-	tc_res tcres;
 	struct gsh_export *export = op_ctx->export;
-	tc_res result = { .index = 0, .err_no = (int)ENOENT };
+	tc_res tcres = { .index = 0, .err_no = (int)ENOENT };
+	int finished;
 
 	if (export == NULL) {
-		return result;
+		return tcres;
 	}
 
 	if (export->fsal_export->obj_ops->tc_readv == NULL) {
-		result.err_no = (int)ENOTSUP;
-		return result;
+		tcres.err_no = (int)ENOTSUP;
+		return tcres;
 	}
 
 	NFS4_DEBUG("nfs4_do_readv() called");
 
-	result = export->fsal_export->obj_ops->tc_readv(iovs, read_count);
+	for (finished = 0; finished < read_count; finished += tcres.index) {
+		tcres = export->fsal_export->obj_ops->tc_readv(
+		    iovs + finished, read_count - finished);
+		if (!tc_okay(tcres)) {
+			tcres.index += finished;
+			break;
+		}
+	}
 
-	return result;
+	return tcres;
 }
 
 static void nfs4_decompress_paths(struct tc_iovec *iovs, int count,
@@ -384,9 +387,6 @@ tc_res nfs4_do_iovec(struct tc_iovec *iovs, int count, bool istxn,
 	struct tc_iov_array iova = TC_IOV_ARRAY_INITIALIZER(iovs, count);
 	struct tc_iov_array *parts;
 	tc_res tcres;
-#ifdef TC_COMPRESS_PATH
-	tc_file *saved_tcfs;
-#endif
 
 	for (i = 0; i < count; ++i) {
 		iovs[i].is_eof = false;
@@ -403,17 +403,11 @@ tc_res nfs4_do_iovec(struct tc_iovec *iovs, int count, bool istxn,
 	parts = tc_split_iov_array(&iova, CPD_LIMIT, &nparts);
 
 	for (i = 0; i < nparts; ++i) {
-#ifdef TC_COMPRESS_PATH
-		saved_tcfs = nfs4_compress_paths(parts[i].iovs, parts[i].size);
-#endif
 		tcres = fn(parts[i].iovs, parts[i].size, istxn);
 		if (!tc_okay(tcres)) {
 			/* TODO: FIX tcres */
 			goto exit;
 		}
-#ifdef TC_COMPRESS_PATH
-		nfs4_decompress_paths(parts[i].iovs, parts[i].size, saved_tcfs);
-#endif
 	}
 
 exit:
@@ -426,22 +420,6 @@ tc_res nfs4_readv(struct tc_iovec *iovs, int count, bool istxn) {
 	return nfs4_do_iovec(iovs, count, istxn, nfs4_do_readv);
 }
 
-static void tc_update_file_cursor(struct tc_kfd *tcfd, struct tc_iovec *write)
-{
-	if (write->offset == TC_OFFSET_CUR) {
-		tcfd->offset += write->length;
-		if (tcfd->offset > tcfd->filesize) {
-			tcfd->filesize = tcfd->offset;
-		}
-	} else if (write->offset == TC_OFFSET_END) {
-		tcfd->filesize += write->length;
-	} else {
-		if (write->offset + write->length > tcfd->filesize) {
-			tcfd->filesize = write->offset + write->length;
-		}
-	}
-}
-
 /*
  * arg - Array of writes for one or more files
  *       Contains file-path, write length, offset, etc.
@@ -450,24 +428,31 @@ static void tc_update_file_cursor(struct tc_kfd *tcfd, struct tc_iovec *write)
  */
 tc_res nfs4_do_writev(struct tc_iovec *iovs, int write_count, bool istxn)
 {
-	fsal_status_t fsal_status = { 0, 0 };
 	struct gsh_export *export = op_ctx->export;
-	tc_res result = { .index = 0, .err_no = (int)ENOENT };
+	tc_res tcres = { .index = 0, .err_no = (int)ENOENT };
+	int finished;
 
 	if (export == NULL) {
-		return result;
+		return tcres;
 	}
 
 	if (export->fsal_export->obj_ops->tc_writev == NULL) {
-		result.err_no = (int)ENOTSUP;
-		return result;
+		tcres.err_no = (int)ENOTSUP;
+		return tcres;
 	}
 
 	NFS4_DEBUG("nfs4_do_writev() called");
 
-	result = export->fsal_export->obj_ops->tc_writev(iovs, write_count);
+	for (finished = 0; finished < write_count; finished += tcres.index) {
+		tcres = export->fsal_export->obj_ops->tc_writev(
+		    iovs + finished, write_count - finished);
+		if (!tc_okay(tcres)) {
+			tcres.index += finished;
+			break;
+		}
+	}
 
-	return result;
+	return tcres;
 }
 
 tc_res nfs4_writev(struct tc_iovec *iovs, int count, bool istxn)
@@ -478,6 +463,7 @@ tc_res nfs4_writev(struct tc_iovec *iovs, int count, bool istxn)
 tc_file *nfs4_openv(const char **paths, int count, int *flags, mode_t *modes)
 {
 	int i;
+	int finished;
 	tc_res tcres;
 	tc_file *tcfs;
 	struct gsh_export *export = op_ctx->export;
@@ -501,21 +487,28 @@ tc_file *nfs4_openv(const char **paths, int count, int *flags, mode_t *modes)
 		}
 	}
 
-	tcres =
-	    export->fsal_export->obj_ops->tc_openv(attrs, count, flags, sids);
-	if (!tc_okay(tcres)) {
-		tcfs = NULL;
-		goto exit;
-	}
-
 	tcfs = calloc(count, sizeof(*tcfs));
-	for (i = 0; i < count; ++i) {
-		fh4.nfs_fh4_len = attrs[i].file.handle->handle_bytes;
-		fh4.nfs_fh4_val = (char *)attrs[i].file.handle->f_handle;
-		tcfd = tc_get_fd_struct(tc_alloc_fd(sids + i, &fh4), false);
-		tcfd->filesize = attrs[i].size;
-		tcfs[i] = tc_file_from_fd(tcfd->fd);
-		tc_put_fd_struct(&tcfd);
+	for (finished = 0; finished < count; ) {
+		tcres = export->fsal_export->obj_ops->tc_openv(
+		    attrs + finished, count - finished, flags + finished,
+		    sids + finished);
+		if (!tc_okay(tcres)) {
+			nfs4_closev(tcfs, finished);
+			tcfs = NULL;
+			goto exit;
+		}
+
+		for (i = finished; i < finished + tcres.index; ++i) {
+			fh4.nfs_fh4_len = attrs[i].file.handle->handle_bytes;
+			fh4.nfs_fh4_val =
+			    (char *)attrs[i].file.handle->f_handle;
+			tcfd =
+			    tc_get_fd_struct(tc_alloc_fd(sids + i, &fh4), true);
+			tcfd->filesize = attrs[i].size;
+			tcfs[i] = tc_file_from_fd(tcfd->fd);
+			tc_put_fd_struct(&tcfd);
+		}
+		finished += tcres.index;
 	}
 
 exit:
@@ -547,35 +540,54 @@ static int nfs4_close_impl(struct tc_kfd *tcfd, void *args)
 tc_res nfs4_closev(tc_file *files, int count)
 {
 	struct gsh_export *export = op_ctx->export;
-	tc_res tcres;
+	tc_res tcres = { .index = count, .err_no = 0 };
 	nfs_fh4 *fh4s;
 	stateid4 *sids;
 	seqid4 *seqs;
 	int i;
+	int n;
 	struct tc_kfd *tcfd;
+	int finished;
 
 	fh4s = alloca(count * sizeof(*fh4s));
 	sids = alloca(count * sizeof(*sids));
 	seqs = alloca(count * sizeof(*seqs));
 
+	n = 0;
 	for (i = 0; i < count; ++i) {
-		tcfd = tc_get_fd_struct(files[i].fd, false);
-		fh4s[i] = tcfd->fh;
-		sids[i] = tcfd->stateid;
-		seqs[i] = tcfd->seqid;
-		tc_put_fd_struct(&tcfd);
+		if (files[i].type != TC_FILE_NULL) {
+			assert(files[i].type == TC_FILE_DESCRIPTOR);
+			tcfd = tc_get_fd_struct(files[i].fd, false);
+			fh4s[n] = tcfd->fh;
+			sids[n] = tcfd->stateid;
+			seqs[n++] = tcfd->seqid;
+			tc_put_fd_struct(&tcfd);
+		}
 	}
 
-	tcres =
-	    export->fsal_export->obj_ops->tc_closev(fh4s, count, sids, seqs);
-	if (tc_okay(tcres)) {
-		for (i = 0; i < count; ++i) {
+	for (finished = 0; finished < n; ) {
+		tcres = export->fsal_export->obj_ops->tc_closev(
+		    fh4s + finished, n - finished, sids + finished,
+		    seqs + finished);
+		if (!tc_okay(tcres)) {
+			tcres.index += finished;
+			break;
+		}
+		for (i = finished; i < tcres.index + finished; ++i) {
+			tc_free_fd(files[i].fd);
+			files[i].type = TC_FILE_NULL;
+		}
+		finished += tcres.index;
+	}
+
+	for (i = 0; i < count; ++i) {
+		if (files[i].type != TC_FILE_NULL) {
 			tc_free_fd(files[i].fd);
 		}
-		free(files);
-		files = NULL;
 	}
-
+	if (tc_okay(tcres)) {
+		free(files);
+	}
 	return tcres;
 }
 
@@ -669,52 +681,77 @@ static void nfs4_restore_tc_files(struct tc_attrs *attrs, int count,
 tc_res nfs4_lgetattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	struct gsh_export *exp = op_ctx->export;
-	tc_res res;
+	tc_res tcres = { .index = count, .err_no = 0 };
 	tc_file *saved_tcfs;
+	int finished;
 
 	saved_tcfs = nfs4_process_tc_files(attrs, count);
 	if (!saved_tcfs) {
 		return tc_failure(0, ENOMEM);
 	}
 
-	res = exp->fsal_export->obj_ops->tc_lgetattrsv(attrs, count);
-	nfs4_restore_tc_files(attrs, count, saved_tcfs);
+	for (finished = 0; finished < count; finished += tcres.index) {
+		tcres = exp->fsal_export->obj_ops->tc_lgetattrsv(
+		    attrs + finished, count - finished);
+		if (!tc_okay(tcres)) {
+			tcres.index += finished;
+			break;
+		}
+	}
 
-	return res;
+	nfs4_restore_tc_files(attrs, count, saved_tcfs);
+	return tcres;
 }
 
 tc_res nfs4_lsetattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 {
 	struct gsh_export *exp = op_ctx->export;
-	tc_res res;
+	tc_res tcres = { .index = count, .err_no = 0 };
 	tc_file *saved_tcfs;
+	int finished;
 
 	saved_tcfs = nfs4_process_tc_files(attrs, count);
 	if (!saved_tcfs) {
 		return tc_failure(0, ENOMEM);
 	}
 
-	res = exp->fsal_export->obj_ops->tc_lsetattrsv(attrs, count);
-	nfs4_restore_tc_files(attrs, count, saved_tcfs);
+	for (finished = 0; finished < count; finished += tcres.index) {
+		tcres = exp->fsal_export->obj_ops->tc_lsetattrsv(
+		    attrs + finished, count - finished);
+		if (!tc_okay(tcres)) {
+			tcres.index += finished;
+			break;
+		}
+	}
 
-	return res;
+	nfs4_restore_tc_files(attrs, count, saved_tcfs);
+	return tcres;
 }
 
 tc_res nfs4_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)
 {
 	struct gsh_export *exp = op_ctx->export;
-	tc_res res;
+	tc_res tcres;
 	tc_file *saved_tcfs;
+	int finished;
 
 	saved_tcfs = nfs4_process_tc_files(dirs, count);
 	if (!saved_tcfs) {
 		return tc_failure(0, ENOMEM);
 	}
 
-	res = exp->fsal_export->obj_ops->tc_mkdirv(dirs, count);
+	for (finished = 0; finished < count; finished += tcres.index) {
+		tcres = exp->fsal_export->obj_ops->tc_mkdirv(dirs + finished,
+							     count - finished);
+		if (!tc_okay(tcres)) {
+			tcres.index += finished;
+			break;
+		}
+	}
+
 	nfs4_restore_tc_files(dirs, count, saved_tcfs);
 
-	return res;
+	return tcres;
 }
 
 tc_res nfs4_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
@@ -733,54 +770,94 @@ tc_res nfs4_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
 tc_res nfs4_renamev(tc_file_pair *pairs, int count, bool is_transaction)
 {
 	struct gsh_export *exp = op_ctx->export;
-	tc_res res;
+	tc_res tcres;
+	int finished;
 
-	res = exp->fsal_export->obj_ops->tc_renamev(pairs, count);
+	for (finished = 0; finished < count; finished += tcres.index) {
+		tcres = exp->fsal_export->obj_ops->tc_renamev(pairs + finished,
+							      count - finished);
+		if (!tc_okay(tcres)) {
+			tcres.index += finished;
+			break;
+		}
+	}
 
-	return res;
+	return tcres;
 }
 
 tc_res nfs4_removev(tc_file *files, int count, bool is_transaction)
 {
 	struct gsh_export *exp = op_ctx->export;
-	tc_res res;
+	tc_res tcres = { .err_no = 0 };
+	int finished;
 
-	res = exp->fsal_export->obj_ops->tc_removev(files, count);
+	for (finished = 0; finished < count; finished += tcres.index) {
+		tcres = exp->fsal_export->obj_ops->tc_removev(files + finished,
+							      count - finished);
+		if (!tc_okay(tcres)) {
+			tcres.index += finished;
+			break;
+		}
+	}
 
-	return res;
+	return tcres;
 }
 
 tc_res nfs4_lcopyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 {
 	struct gsh_export *exp = op_ctx->export;
-	tc_res res;
+	tc_res tcres = { .err_no = 0 };
+	int finished;
 
-	res = exp->fsal_export->obj_ops->tc_lcopyv(pairs, count);
+	for (finished = 0; finished < count; finished += tcres.index) {
+		tcres = exp->fsal_export->obj_ops->tc_lcopyv(pairs + finished,
+							    count - finished);
+		if (!tc_okay(tcres)) {
+			tcres.index += finished;
+			break;
+		}
+	}
 
-	return res;
+	return tcres;
 }
 
 tc_res nfs4_symlinkv(const char **oldpaths, const char **newpaths, int count,
 		     bool istxn)
 {
 	struct gsh_export *exp = op_ctx->export;
-	tc_res res;
+	tc_res tcres;
+	int finished;
 
-	res = exp->fsal_export->obj_ops->tc_symlinkv(oldpaths, newpaths, count);
+	for (finished = 0; finished < count; finished += tcres.index) {
+		tcres = exp->fsal_export->obj_ops->tc_symlinkv(
+		    oldpaths + finished, newpaths + finished, count - finished);
+		if (!tc_okay(tcres)) {
+			tcres.index += finished;
+			break;
+		}
+	}
 
-	return res;
+	return tcres;
 }
 
 tc_res nfs4_readlinkv(const char **paths, char **bufs, size_t *bufsizes,
 		      int count, bool istxn)
 {
 	struct gsh_export *exp = op_ctx->export;
-	tc_res res;
+	tc_res tcres;
+	int finished;
 
-	res = exp->fsal_export->obj_ops->tc_readlinkv(paths, bufs, bufsizes,
-						      count);
+	for (finished = 0; finished < count; finished += tcres.index) {
+		tcres = exp->fsal_export->obj_ops->tc_readlinkv(
+		    paths + finished, bufs + finished, bufsizes + finished,
+		    count - finished);
+		if (!tc_okay(tcres)) {
+			tcres.index += finished;
+			break;
+		}
+	}
 
-	return res;
+	return tcres;
 }
 
 int nfs4_chdir(const char *path)

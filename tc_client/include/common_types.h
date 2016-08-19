@@ -178,6 +178,14 @@ static inline slice_t toslice(const char *d)
 	return sl;
 }
 
+static inline void fillslice(slice_t *sl, const char *d, size_t s)
+{
+	if (sl) {
+		sl->data = d;
+		sl->size = s;
+	}
+}
+
 static inline slice_t *slice_lstrip(slice_t *sl, char c)
 {
 	int i;

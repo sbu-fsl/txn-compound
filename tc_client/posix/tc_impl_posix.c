@@ -57,7 +57,11 @@ tc_file *posix_openv(const char **paths, int count, int *flags, mode_t *modes)
 	if (tcfs) {
 		for (i = 0; i < count; ++i) {
 			tcfs[i].type = TC_FILE_DESCRIPTOR;
-			fd = open(paths[i], flags[i], modes[i]);
+			if (modes) {
+				fd = open(paths[i], flags[i], modes[i]);
+			} else {
+				fd = open(paths[i], flags[i]);
+			}
 			tcfs[i].fd = fd >= 0 ? fd : -errno;
 		}
 	}
@@ -644,8 +648,9 @@ static int posix_listdir(struct glist_head *dir_queue, const char *dir,
 		cur_attr.file = tc_file_from_path(path);
 		cur_attr.masks = masks;
 
-		if (stat(path, &st) < 0) {
-			POSIX_WARN("stat failed for file : %s\n", dp->d_name);
+		if (lstat(path, &st) < 0) {
+			POSIX_WARN("stat failed for file : %s/%s", dir,
+				   dp->d_name);
 			ret = -errno;
 			goto exit;
 		}

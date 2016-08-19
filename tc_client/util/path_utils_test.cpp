@@ -210,11 +210,11 @@ TEST(PathUtilsTest, DirAndBaseName) {
 
 	P = "/";
 	EXPECT_EQ(0, cmpslice(tc_path_dirname(P), toslice("/")));
-	EXPECT_EQ(0, cmpslice(tc_path_basename(P), toslice("/")));
+	EXPECT_EQ(0, cmpslice(tc_path_basename(P), toslice("")));
 
 	P = "///";
 	EXPECT_EQ(0, cmpslice(tc_path_dirname(P), toslice("/")));
-	EXPECT_EQ(0, cmpslice(tc_path_basename(P), toslice("/")));
+	EXPECT_EQ(0, cmpslice(tc_path_basename(P), toslice("")));
 
 	P = "";
 	EXPECT_EQ(0, tc_path_dirname(P).size);
@@ -227,4 +227,36 @@ TEST(PathUtilsTest, DirAndBaseName) {
 	P = "../a";
 	EXPECT_EQ(0, cmpslice(tc_path_dirname(P), toslice("..")));
 	EXPECT_EQ(0, cmpslice(tc_path_basename(P), toslice("a")));
+}
+
+TEST(PathUtilsTest, DirAndBaseTogether) {
+	slice_t dir, base;
+
+	EXPECT_FALSE(tc_path_dir_base("", &dir, &base));
+	EXPECT_EQ(0, cmpslice(dir, toslice("")));
+	EXPECT_EQ(0, cmpslice(base, toslice("")));
+
+	EXPECT_FALSE(tc_path_dir_base("a", &dir, &base));
+	EXPECT_EQ(0, cmpslice(dir, toslice("")));
+	EXPECT_EQ(0, cmpslice(base, toslice("a")));
+
+	EXPECT_TRUE(tc_path_dir_base("/", &dir, &base));
+	EXPECT_EQ(0, cmpslice(dir, toslice("/")));
+	EXPECT_EQ(0, cmpslice(base, toslice("")));
+
+	EXPECT_TRUE(tc_path_dir_base("/a", &dir, &base));
+	EXPECT_EQ(0, cmpslice(dir, toslice("/")));
+	EXPECT_EQ(0, cmpslice(base, toslice("a")));
+
+	EXPECT_TRUE(tc_path_dir_base("/a/b", &dir, &base));
+	EXPECT_EQ(0, cmpslice(dir, toslice("/a")));
+	EXPECT_EQ(0, cmpslice(base, toslice("b")));
+
+	EXPECT_TRUE(tc_path_dir_base("/a/b/c/", &dir, &base));
+	EXPECT_EQ(0, cmpslice(dir, toslice("/a/b")));
+	EXPECT_EQ(0, cmpslice(base, toslice("c")));
+
+	EXPECT_TRUE(tc_path_dir_base("/a/b/c/d", &dir, &base));
+	EXPECT_EQ(0, cmpslice(dir, toslice("/a/b/c")));
+	EXPECT_EQ(0, cmpslice(base, toslice("d")));
 }

@@ -28,8 +28,6 @@
 #include <fcntl.h>
 #include <pthread.h>
 
-#define TC_COMPRESS_PATH 1
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -82,8 +80,8 @@ struct tc_kfd
 	/* seqid is per lock owner, ktcopen creates a new owner for every open,
 	 * so start with 1 */
 	seqid4 seqid;
-	int offset;
-        size_t filesize;
+	size_t offset;
+	size_t filesize;
 };
 
 int tc_init_fds();
@@ -99,7 +97,8 @@ int tc_free_fd(int fd);
 /*
  * Caller has performed an operation which changed the state of a lock,
  * eg:- OPEN, OPEN_CONFIRM, CLOSE, etc.
- * This should be called after calling the state changing operation to update seq id.
+ * This should be called after calling the state changing operation to update
+ * seq id.
  * This should be called only if the operation succeeded
  */
 int tc_incr_fd_seqid(int fd);

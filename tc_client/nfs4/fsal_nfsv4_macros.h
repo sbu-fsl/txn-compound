@@ -85,11 +85,12 @@ do { \
 		nfs_argop4 *op = argarray + opcnt;                             \
 		opcnt++;                                                       \
 		op->argop = NFS4_OP_CLOSE;                                     \
-		op->nfs_argop4_u.opclose.seqid = __seqid;                      \
-		__seqid++;                                                     \
-		op->nfs_argop4_u.opclose.open_stateid.seqid = __stateid.seqid; \
+		op->nfs_argop4_u.opclose.seqid = (__seqid);                    \
+		(__seqid)++;                                                   \
+		op->nfs_argop4_u.opclose.open_stateid.seqid =                  \
+		    (__stateid).seqid;                                         \
 		memcpy(op->nfs_argop4_u.opclose.open_stateid.other,            \
-		       __stateid.other, 12);                                   \
+		       (__stateid).other, 12);                                 \
 	} while (0)
 
 #define COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argarray)                   \
@@ -252,15 +253,18 @@ do { \
 		strlen(inname);						\
 } while (0)
 
-#define COMPOUNDV4_ARG_ADD_OP_MKDIR(opcnt, argarray, inname, inattrs) \
-do { \
-	nfs_argop4 *op = argarray + opcnt; opcnt++;		\
-	op->argop = NFS4_OP_CREATE;					\
-	op->nfs_argop4_u.opcreate.objtype.type = NF4DIR;		\
-	op->nfs_argop4_u.opcreate.objname.utf8string_val = inname;	\
-	op->nfs_argop4_u.opcreate.objname.utf8string_len = strlen(inname); \
-	op->nfs_argop4_u.opcreate.createattrs = inattrs;		\
-} while (0)
+#define COMPOUNDV4_ARG_ADD_OP_MKDIR(opcnt, argarray, inname, inattrs)          \
+	do {                                                                   \
+		nfs_argop4 *op = argarray + opcnt;                             \
+		opcnt++;                                                       \
+		op->argop = NFS4_OP_CREATE;                                    \
+		op->nfs_argop4_u.opcreate.objtype.type = NF4DIR;               \
+		op->nfs_argop4_u.opcreate.objname.utf8string_val =             \
+		    (char *)inname.data;                                       \
+		op->nfs_argop4_u.opcreate.objname.utf8string_len =             \
+		    inname.size;                                               \
+		op->nfs_argop4_u.opcreate.createattrs = inattrs;               \
+	} while (0)
 
 #define COMPOUNDV4_ARG_ADD_OP_CREATE(opcnt, arg, inname, nf4typ, inattrs, \
 				     specd)				\
