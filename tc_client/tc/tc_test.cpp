@@ -34,10 +34,12 @@
 #include <algorithm>
 #include <list>
 #include <random>
+#include <string>
 #include <thread>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <gmock/gmock.h>
 
 #include "tc_api.h"
 #include "tc_helper.h"
@@ -1321,6 +1323,14 @@ TYPED_TEST_P(TcTest, ManyLinksDontFitInOneCompound)
 	}
 }
 
+static bool listdir_test_cb(const struct tc_attrs *entry, const char *dir,
+			    void *cbarg)
+{
+	std::vector<std::string> *objs = (std::vector<std::string> *)cbarg;
+	objs->emplace_back(entry->file.path);
+	return true;
+}
+
 TYPED_TEST_P(TcTest, RequestDoesNotFitIntoOneCompound)
 {
 	const int NFILES = 64; // 64 * 8 == 512
@@ -1342,6 +1352,22 @@ TYPED_TEST_P(TcTest, RequestDoesNotFitIntoOneCompound)
 	EXPECT_NOTNULL(files);
 	EXPECT_OK(tc_closev(files, NFILES));
 	EXPECT_OK(tc_getattrsv(attrs, NFILES, false));
+
+	struct tc_attrs_masks listdir_mask = { .has_mode = true };
+	std::vector<std::string> objs;
+	EXPECT_OK(tc_listdirv(paths, NFILES, listdir_mask, 0, true,
+			      listdir_test_cb, &objs, false));
+	std::vector<std::string> expected;
+	for (int i = 0; i < NFILES; ++i) {
+		std::string p(paths[i]);
+		size_t n = p.length();
+		while (n != std::string::npos) {
+			expected.emplace_back(p.data(), n);
+			n = p.find_last_of('/', n - 1);
+		}
+	}
+	EXPECT_THAT(objs, testing::UnorderedElementsAreArray(expected));
+
 	EXPECT_OK(tc_renamev(pairs, NFILES, false));
 	EXPECT_OK(tc_unlinkv(new_paths, NFILES));
 }
