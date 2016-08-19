@@ -4526,17 +4526,18 @@ static tc_res tc_nfs4_copyv(struct tc_extent_pair *pairs, int count)
 
         tc_reset_compound(true);
 	for (i = 0; i < count; ++i) {
-                tc_set_up_creation(&tca, new_auto_str(dstname), 0755);
-		tc_attrs_to_fattr4(&tca, &attrs4[i]);
-
                 saved_opcnt = opcnt;
 		r = tc_set_cfh_to_path(pairs[i].src_path, &srcname, false) &&
 		    tc_prepare_open(srcname, O_RDONLY, new_auto_buf(64),
 				    NULL) &&
 		    tc_prepare_savefh(NULL) &&
-		    tc_set_cfh_to_path(pairs[i].dst_path, &dstname, false) &&
-		    tc_prepare_open(dstname, O_WRONLY | O_CREAT,
-				    new_auto_buf(64), &attrs4[i]) &&
+		    tc_set_cfh_to_path(pairs[i].dst_path, &dstname, false);
+
+		tc_set_up_creation(&tca, new_auto_str(dstname), 0755);
+		tc_attrs_to_fattr4(&tca, &attrs4[i]);
+
+		r = r && tc_prepare_open(dstname, O_WRONLY | O_CREAT,
+					 new_auto_buf(64), &attrs4[i]) &&
 		    tc_prepare_copy(pairs[i].src_offset, pairs[i].dst_offset,
 				    pairs[i].length) &&
 		    tc_prepare_close(NULL, NULL) && tc_prepare_restorefh() &&
