@@ -78,7 +78,7 @@ tc_res tc_cp_mkdirs(const char *src_dir, const char **dirs, int count, const cha
 {
 	struct tc_attrs attrs[count];
 	for (int i = 0; i < count; i++) {
-		char *path = (char*) alloca(sizeof(char) * PATH_MAX);
+		char *path = (char*) malloc(sizeof(char) * PATH_MAX);
 		const char *suffix = dirs[i];
 		for (int j = 0; *suffix != '\0' && *suffix == src_dir[j]; j++, suffix++);
 
@@ -92,6 +92,11 @@ tc_res tc_cp_mkdirs(const char *src_dir, const char **dirs, int count, const cha
 	if (!tc_okay(res)) {
 		printf("mkdirv: %s (%s)\n", strerror(res.err_no), attrs[res.index].file.path);
 	}
+
+	for (int i = 0; i < count; i++) {
+		free((char*)attrs[i].file.path);
+	}
+
 	return res;
 }
 
@@ -102,13 +107,13 @@ tc_res tc_cp_files(const char *src_dir, const char **srcs, int count, const char
 	const char **dst_paths;
 
 	if (symlink) {
-		dst_paths = (const char **) alloca(sizeof(char*) * count);
+		dst_paths = (const char **) malloc(sizeof(char*) * count);
 	} else {
-		pairs = (struct tc_extent_pair*) alloca(sizeof(struct tc_extent_pair) * count);
+		pairs = (struct tc_extent_pair*) malloc(sizeof(struct tc_extent_pair) * count);
 	}
 
 	for (int i = 0; i < count; i++) {
-		char *path = (char*) alloca(sizeof(char) * PATH_MAX);
+		char *path = (char*) malloc(sizeof(char) * PATH_MAX);
 		const char *suffix = srcs[i];
 		for (int j = 0; *suffix != '\0' && *suffix == src_dir[j]; j++, suffix++);
 
@@ -129,11 +134,19 @@ tc_res tc_cp_files(const char *src_dir, const char **srcs, int count, const char
 		if (!tc_okay(res)) {
 			printf("tc_symlinkv: %s (%s -> %s)\n", strerror(res.err_no), srcs[res.index], dst_paths[res.index]);
 		}
+		for (int i = 0; i < count; i++) {
+			free((char*) dst_paths[i]);
+		}
+		free((const char **) dst_paths);
 	} else {
-		res = tc_copyv(pairs, count, false);
+		res = tc_lcopyv(pairs, count, false);
 		if (!tc_okay(res)) {
 			printf("tc_lcopyv: %s (%s)\n", strerror(res.err_no), pairs[res.index].src_path);
 		}
+		for (int i = 0; i < count; i++) {
+			free((char*) pairs[i].dst_path);
+		}
+		free((struct tc_extent_pair*) pairs);
 	}
 	return res;
 }
@@ -153,7 +166,8 @@ tc_res tc_cp_recursive(const char *src_dir, const char *dst, bool symlink)
 	int created = 0;  // index to directories created so far
 	while (created < dirs.size() || !files_to_copy.empty()) {
 		tc_res tcres;
-		int n = dirs.size() - created;
+		const int LISTDIR_LIMIT = 4;
+		int n = std::min<int>(LISTDIR_LIMIT, dirs.size() - created);
 		tcres = tc_listdirv(dirs.data() + created, n, listdir_mask, 0,
 				    false, cp_list_callback, &cbargs, false);
 		if (!tc_okay(tcres)) {
