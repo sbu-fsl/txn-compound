@@ -153,8 +153,7 @@ tc_res tc_cp_recursive(const char *src_dir, const char *dst, bool symlink)
 	int created = 0;  // index to directories created so far
 	while (created < dirs.size() || !files_to_copy.empty()) {
 		tc_res tcres;
-		const int LISTDIR_LIMIT = 8;
-		int n = std::min<int>(LISTDIR_LIMIT, dirs.size() - created);
+		int n = dirs.size() - created;
 		tcres = tc_listdirv(dirs.data() + created, n, listdir_mask, 0,
 				    false, cp_list_callback, &cbargs, false);
 		if (!tc_okay(tcres)) {
