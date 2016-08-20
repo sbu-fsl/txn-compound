@@ -1326,8 +1326,8 @@ TYPED_TEST_P(TcTest, ManyLinksDontFitInOneCompound)
 static bool listdir_test_cb(const struct tc_attrs *entry, const char *dir,
 			    void *cbarg)
 {
-	std::vector<std::string> *objs = (std::vector<std::string> *)cbarg;
-	objs->emplace_back(entry->file.path);
+	std::set<std::string> *objs = (std::set<std::string> *)cbarg;
+	objs->emplace(entry->file.path);
 	return true;
 }
 
@@ -1339,6 +1339,9 @@ TYPED_TEST_P(TcTest, RequestDoesNotFitIntoOneCompound)
 	struct tc_attrs attrs[NFILES];
 	const char *new_paths[NFILES];
 	struct tc_file_pair pairs[NFILES];
+	const char *ROOTDIR = "DontFit";
+
+	EXPECT_TRUE(tc_rm_recursive(ROOTDIR));
 	for (int i = 0; i < NFILES; ++i) {
 		paths[i] = new_auto_path("DontFit/a%03d/b/c/d/e/f/g/h/file", i);
 		tc_ensure_parent_dir(paths[i]);
@@ -1354,19 +1357,19 @@ TYPED_TEST_P(TcTest, RequestDoesNotFitIntoOneCompound)
 	EXPECT_OK(tc_getattrsv(attrs, NFILES, false));
 
 	struct tc_attrs_masks listdir_mask = { .has_mode = true };
-	std::vector<std::string> objs;
-	EXPECT_OK(tc_listdirv(paths, NFILES, listdir_mask, 0, true,
+	std::set<std::string> objs;
+	EXPECT_OK(tc_listdirv(&ROOTDIR, 1, listdir_mask, 0, true,
 			      listdir_test_cb, &objs, false));
-	std::vector<std::string> expected;
+	std::set<std::string> expected;
 	for (int i = 0; i < NFILES; ++i) {
 		std::string p(paths[i]);
 		size_t n = p.length();
 		while (n != std::string::npos) {
-			expected.emplace_back(p.data(), n);
+			expected.emplace(p.data(), n);
 			n = p.find_last_of('/', n - 1);
 		}
 	}
-	EXPECT_THAT(objs, testing::UnorderedElementsAreArray(expected));
+	EXPECT_THAT(objs, testing::ContainerEq(expected));
 
 	EXPECT_OK(tc_renamev(pairs, NFILES, false));
 	EXPECT_OK(tc_unlinkv(new_paths, NFILES));
