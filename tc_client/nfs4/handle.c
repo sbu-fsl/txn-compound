@@ -4270,6 +4270,8 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
         bitmap4 bitmap = fs_bitmap_readdir;
         bool incomplete = false;
         slice_t name;
+        bool r;
+        int saved_opcnt;
 
 	tc_reset_compound(true);
 
@@ -4278,16 +4280,19 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 
 	glist_for_each_entry(dle, dir_queue, list)
 	{
+		saved_opcnt = opcnt;
 		if (dle->fh.nfs_fh4_len == 0) {
-			tc_set_cfh_to_path(dle->path, &name, true);
-                        tc_prepare_lookups(&name, 1);
-			tc_prepare_getfh(dle->fhbuf);
+			r = tc_set_cfh_to_path(dle->path, &name, true) &&
+			    tc_prepare_lookups(&name, 1) &&
+			    tc_prepare_getfh(dle->fhbuf);
 		} else {
-			tc_prepare_putfh(&dle->fh);
+			r = tc_prepare_putfh(&dle->fh);
 		}
-		tc_prepare_readdir(&dle->cookie, &bitmap);
-		if (++i >= MAX_READDIRS_PER_COMPOUND)
+		r = r && tc_prepare_readdir(&dle->cookie, &bitmap);
+		if (++i >= MAX_READDIRS_PER_COMPOUND || !r) {
+			opcnt = saved_opcnt;
 			break;
+		}
 	}
 
 	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);

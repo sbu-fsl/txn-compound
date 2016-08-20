@@ -1369,6 +1369,7 @@ TYPED_TEST_P(TcTest, RequestDoesNotFitIntoOneCompound)
 			n = p.find_last_of('/', n - 1);
 		}
 	}
+	expected.erase("DontFit");
 	EXPECT_THAT(objs, testing::ContainerEq(expected));
 
 	EXPECT_OK(tc_renamev(pairs, NFILES, false));
