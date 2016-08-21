@@ -4277,7 +4277,6 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 	static const int MAX_READDIRS_PER_COMPOUND = 64;
         bool has_mode = masks.has_mode;
         bitmap4 bitmap = fs_bitmap_readdir;
-        bool incomplete = false;
         slice_t name;
         bool r;
         int saved_opcnt;
@@ -4316,8 +4315,8 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 	for (j = 0; j < opcnt; ++j) {
 		op_status = get_nfs4_op_status(resoparray + j);
 		if (op_status != NFS4_OK) {
-			NFS4_ERR("NFS operation (%d) failed: %d",
-				 resoparray[j].resop, op_status);
+			NFS4_ERR("%d-th NFS operation (%d) failed: %d",
+				 j, resoparray[j].resop, op_status);
 			tcres = tc_failure(i, nfsstat4_to_errno(op_status));
 			goto exit;
 		}
@@ -4328,10 +4327,6 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 				.nfs_resop4_u.opgetfh.GETFH4res_u.resok4.object;
 			break;
 		case NFS4_OP_READDIR:
-                        /* To avoid out-of-order callbacks, we stop processing
-                         * the directories after the first incomplete directory
-                         * in the compound. */
-                        if (incomplete) break;
 			rdok =
 			    &resoparray[j]
 				 .nfs_resop4_u.opreaddir.READDIR4res_u.resok4;
@@ -4343,7 +4338,6 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 				goto exit;
 			}
 			dle->nchildren += rc;
-			++i;
 			next_dle = glist_next_entry(dle, list);
 			if (rdok->reply.eof) {
 				glist_del(&dle->list);
@@ -4352,8 +4346,14 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 				}
 				free(dle);
 			} else {
-				incomplete = true;
+				/* To avoid out-of-order callbacks, we stop
+				 * processing the directories after the first
+				 * incomplete directory in the compound. */
+				tcres.err_no = 0;
+				tcres.index = i;
+				goto exit;
 			}
+			++i;
 			dle = next_dle;
                         if (*limit == 0) {
                                 tcres.err_no = 0;
@@ -4503,8 +4503,8 @@ static tc_res tc_nfs4_removev(tc_file *files, int count)
 	for (j = 0; j < opcnt; ++j) {
 		op_status = get_nfs4_op_status(&resoparray[j]);
 		if (op_status != NFS4_OK) {
-			NFS4_ERR("NFS operation (%d) failed: %d",
-				 resoparray[j].resop, op_status);
+			NFS4_ERR("%d-th NFS operation (%d) failed: %d",
+				 j, resoparray[j].resop, op_status);
 			tcres = tc_failure(i, nfsstat4_to_errno(op_status));
 			goto exit;
 		}

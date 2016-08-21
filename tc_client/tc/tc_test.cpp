@@ -1462,6 +1462,36 @@ TYPED_TEST_P(TcTest, TcRmBasic)
 #undef TCRM_PREFIX
 }
 
+/**
+ * Test listing and removing a big directory. 
+ *
+ * Wrap a big directory "RmMany/bb" with two small directories (i.e.,
+ * "RmMany/aa" and "RmMany/cc") and make sure big directory are handled
+ * correctly.
+ */
+TYPED_TEST_P(TcTest, TcRmManyFiles)
+{
+	EXPECT_OK(tc_ensure_dir("RmMany", 0755, NULL));
+	EXPECT_OK(tc_ensure_dir("RmMany/aa", 0755, NULL));
+	EXPECT_OK(tc_ensure_dir("RmMany/bb", 0755, NULL));
+	tc_touch("RmMany/aa/foo", 1_KB);
+	const int N_PER_CPD = 64;
+	char *scratch = (char *)malloc(PATH_MAX * N_PER_CPD);
+	for (int i = 0; i < 32; ++i) {
+		const char *FILES[N_PER_CPD];
+		for (int j = 0; j < N_PER_CPD; ++j) {
+			char *p = scratch + j * PATH_MAX;
+			snprintf(p, PATH_MAX, "RmMany/bb/file-%d-%d", i, j);
+			FILES[j] = p;
+		}
+		tc_touchv(FILES, N_PER_CPD, 64);
+	}
+	free(scratch);
+	EXPECT_OK(tc_ensure_dir("RmMany/cc", 0755, NULL));
+	tc_touch("RmMany/cc/bar", 1_KB);
+	EXPECT_TRUE(tc_rm_recursive("RmMany"));
+}
+
 TYPED_TEST_P(TcTest, TcRmRecursive)
 {
 	EXPECT_FALSE(tc_exists("NonExistDir"));
@@ -1500,6 +1530,7 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   TcStatBasics,
 			   CopyLargeDirectory,
 			   TcRmBasic,
+			   TcRmManyFiles,
 			   TcRmRecursive,
 			   RequestDoesNotFitIntoOneCompound);
 
