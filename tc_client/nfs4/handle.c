@@ -2398,6 +2398,7 @@ static tc_res tc_nfs4_readv(struct tc_iovec *iovs, int count)
         const tc_file *opened_file = NULL;
         bool r;
         int saved_opcnt;
+        const tc_file *saved_file;
 
 	LogDebug(COMPONENT_FSAL, "ktcread() called\n");
 
@@ -2405,12 +2406,14 @@ static tc_res tc_nfs4_readv(struct tc_iovec *iovs, int count)
 
 	for (i = 0; i < count; ++i) {
 		saved_opcnt = opcnt;
+		saved_file = opened_file;
 		r = tc_open_file_if_necessary(&iovs[i].file, O_RDONLY,
 					      new_auto_buf(64), NULL,
 					      &opened_file) &&
 		    tc_prepare_rdwr(&iovs[i], false);
-		if (!r) {
+		if (!r || !tc_has_enough_ops(1)) { // reserve for CLOSE
 			opcnt = saved_opcnt;
+			opened_file = saved_file;
 			count = i;
 			break;
 		}
@@ -2418,10 +2421,10 @@ static tc_res tc_nfs4_readv(struct tc_iovec *iovs, int count)
 
 	if (opened_file) {
 		COMPOUNDV4_ARG_ADD_OP_CLOSE_NOSTATE(opcnt, argoparray);
-                opened_file = NULL;
+		opened_file = NULL;
 	}
 
-        tcres.index = count;
+	tcres.index = count;
 	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {    /* RPC failed */
                 NFS4_ERR("fs_nfsv4_call() returned error: %d\n", rc);
@@ -2502,7 +2505,8 @@ static tc_res tc_nfs4_writev(struct tc_iovec *iovs, int count)
 	int j = 0;      /* index of NFS operations */
         const tc_file *opened_file = NULL;
         bool r;
-        int saved_opcnt;
+        int saved_opcnt = 0;
+        const tc_file *saved_file;
 
 	LogDebug(COMPONENT_FSAL, "ktcwrite() called\n");
 
@@ -2512,13 +2516,15 @@ static tc_res tc_nfs4_writev(struct tc_iovec *iovs, int count)
 
 	for (i = 0; i < count; ++i) {
 		saved_opcnt = opcnt;
+		saved_file = opened_file;
 		r = tc_open_file_if_necessary(
 			&iovs[i].file,
 			O_WRONLY | (iovs[i].is_creation ? O_CREAT : 0),
 			new_auto_buf(64), &input_attr[i], &opened_file) &&
 		    tc_prepare_rdwr(&iovs[i], true);
-		if (!r) {
+		if (!r || !tc_has_enough_ops(1)) { // reserve for CLOSE
 			opcnt = saved_opcnt;
+			opened_file = saved_file;
 			count = i;
 			break;
 		}
@@ -3751,8 +3757,11 @@ static bool tc_open_file_if_necessary(const tc_file *tcf, int flags,
 	r = r && tc_set_current_fh(tcf, &name, true) &&
 	    tc_prepare_open(name, flags, pbuf_owner, attrs4);
 
-	if (!r) opcnt = saved_opcnt;
-	*opened_file = tcf;
+	if (!r) {
+		opcnt = saved_opcnt;
+	} else {
+		*opened_file = tcf;
+	}
 	return r;
 }
 

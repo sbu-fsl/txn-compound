@@ -1323,6 +1323,22 @@ TYPED_TEST_P(TcTest, ManyLinksDontFitInOneCompound)
 	}
 }
 
+TYPED_TEST_P(TcTest, WriteManyDontFitInOneCompound)
+{
+	const int NFILES = 64; // 64 * 8 == 512
+	struct tc_iovec iovs[NFILES];
+	const char *ROOTDIR = "WriteMany";
+
+	EXPECT_TRUE(tc_rm_recursive(ROOTDIR));
+	for (int i = 0; i < NFILES; ++i) {
+		char *p =
+		    new_auto_path("WriteMany/a%03d/b/c/d/e/f/g/h/file", i);
+		tc_ensure_parent_dir(p);
+		tc_iov4creation(&iovs[i], p, strlen(p), p);
+	}
+	EXPECT_OK(tc_writev(iovs, NFILES, false));
+}
+
 static bool listdir_test_cb(const struct tc_attrs *entry, const char *dir,
 			    void *cbarg)
 {
@@ -1471,6 +1487,7 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   CopyFiles,
 			   CopyFirstHalfAsSecondHalf,
 			   CopyManyFilesDontFitInOneCompound,
+			   WriteManyDontFitInOneCompound,
 			   ListAnEmptyDirectory,
 			   List2ndLevelDir,
 			   ShuffledRdWr,
