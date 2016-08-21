@@ -243,8 +243,7 @@ tc_res tc_rm(const char **objs, int count, bool recursive)
 
 		free_paths(&files_to_remove);
 
-		const int LISTDIR_LIMIT = 8;
-		int n = std::min<int>(LISTDIR_LIMIT, dirs.size() - emptied);
+		int n = dirs.size() - emptied;
 		tcres = tc_listdirv(dirs.data() + emptied, n, listdir_mask, 0,
 				    false, rm_list_callback, &cbargs, false);
 		if (!tc_okay(tcres)) {
