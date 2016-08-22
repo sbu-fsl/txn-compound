@@ -3785,10 +3785,9 @@ static tc_res tc_nfs4_openv(struct tc_attrs *attrs, int count, int *flags,
 	NFS4_DEBUG("tc_nfs4_openv");
 	assert(count >= 1);
         tc_reset_compound(true);
-	fattrs = alloca(count * sizeof(fattr4));
-	memset(fattrs, 0, count * sizeof(fattr4));
-	fattr_blobs = (char *)alloca(count * FATTR_BLOB_SZ);
-	fh_buffers = alloca(count * NFS4_FHSIZE); /* on stack */
+	fattrs = calloc(count, sizeof(fattr4));
+	fattr_blobs = (char *)malloc(count * FATTR_BLOB_SZ);
+	fh_buffers = malloc(count * NFS4_FHSIZE); /* on stack */
 
 	for (i = 0; i < count; ++i) {
 		if (flags[i] & O_CREAT) {
@@ -3854,6 +3853,9 @@ exit:
         for (i = 0; i < count; ++i) {
                 nfs4_Fattr_Free(&fattrs[i]);
         }
+	free(fattrs);
+	free(fattr_blobs);
+	free(fh_buffers);
         return tcres;
 }
 
@@ -3929,11 +3931,11 @@ static tc_res tc_nfs4_lgetattrsv(struct tc_attrs *attrs, int count)
 	int saved_opcnt;
 
 	NFS4_DEBUG("tc_nfs4_lgetattrsv");
-        assert(count >= 1);
-        tc_reset_compound(true);
-        fattr_blobs = (char *)malloc(count * FATTR_BLOB_SZ);
-        assert(fattr_blobs);
-	bitmaps = alloca(count * sizeof(*bitmaps));
+	assert(count >= 1);
+	tc_reset_compound(true);
+	fattr_blobs = (char *)malloc(count * FATTR_BLOB_SZ);
+	assert(fattr_blobs);
+	bitmaps = malloc(count * sizeof(*bitmaps));
 
 	for (i = 0; i < count; ++i) {
                 saved_opcnt = opcnt;
@@ -3975,8 +3977,9 @@ static tc_res tc_nfs4_lgetattrsv(struct tc_attrs *attrs, int count)
 	}
 
 exit:
-        free(fattr_blobs);
-        return tcres;
+	free(bitmaps);
+	free(fattr_blobs);
+	return tcres;
 }
 
 static tc_res tc_nfs4_lsetattrsv(struct tc_attrs *attrs, int count)
@@ -3995,10 +3998,10 @@ static tc_res tc_nfs4_lsetattrsv(struct tc_attrs *attrs, int count)
 	int saved_opcnt;
 
 	NFS4_DEBUG("tc_nfs4_lsetattrsv");
-        tc_reset_compound(true);
-	fattrs = alloca(count * sizeof(fattr4));           /* on stack */
-        fattr_blobs = alloca(count * FATTR_BLOB_SZ);
-	bitmaps = alloca(count * sizeof(*bitmaps));
+	tc_reset_compound(true);
+	fattrs = malloc(count * sizeof(fattr4)); /* on stack */
+	fattr_blobs = malloc(count * FATTR_BLOB_SZ);
+	bitmaps = malloc(count * sizeof(*bitmaps));
 
 	for (i = 0; i < count; ++i) {
                 saved_opcnt = opcnt;
@@ -4051,6 +4054,9 @@ exit:
         for (i = 0; i < count; ++i) {
                 nfs4_Fattr_Free(fattrs + i);
         }
+	free(fattrs);
+	free(fattr_blobs);
+	free(bitmaps);
         return tcres;
 }
 
@@ -4073,16 +4079,15 @@ static tc_res tc_nfs4_mkdirv(struct tc_attrs *dirs, int count)
         bool r;
         int saved_opcnt;
 
-        /* allocate space */
-        NFS4_DEBUG("making %d directories", count);
-        assert(count >= 1);
-        tc_reset_compound(true);
-	input_attrs = alloca(count * sizeof(fattr4));   /* on stack */
-        memset(input_attrs, 0, count * sizeof(fattr4));
-	fattr_blobs = alloca(count * FATTR_BLOB_SZ);    /* on stack */
-        fh_buffers = alloca(count * NFS4_FHSIZE);       /* on stack */
+	/* allocate space */
+	NFS4_DEBUG("making %d directories", count);
+	assert(count >= 1);
+	tc_reset_compound(true);
+	input_attrs = calloc(count, sizeof(fattr4));
+	fattr_blobs = malloc(count * FATTR_BLOB_SZ);
+	fh_buffers = malloc(count * NFS4_FHSIZE);
 
-        /* prepare compound requests */
+	/* prepare compound requests */
         for (i = 0; i < count; ++i) {
                 tc_attrs_to_fattr4(&dirs[i], &input_attrs[i]);
                 saved_opcnt = opcnt;
@@ -4135,10 +4140,13 @@ static tc_res tc_nfs4_mkdirv(struct tc_attrs *dirs, int count)
         }
 
 exit:
-        for (i = 0; i < count; ++i) {
-                nfs4_Fattr_Free(input_attrs + i);
-        }
-        return tcres;
+	for (i = 0; i < count; ++i) {
+		nfs4_Fattr_Free(input_attrs + i);
+	}
+	free(input_attrs);
+	free(fattr_blobs);
+	free(fh_buffers);
+	return tcres;
 }
 
 /**
