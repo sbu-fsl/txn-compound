@@ -726,17 +726,30 @@ TYPED_TEST_P(TcTest, MakeDirectories)
 TYPED_TEST_P(TcTest, MakeManyDirsDontFitInOneCompound)
 {
 	const int NDIRS = 64;
-	struct tc_attrs dirs[NDIRS];
+	std::vector<tc_attrs> dirs;
 	EXPECT_TRUE(tc_rm_recursive("ManyDirs"));
-	for (int i = 0; i < NDIRS; ++i) {
-		char *path = (char *)alloca(PATH_MAX);
-		snprintf(path, PATH_MAX, "ManyDirs/a%d/b/c/d/e/f/g/h", i);
-		tc_ensure_dir(path, 0755, NULL);
+	char buf[PATH_MAX];
+	std::vector<std::string> paths;
 
-		snprintf(path, PATH_MAX, "ManyDirs/a%d/b/c/d/e/f/g/h/dir", i);
-		tc_set_up_creation(&dirs[i], path, 0755);
+	for (int i = 0; i < NDIRS; ++i) {
+		snprintf(buf, PATH_MAX, "ManyDirs/a%d/b/c/d/e/f/g/h", i);
+		std::string p(buf);
+		int n = p.length();
+		while (n != std::string::npos) {
+			paths.emplace_back(p.data(), n);
+			n = p.find_last_of('/', n - 1);
+		}
 	}
-	EXPECT_OK(tc_mkdirv(dirs, NDIRS, false));
+
+	std::sort(paths.begin(), paths.end());
+	auto end = std::unique(paths.begin(), paths.end());
+	for (auto it = paths.begin(); it != end; ++it) {
+		tc_attrs tca;
+		tc_set_up_creation(&tca, it->c_str(), 0755);
+		dirs.push_back(tca);
+	}
+
+	EXPECT_OK(tc_mkdirv(dirs.data(), dirs.size(), false));
 }
 
 /**
@@ -1463,7 +1476,7 @@ TYPED_TEST_P(TcTest, TcRmBasic)
 }
 
 /**
- * Test listing and removing a big directory. 
+ * Test listing and removing a big directory.
  *
  * Wrap a big directory "RmMany/bb" with two small directories (i.e.,
  * "RmMany/aa" and "RmMany/cc") and make sure big directory are handled
