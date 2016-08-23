@@ -4311,6 +4311,7 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 		}
 	}
 
+	tcres.index = i;
 	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
 	if (rc != RPC_SUCCESS) {
 		NFS4_ERR("rpc failed: %d", rc);
@@ -4372,7 +4373,7 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 	}
 
 exit:
-	nfsops.opcnt = opcnt;
+	nfsops.opcnt = tcres.index;
 	xdr_free((xdrproc_t)xdr_listdirv, &nfsops);
 	return tcres;
 }
