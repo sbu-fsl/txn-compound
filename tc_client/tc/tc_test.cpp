@@ -917,46 +917,68 @@ static char *getRandomBytes(int N)
 	return buf;
 }
 
+static void CopyOrMoveFiles(const char *dir, bool copy, int nfiles)
+{
+	const int N = 4096;
+	std::vector<struct tc_extent_pair> pairs(nfiles);
+	std::vector<struct tc_iovec> iovs(nfiles);
+	std::vector<struct tc_iovec> read_iovs(nfiles);
+	std::vector<std::string> src_paths(nfiles);
+	std::vector<std::string> dst_paths(nfiles);
+	char buf[PATH_MAX];
+
+	EXPECT_TRUE(tc_rm_recursive(dir));
+	EXPECT_OK(tc_ensure_dir(dir, 0755, NULL));
+
+	for (int i = 0; i < nfiles; ++i) {
+		src_paths[i].assign(
+		    buf, snprintf(buf, PATH_MAX, "%s/src-%d.txt", dir, i));
+		dst_paths[i].assign(
+		    buf, snprintf(buf, PATH_MAX, "%s/dst-%d.txt", dir, i));
+		tc_fill_extent_pair(&pairs[i], src_paths[i].c_str(), 0,
+				    dst_paths[i].c_str(), 0,
+				    0); // 0 means from src_offset to EOF
+
+		tc_iov4creation(&iovs[i], pairs[i].src_path, N,
+				getRandomBytes(N));
+		EXPECT_NOTNULL(iovs[i].data);
+
+		tc_iov2path(&read_iovs[i], pairs[i].dst_path, 0, N,
+			    (char *)malloc(N));
+		EXPECT_NOTNULL(read_iovs[i].data);
+	}
+
+	EXPECT_OK(tc_writev(iovs.data(), nfiles, false));
+
+	// copy or move files
+	if (copy) {
+		EXPECT_OK(tc_copyv(pairs.data(), nfiles, false));
+	} else {
+		EXPECT_OK(tc_movev(pairs.data(), nfiles, false));
+	}
+
+	EXPECT_OK(tc_readv(read_iovs.data(), nfiles, false));
+
+	compare_content(iovs.data(), read_iovs.data(), nfiles);
+
+	for (int i = 0; i < nfiles; ++i) {
+		free(iovs[i].data);
+		free(read_iovs[i].data);
+	}
+}
+
 TYPED_TEST_P(TcTest, CopyFiles)
 {
-	const int N = 16 * 1024;
-	struct tc_extent_pair pairs[2];
-	struct tc_iovec iov[2];
-	struct tc_iovec read_iov[2];
+	SCOPED_TRACE("CopyFiles");
+	CopyOrMoveFiles("TestCopy", true, 2);
+	CopyOrMoveFiles("TestCopy", true, 64);
+}
 
-	tc_fill_extent_pair(&pairs[0], "SourceFile1.txt", 0,
-			    "DestinationFile1.txt", 0, N);
-	tc_fill_extent_pair(&pairs[1], "SourceFile2.txt", 0,
-			    "DestinationFile2.txt", 0,
-			    0); // 0 means from src_offset to EOF
-
-	// create source files
-	tc_iov4creation(&iov[0], pairs[0].src_path, N, getRandomBytes(N));
-	EXPECT_NOTNULL(iov[0].data);
-	tc_iov4creation(&iov[1], pairs[1].src_path, N, getRandomBytes(N));
-	EXPECT_NOTNULL(iov[1].data);
-	EXPECT_OK(tc_writev(iov, 2, false));
-
-	// remove dest files
-	Removev(&pairs[0].dst_path, 1);
-	Removev(&pairs[1].dst_path, 1);
-
-	// copy files
-	EXPECT_OK(tc_copyv(pairs, 2, false));
-
-	tc_iov2path(&read_iov[0], pairs[0].dst_path, 0, N, (char *)malloc(N));
-	EXPECT_NOTNULL(read_iov[0].data);
-	tc_iov2path(&read_iov[1], pairs[1].dst_path, 0, N, (char *)malloc(N));
-	EXPECT_NOTNULL(read_iov[1].data);
-
-	EXPECT_OK(tc_readv(read_iov, 2, false));
-
-	compare_content(iov, read_iov, 2);
-
-	free(iov[0].data);
-	free(iov[1].data);
-	free(read_iov[0].data);
-	free(read_iov[1].data);
+TYPED_TEST_P(TcTest, MoveFiles)
+{
+	SCOPED_TRACE("MoveFiles");
+	CopyOrMoveFiles("TestMove", false, 2);
+	CopyOrMoveFiles("TestMove", false, 64);
 }
 
 TYPED_TEST_P(TcTest, CopyLargeDirectory)
@@ -984,17 +1006,21 @@ TYPED_TEST_P(TcTest, CopyLargeDirectory)
 		char *str = (char*) alloca(5);
 		sprintf(str, "%d", i);
 		tc_path_join("TcTest-CopyLargeDirectory", str, path, PATH_MAX);
-		tc_iov4creation(&iov[i], path, FILE_LENGTH_BYTES, getRandomBytes(FILE_LENGTH_BYTES));
+		tc_iov4creation(&iov[i], path, FILE_LENGTH_BYTES,
+				getRandomBytes(FILE_LENGTH_BYTES));
 		EXPECT_NOTNULL(iov[i].data);
 	}
 	EXPECT_OK(tc_writev(iov, FILE_COUNT, false));
 
 	masks.has_mode = true;
 
-	EXPECT_OK(tc_listdir("TcTest-CopyLargeDirectory", masks, 0, true, &contents, &count));
+	EXPECT_OK(tc_listdir("TcTest-CopyLargeDirectory", masks, 0, true,
+			     &contents, &count));
 
-	dir_copy_pairs = (struct tc_extent_pair*) alloca (sizeof (struct tc_extent_pair) * count);
-	copied_attrs = (struct tc_attrs*) alloca (sizeof (struct tc_attrs) * count);
+	dir_copy_pairs = (struct tc_extent_pair *)alloca(
+	    sizeof(struct tc_extent_pair) * count);
+	copied_attrs =
+	    (struct tc_attrs *)alloca(sizeof(struct tc_attrs) * count);
 
 	for (i = 0; i < count; i++) {
 		dst_path = (char *) malloc(sizeof(char) * PATH_MAX);
@@ -1002,10 +1028,12 @@ TYPED_TEST_P(TcTest, CopyLargeDirectory)
 
 		while (*dst_suffix++ != '/')
 
-		tc_path_join("TcTest-CopyLargeDirectory-Dest", dst_suffix, dst_path, PATH_MAX);
+			tc_path_join("TcTest-CopyLargeDirectory-Dest",
+				     dst_suffix, dst_path, PATH_MAX);
 
 		if (!S_ISDIR(contents[i].mode)) {
-			dir_copy_pairs[file_count].src_path = contents[i].file.path;
+			dir_copy_pairs[file_count].src_path =
+			    contents[i].file.path;
 			dir_copy_pairs[file_count].dst_path = dst_path;
 			dir_copy_pairs[file_count].src_offset = 0;
 			dir_copy_pairs[file_count].dst_offset = 0;
@@ -1528,6 +1556,7 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   SuccessiveReads,
 			   SuccessiveWrites,
 			   CopyFiles,
+			   MoveFiles,
 			   CopyFirstHalfAsSecondHalf,
 			   CopyManyFilesDontFitInOneCompound,
 			   WriteManyDontFitInOneCompound,

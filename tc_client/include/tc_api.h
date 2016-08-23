@@ -776,6 +776,13 @@ static inline bool tx_copyv(struct tc_extent_pair *pairs, int count)
 }
 
 /**
+ * Move the data from "src_path" to "dst_path" by reading from "src_path" and
+ * then writing to "dst_path".
+ */
+tc_res tc_movev(struct tc_extent_pair *pairs, int count, bool is_transaction);
+tc_res tc_lmovev(struct tc_extent_pair *pairs, int count, bool is_transaction);
+
+/**
  * Create a list of symlinks.  Useful for operations such as "cp -sR".
  *
  * @oldpaths: an array of source paths

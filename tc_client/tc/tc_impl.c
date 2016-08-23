@@ -237,8 +237,10 @@ tc_res tc_writev(struct tc_iovec *writes, int count, bool is_transaction)
 
 
 struct syminfo {
-	const char *src_path; //path of file to be checked for symlink; can be NULL if file does not have path (eg, is fd)
-	char *target_path; //path symlink points to; NULL if src_path is found to not be a symlink
+	const char *src_path; // path of file to be checked for symlink; can be
+			      // NULL if file does not have path (eg, is fd)
+	char *target_path; // path symlink points to; NULL if src_path is found
+			   // to not be a symlink
 };
 
 bool resolve_symlinks(struct syminfo *syms, int count, tc_res *err) {
@@ -257,7 +259,8 @@ bool resolve_symlinks(struct syminfo *syms, int count, tc_res *err) {
 	for (i = 0; i < count; i++) {
 		struct syminfo sym = syms[i];
 		if (sym.src_path) {
-			attrs[attrs_count].file = tc_file_from_path(sym.src_path);
+			attrs[attrs_count].file =
+			    tc_file_from_path(sym.src_path);
 			attrs[attrs_count].masks = TC_ATTRS_MASK_NONE;
 			attrs[attrs_count].masks.has_mode = true;
 			attrs_original_indices[attrs_count] = i;
@@ -306,12 +309,14 @@ bool resolve_symlinks(struct syminfo *syms, int count, tc_res *err) {
 	*err = tc_readlinkv(paths, bufs, bufsizes, path_count, false);
 	//TODO: what if tc_readlinkv() returns symlinks (symlink to symlink)?
 	if (!tc_okay(*err)) {
-		err->index = paths_original_indices[attrs_original_indices[err->index]];
+		err->index =
+		    paths_original_indices[attrs_original_indices[err->index]];
 		return false;
 	}
 
 	for (i = 0; i < path_count; i++) {
-		struct syminfo *sym = &syms[attrs_original_indices[paths_original_indices[i]]];
+		struct syminfo *sym =
+		    &syms[attrs_original_indices[paths_original_indices[i]]];
 		if (sym->src_path[0] == '/' && bufs[i][0] != '/') {
 			char *path = malloc(sizeof(char) * PATH_MAX);
 			slice_t dirname = tc_path_dirname(strdup(sym->src_path));
@@ -840,7 +845,9 @@ tc_res tc_lcopyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 	return tcres;
 }
 
-tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
+static tc_res
+tc_pair(struct tc_extent_pair *pairs, int count, bool is_transaction,
+	tc_res (*fn)(struct tc_extent_pair *pairs, int count, bool txn))
 {
 	struct syminfo syminfo[count];
 	tc_res res;
@@ -857,19 +864,20 @@ tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 	}
 
 	if (!had_link) {
-		return tc_lcopyv(pairs, count, is_transaction);
+		return fn(pairs, count, is_transaction);
 	}
 
 	for (i = 0; i < count; i++) {
-		if (syminfo[i].target_path)	{
+		if (syminfo[i].target_path) {
 			pairs[i].src_path = syminfo[i].target_path;
 		}
 	}
 
-	res = tc_lcopyv(pairs, count, is_transaction);
+	/* TODO: What if a target is an existing symlink. */
+	res = fn(pairs, count, is_transaction);
 
 	for (i = 0; i < count; i++) {
-		if (syminfo[i].target_path)	{
+		if (syminfo[i].target_path) {
 			pairs[i].src_path = syminfo[i].src_path;
 		}
 	}
@@ -877,6 +885,68 @@ tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 	free_syminfo(syminfo, count);
 
 	return res;
+}
+
+tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
+{
+	return tc_pair(pairs, count, is_transaction, tc_lcopyv);
+}
+
+/**
+ * FIXME: allow moving files larger than RAM.
+ */
+tc_res tc_lmovev(struct tc_extent_pair *pairs, int count, bool is_transaction)
+{
+	tc_res tcres;
+	struct tc_iovec *iovs;
+	int i;
+
+	iovs = malloc(count * sizeof(*iovs));
+	assert(iovs);
+	for (i = 0; i < count; ++i) {
+		iovs[i].file = tc_file_from_path(pairs[i].src_path);
+		iovs[i].offset = pairs[i].src_offset;
+		iovs[i].length = pairs[i].length;
+		iovs[i].data = malloc(pairs[i].length);
+		iovs[i].is_creation = false;
+		iovs[i].is_failure = false;
+		iovs[i].is_eof = false;
+	}
+
+	tcres = tc_readv(iovs, count, is_transaction);
+	if (!tc_okay(tcres)) {
+		fprintf(stderr,
+			"tc_lmovev failed when reading %s (%d-th file): %s",
+			pairs[i].src_path, i, strerror(tcres.err_no));
+		goto exit;
+	}
+
+	for (i = 0; i < count; ++i) {
+		iovs[i].file = tc_file_from_path(pairs[i].dst_path);
+		iovs[i].is_creation = true;
+		iovs[i].is_write_stable = true;
+		iovs[i].is_failure = false;
+	}
+	tcres = tc_writev(iovs, count, is_transaction);
+	if (!tc_okay(tcres)) {
+		fprintf(stderr,
+			"tc_lmovev failed when writing %s (%d-th file): %s",
+			pairs[i].dst_path, i, strerror(tcres.err_no));
+		goto exit;
+	}
+
+exit:
+	for (i = 0; i < count; ++i) {
+		free(iovs[i].data);
+	}
+	free(iovs);
+
+	return tcres;
+}
+
+tc_res tc_movev(struct tc_extent_pair *pairs, int count, bool is_transaction)
+{
+	return tc_pair(pairs, count, is_transaction, tc_lmovev);
 }
 
 tc_res tc_symlinkv(const char **oldpaths, const char **newpaths, int count,
