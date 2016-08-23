@@ -936,8 +936,7 @@ static void CopyOrMoveFiles(const char *dir, bool copy, int nfiles)
 		dst_paths[i].assign(
 		    buf, snprintf(buf, PATH_MAX, "%s/dst-%d.txt", dir, i));
 		tc_fill_extent_pair(&pairs[i], src_paths[i].c_str(), 0,
-				    dst_paths[i].c_str(), 0,
-				    0); // 0 means from src_offset to EOF
+				    dst_paths[i].c_str(), 0, N);
 
 		tc_iov4creation(&iovs[i], pairs[i].src_path, N,
 				getRandomBytes(N));
