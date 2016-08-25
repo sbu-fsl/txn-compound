@@ -1053,6 +1053,25 @@ TYPED_TEST_P(TcTest, CopyLargeDirectory)
 	}
 }
 
+TYPED_TEST_P(TcTest, RecursiveCopyDirWithSymlinks)
+{
+	EXPECT_OK(tc_ensure_dir("RecursiveCopyDirWithSymlinks", 0755, NULL));
+	const int NFILES = 8;
+	const char * files[NFILES];
+	for (int i = 0; i < NFILES; ++i) {
+		files[i] =
+		    new_auto_path("RecursiveCopyDirWithSymlinks/file-%d", i);
+	}
+	tc_touchv(files, NFILES, false);
+	EXPECT_EQ(0, tc_symlink("file-0", "RecursiveCopyDirWithSymlinks/link"));
+
+	EXPECT_OK(
+	    tc_cp_recursive("RecursiveCopyDirWithSymlinks", "RCDest", false));
+	char buf[PATH_MAX];
+	EXPECT_EQ(0, tc_readlink("RCDest/link", buf, PATH_MAX));
+	EXPECT_STREQ("file-0", buf);
+}
+
 TYPED_TEST_P(TcTest, CopyFirstHalfAsSecondHalf)
 {
 	const int N = 8096;
@@ -1570,6 +1589,7 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   ManyLinksDontFitInOneCompound,
 			   TcStatBasics,
 			   CopyLargeDirectory,
+			   RecursiveCopyDirWithSymlinks,
 			   TcRmBasic,
 			   TcRmManyFiles,
 			   TcRmRecursive,

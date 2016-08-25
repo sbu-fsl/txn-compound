@@ -40,6 +40,7 @@ struct rm_cb_args {
 struct cp_cb_args {
 	vector<const char *> *dirs;
 	vector<const char *> *files;
+	vector<const char *> *symlinks;
 };
 
 static bool rm_list_callback(const struct tc_attrs *entry, const char *dir,
@@ -54,12 +55,12 @@ static bool rm_list_callback(const struct tc_attrs *entry, const char *dir,
 	return true;
 }
 
-static void free_paths(vector<const char *> *paths, bool empty = true)
+static void free_paths(vector<const char *> *paths)
 {
 	for (const char *p : *paths) {
 		free((char *)p);
 	}
-	if (empty) paths->clear();
+	paths->clear();
 }
 
 static bool cp_list_callback(const struct tc_attrs *entry, const char *dir,
@@ -68,22 +69,32 @@ static bool cp_list_callback(const struct tc_attrs *entry, const char *dir,
 	struct cp_cb_args *args = (struct cp_cb_args *)cbarg;
 	if (S_ISDIR(entry->mode)) {
 		args->dirs->push_back(strdup(entry->file.path));
+	} else if (S_ISLNK(entry->mode)) {
+		args->symlinks->push_back(strdup(entry->file.path));
 	} else {
 		args->files->push_back(strdup(entry->file.path));
 	}
 	return true;
 }
 
-tc_res tc_cp_mkdirs(const char *src_dir, const char **dirs, int count, const char *dst_dir)
+static char *new_cp_target_path(const char *src_obj, const char *src_dir,
+				const char *dst_dir)
+{
+	char *path = (char*) malloc(PATH_MAX);
+	const char *p = src_obj;
+	for (int j = 0; *p != '\0' && *p == src_dir[j]; j++)
+		++p;
+	tc_path_join(dst_dir, p, path, PATH_MAX);
+	return path;
+}
+
+static tc_res tc_cp_mkdirs(const char *src_dir, const char **dirs, int count,
+			   const char *dst_dir)
 {
 	struct tc_attrs attrs[count];
 	for (int i = 0; i < count; i++) {
-		char *path = (char*) malloc(sizeof(char) * PATH_MAX);
-		const char *suffix = dirs[i];
-		for (int j = 0; *suffix != '\0' && *suffix == src_dir[j]; j++, suffix++);
-
-		tc_path_join(dst_dir, suffix, path, PATH_MAX);
-		attrs[i].file = tc_file_from_path(path);
+		attrs[i].file = tc_file_from_path(
+		    new_cp_target_path(dirs[i], src_dir, dst_dir));
 		attrs[i].masks = TC_ATTRS_MASK_NONE;
 		attrs[i].masks.has_mode = true;
 		attrs[i].mode = 0755;
@@ -101,8 +112,8 @@ tc_res tc_cp_mkdirs(const char *src_dir, const char **dirs, int count, const cha
 	return res;
 }
 
-tc_res tc_cp_files(const char *src_dir, const char **srcs, int count,
-		   const char *dst_dir, bool symlink)
+static tc_res tc_cp_files(const char *src_dir, const char **srcs, int count,
+			  const char *dst_dir, bool symlink)
 {
 	tc_res res;
 	struct tc_extent_pair *pairs;
@@ -116,14 +127,7 @@ tc_res tc_cp_files(const char *src_dir, const char **srcs, int count,
 	}
 
 	for (int i = 0; i < count; i++) {
-		char *path = (char*) malloc(sizeof(char) * PATH_MAX);
-		const char *suffix = srcs[i];
-		for (int j = 0; *suffix != '\0' && *suffix == src_dir[j];
-		     j++, suffix++)
-			;
-
-		tc_path_join(dst_dir, suffix, path, PATH_MAX);
-
+		char *path = new_cp_target_path(srcs[i], src_dir, dst_dir);
 		if (symlink) {
 			dst_paths[i] = path;
 		} else {
@@ -159,43 +163,92 @@ tc_res tc_cp_files(const char *src_dir, const char **srcs, int count,
 	return res;
 }
 
+tc_res tc_cp_symlinks(vector<const char *> *links, const char *src_dir,
+		      const char *dst_dir)
+{
+	size_t count = links->size();
+	char *linkbufs;
+	vector<char *> bufs(count);
+	vector<size_t> bufsizes(count, PATH_MAX);
+
+	linkbufs = (char *)malloc(count * PATH_MAX);
+	for (size_t i = 0; i < count; ++i) {
+		bufs[i] = linkbufs + i * PATH_MAX;
+	}
+	tc_res tcres = tc_readlinkv(links->data(), bufs.data(), bufsizes.data(),
+				    count, false);
+	if (!tc_okay(tcres)) {
+		fprintf(stderr, "tc_readlinkv failed: %s at %d (%s)\n",
+			tcres.index, strerror(tcres.err_no),
+			(*links)[tcres.index]);
+		free(linkbufs);
+		return tcres;
+	}
+
+	vector<const char *> newlinks(count);
+	for (size_t i = 0; i < count; ++i) {
+		newlinks[i] = new_cp_target_path((*links)[i], src_dir, dst_dir);
+	}
+	tcres = tc_symlinkv((const char **)bufs.data(), newlinks.data(), count,
+			    false);
+	if (!tc_okay(tcres)) {
+		fprintf(stderr, "tc_readlinkv failed: %s at %d (%s)\n",
+			tcres.index, strerror(tcres.err_no),
+			(*links)[tcres.index]);
+	}
+
+	free(linkbufs);
+	free_paths(&newlinks);
+	return tcres;
+}
+
 tc_res tc_cp_recursive(const char *src_dir, const char *dst, bool symlink)
 {
 	vector<const char *> dirs;
 	vector<const char *> files_to_copy;
+	vector<const char *> symlinks;
 	struct tc_attrs_masks listdir_mask = TC_ATTRS_MASK_NONE;
 	listdir_mask.has_mode = true;
 	struct cp_cb_args cbargs;
+	tc_res tcres = {0};
 	cbargs.dirs = &dirs;
 	cbargs.files = &files_to_copy;
+	cbargs.symlinks = &symlinks;
 
 	dirs.push_back(strdup(src_dir));
 
 	int created = 0;  // index to directories created so far
 	while (created < dirs.size() || !files_to_copy.empty()) {
-		tc_res tcres;
 		int n = dirs.size() - created;
 		tcres = tc_listdirv(dirs.data() + created, n, listdir_mask, 0,
 				    false, cp_list_callback, &cbargs, false);
 		if (!tc_okay(tcres)) {
-			return tcres;
+			break;
 		}
 
 		tcres = tc_cp_mkdirs(src_dir, dirs.data() + created, n, dst);
 		if (!tc_okay(tcres)) {
-			return tcres;
+			break;
 		}
 		created += n;
 
 		tcres = tc_cp_files(src_dir, files_to_copy.data(),
 				    files_to_copy.size(), dst, symlink);
-		files_to_copy.clear();
+		free_paths(&files_to_copy);
 		if (!tc_okay(tcres)) {
-			return tcres;
+			break;
 		}
 	}
 
-	return tc_failure(0, 0);
+	if (tc_okay(tcres)) {
+		tcres = tc_cp_symlinks(&symlinks, src_dir, dst);
+	}
+
+	free_paths(&dirs);
+	free_paths(&files_to_copy);
+	free_paths(&symlinks);
+
+	return tcres;
 }
 
 // TODO: handle when "recursive" is false
