@@ -112,61 +112,59 @@ static tc_res tc_cp_mkdirs(const char *src_dir, const char **dirs, int count,
 	return res;
 }
 
-static tc_res tc_cp_files(const char *src_dir, const char **srcs, int count,
-			  const char *dst_dir, bool symlink)
+static tc_res tc_symlink_objs(const vector<const char *> &srcs,
+			      const char *src_dir, const char *dst_dir)
 {
-	tc_res res;
-	struct tc_extent_pair *pairs;
-	const char **dst_paths;
+	tc_res tcres;
+	const int count = srcs.size();
+	vector<const char *> dst_paths(count);
 
-	if (symlink) {
-		dst_paths = (const char **) malloc(sizeof(char*) * count);
-	} else {
-		pairs = (struct tc_extent_pair *)malloc(
-		    sizeof(struct tc_extent_pair) * count);
+	for (int i = 0; i < count; i++) {
+		dst_paths[i] = new_cp_target_path(srcs[i], src_dir, dst_dir);
 	}
+
+	tcres = tc_symlinkv((const char **)(srcs.data()), dst_paths.data(),
+			    count, false);
+	if (!tc_okay(tcres)) {
+		fprintf(stderr, "tc_symlinkv: %s (%s -> %s)\n",
+			strerror(tcres.err_no), srcs[tcres.index],
+			dst_paths[tcres.index]);
+	}
+
+	free_paths(&dst_paths);
+	return tcres;
+}
+
+static tc_res tc_cp_files(const vector<const char *> &srcs, const char *src_dir,
+			  const char *dst_dir)
+{
+	const int count = srcs.size();
+	tc_res tcres;
+	vector<struct tc_extent_pair> pairs(count);
+	vector<const char *> dst_paths(count);
 
 	for (int i = 0; i < count; i++) {
 		char *path = new_cp_target_path(srcs[i], src_dir, dst_dir);
-		if (symlink) {
-			dst_paths[i] = path;
-		} else {
-			pairs[i].src_path = srcs[i];
-			pairs[i].dst_path = path;
-			pairs[i].src_offset = 0;
-			pairs[i].dst_offset = 0;
-			pairs[i].length = 0;
-		}
+		pairs[i].src_path = srcs[i];
+		pairs[i].dst_path = path;
+		pairs[i].src_offset = 0;
+		pairs[i].dst_offset = 0;
+		pairs[i].length = 0;
 	}
-	if (symlink) {
-		res = tc_symlinkv(srcs, dst_paths, count, false);
-		if (!tc_okay(res)) {
-			printf("tc_symlinkv: %s (%s -> %s)\n",
-			       strerror(res.err_no), srcs[res.index],
-			       dst_paths[res.index]);
-		}
-		for (int i = 0; i < count; i++) {
-			free((char*) dst_paths[i]);
-		}
-		free((const char **) dst_paths);
-	} else {
-		res = tc_lcopyv(pairs, count, false);
-		if (!tc_okay(res)) {
-			printf("tc_lcopyv: %s (%s)\n", strerror(res.err_no),
-			       pairs[res.index].src_path);
-		}
-		for (int i = 0; i < count; i++) {
-			free((char*) pairs[i].dst_path);
-		}
-		free((struct tc_extent_pair*) pairs);
+	tcres = tc_lcopyv(pairs.data(), count, false);
+	if (!tc_okay(tcres)) {
+		fprintf(stderr, "tc_lcopyv: %s (%s)\n", strerror(tcres.err_no),
+			pairs[tcres.index].src_path);
 	}
-	return res;
+
+	free_paths(&dst_paths);
+	return tcres;
 }
 
-tc_res tc_cp_symlinks(vector<const char *> *links, const char *src_dir,
+tc_res tc_cp_symlinks(const vector<const char *> &links, const char *src_dir,
 		      const char *dst_dir)
 {
-	size_t count = links->size();
+	const size_t count = links.size();
 	char *linkbufs;
 	vector<char *> bufs(count);
 	vector<size_t> bufsizes(count, PATH_MAX);
@@ -175,26 +173,26 @@ tc_res tc_cp_symlinks(vector<const char *> *links, const char *src_dir,
 	for (size_t i = 0; i < count; ++i) {
 		bufs[i] = linkbufs + i * PATH_MAX;
 	}
-	tc_res tcres = tc_readlinkv(links->data(), bufs.data(), bufsizes.data(),
-				    count, false);
+	tc_res tcres = tc_readlinkv((const char **)(links.data()), bufs.data(),
+				    bufsizes.data(), count, false);
 	if (!tc_okay(tcres)) {
 		fprintf(stderr, "tc_readlinkv failed: %s at %d (%s)\n",
 			tcres.index, strerror(tcres.err_no),
-			(*links)[tcres.index]);
+			links[tcres.index]);
 		free(linkbufs);
 		return tcres;
 	}
 
 	vector<const char *> newlinks(count);
 	for (size_t i = 0; i < count; ++i) {
-		newlinks[i] = new_cp_target_path((*links)[i], src_dir, dst_dir);
+		newlinks[i] = new_cp_target_path(links[i], src_dir, dst_dir);
 	}
 	tcres = tc_symlinkv((const char **)bufs.data(), newlinks.data(), count,
 			    false);
 	if (!tc_okay(tcres)) {
 		fprintf(stderr, "tc_readlinkv failed: %s at %d (%s)\n",
 			tcres.index, strerror(tcres.err_no),
-			(*links)[tcres.index]);
+			links[tcres.index]);
 	}
 
 	free(linkbufs);
@@ -232,16 +230,23 @@ tc_res tc_cp_recursive(const char *src_dir, const char *dst, bool symlink)
 		}
 		created += n;
 
-		tcres = tc_cp_files(src_dir, files_to_copy.data(),
-				    files_to_copy.size(), dst, symlink);
-		free_paths(&files_to_copy);
+		if (symlink) {
+			tcres = tc_symlink_objs(files_to_copy, src_dir, dst);
+		} else {
+			tcres = tc_cp_files(files_to_copy, src_dir, dst);
+		}
 		if (!tc_okay(tcres)) {
 			break;
 		}
+		free_paths(&files_to_copy);
 	}
 
 	if (tc_okay(tcres)) {
-		tcres = tc_cp_symlinks(&symlinks, src_dir, dst);
+		if (symlink) {
+			tcres = tc_symlink_objs(symlinks, src_dir, dst);
+		} else {
+			tcres = tc_cp_symlinks(symlinks, src_dir, dst);
+		}
 	}
 
 	free_paths(&dirs);

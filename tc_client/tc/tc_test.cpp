@@ -1055,21 +1055,25 @@ TYPED_TEST_P(TcTest, CopyLargeDirectory)
 
 TYPED_TEST_P(TcTest, RecursiveCopyDirWithSymlinks)
 {
-	EXPECT_OK(tc_ensure_dir("RecursiveCopyDirWithSymlinks", 0755, NULL));
+#define TCT_RCD_DIR "RecursiveCopyDirWithSymlinks"
+	tc_rm_recursive(TCT_RCD_DIR);
+	tc_rm_recursive("RCDest");
+	EXPECT_OK(tc_ensure_dir(TCT_RCD_DIR, 0755, NULL));
 	const int NFILES = 8;
 	const char * files[NFILES];
 	for (int i = 0; i < NFILES; ++i) {
 		files[i] =
-		    new_auto_path("RecursiveCopyDirWithSymlinks/file-%d", i);
+		    new_auto_path(TCT_RCD_DIR "/file-%d", i);
 	}
 	tc_touchv(files, NFILES, false);
-	EXPECT_EQ(0, tc_symlink("file-0", "RecursiveCopyDirWithSymlinks/link"));
+	EXPECT_EQ(0, tc_symlink("file-0", TCT_RCD_DIR "/link"));
 
 	EXPECT_OK(
-	    tc_cp_recursive("RecursiveCopyDirWithSymlinks", "RCDest", false));
+	    tc_cp_recursive(TCT_RCD_DIR, "RCDest", false));
 	char buf[PATH_MAX];
 	EXPECT_EQ(0, tc_readlink("RCDest/link", buf, PATH_MAX));
 	EXPECT_STREQ("file-0", buf);
+#undef TCT_RCD_DIR
 }
 
 TYPED_TEST_P(TcTest, CopyFirstHalfAsSecondHalf)
