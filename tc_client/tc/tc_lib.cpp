@@ -161,6 +161,91 @@ static tc_res tc_cp_files(const vector<const char *> &srcs, const char *src_dir,
 	return tcres;
 }
 
+static tc_res tc_dup_files(const vector<const char *> &srcs,
+			   const char *src_dir, const char *dst_dir)
+{
+	const size_t kSizeLimit = 512 * 1024;
+	const size_t count = srcs.size();
+	vector<struct tc_attrs> attrs(count);
+	for (size_t i = 0; i < count; ++i) {
+		attrs[i].file = tc_file_from_path(srcs[i]);
+		memset(&attrs[i].masks, 0, sizeof(attrs[i].masks));
+		attrs[i].masks.has_size = true;
+	}
+
+	tc_res tcres = tc_lgetattrsv(attrs.data(), count, false);
+	if (!tc_okay(tcres)) {
+		fprintf(stderr, "failed to getattrsv");
+		return tcres;
+	}
+
+	vector<struct tc_extent_pair> small_files;
+	vector<int> big_files_indices;
+	small_files.reserve(count);
+	vector<const char *> dst_paths(count);
+	for (size_t i = 0; i < count; ++i) {
+		dst_paths[i] = new_cp_target_path(srcs[i], src_dir, dst_dir);
+		if (attrs[i].size > kSizeLimit) {
+			big_files_indices.push_back(i);
+			continue;
+		}
+		struct tc_extent_pair ext;
+		ext.src_path = srcs[i];
+		ext.dst_path = dst_paths[i];
+		ext.src_offset = 0;
+		ext.dst_offset = 0;
+		ext.length = attrs[i].size;
+		small_files.push_back(ext);
+	}
+
+	// Duplicate small files
+	for (size_t i = 0; i < small_files.size(); ) {
+		size_t bytes = 0;
+		size_t n = 0;
+		while (bytes < kSizeLimit && i + n < small_files.size() &&
+		       n++ < 64) {
+			bytes += small_files[i + n].length;
+		}
+		tcres = tc_ldupv(small_files.data() + i, n, false);
+		if (!tc_okay(tcres)) {
+			fprintf(stderr, "failed to duplicate file %s to %s: %s",
+				small_files[i + tcres.index].src_path,
+				small_files[i + tcres.index].dst_path,
+				strerror(tcres.err_no));
+			break;
+		}
+		i += n;
+	}
+
+	// Duplicate large files
+	for (size_t i : big_files_indices) {
+		size_t offset = 0;
+		struct tc_extent_pair ext;
+		ext.src_path = srcs[i];
+		ext.dst_path = dst_paths[i];
+		while (offset < attrs[i].size) {
+			ext.src_offset = offset;
+			ext.dst_offset = offset;
+			ext.length = std::min<size_t>(attrs[i].size - offset,
+						      kSizeLimit);
+			tcres = tc_ldupv(&ext, 1, false);
+			if (!tc_okay(tcres)) {
+				fprintf(stderr, "failed to duplicate file %s "
+						"to %s at offset %s: %s",
+					srcs[i], ext.dst_path, offset,
+					strerror(tcres.err_no));
+				break;
+			}
+			offset += ext.length;
+		}
+		if (!tc_okay(tcres))
+			break;
+	}
+
+	free_paths(&dst_paths);
+	return tcres;
+}
+
 tc_res tc_cp_symlinks(const vector<const char *> &links, const char *src_dir,
 		      const char *dst_dir)
 {
@@ -200,7 +285,8 @@ tc_res tc_cp_symlinks(const vector<const char *> &links, const char *src_dir,
 	return tcres;
 }
 
-tc_res tc_cp_recursive(const char *src_dir, const char *dst, bool symlink)
+tc_res tc_cp_recursive(const char *src_dir, const char *dst, bool symlink,
+		       bool use_server_side_copy)
 {
 	vector<const char *> dirs;
 	vector<const char *> files_to_copy;
@@ -232,8 +318,10 @@ tc_res tc_cp_recursive(const char *src_dir, const char *dst, bool symlink)
 
 		if (symlink) {
 			tcres = tc_symlink_objs(files_to_copy, src_dir, dst);
-		} else {
+		} else if (use_server_side_copy) {
 			tcres = tc_cp_files(files_to_copy, src_dir, dst);
+		} else {
+			tcres = tc_dup_files(files_to_copy, src_dir, dst);
 		}
 		if (!tc_okay(tcres)) {
 			break;

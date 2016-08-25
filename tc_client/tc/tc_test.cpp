@@ -1069,7 +1069,7 @@ TYPED_TEST_P(TcTest, RecursiveCopyDirWithSymlinks)
 	EXPECT_EQ(0, tc_symlink("file-0", TCT_RCD_DIR "/link"));
 
 	EXPECT_OK(
-	    tc_cp_recursive(TCT_RCD_DIR, "RCDest", false));
+	    tc_cp_recursive(TCT_RCD_DIR, "RCDest", false, true));
 	char buf[PATH_MAX];
 	EXPECT_EQ(0, tc_readlink("RCDest/link", buf, PATH_MAX));
 	EXPECT_STREQ("file-0", buf);
