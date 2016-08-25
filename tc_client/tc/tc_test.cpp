@@ -917,7 +917,7 @@ static char *getRandomBytes(int N)
 	return buf;
 }
 
-static void CopyOrMoveFiles(const char *dir, bool copy, int nfiles)
+static void CopyOrDupFiles(const char *dir, bool copy, int nfiles)
 {
 	const int N = 4096;
 	std::vector<struct tc_extent_pair> pairs(nfiles);
@@ -953,7 +953,7 @@ static void CopyOrMoveFiles(const char *dir, bool copy, int nfiles)
 	if (copy) {
 		EXPECT_OK(tc_copyv(pairs.data(), nfiles, false));
 	} else {
-		EXPECT_OK(tc_movev(pairs.data(), nfiles, false));
+		EXPECT_OK(tc_dupv(pairs.data(), nfiles, false));
 	}
 
 	EXPECT_OK(tc_readv(read_iovs.data(), nfiles, false));
@@ -969,15 +969,15 @@ static void CopyOrMoveFiles(const char *dir, bool copy, int nfiles)
 TYPED_TEST_P(TcTest, CopyFiles)
 {
 	SCOPED_TRACE("CopyFiles");
-	CopyOrMoveFiles("TestCopy", true, 2);
-	CopyOrMoveFiles("TestCopy", true, 64);
+	CopyOrDupFiles("TestCopy", true, 2);
+	CopyOrDupFiles("TestCopy", true, 64);
 }
 
-TYPED_TEST_P(TcTest, MoveFiles)
+TYPED_TEST_P(TcTest, DupFiles)
 {
-	SCOPED_TRACE("MoveFiles");
-	CopyOrMoveFiles("TestMove", false, 2);
-	CopyOrMoveFiles("TestMove", false, 64);
+	SCOPED_TRACE("DupFiles");
+	CopyOrDupFiles("TestDup", false, 2);
+	CopyOrDupFiles("TestDup", false, 64);
 }
 
 TYPED_TEST_P(TcTest, CopyLargeDirectory)
@@ -1578,7 +1578,7 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   SuccessiveReads,
 			   SuccessiveWrites,
 			   CopyFiles,
-			   MoveFiles,
+			   DupFiles,
 			   CopyFirstHalfAsSecondHalf,
 			   CopyManyFilesDontFitInOneCompound,
 			   WriteManyDontFitInOneCompound,

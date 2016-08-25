@@ -895,7 +895,7 @@ tc_res tc_copyv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 /**
  * FIXME: allow moving files larger than RAM.
  */
-tc_res tc_lmovev(struct tc_extent_pair *pairs, int count, bool is_transaction)
+tc_res tc_ldupv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 {
 	tc_res tcres;
 	struct tc_iovec *iovs;
@@ -916,7 +916,7 @@ tc_res tc_lmovev(struct tc_extent_pair *pairs, int count, bool is_transaction)
 	tcres = tc_readv(iovs, count, is_transaction);
 	if (!tc_okay(tcres)) {
 		fprintf(stderr,
-			"tc_lmovev failed when reading %s (%d-th file): %s",
+			"tc_ldupv failed when reading %s (%d-th file): %s",
 			pairs[i].src_path, i, strerror(tcres.err_no));
 		goto exit;
 	}
@@ -930,7 +930,7 @@ tc_res tc_lmovev(struct tc_extent_pair *pairs, int count, bool is_transaction)
 	tcres = tc_writev(iovs, count, is_transaction);
 	if (!tc_okay(tcres)) {
 		fprintf(stderr,
-			"tc_lmovev failed when writing %s (%d-th file): %s",
+			"tc_ldupv failed when writing %s (%d-th file): %s",
 			pairs[i].dst_path, i, strerror(tcres.err_no));
 		goto exit;
 	}
@@ -944,9 +944,9 @@ exit:
 	return tcres;
 }
 
-tc_res tc_movev(struct tc_extent_pair *pairs, int count, bool is_transaction)
+tc_res tc_dupv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 {
-	return tc_pair(pairs, count, is_transaction, tc_lmovev);
+	return tc_pair(pairs, count, is_transaction, tc_ldupv);
 }
 
 tc_res tc_symlinkv(const char **oldpaths, const char **newpaths, int count,
