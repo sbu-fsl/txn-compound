@@ -550,7 +550,7 @@ static inline void tc_attrs2stat(const struct tc_attrs *attrs, struct stat *st)
 	if (attrs->masks.has_atime)
 		st->st_atime = attrs->atime.tv_sec;
 	if (attrs->masks.has_mtime)
-		st->st_mtime = attrs->atime.tv_sec;
+		st->st_mtime = attrs->mtime.tv_sec;
 	if (attrs->masks.has_ctime)
 		st->st_ctime = attrs->ctime.tv_sec;
 }
