@@ -269,6 +269,18 @@ static void tc_put_cwd(struct tc_cwd_data *cwd)
         }
 }
 
+static void * memdup(void *src, size_t size)
+{
+        void *dst;
+
+        dst = malloc(size);
+        if (dst) {
+                memcpy(dst, src, size);
+        }
+
+        return dst;
+}
+
 static struct fs_obj_handle *fs_alloc_handle(struct fsal_export *exp,
 					       const nfs_fh4 *fh,
 					       const struct attrlist *attr);
@@ -4273,10 +4285,7 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 {
 	struct tc_dir_to_list *next_dle;
 	struct tc_dir_to_list *dle;
-	struct nfsoparray nfsops = { .argoparray = argoparray,
-				     .resoparray = resoparray,
-				     .opcnt = opcnt,
-				     .capacity = MAX_NUM_OPS_PER_COMPOUND, };
+	struct nfsoparray nfsops;
 	tc_res tcres;
 	nfsstat4 op_status;
 	READDIR4resok *rdok;
@@ -4294,6 +4303,7 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
         masks.has_mode = true;  // to detect directory
         tc_attr_masks_to_bitmap(&masks, &bitmap);
 
+        NFS4_INFO("starting listdir with a limit of %d entries", *limit);
 	glist_for_each_entry(dle, dir_queue, list)
 	{
 		saved_opcnt = opcnt;
@@ -4304,12 +4314,14 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 		} else {
 			r = tc_prepare_putfh(&dle->fh);
 		}
+                NFS4_INFO("dir (%p) %s added at %d", dle, dle->path, opcnt);
 		r = r && tc_prepare_readdir(&dle->cookie, &bitmap);
 		if (++i >= MAX_READDIRS_PER_COMPOUND || !r) {
 			opcnt = saved_opcnt;
 			break;
 		}
 	}
+        NFS4_INFO("finished building listdir");
 
 	tcres.index = i;
 	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
@@ -4319,36 +4331,49 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 		goto exit;
 	}
 
+        /* Make a copy of argoparray and resoparray so that they can be reused
+         * by the callback "cb" during calls to other TC functions */
+        nfsops.opcnt = opcnt;
+        nfsops.capacity = opcnt;
+        nfsops.argoparray = memdup(argoparray, opcnt * sizeof(nfs_argop4));
+        nfsops.resoparray = memdup(resoparray, opcnt * sizeof(nfs_resop4));
+
+        NFS4_INFO("starting processing %d listdirv ops", nfsops.opcnt);
 	dle = glist_first_entry(dir_queue, struct tc_dir_to_list, list);
 	i = 0;
-	for (j = 0; j < opcnt; ++j) {
-		op_status = get_nfs4_op_status(resoparray + j);
+	for (j = 0; j < nfsops.opcnt; ++j) {
+		op_status = get_nfs4_op_status(nfsops.resoparray + j);
 		if (op_status != NFS4_OK) {
 			NFS4_ERR("%d-th NFS operation (%d) failed: %d",
-				 j, resoparray[j].resop, op_status);
+				 j, nfsops.resoparray[j].resop, op_status);
 			tcres = tc_failure(i, nfsstat4_to_errno(op_status));
 			goto exit;
 		}
-		switch (resoparray[j].resop) {
+		switch (nfsops.resoparray[j].resop) {
 		case NFS4_OP_GETFH:
 			dle->fh =
-			    resoparray[j]
+			    nfsops.resoparray[j]
 				.nfs_resop4_u.opgetfh.GETFH4res_u.resok4.object;
 			break;
 		case NFS4_OP_READDIR:
+                        NFS4_INFO("op-%d is READDIR to %s", j, dle->path);
 			rdok =
-			    &resoparray[j]
+			    &nfsops.resoparray[j]
 				 .nfs_resop4_u.opreaddir.READDIR4res_u.resok4;
 			rc = tc_parse_dir_entries(
 			    dir_queue, dle, rdok->reply.entries, limit,
 			    recursive, has_mode, cb, cbarg);
 			if (rc < 0) {
+                                NFS4_ERR("failed to listdir %s", dle->path);
 				tcres = tc_failure(i, rc);
 				goto exit;
 			}
 			dle->nchildren += rc;
 			next_dle = glist_next_entry(dle, list);
 			if (rdok->reply.eof) {
+				NFS4_INFO(
+				    "finish listing %s (%p) with %d entries",
+				    dle->path, dle, dle->nchildren);
 				glist_del(&dle->list);
 				if (dle->need_free_path) {
 					free((char *)dle->path);
@@ -4358,6 +4383,9 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 				/* To avoid out-of-order callbacks, we stop
 				 * processing the directories after the first
 				 * incomplete directory in the compound. */
+				NFS4_INFO(
+				    "partial listing of %s (%d listed) (%p)",
+				    dle->path, dle->nchildren, dle);
 				tcres.err_no = 0;
 				tcres.index = i;
 				goto exit;
@@ -4365,16 +4393,20 @@ static tc_res tc_do_listdirv(struct glist_head *dir_queue, int *limit,
 			++i;
 			dle = next_dle;
                         if (*limit == 0) {
+                                NFS4_INFO("listdirv limit reached");
                                 tcres.err_no = 0;
                                 goto exit;
                         }
 			break;
 		}
 	}
+        NFS4_INFO("finished processing %d/%d listdirv ops", j, nfsops.opcnt);
 
 exit:
 	nfsops.opcnt = tcres.index;
 	xdr_free((xdrproc_t)xdr_listdirv, &nfsops);
+        free(nfsops.argoparray);
+        free(nfsops.resoparray);
 	return tcres;
 }
 
