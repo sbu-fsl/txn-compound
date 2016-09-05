@@ -39,12 +39,9 @@ add_library(tc_impl STATIC ${tc_SRC})
   #tc_impl_nfs4
 #) 
 
-set(test_LIB
-  pthread
-  gtest
-  gtest_main
-  gmock
-  gmock_main
+set_target_properties(tc_impl PROPERTIES POSITION_INDEPENDENT_CODE on)
+
+set(tc_LIBS
   tc_impl
   tc_impl_posix
   tc_impl_nfs4
@@ -59,6 +56,15 @@ set(test_LIB
   config_parsing
 )
 
+set(test_LIB
+  pthread
+  gtest
+  gtest_main
+  gmock
+  gmock_main
+  ${tc_LIBS}
+)
+
 function (add_unittest TestName LibName)
   add_executable(${TestName} "${CMAKE_CURRENT_SOURCE_DIR}/${TestName}.cpp")
   target_link_libraries(${TestName} ${base_LIBS} ${boost_LIBS} ${test_LIB} ${LibName})
@@ -66,3 +72,7 @@ function (add_unittest TestName LibName)
 endfunction (add_unittest)
 
 add_unittest(tc_test tc_impl)
+
+find_package(gflags REQUIRED)
+add_executable(tc_bench tc_bench.cpp)
+target_link_libraries(tc_bench gflags ${tc_LIBS})
