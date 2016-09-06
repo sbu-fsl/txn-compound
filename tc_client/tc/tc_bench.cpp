@@ -35,7 +35,7 @@ DEFINE_bool(tc, true, "Use TC implementation");
 
 DEFINE_int32(nfiles, 1000, "Number of files");
 
-DEFINE_string(filesize, "4k", "File size");
+//DEFINE_string(filesize, "4k", "File size");
 
 using std::vector;
 
@@ -55,6 +55,14 @@ static off_t ConvertSize(const char* size_str) {
   return (off_t)(scale * size);
 }
 
+off_t GetFileSize(const char* file_path) {
+  struct stat file_status;
+  if (tc_stat(file_path, &file_status) < 0) {
+    error(1, errno, "Could not get size of %s", file_path);
+  }
+  return file_status.st_size;
+}
+
 static char *GetFilePath(const char *dir, int i)
 {
 	char *p = (char *)malloc(PATH_MAX);
@@ -71,11 +79,13 @@ void Run(const char *dir)
 		char buf[PATH_MAX];
 		tcdata = tc_init(get_tc_config_file(buf, PATH_MAX),
 				 "/tmp/tc-bench-tc.log", 77);
+		fprintf(stderr, "Using config file at %s\n", buf);
 	} else {
 		tcdata = tc_init(NULL, "/tmp/tc-bench-posix.log", 0);
 	}
 
-	const size_t file_size = ConvertSize(FLAGS_filesize.c_str());
+	const size_t file_size = GetFileSize(GetFilePath(dir, 0));
+	fprintf(stderr, "Reading files: %zu-byte large\n", file_size);
 
 	size_t files_finished = 0;
 	vector<size_t> bytes_finished(FLAGS_nfiles, 0);  // per file
@@ -134,7 +144,9 @@ void Run(const char *dir)
 			bytes_finished[i] += iovs[j].length;
 			if (bytes_finished[i] == file_size &&
 			    new_files_finished == i) {
-				++new_files_finished;
+				if (++new_files_finished % 100 == 0) {
+						fprintf(stderr, "Finished %zu files\n", new_files_finished);
+				}
 			}
 			free((char *)iovs[j].file.path);
 			bytes_reading[i] = 0;
