@@ -35,32 +35,17 @@ DEFINE_bool(tc, true, "Use TC implementation");
 
 DEFINE_int32(nfiles, 1000, "Number of files");
 
-//DEFINE_string(filesize, "4k", "File size");
-
 using std::vector;
 
 const size_t kSizeLimit = (8 << 20);
 
-static off_t ConvertSize(const char* size_str) {
-  double size = atof(size_str);
-  char unit = size_str[strlen(size_str) - 1];
-  off_t scale = 1;
-  if (unit == 'k' || unit == 'K') {
-    scale <<= 10;
-  } else if (unit == 'm' || unit == 'M') {
-    scale <<= 20;
-  } else if (unit == 'g' || unit == 'G') {
-    scale <<= 30;
-  }
-  return (off_t)(scale * size);
-}
-
-off_t GetFileSize(const char* file_path) {
-  struct stat file_status;
-  if (tc_stat(file_path, &file_status) < 0) {
-    error(1, errno, "Could not get size of %s", file_path);
-  }
-  return file_status.st_size;
+static off_t GetFileSize(const char *file_path)
+{
+	struct stat file_status;
+	if (tc_stat(file_path, &file_status) < 0) {
+		error(1, errno, "Could not get size of %s", file_path);
+	}
+	return file_status.st_size;
 }
 
 static char *GetFilePath(const char *dir, int i)
