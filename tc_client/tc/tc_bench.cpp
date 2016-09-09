@@ -23,15 +23,12 @@
 #include <unistd.h>
 
 #include <benchmark/benchmark.h>
-#include <gflags/gflags.h>
 
 #include "tc_api.h"
 #include "tc_helper.h"
 
 #include <string>
 #include <vector>
-
-DEFINE_bool(tc, true, "Use TC implementation");
 
 using std::vector;
 using namespace benchmark;
@@ -197,11 +194,138 @@ static void BM_Read4KOpenClose(benchmark::State &state)
 }
 BENCHMARK(BM_Read4KOpenClose)->RangeMultiplier(2)->Range(1, 256);
 
+static vector<tc_attrs> NewTcAttrs(size_t nfiles, tc_attrs *values = nullptr)
+{
+	vector<const char *> paths = NewPaths("file-%d", nfiles);
+	vector<tc_attrs> attrs(nfiles);
 
-static void* SetUp(void)
+	for (size_t i = 0; i < nfiles; ++i) {
+		attrs[i].file = tc_file_from_path(paths[i]);
+		if (values) {
+			attrs[i] = *values;
+		} else {
+			attrs[i].masks = TC_ATTRS_MASK_ALL;
+		}
+	}
+
+	return attrs;
+}
+
+static void FreeTcAttrs(vector<tc_attrs> *attrs)
+{
+	for (const auto& at : *attrs) {
+		free((char *)at.file.path);
+	}
+}
+
+static inline struct timespec totimespec(long sec, long nsec)
+{
+	struct timespec tm = {
+		.tv_sec = sec,
+		.tv_nsec = nsec,
+	};
+	return tm;
+}
+
+static tc_attrs GetAttrValuesToSet(int nattrs)
+{
+	tc_attrs attrs;
+
+	attrs.masks = TC_ATTRS_MASK_NONE;
+	if (nattrs >= 1) {
+		tc_attrs_set_mode(&attrs, 0644);
+	}
+	if (nattrs >= 2) {
+		tc_attrs_set_uid(&attrs, 0);
+		tc_attrs_set_gid(&attrs, 0);
+	}
+	if (nattrs >= 3) {
+		tc_attrs_set_atime(&attrs, totimespec(time(NULL), 0));
+	}
+	if (nattrs >= 4) {
+		tc_attrs_set_size(&attrs, 8192);
+	}
+	return attrs;
+}
+
+static void BM_Getattrs(benchmark::State &state)
+{
+	size_t nfiles = state.range(0);
+	vector<tc_attrs> attrs = NewTcAttrs(nfiles);
+
+	while (state.KeepRunning()) {
+		tc_res tcres = tc_getattrsv(attrs.data(), nfiles, false);
+		assert(tc_okay(tcres));
+	}
+
+	FreeTcAttrs(&attrs);
+}
+BENCHMARK(BM_Getattrs)->RangeMultiplier(2)->Range(1, 256);
+
+static void BM_Setattr1(benchmark::State &state)
+{
+	size_t nfiles = state.range(0);
+	tc_attrs values = GetAttrValuesToSet(1);
+	vector<tc_attrs> attrs = NewTcAttrs(nfiles, &values);
+
+	while (state.KeepRunning()) {
+		tc_res tcres = tc_setattrsv(attrs.data(), nfiles, false);
+		assert(tc_okay(tcres));
+	}
+
+	FreeTcAttrs(&attrs);
+}
+BENCHMARK(BM_Setattr1)->RangeMultiplier(2)->Range(1, 256);
+
+static void BM_Setattr2(benchmark::State &state)
+{
+	size_t nfiles = state.range(0);
+	tc_attrs values = GetAttrValuesToSet(2);
+	vector<tc_attrs> attrs = NewTcAttrs(nfiles, &values);
+
+	while (state.KeepRunning()) {
+		tc_res tcres = tc_setattrsv(attrs.data(), nfiles, false);
+		assert(tc_okay(tcres));
+	}
+
+	FreeTcAttrs(&attrs);
+}
+BENCHMARK(BM_Setattr2)->RangeMultiplier(2)->Range(1, 256);
+
+static void BM_Setattr3(benchmark::State &state)
+{
+	size_t nfiles = state.range(0);
+	tc_attrs values = GetAttrValuesToSet(3);
+	vector<tc_attrs> attrs = NewTcAttrs(nfiles, &values);
+
+	while (state.KeepRunning()) {
+		tc_res tcres = tc_setattrsv(attrs.data(), nfiles, false);
+		assert(tc_okay(tcres));
+	}
+
+	FreeTcAttrs(&attrs);
+}
+BENCHMARK(BM_Setattr3)->RangeMultiplier(2)->Range(1, 256);
+
+static void BM_Setattr4(benchmark::State &state)
+{
+	size_t nfiles = state.range(0);
+	tc_attrs values = GetAttrValuesToSet(4);
+	vector<tc_attrs> attrs = NewTcAttrs(nfiles, &values);
+
+	while (state.KeepRunning()) {
+		tc_res tcres = tc_setattrsv(attrs.data(), nfiles, false);
+		assert(tc_okay(tcres));
+	}
+
+	FreeTcAttrs(&attrs);
+}
+BENCHMARK(BM_Setattr4)->RangeMultiplier(2)->Range(1, 256);
+
+static void* SetUp(bool istc)
 {
 	void *context;
-	if (FLAGS_tc) {
+	if (istc) {
 		char buf[PATH_MAX];
 		context = tc_init(get_tc_config_file(buf, PATH_MAX),
 				  "/tmp/tc-bench-tc.log", 77);
@@ -219,51 +343,9 @@ static void TearDown(void *context)
 
 int main(int argc, char **argv)
 {
-	int gbench_argc = argc;
-	char **gbench_argv = argv;
-	benchmark::Initialize(&gbench_argc, gbench_argv);
-
-	int used;
-	for (used = 0; used < argc; ++used) {
-		if (!strstr(argv[used], "--benchmark_list_tests=") &&
-		    !strstr(argv[used], "--benchmark_filter=") &&
-		    !strstr(argv[used], "--benchmark_min_time=") &&
-		    !strstr(argv[used], "--benchmark_repetitions=") &&
-		    !strstr(argv[used],
-			    "--benchmark_report_aggregates_only=") &&
-		    !strstr(argv[used], "--benchmark_format=") &&
-		    !strstr(argv[used], "--benchmark_out=") &&
-		    !strstr(argv[used], "--benchmark_out_format=") &&
-		    !strstr(argv[used], "--color_print=") &&
-		    !strstr(argv[used], "--v=")) {
-			break;
-		}
-	}
-
-	argc -= used;
-	argv += used;
-
-	std::string usage(
-	    "This program benchmark TC API with various degrees of batching.\n"
-	    "Usage:    ");
-	usage += argv[0];
-	usage += " --tc or --notc";
-	std::string gbench_flags("\n\nGoogle bench flags should come first: \n"
-	    "	       [--benchmark_list_tests={true|false}]\n"
-	    "          [--benchmark_filter=<regex>]\n"
-	    "          [--benchmark_min_time=<min_time>]\n"
-	    "          [--benchmark_repetitions=<num_repetitions>]\n"
-	    "          [--benchmark_report_aggregates_only={true|false}\n"
-	    "          [--benchmark_format=<console|json|csv>]\n"
-	    "          [--benchmark_out=<filename>]\n"
-	    "          [--benchmark_out_format=<json|console|csv>]\n"
-	    "          [--color_print={true|false}]\n"
-	    "          [--v=<verbosity>]\n");
-	usage += gbench_flags;
-	gflags::SetUsageMessage(usage);
-	gflags::ParseCommandLineFlags(&argc, &argv, true);
-
-	void *context = SetUp();
+	benchmark::Initialize(&argc, argv);
+	bool istc = argc > 1 && !strcmp("tc", argv[1]);
+	void *context = SetUp(istc);
 	benchmark::RunSpecifiedBenchmarks();
 	TearDown(context);
 
