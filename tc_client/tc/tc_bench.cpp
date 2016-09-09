@@ -33,6 +33,8 @@
 using std::vector;
 using namespace benchmark;
 
+const size_t BUFSIZE = 4096;
+
 static vector<const char *> NewPaths(const char *format, int n)
 {
 	vector<const char *> paths(n);
@@ -53,7 +55,6 @@ static void FreePaths(vector<const char *> *paths)
 
 static vector<tc_iovec> NewIovecs(tc_file *files, int n, size_t offset = 0)
 {
-	const size_t BUFSIZE = 4096;
 	vector<tc_iovec> iovs(n);
 	for (int i = 0; i < n; ++i) {
 		iovs[i].file = files[i];
@@ -321,6 +322,71 @@ static void BM_Setattr4(benchmark::State &state)
 	FreeTcAttrs(&attrs);
 }
 BENCHMARK(BM_Setattr4)->RangeMultiplier(2)->Range(1, 256);
+
+static void CreateFiles(vector<const char *>& paths)
+{
+	const size_t nfiles = paths.size();
+	tc_file *files =
+	    tc_openv_simple(paths.data(), nfiles, O_WRONLY | O_CREAT, 0);
+	assert(files);
+	vector<tc_iovec> iovs = NewIovecs(files, nfiles);
+	tc_res tcres = tc_writev(iovs.data(), nfiles, false);
+	assert(tc_okay(tcres));
+	tc_closev(files, nfiles);
+	FreeIovecs(&iovs);
+}
+
+static vector<tc_extent_pair> NewFilePairsToCopy(size_t nfiles)
+{
+	vector<const char *> srcs = NewPaths("file-%d", nfiles);
+	CreateFiles(srcs);
+	vector<const char *> dsts = NewPaths("dst-%d", nfiles);
+	vector<tc_extent_pair> pairs(nfiles);
+	for (size_t i = 0; i < nfiles; ++i) {
+		pairs[i].src_path = srcs[i];
+		pairs[i].dst_path = dsts[i];
+		pairs[i].src_offset = 0;
+		pairs[i].dst_offset = 0;
+		pairs[i].length = BUFSIZE;
+	}
+	return pairs;
+}
+
+static void FreeFilePairsToCopy(vector<tc_extent_pair> *pairs)
+{
+	for (auto& p : *pairs) {
+		free((char *)p.src_path);
+		free((char *)p.dst_path);
+	}
+}
+
+static void BM_Copy(benchmark::State &state)
+{
+	size_t nfiles = state.range(0);
+	vector<tc_extent_pair> pairs = NewFilePairsToCopy(nfiles);
+
+	while (state.KeepRunning()) {
+		tc_res tcres = tc_dupv(pairs.data(), nfiles, false);
+		assert(tc_okay(tcres));
+	}
+
+	FreeFilePairsToCopy(&pairs);
+}
+BENCHMARK(BM_Copy)->RangeMultiplier(2)->Range(1, 256);
+
+static void BM_SSCopy(benchmark::State &state)
+{
+	size_t nfiles = state.range(0);
+	vector<tc_extent_pair> pairs = NewFilePairsToCopy(nfiles);
+
+	while (state.KeepRunning()) {
+		tc_res tcres = tc_copyv(pairs.data(), nfiles, false);
+		assert(tc_okay(tcres));
+	}
+
+	FreeFilePairsToCopy(&pairs);
+}
+BENCHMARK(BM_SSCopy)->RangeMultiplier(2)->Range(1, 256);
 
 static void* SetUp(bool istc)
 {
