@@ -206,11 +206,11 @@ char *tc_getcwd(void);
 /**
  * A special offset that is the same as the file size.
  */
-#define TC_OFFSET_END (SIZE_MAX-1)
+#define TC_OFFSET_END (SIZE_MAX)
 /**
  * A special offset indicates the current offset of the file descriptor.
  */
-#define TC_OFFSET_CUR (SIZE_MAX)
+#define TC_OFFSET_CUR (SIZE_MAX-1)
 
 /**
  * Represents an I/O vector of a file.

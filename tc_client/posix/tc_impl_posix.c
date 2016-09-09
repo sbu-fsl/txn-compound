@@ -235,6 +235,9 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 		if (iov->is_creation) {	/* create */
 			flags |= O_CREAT;
 		}
+		if (iov->offset == TC_OFFSET_END) {  /* append */
+			flags |= O_APPEND;
+		}
 
 		if (iov->file.type == TC_FILE_PATH) {
 			fd = open(iov->file.path, flags);
@@ -250,9 +253,18 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 		}
 
 		offset = iov->offset;
-		/* append */
+		/* When appending to file we did not open, we need to use lseek
+		 * to set the offset to file size. */
 		if (offset == TC_OFFSET_END) {
-			offset = lseek(fd, 0, SEEK_END);
+			if (iov->file.type == TC_FILE_PATH) {
+				/* Will be ignored because the file was opened
+				 * with O_APPEND, but it cannot be
+				 * TC_OFFSET_END which is negative when
+				 * casted to off_t. */
+				offset = 0;
+			} else {
+				offset = lseek(fd, 0, SEEK_END);
+			}
 		}
 
 		/* Write data */
