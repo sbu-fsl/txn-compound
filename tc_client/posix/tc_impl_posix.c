@@ -148,8 +148,6 @@ tc_res posix_readv(struct tc_iovec *arg, int read_count, bool is_transaction)
 	tc_res result = { .index = -1, .err_no = 0 };
 	struct stat st;
 
-	POSIX_WARN("posix_readv() called \n");
-
 	for (i = 0; i < read_count; ++i) {
 		iov = arg + i;
 		/*
@@ -224,8 +222,6 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 	tc_res result = { .index = -1, .err_no = 0 };
 	int flags;
 	off_t offset;
-
-	POSIX_WARN("posix_writev() called \n");
 
 	for (i = 0; i < write_count; ++i) {
 		iov = arg + i;
@@ -310,8 +306,6 @@ tc_res posix_lgetattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	struct tc_attrs *cur_attr = NULL;
 	tc_res result = { .index = -1, .err_no = 0 };
 	struct stat st;
-
-	POSIX_WARN("posix_lgetattrsv() called \n");
 
 	while (i < count) {
 		cur_attr = attrs + i;
@@ -438,8 +432,6 @@ tc_res posix_lsetattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	int fd = -1, i = 0;
 	struct tc_attrs *cur_attr = NULL;
 	tc_res result = { .index = -1, .err_no = 0 };
-
-	POSIX_WARN("posix_lsetattrsv() called \n");
 
 	while (i < count) {
 		cur_attr = attrs + i;
