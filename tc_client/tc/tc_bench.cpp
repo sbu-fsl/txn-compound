@@ -200,12 +200,12 @@ static vector<tc_attrs> NewTcAttrs(size_t nfiles, tc_attrs *values = nullptr)
 	vector<tc_attrs> attrs(nfiles);
 
 	for (size_t i = 0; i < nfiles; ++i) {
-		attrs[i].file = tc_file_from_path(paths[i]);
 		if (values) {
 			attrs[i] = *values;
 		} else {
 			attrs[i].masks = TC_ATTRS_MASK_ALL;
 		}
+		attrs[i].file = tc_file_from_path(paths[i]);
 	}
 
 	return attrs;
@@ -233,7 +233,7 @@ static tc_attrs GetAttrValuesToSet(int nattrs)
 
 	attrs.masks = TC_ATTRS_MASK_NONE;
 	if (nattrs >= 1) {
-		tc_attrs_set_mode(&attrs, 0644);
+		tc_attrs_set_mode(&attrs, S_IRUSR | S_IRGRP | S_IROTH);
 	}
 	if (nattrs >= 2) {
 		tc_attrs_set_uid(&attrs, 0);
