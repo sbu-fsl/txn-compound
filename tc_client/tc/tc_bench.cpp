@@ -17,26 +17,72 @@
  * 02110-1301 USA
  */
 
-#include "benchmark/benchmark.h"
+#include <error.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
+#include "benchmark/benchmark.h"
+#include "tc_api.h"
+#include "tc_helper.h"
+
+#include <string>
+#include <vector>
+
+using std::vector;
 using namespace benchmark;
 
-static void BM_StringCreation(benchmark::State &state)
+static vector<const char *> NewPaths(const char *format, int n)
 {
-	  while (state.KeepRunning())
-		      std::string empty_string;
+	vector<const char *> paths(n);
+	for (int i = 0; i < n; ++i) {
+		char *p = (char *)malloc(PATH_MAX);
+		assert(p);
+		snprintf(p, PATH_MAX, format, n);
+		paths[i] = p;
+	}
+	return paths;
 }
 
-// Register the function as a benchmark
-BENCHMARK(BM_StringCreation);
-//
-// Define another benchmark
-static void BM_StringCopy(benchmark::State &state)
+static void DeletePaths(vector<const char *> *paths)
 {
-	std::string x = "hello";
-	while (state.KeepRunning())
-		std::string copy(x);
+	for (auto p : *paths)
+		free((char *)p);
 }
-BENCHMARK(BM_StringCopy);
+
+static void BM_CreateEmpty(benchmark::State &state)
+{
+	size_t nfiles = state.range(0);
+	vector<const char *> paths = NewPaths("file-%d", nfiles);
+
+	while (state.KeepRunning()) {
+		// state.iterators()
+		tc_file *files = tc_openv_simple(paths.data(), nfiles,
+						 O_CREAT | O_WRONLY, 0);
+		assert(files);
+		tc_res tcres = tc_closev(files, nfiles);
+		assert(tc_okay(tcres));
+	}
+
+	DeletePaths(&paths);
+}
+BENCHMARK(BM_CreateEmpty)->RangeMultiplier(2)->Range(1, 256);
+
+static void BM_OpenClose(benchmark::State &state)
+{
+	size_t nfiles = state.range(0);
+	vector<const char *> paths = NewPaths("file-%d", nfiles);
+
+	while (state.KeepRunning()) {
+		tc_file *files =
+		    tc_openv_simple(paths.data(), nfiles, O_RDONLY, 0);
+		assert(files);
+		tc_res tcres = tc_closev(files, nfiles);
+		assert(tc_okay(tcres));
+	}
+
+	DeletePaths(&paths);
+}
+BENCHMARK(BM_OpenClose)->RangeMultiplier(2)->Range(1, 256);
 
 BENCHMARK_MAIN();
