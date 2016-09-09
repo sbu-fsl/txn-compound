@@ -418,6 +418,108 @@ static void BM_Mkdir(benchmark::State &state)
 }
 BENCHMARK(BM_Mkdir)->RangeMultiplier(2)->Range(1, 256);
 
+static void BM_Symlink(benchmark::State &state)
+{
+	size_t nfiles = state.range(0);
+	vector<const char *> files = NewPaths("Bench-Symlink/file-%d", nfiles);
+	vector<const char *> links = NewPaths("Bench-Symlink/link-%d", nfiles);
+
+	ResetTestDirectory("Bench-Symlink");
+	CreateFiles(files);
+	while (state.KeepRunning()) {
+		tc_res tcres =
+		    tc_symlinkv(files.data(), links.data(), nfiles, false);
+		assert(tc_okay(tcres));
+
+		state.PauseTiming();
+		tc_unlinkv(links.data(), nfiles);
+		state.ResumeTiming();
+	}
+
+	FreePaths(&files);
+	FreePaths(&links);
+}
+BENCHMARK(BM_Symlink)->RangeMultiplier(2)->Range(1, 256);
+
+static void BM_Readlink(benchmark::State &state)
+{
+	size_t nfiles = state.range(0);
+	vector<const char *> files = NewPaths("Bench-Readlink/file-%d", nfiles);
+	vector<const char *> links = NewPaths("Bench-Readlink/link-%d", nfiles);
+	vector<char *> bufs(nfiles);
+	vector<size_t> buf_sizes(nfiles, PATH_MAX);
+
+	for (size_t i = 0; i < nfiles; ++i) {
+		bufs[i] = (char *)malloc(PATH_MAX);
+	}
+
+	ResetTestDirectory("Bench-Readlink");
+	CreateFiles(files);
+	tc_symlinkv(files.data(), links.data(), nfiles, false);
+	while (state.KeepRunning()) {
+		tc_res tcres = tc_readlinkv(links.data(), bufs.data(),
+					    buf_sizes.data(), nfiles, false);
+		assert(tc_okay(tcres));
+	}
+
+	for (size_t i = 0; i < nfiles; ++i) {
+		free(bufs[i]);
+	}
+	FreePaths(&files);
+	FreePaths(&links);
+}
+BENCHMARK(BM_Readlink)->RangeMultiplier(2)->Range(1, 256);
+
+static void BM_Rename(benchmark::State &state)
+{
+	size_t nfiles = state.range(0);
+	vector<const char *> srcs = NewPaths("Bench-Rename/src-%d", nfiles);
+	vector<const char *> dsts = NewPaths("Bench-Rename/dst-%d", nfiles);
+	vector<tc_file_pair> pairs(nfiles);
+
+	for (size_t i = 0; i < nfiles; ++i) {
+		pairs[i].src_file = tc_file_from_path(srcs[i]);
+		pairs[i].dst_file = tc_file_from_path(dsts[i]);
+	}
+
+	ResetTestDirectory("Bench-Rename");
+	CreateFiles(srcs);
+	while (state.KeepRunning()) {
+		tc_res tcres = tc_renamev(pairs.data(), nfiles, false);
+		assert(tc_okay(tcres));
+
+		// switch srcs and dsts
+		state.PauseTiming();
+		for (size_t i = 0; i < nfiles; ++i) {
+			std::swap(pairs[i].src_file, pairs[i].dst_file);
+		}
+		state.ResumeTiming();
+	}
+
+	FreePaths(&srcs);
+	FreePaths(&dsts);
+}
+BENCHMARK(BM_Rename)->RangeMultiplier(2)->Range(1, 256);
+
+static void BM_Remove(benchmark::State &state)
+{
+	size_t nfiles = state.range(0);
+	vector<const char *> paths = NewPaths("Bench-Removev/file-%d", nfiles);
+
+	ResetTestDirectory("Bench-Removev");
+	while (state.KeepRunning()) {
+		state.PauseTiming();
+		CreateFiles(paths);
+		state.ResumeTiming();
+
+		tc_res tcres = tc_unlinkv(paths.data(), nfiles);
+		assert(tc_okay(tcres));
+	}
+
+	FreePaths(&paths);
+}
+BENCHMARK(BM_Remove)->RangeMultiplier(2)->Range(1, 256);
+
 static void* SetUp(bool istc)
 {
 	void *context;
