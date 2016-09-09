@@ -35,13 +35,19 @@ using namespace benchmark;
 
 const size_t BUFSIZE = 4096;
 
+static void ResetTestDirectory(const char *dir)
+{
+	tc_rm_recursive(dir);
+	tc_ensure_dir(dir, 0755, NULL);
+}
+
 static vector<const char *> NewPaths(const char *format, int n)
 {
 	vector<const char *> paths(n);
 	for (int i = 0; i < n; ++i) {
 		char *p = (char *)malloc(PATH_MAX);
 		assert(p);
-		snprintf(p, PATH_MAX, format, n);
+		snprintf(p, PATH_MAX, format, i);
 		paths[i] = p;
 	}
 	return paths;
@@ -387,6 +393,30 @@ static void BM_SSCopy(benchmark::State &state)
 	FreeFilePairsToCopy(&pairs);
 }
 BENCHMARK(BM_SSCopy)->RangeMultiplier(2)->Range(1, 256);
+
+static void BM_Mkdir(benchmark::State &state)
+{
+	size_t ndirs = state.range(0);
+	vector<const char *> paths = NewPaths("Bench-Mkdir/dir-%d", ndirs);
+	vector<tc_attrs> dirs(ndirs);
+
+	for (size_t i = 0; i < ndirs; ++i) {
+		tc_set_up_creation(&dirs[i], paths[i], 0755);
+	}
+
+	ResetTestDirectory("Bench-Mkdir");
+	while (state.KeepRunning()) {
+		tc_res tcres = tc_mkdirv(dirs.data(), ndirs, false);
+		assert(tc_okay(tcres));
+
+		state.PauseTiming();
+		ResetTestDirectory("Bench-Mkdir");
+		state.ResumeTiming();
+	}
+
+	FreePaths(&paths);
+}
+BENCHMARK(BM_Mkdir)->RangeMultiplier(2)->Range(1, 256);
 
 static void* SetUp(bool istc)
 {
