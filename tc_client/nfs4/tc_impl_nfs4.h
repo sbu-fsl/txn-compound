@@ -121,6 +121,9 @@ tc_res nfs4_listdirv(const char **dirs, int count, struct tc_attrs_masks masks,
 
 tc_res nfs4_lcopyv(struct tc_extent_pair *pairs, int count, bool is_transaction);
 
+tc_res nfs4_hardlinkv(const char **oldpaths, const char **newpaths, int count,
+		      bool istxn);
+
 tc_res nfs4_symlinkv(const char **oldpaths, const char **newpaths, int count,
 		     bool istxn);
 

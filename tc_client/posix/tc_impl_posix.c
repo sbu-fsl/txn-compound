@@ -742,6 +742,24 @@ tc_res posix_lcopyv(struct tc_extent_pair *pairs, int count, bool is_transaction
 	return tcres;
 }
 
+tc_res posix_hardlinkv(const char **oldpaths, const char **newpaths, int count,
+		       bool istxn)
+{
+	int i;
+	tc_res tcres = { .err_no = 0 };
+
+	for (i = 0; i < count; ++i) {
+		if (link(oldpaths[i], newpaths[i]) < 0) {
+			tcres = tc_failure(i, errno);
+			POSIX_ERR("posix_hardlinkv-%d hardlink %s to %s: %s", i,
+				  oldpaths[i], newpaths[i], strerror(errno));
+			break;
+		}
+	}
+
+	return tcres;
+}
+
 tc_res posix_symlinkv(const char **oldpaths, const char **newpaths, int count,
 		      bool istxn)
 {

@@ -782,6 +782,15 @@ static inline bool tx_copyv(struct tc_extent_pair *pairs, int count)
 tc_res tc_dupv(struct tc_extent_pair *pairs, int count, bool is_transaction);
 tc_res tc_ldupv(struct tc_extent_pair *pairs, int count, bool is_transaction);
 
+tc_res tc_hardlinkv(const char **oldpaths, const char **newpaths, int count,
+		    bool istxn);
+
+static inline bool tx_hardlinkv(const char **oldpaths, const char **newpaths,
+				int count, bool istxn)
+{
+	return tc_okay(tc_hardlinkv(oldpaths, newpaths, count, true));
+}
+
 /**
  * Create a list of symlinks.  Useful for operations such as "cp -sR".
  *

@@ -949,6 +949,23 @@ tc_res tc_dupv(struct tc_extent_pair *pairs, int count, bool is_transaction)
 	return tc_pair(pairs, count, is_transaction, tc_ldupv);
 }
 
+tc_res tc_hardlinkv(const char **oldpaths, const char **newpaths, int count,
+		    bool istxn)
+{
+	tc_res tcres = TC_OKAY;
+	TC_DECLARE_COUNTER(hardlink);
+
+	TC_START_COUNTER(hardlink);
+	if (TC_IMPL_IS_NFS4) {
+		tcres = nfs4_hardlinkv(oldpaths, newpaths, count, istxn);
+	} else {
+		tcres = posix_hardlinkv(oldpaths, newpaths, count, istxn);
+	}
+	TC_STOP_COUNTER(hardlink, count, tc_okay(tcres));
+
+	return tcres;
+}
+
 tc_res tc_symlinkv(const char **oldpaths, const char **newpaths, int count,
 		   bool istxn)
 {

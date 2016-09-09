@@ -2918,6 +2918,13 @@ static fsal_status_t fs_mknod(struct fsal_obj_handle *dir_hdl,
 	return st;
 }
 
+static inline bool tc_prepare_hardlink(const char *name)
+{
+        if (!tc_has_enough_ops(1)) return false;
+	COMPOUNDV4_ARG_ADD_OP_LINK(opcnt, argoparray, (char *)name);
+        return true;
+}
+
 static inline bool tc_prepare_symlink(char *name, char *link_path,
 				      fattr4 *attrs)
 {
@@ -4637,6 +4644,59 @@ exit:
 	return tcres;
 }
 
+static tc_res tc_nfs4_hardlinkv(const char **oldpaths, const char **newpaths,
+			        int count)
+{
+	int rc;
+	tc_res tcres;
+	nfsstat4 op_status;
+	int i = 0; /* index of tc_iovec */
+	int j = 0; /* index of NFS operations */
+	slice_t name;
+	bool r;
+	int saved_opcnt;
+
+	NFS4_DEBUG("tc_nfs4_hardlinkv");
+
+	tc_reset_compound(true);
+	for (i = 0; i < count; ++i) {
+                saved_opcnt = opcnt;
+		r = tc_set_cfh_to_path(oldpaths[i], NULL, true) &&
+		    tc_set_cfh_to_path(newpaths[i], &name, false) &&
+		    tc_prepare_hardlink(name.data);
+                if (!r) {
+                        opcnt = saved_opcnt;
+                        count = i;
+                        break;
+                }
+	}
+
+        tcres.index = count;
+	rc = fs_nfsv4_call(op_ctx->creds, &tcres.err_no);
+	if (rc != RPC_SUCCESS) {
+		NFS4_ERR("rpc failed: %d", rc);
+		tcres = tc_failure(0, rc);
+		goto exit;
+	}
+
+	i = 0;
+	for (j = 0; j < opcnt; ++j) {
+		op_status = get_nfs4_op_status(&resoparray[j]);
+		if (op_status != NFS4_OK) {
+			NFS4_ERR("NFS operation (%d) failed: %d",
+				 resoparray[j].resop, op_status);
+			tcres = tc_failure(i, nfsstat4_to_errno(op_status));
+			goto exit;
+		}
+		if (resoparray[j].resop == NFS4_OP_LINK) {
+			++i;
+		}
+	}
+
+exit:
+	return tcres;
+}
+
 static tc_res tc_nfs4_symlinkv(const char **oldpaths, const char **newpaths,
 			       int count)
 {
@@ -4852,6 +4912,7 @@ void fs_handle_ops_init(struct fsal_obj_ops *ops)
         ops->tc_renamev = tc_nfs4_renamev;
         ops->tc_removev = tc_nfs4_removev;
         ops->tc_lcopyv = tc_nfs4_lcopyv;
+        ops->tc_hardlinkv = tc_nfs4_hardlinkv;
         ops->tc_symlinkv = tc_nfs4_symlinkv;
         ops->tc_readlinkv = tc_nfs4_readlinkv;
         ops->tc_chdir = tc_nfs4_chdir;

@@ -463,6 +463,41 @@ TYPED_TEST_P(TcTest, AttrsTestPath)
 	free(attrs2);
 }
 
+TYPED_TEST_P(TcTest, TestHardLinks)
+{
+	EXPECT_TRUE(tc_rm_recursive("HardLinks"));
+	tc_ensure_dir("HardLinks", 0755, NULL);
+	const int NFILES = 8;
+	std::vector<const char *> files(NFILES);
+	std::vector<const char *> links(NFILES);
+	std::vector<tc_iovec> olddata(NFILES);
+	std::vector<tc_iovec> newdata(NFILES);
+	for (int i = 0; i < NFILES; ++i) {
+		files[i] = new_auto_path("HardLinks/file-%d", i);
+		links[i] = new_auto_path("HardLinks/link-%d", i);
+		olddata[i].file = tc_file_from_path(files[i]);
+		newdata[i].file = tc_file_from_path(links[i]);
+		olddata[i].offset = newdata[i].offset = 0;
+		olddata[i].length = newdata[i].length = 4096;
+		olddata[i].data = (char *)malloc(4096);
+		newdata[i].data = (char *)malloc(4096);
+	}
+
+	tc_touchv(files.data(), files.size(), false);
+	EXPECT_OK(tc_readv(olddata.data(), olddata.size(), false));
+	
+	EXPECT_OK(tc_hardlinkv(files.data(), links.data(), files.size(), false));
+	EXPECT_OK(tc_unlinkv(files.data(), files.size()));
+
+	EXPECT_OK(tc_readv(newdata.data(), newdata.size(), false));
+	EXPECT_TRUE(compare_content(olddata.data(), newdata.data(), olddata.size()));
+
+	for (int i = 0; i < NFILES; ++i) {
+		free((char *)olddata[i].data);
+		free((char *)newdata[i].data);
+	}
+}
+
 /**
  * TC-Set/Get Attributes test
  * with symlinks
@@ -673,19 +708,15 @@ TYPED_TEST_P(TcTest, RenameFile)
 
 	const char *dest_path[] = { "rename1.txt", "rename2.txt",
 				    "rename3.txt", "rename4.txt" };
-
-	tc_file_pair *files = (tc_file_pair *)calloc(4, sizeof(tc_file_pair));
-
+	std::vector<tc_file_pair> files(4);
 	for (i = 0; i < 4; ++i) {
 		files[i].src_file = tc_file_from_path(src_path[i]);
 		files[i].dst_file = tc_file_from_path(dest_path[i]);
 	}
 
-	EXPECT_OK(tc_renamev(files, 4, false));
+	EXPECT_OK(tc_renamev(files.data(), 4, false));
 
 	/* TODO use listdir to check src files no longer exist */
-
-	free(files);
 }
 
 /**
@@ -695,16 +726,12 @@ TYPED_TEST_P(TcTest, RemoveFileTest)
 {
 	const char *path[] = { "rename1.txt", "rename2.txt",
 			       "rename3.txt", "rename4.txt" };
-
-	tc_file *file = (tc_file *)calloc(4, sizeof(tc_file));
-
+	std::vector<tc_file> files(4);
 	for (int i = 0; i < 4; ++i) {
-		file[i] = tc_file_from_path(path[i]);
+		files[i] = tc_file_from_path(path[i]);
 	}
 
-	EXPECT_OK(tc_removev(file, 4, false));
-
-	free(file);
+	EXPECT_OK(tc_removev(files.data(), 4, false));
 }
 
 TYPED_TEST_P(TcTest, MakeDirectories)
@@ -1589,6 +1616,7 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   RdWrLargeThanRPCLimit,
 			   CompressDeepPaths,
 			   CompressPathForRemove,
+			   TestHardLinks,
 			   SymlinkBasics,
 			   ManyLinksDontFitInOneCompound,
 			   TcStatBasics,
