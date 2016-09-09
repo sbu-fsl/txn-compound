@@ -74,6 +74,9 @@ endfunction (add_unittest)
 add_unittest(tc_test tc_impl)
 
 find_package(gflags REQUIRED)
+add_executable(tc_bench tc_bench.cpp)
+target_link_libraries(tc_bench gflags ${tc_LIBS} ${GBENCH_LIBRARIES})
+
 add_executable(tc_rw_files tc_rw_files.cpp)
 target_link_libraries(tc_rw_files gflags ${tc_LIBS})
 

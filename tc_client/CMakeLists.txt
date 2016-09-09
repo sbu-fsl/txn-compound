@@ -618,6 +618,7 @@ endif( "${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}" VERSION_LESS "2.8" )
 include_directories(
   "${PROJECT_BINARY_DIR}/include"
   "${PROJECT_SOURCE_DIR}/libntirpc/ntirpc/"
+  "${PROJECT_SOURCE_DIR}/gbench/include/"
   "${PROJECT_SOURCE_DIR}/include"
   "${OS_INCLUDE_DIR}"
   "${KRB5_INCLUDE_DIRS}"
@@ -635,6 +636,7 @@ set(LIBTIRPC_INCLUDE_DIR
   "${PROJECT_BINARY_DIR}/libtirpc/ntirpc/rpc"
 )
 set(LIBTIRPC_LIBRARIES "${PROJECT_BINARY_DIR}/libntirpc/src/libntirpc.a")
+set(GBENCH_LIBRARIES "${PROJECT_BINARY_DIR}/gbench/src/libbenchmark.a")
 
 # Find misc system libs
 find_library(LIBRT rt)  # extended Pthreads functions
@@ -758,6 +760,16 @@ Alternatively, if you are not using git, get the current version at
     https://github.com/nfs-ganesha/ntirpc" )
 ENDIF( NOT EXISTS ${PROJECT_SOURCE_DIR}/libntirpc/CMakeLists.txt )
 
+IF( NOT EXISTS ${PROJECT_SOURCE_DIR}/gbench/CMakeLists.txt )
+message( FATAL_ERROR
+"No CMakeLists.txt found in Google benchmark directory (gbench)
+This probably means that the directory was not properly populated.
+Please run the following command to do that and use cmake again:
+    git submodule update --init
+Alternatively, if you are not using git, get the current version at
+    https://github.com/google/benchmark.git" )
+ENDIF( NOT EXISTS ${PROJECT_SOURCE_DIR}/gbench/CMakeLists.txt )
+
 set(GMOCK "/opt/gmock-1.7.0")
 set(GTEST "/opt/gmock-1.7.0/gtest")
 
@@ -769,6 +781,7 @@ add_subdirectory(NodeList)
 add_subdirectory(cache_inode)
 add_subdirectory(SAL)
 add_subdirectory(libntirpc)
+add_subdirectory(gbench)
 add_subdirectory(RPCAL)
 add_subdirectory(Protocols)
 add_subdirectory(support)
