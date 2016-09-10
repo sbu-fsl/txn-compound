@@ -333,7 +333,7 @@ static void CreateFiles(vector<const char *>& paths)
 {
 	const size_t nfiles = paths.size();
 	tc_file *files =
-	    tc_openv_simple(paths.data(), nfiles, O_WRONLY | O_CREAT, 0);
+	    tc_openv_simple(paths.data(), nfiles, O_WRONLY | O_CREAT, 0644);
 	assert(files);
 	vector<tc_iovec> iovs = NewIovecs(files, nfiles);
 	tc_res tcres = tc_writev(iovs.data(), nfiles, false);
@@ -518,6 +518,58 @@ static void BM_Remove(benchmark::State &state)
 	FreePaths(&paths);
 }
 BENCHMARK(BM_Remove)->RangeMultiplier(2)->Range(1, 256);
+
+// dummy callback
+static bool DummyListDirCb(const struct tc_attrs *entry, const char *dir,
+			   void *cbarg)
+{
+	return true;
+}
+
+// There average directory width is 17:
+//
+// #find linux-4.6.3/ -type d | \
+//  while read dname; do ls -l $dname | wc -l; done  | \
+//  awk '{s += $1} END {print s/NR;}'
+// 16.8402
+static void CreateDirsWithContents(vector<const char *>& dirs)
+{
+	const int kFilesPerDir = 17;
+	vector<tc_attrs> attrs(dirs.size());
+	for (size_t i = 0; i < dirs.size(); ++i) {
+		tc_set_up_creation(&attrs[i], dirs[i], 0755);
+	}
+	tc_res tcres = tc_mkdirv(attrs.data(), dirs.size(), false);
+	assert(tc_okay(tcres));
+
+	for (size_t i = 0; i < dirs.size(); ++i) {
+		char p[PATH_MAX];
+		snprintf(p, PATH_MAX, "%s/%%d", dirs[i]);
+		auto files = NewPaths(p, 17);
+		CreateFiles(files);
+		FreePaths(&files);
+	}
+}
+
+static void BM_Listdir(benchmark::State &state)
+{
+	size_t nfiles = state.range(0);
+	vector<const char *> dirs = NewPaths("Bench-Listdir/dir-%d", nfiles);
+
+	ResetTestDirectory("Bench-Listdir");
+	CreateDirsWithContents(dirs);
+
+	while (state.KeepRunning()) {
+		tc_res tcres =
+		    tc_listdirv(dirs.data(), nfiles, TC_ATTRS_MASK_ALL, 0,
+				false, DummyListDirCb, NULL, false);
+		assert(tc_okay(tcres));
+	}
+
+	FreePaths(&dirs);
+}
+BENCHMARK(BM_Listdir)->RangeMultiplier(2)->Range(1, 256);
+
 
 static void* SetUp(bool istc)
 {
