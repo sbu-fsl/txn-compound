@@ -400,18 +400,17 @@ static void BM_Mkdir(benchmark::State &state)
 	vector<const char *> paths = NewPaths("Bench-Mkdir/dir-%d", ndirs);
 	vector<tc_attrs> dirs(ndirs);
 
-	for (size_t i = 0; i < ndirs; ++i) {
-		tc_set_up_creation(&dirs[i], paths[i], 0755);
-	}
-
-	ResetTestDirectory("Bench-Mkdir");
 	while (state.KeepRunning()) {
+		state.PauseTiming();
+		ResetTestDirectory("Bench-Mkdir");
+		for (size_t i = 0; i < ndirs; ++i) {
+			tc_set_up_creation(&dirs[i], paths[i], 0755);
+		}
+		state.ResumeTiming();
+
 		tc_res tcres = tc_mkdirv(dirs.data(), ndirs, false);
 		assert(tc_okay(tcres));
 
-		state.PauseTiming();
-		ResetTestDirectory("Bench-Mkdir");
-		state.ResumeTiming();
 	}
 
 	FreePaths(&paths);
