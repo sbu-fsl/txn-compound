@@ -138,7 +138,8 @@ void Run(const char *dir)
 			if (bytes_finished[i] == file_size &&
 			    new_files_finished == i) {
 				if (++new_files_finished % 100 == 0) {
-						fprintf(stderr, "Finished %zu files\n", new_files_finished);
+					fprintf(stderr, "Finished %zu files\n",
+						new_files_finished);
 				}
 			}
 			free((char *)iovs[j].file.path);

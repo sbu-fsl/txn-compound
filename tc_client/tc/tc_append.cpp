@@ -71,10 +71,10 @@ void Run(const char *dir)
 	if (FLAGS_tc) {
 		char buf[PATH_MAX];
 		tcdata = tc_init(get_tc_config_file(buf, PATH_MAX),
-				 "/tmp/tc-bench-tc.log", 77);
+				 "/tmp/tc-append-tc.log", 77);
 		fprintf(stderr, "Using config file at %s\n", buf);
 	} else {
-		tcdata = tc_init(NULL, "/tmp/tc-bench-posix.log", 0);
+		tcdata = tc_init(NULL, "/tmp/tc-append-posix.log", 0);
 	}
 
 	const size_t iosize = ConvertSize(FLAGS_size.c_str());
