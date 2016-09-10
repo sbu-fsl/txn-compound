@@ -317,10 +317,9 @@ tc_res posix_lgetattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 			res = fstat(cur_attr->file.fd, &st);
 
 		if (res < 0) {
-			POSIX_WARN("file path : %s\n", cur_attr->file.path);
 			result = tc_failure(i, errno);
-			POSIX_WARN("posix_lgetattrsv() failed at index : %d\n",
-				   result.index);
+			POSIX_DEBUG("posix_lgetattrsv() failed at index : %d\n",
+				    result.index);
 			break;
 		}
 
@@ -441,8 +440,9 @@ tc_res posix_lsetattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 		 */
 		if (helper_set_attrs(cur_attr) < 0) {
 			result = tc_failure(i, errno);
-			POSIX_WARN("posix_lsetattrsv() failed at index : %d\n",
-				   result.index);
+			POSIX_WARN(
+			    "posix_lsetattrsv() failed at index : %d (%s)\n",
+			    result.index, strerror(errno));
 			break;
 		}
 
@@ -580,10 +580,8 @@ tc_res posix_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)
 
 		if (mkdir(cur_dir->path, dirs[i].mode) < 0) {
 			result = tc_failure(i, errno);
-
-			POSIX_WARN("posix_mkdirv() failed at index : %d\n",
-				   result.index);
-
+			POSIX_WARN("posix_mkdirv() failed at index : %d (%s)\n",
+				   result.index, strerror(errno));
 			return result;
 		}
 
