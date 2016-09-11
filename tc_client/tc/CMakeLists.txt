@@ -77,6 +77,9 @@ find_package(gflags REQUIRED)
 add_executable(tc_bench tc_bench.cpp)
 target_link_libraries(tc_bench gflags ${tc_LIBS} ${GBENCH_LIBRARIES})
 
+add_executable(tc_bench_norep tc_bench_norep.cpp tc_bench_util.cpp)
+target_link_libraries(tc_bench_norep gflags ${tc_LIBS} ${GBENCH_LIBRARIES})
+
 add_executable(tc_rw_files tc_rw_files.cpp)
 target_link_libraries(tc_rw_files gflags ${tc_LIBS})
 

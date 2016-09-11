@@ -33,7 +33,7 @@
 
 DEFINE_bool(tc, true, "Use TC implementation");
 
-DEFINE_bool(read, true, "Use TC implementation");
+DEFINE_bool(read, true, "Read or write");
 
 DEFINE_int32(nfiles, 1000, "Number of files");
 
