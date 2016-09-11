@@ -234,6 +234,9 @@ tc_res posix_writev(struct tc_iovec *arg, int write_count, bool is_transaction)
 		if (iov->offset == TC_OFFSET_END) {  /* append */
 			flags |= O_APPEND;
 		}
+		if (iov->is_write_stable) {
+			flags |= O_SYNC;
+		}
 
 		if (iov->file.type == TC_FILE_PATH) {
 			fd = open(iov->file.path, flags);

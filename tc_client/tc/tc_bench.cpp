@@ -117,67 +117,63 @@ static void BM_OpenClose(benchmark::State &state)
 }
 BENCHMARK(BM_OpenClose)->RangeMultiplier(2)->Range(1, 256);
 
-static void BM_Write4K(benchmark::State &state)
+static void ReadWrite(benchmark::State &state, int flags, bool read)
 {
 	size_t nfiles = state.range(0);
 	vector<const char *> paths = NewPaths("file-%d", nfiles);
+	auto iofunc = read ? tc_readv : tc_writev;
+	size_t offset = (flags & O_APPEND) ? TC_OFFSET_END : 0;
 
 	tc_file *files =
-	    tc_openv_simple(paths.data(), nfiles, O_WRONLY | O_CREAT, 0);
+	    tc_openv_simple(paths.data(), nfiles, flags, 0644);
 	assert(files);
-	vector<tc_iovec> iovs = NewIovecs(files, nfiles);
+	vector<tc_iovec> iovs = NewIovecs(files, nfiles, offset);
 
 	while (state.KeepRunning()) {
-		tc_res tcres = tc_writev(iovs.data(), nfiles, false);
+		tc_res tcres = iofunc(iovs.data(), nfiles, false);
 		assert(tc_okay(tcres));
 	}
 
 	tc_closev(files, nfiles);
 	FreeIovecs(&iovs);
 	FreePaths(&paths);
+}
+
+static void BM_Write4K(benchmark::State &state)
+{
+	ReadWrite(state, O_WRONLY | O_CREAT, false);
 }
 BENCHMARK(BM_Write4K)->RangeMultiplier(2)->Range(1, 256);
 
+static void BM_Write4KSync(benchmark::State &state)
+{
+	ReadWrite(state, O_WRONLY | O_CREAT | O_SYNC, false);
+}
+BENCHMARK(BM_Write4KSync)->RangeMultiplier(2)->Range(1, 256);
+
 static void BM_Append4K(benchmark::State &state)
 {
-	size_t nfiles = state.range(0);
-	vector<const char *> paths = NewPaths("file-%d", nfiles);
-
-	tc_file *files = tc_openv_simple(paths.data(), nfiles,
-					 O_WRONLY | O_CREAT | O_APPEND, 0);
-	assert(files);
-	vector<tc_iovec> iovs = NewIovecs(files, nfiles, TC_OFFSET_END);
-
-	while (state.KeepRunning()) {
-		tc_res tcres = tc_writev(iovs.data(), nfiles, false);
-		assert(tc_okay(tcres));
-	}
-
-	tc_closev(files, nfiles);
-	FreeIovecs(&iovs);
-	FreePaths(&paths);
+	ReadWrite(state, O_WRONLY | O_CREAT | O_APPEND, false);
 }
 BENCHMARK(BM_Append4K)->RangeMultiplier(2)->Range(1, 256);
 
+static void BM_Append4KSync(benchmark::State &state)
+{
+	ReadWrite(state, O_WRONLY | O_CREAT | O_APPEND | O_SYNC, false);
+}
+BENCHMARK(BM_Append4KSync)->RangeMultiplier(2)->Range(1, 256);
+
 static void BM_Read4K(benchmark::State &state)
 {
-	size_t nfiles = state.range(0);
-	vector<const char *> paths = NewPaths("file-%d", nfiles);
-
-	tc_file *files = tc_openv_simple(paths.data(), nfiles, O_RDONLY, 0);
-	assert(files);
-	vector<tc_iovec> iovs = NewIovecs(files, nfiles);
-
-	while (state.KeepRunning()) {
-		tc_res tcres = tc_readv(iovs.data(), nfiles, false);
-		assert(tc_okay(tcres));
-	}
-
-	tc_closev(files, nfiles);
-	FreeIovecs(&iovs);
-	FreePaths(&paths);
+	ReadWrite(state, O_RDONLY, true);
 }
 BENCHMARK(BM_Read4K)->RangeMultiplier(2)->Range(1, 256);
+
+static void BM_Read4KSync(benchmark::State &state)
+{
+	ReadWrite(state, O_RDONLY | O_SYNC | O_DIRECT, true);
+}
+BENCHMARK(BM_Read4KSync)->RangeMultiplier(2)->Range(1, 256);
 
 static void BM_Read4KOpenClose(benchmark::State &state)
 {
