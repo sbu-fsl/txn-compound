@@ -41,7 +41,7 @@
 
 DEFINE_bool(tc, true, "Use TC implementation");
 
-DEFINE_int32(nfiles, 1024, "Number of files");
+DEFINE_int32(nfiles, 10240, "Number of files");
 
 DEFINE_int32(compound_size, 1, "Number of operations per compound");
 
