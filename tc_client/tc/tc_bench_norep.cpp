@@ -163,6 +163,46 @@ static void BM2_Setattr4(int start, int csize)
 	BenchmarkAttrs(start, csize, &values, false);
 }
 
+static void BM2_Remove(int start, int csize)
+{
+	vector<const char *> paths = NewPaths("Bench-Files/file-%d", csize, start);
+	tc_res tcres = tc_unlinkv(paths.data(), csize);
+	assert(tc_okay(tcres));
+	FreePaths(&paths);
+}
+
+static void BM2_Mkdir(int start, int csize)
+{
+	vector<const char *> paths = NewPaths("Bench-Dirs/dir-%d", csize, start);
+	vector<tc_attrs> dirs(csize);
+
+	for (size_t i = 0; i < csize; ++i) {
+		tc_set_up_creation(&dirs[i], paths[i], 0755);
+	}
+	tc_res tcres = tc_mkdirv(dirs.data(), csize, false);
+	assert(tc_okay(tcres));
+
+	FreePaths(&paths);
+}
+
+static void BM2_Rename(int start, int csize)
+{
+	vector<const char *> srcs = NewPaths("Bench-Files/file-%d", csize, start);
+	vector<const char *> dsts = NewPaths("Bench-Files/newfile-%d", csize, start);
+	vector<tc_file_pair> pairs(csize);
+
+	for (size_t i = 0; i < csize; ++i) {
+		pairs[i].src_file = tc_file_from_path(srcs[i]);
+		pairs[i].dst_file = tc_file_from_path(dsts[i]);
+	}
+
+	tc_res tcres = tc_renamev(pairs.data(), csize, false);
+	assert(tc_okay(tcres));
+
+	FreePaths(&srcs);
+	FreePaths(&dsts);
+}
+
 typedef void (*BM_func)(int start, int csize);
 
 static BM_func GetBenchmarkFunction()
@@ -189,6 +229,12 @@ static BM_func GetBenchmarkFunction()
 		return BM2_Setattr3;
 	} else if (FLAGS_op == "Setattr4") {
 		return BM2_Setattr4;
+	} else if (FLAGS_op == "Mkdir") {
+		return BM2_Mkdir;
+	} else if (FLAGS_op == "Rename") {
+		return BM2_Rename;
+	} else if (FLAGS_op == "Remove") {
+		return BM2_Remove;
 	} else {
 		fprintf(stderr, "Unknown operation: %s\n", FLAGS_op.c_str());
 		return nullptr;
