@@ -129,8 +129,8 @@ void Run(const char *dir)
 		}
 
 		size_t new_files_finished = files_finished;
+		size_t i = files_finished;
 		for (size_t j = 0; j < iovs.size(); ++j) {
-			size_t i = files_finished + j;
 			while (bytes_finished[i] == file_size) {
 				++i;
 			}
