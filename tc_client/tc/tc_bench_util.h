@@ -36,6 +36,8 @@ void FreePaths(std::vector<const char *> *paths);
 
 std::vector<tc_iovec> NewIovecs(tc_file *files, int n, size_t offset = 0);
 
+std::vector<tc_file> Paths2Files(const std::vector<const char *>& paths);
+
 void FreeIovecs(std::vector<tc_iovec> *iovs);
 
 std::vector<tc_attrs> NewTcAttrs(size_t nfiles, tc_attrs *values = nullptr,
@@ -56,7 +58,9 @@ tc_attrs GetAttrValuesToSet(int nattrs);
 
 void CreateFiles(std::vector<const char *>& paths);
 
-std::vector<tc_extent_pair> NewFilePairsToCopy(size_t nfiles);
+std::vector<tc_extent_pair> NewFilePairsToCopy(const char *src_format,
+					       const char *dst_format,
+					       size_t nfiles, size_t start = 0);
 
 void FreeFilePairsToCopy(std::vector<tc_extent_pair> *pairs);
 

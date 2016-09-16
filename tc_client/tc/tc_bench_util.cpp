@@ -61,6 +61,15 @@ void FreePaths(vector<const char *> *paths)
 		free((char *)p);
 }
 
+vector<tc_file> Paths2Files(const vector<const char *>& paths)
+{
+	vector<tc_file> files(paths.size());
+	for (int i = 0; i < files.size(); ++i) {
+		files[i] = tc_file_from_path(paths[i]);
+	}
+	return files;
+}
+
 vector<tc_iovec> NewIovecs(tc_file *files, int n, size_t offset)
 {
 	vector<tc_iovec> iovs(n);
@@ -138,11 +147,13 @@ void CreateFiles(vector<const char *>& paths)
 	FreeIovecs(&iovs);
 }
 
-vector<tc_extent_pair> NewFilePairsToCopy(size_t nfiles)
+std::vector<tc_extent_pair> NewFilePairsToCopy(const char *src_format,
+					       const char *dst_format,
+					       size_t nfiles, size_t start)
 {
-	vector<const char *> srcs = NewPaths("file-%d", nfiles);
+	auto srcs = NewPaths(src_format, nfiles, start);
 	CreateFiles(srcs);
-	vector<const char *> dsts = NewPaths("dst-%d", nfiles);
+	auto dsts = NewPaths(dst_format, nfiles, start);
 	vector<tc_extent_pair> pairs(nfiles);
 	for (size_t i = 0; i < nfiles; ++i) {
 		pairs[i].src_path = srcs[i];

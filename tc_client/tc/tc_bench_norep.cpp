@@ -45,6 +45,10 @@ DEFINE_int32(nfiles, 10240, "Number of files");
 
 DEFINE_int32(compound_size, 1, "Number of operations per compound");
 
+DEFINE_string(copy_from, "files-4K/%04d", "pattern of files to copy");
+
+DEFINE_string(copy_to, "files-copied/%04d", "pattern of copy dest");
+
 DEFINE_string(op, "CreateEmpty", "Operation to perform: "
 	      "[Symlink, Readlink, MkdirWithContents, CreateEmpty, OpenClose, "
 	      " Listdir, Getattrs, Setattr1, Setattr2, Setattr3, Setattr4]");
@@ -53,7 +57,8 @@ using std::vector;
 
 static void OpenClose(int start, int csize, int flags)
 {
-	vector<const char *> paths = NewPaths("Bench-Files/file-%d", csize, start);
+	vector<const char *> paths =
+	    NewPaths("Bench-Files/file-%d", csize, start);
 
 	// NOTE on the limit of #files we can open per process.
 	tc_file *files = tc_openv_simple(paths.data(), csize, flags, 0644);
@@ -73,6 +78,31 @@ static void BM2_CreateEmpty(int start, int csize)
 static void BM2_OpenClose(int start, int csize)
 {
 	OpenClose(start, csize, O_RDONLY);
+}
+
+static void BM2_Append(int start, int csize)
+{
+	vector<const char *> paths =
+	    NewPaths("Bench-Files/%04d", csize, start);
+	vector<tc_file> files = Paths2Files(paths);
+	auto iovs = NewIovecs(files.data(), csize, TC_OFFSET_END);
+
+	tc_res tcres = tc_writev(iovs.data(), csize, false);
+	assert(tc_okay(tcres));
+
+	FreePaths(&paths);
+	FreeIovecs(&iovs);
+}
+
+static void BM2_SSCopy(int start, int csize)
+{
+	auto pairs = NewFilePairsToCopy(FLAGS_copy_from.c_str(),
+					FLAGS_copy_to.c_str(), csize, start);
+
+	tc_res tcres = tc_copyv(pairs.data(), csize, false);
+	assert(tc_okay(tcres));
+
+	FreeFilePairsToCopy(&pairs);
 }
 
 static void BM2_Symlink(int start, int csize)
@@ -238,6 +268,10 @@ static BM_func GetBenchmarkFunction()
 		return BM2_Rename;
 	} else if (FLAGS_op == "Remove") {
 		return BM2_Remove;
+	} else if (FLAGS_op == "Append") {
+		return BM2_Append;
+	} else if (FLAGS_op == "SSCopy") {
+		return BM2_SSCopy;
 	} else {
 		fprintf(stderr, "Unknown operation: %s\n", FLAGS_op.c_str());
 		return nullptr;
