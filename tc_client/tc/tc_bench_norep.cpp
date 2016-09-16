@@ -78,8 +78,10 @@ static void BM2_OpenClose(int start, int csize)
 static void BM2_Symlink(int start, int csize)
 {
 	if (start == 0) ResetTestDirectory("Bench-Symlinks");
-	vector<const char *> files = NewPaths("Bench-Symlinks/file-%d", csize, start);
-	vector<const char *> links = NewPaths("Bench-Symlinks/link-%d", csize, start);
+	vector<const char *> files =
+	    NewPaths("Bench-Symlinks/file-%d", csize, start);
+	vector<const char *> links =
+	    NewPaths("Bench-Symlinks/link-%d", csize, start);
 
 	tc_res tcres = tc_symlinkv(files.data(), links.data(), csize, false);
 	assert(tc_okay(tcres));
@@ -90,7 +92,8 @@ static void BM2_Symlink(int start, int csize)
 
 static void BM2_Readlink(int start, int csize)
 {
-	vector<const char *> links = NewPaths("Bench-Symlinks/link-%d", csize, start);
+	vector<const char *> links =
+	    NewPaths("Bench-Symlinks/link-%d", csize, start);
 	vector<char *> bufs(csize);
 	vector<size_t> buf_sizes(csize, PATH_MAX);
 

@@ -155,7 +155,8 @@ static tc_res tc_cp_files(vector<struct tc_attrs> &srcs, const char *src_dir,
 	vector<struct tc_extent_pair> pairs(count);
 
 	for (int i = 0; i < count; i++) {
-		char *path = new_cp_target_path(srcs[i].file.path, src_dir, dst_dir);
+		char *path =
+		    new_cp_target_path(srcs[i].file.path, src_dir, dst_dir);
 		pairs[i].src_path = srcs[i].file.path;
 		pairs[i].dst_path = path;
 		pairs[i].src_offset = 0;
@@ -194,7 +195,8 @@ static tc_res tc_dup_files(const vector<struct tc_attrs> &srcs,
 	small_files.reserve(count);
 	vector<const char *> dst_paths(count);
 	for (size_t i = 0; i < count; ++i) {
-		dst_paths[i] = new_cp_target_path(srcs[i].file.path, src_dir, dst_dir);
+		dst_paths[i] =
+		    new_cp_target_path(srcs[i].file.path, src_dir, dst_dir);
 		if (attrs[i].size > kSizeLimit) {
 			big_files_indices.push_back(i);
 			continue;
@@ -257,17 +259,19 @@ static tc_res tc_dup_files(const vector<struct tc_attrs> &srcs,
 }
 
 static tc_res tc_cp_setattrs(vector<struct tc_attrs> &srcs, const char *src_dir,
-			  const char *dst_dir)
+			     const char *dst_dir)
 {
 	for (int i = 0; i < srcs.size(); i++) {
-		// Workaround -- was getting invalid argument error from lsetattrsv().
-		// The issue was that tc_listdirv() was not honoring the mask I gave
-		// it, meaning the tc_attrs in the srcs vector had incorrect masks set.
-		// So here, we explicitly override those incorrect masks with what we want to set.
+		// Workaround -- was getting invalid argument error from
+		// lsetattrsv().  The issue was that tc_listdirv() was not
+		// honoring the mask I gave it, meaning the tc_attrs in the
+		// srcs vector had incorrect masks set.  So here, we explicitly
+		// override those incorrect masks with what we want to set.
 		srcs[i].masks = TC_ATTRS_MASK_NONE;
 		srcs[i].masks.has_mode = true;
 
-		srcs[i].file = tc_file_from_path(new_cp_target_path(srcs[i].file.path, src_dir, dst_dir));
+		srcs[i].file = tc_file_from_path(
+		    new_cp_target_path(srcs[i].file.path, src_dir, dst_dir));
 	}
 	return tc_lsetattrsv((struct tc_attrs*)srcs.data(), srcs.size(), false);
 }
@@ -360,7 +364,8 @@ tc_res tc_cp_recursive(const char *src_dir, const char *dst, bool symlink,
 		if (!symlink) {
 			tcres = tc_cp_setattrs(files_to_copy, src_dir, dst);
 			if (!tc_okay(tcres)) {
-				fprintf(stderr, "tc_cp_setattrs: %s\n", strerror(tcres.err_no));
+				fprintf(stderr, "tc_cp_setattrs: %s\n",
+					strerror(tcres.err_no));
 			}
 		}
 
