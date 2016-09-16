@@ -25,6 +25,7 @@
 #include "tc_api.h"
 #include "tc_helper.h"
 #include "path_utils.h"
+#include "tc_bench_util.h"
 
 #include <gflags/gflags.h>
 
@@ -41,15 +42,6 @@ using std::vector;
 
 const size_t kSizeLimit = (8 << 20);
 
-static off_t GetFileSize(const char *file_path)
-{
-	struct stat file_status;
-	if (tc_stat(file_path, &file_status) < 0) {
-		error(1, errno, "Could not get size of %s", file_path);
-	}
-	return file_status.st_size;
-}
-
 static char *GetFilePath(const char *dir, int i)
 {
 	char *p = (char *)malloc(PATH_MAX);
@@ -61,17 +53,11 @@ static char *GetFilePath(const char *dir, int i)
 
 void Run(const char *dir)
 {
-	void *tcdata;
-	if (FLAGS_tc) {
-		char buf[PATH_MAX];
-		tcdata = tc_init(get_tc_config_file(buf, PATH_MAX),
-				 "/tmp/tc-bench-tc.log", 77);
-		fprintf(stderr, "Using config file at %s\n", buf);
-	} else {
-		tcdata = tc_init(NULL, "/tmp/tc-bench-posix.log", 0);
-	}
+	void *tcdata = SetUp(FLAGS_tc);
 
-	const size_t file_size = GetFileSize(GetFilePath(dir, 0));
+	char *p = GetFilePath(dir, 0);
+	const size_t file_size = GetFileSize(p);
+	free(p);
 	fprintf(stderr, "Reading files: %zu-byte large\n", file_size);
 
 	size_t files_finished = 0;
@@ -151,7 +137,7 @@ void Run(const char *dir)
 	}
 
 	free(data);
-	tc_deinit(tcdata);
+	TearDown(tcdata);
 }
 
 int main(int argc, char *argv[])

@@ -80,7 +80,10 @@ target_link_libraries(tc_bench gflags ${tc_LIBS} ${GBENCH_LIBRARIES})
 add_executable(tc_bench_norep tc_bench_norep.cpp tc_bench_util.cpp)
 target_link_libraries(tc_bench_norep gflags ${tc_LIBS} ${GBENCH_LIBRARIES})
 
-add_executable(tc_rw_files tc_rw_files.cpp)
+add_executable(tc_bench_cache tc_bench_cache.cpp tc_bench_util.cpp)
+target_link_libraries(tc_bench_cache gflags ${tc_LIBS} ${GBENCH_LIBRARIES})
+
+add_executable(tc_rw_files tc_rw_files.cpp tc_bench_util.cpp)
 target_link_libraries(tc_rw_files gflags ${tc_LIBS})
 
 add_executable(tc_append tc_append.cpp)

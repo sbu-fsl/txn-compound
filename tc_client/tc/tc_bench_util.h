@@ -21,6 +21,9 @@
 #define _TC_BENCH_UTIL_H
 
 #include <time.h>
+#include <cstdio>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "tc_api.h"
@@ -71,5 +74,22 @@ void CreateDirsWithContents(std::vector<const char *>& dirs);
 void* SetUp(bool istc);
 
 void TearDown(void *context);
+
+off_t ConvertSize(const char *size_str);
+
+// Copied from
+// http://stackoverflow.com/questions/2342162/stdstring-formatting-like-sprintf
+template <typename... Args>
+std::string strprintf(const std::string &format, Args... args)
+{
+	size_t size = std::snprintf(nullptr, 0, format.c_str(), args...) +
+		      1; // Extra space for '\0'
+	std::unique_ptr<char[]> buf(new char[size]);
+	std::snprintf(buf.get(), size, format.c_str(), args...);
+	return std::string(buf.get(), buf.get() + size -
+					  1); // We don't want the '\0' inside
+}
+
+off_t GetFileSize(const char *file_path);
 
 #endif  // _TC_BENCH_UTIL_H
