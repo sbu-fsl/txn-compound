@@ -101,7 +101,7 @@ static char *new_cp_target_path(const char *src_obj, const char *src_dir,
 static tc_res tc_cp_mkdirs(const char *src_dir, const char **dirs, int count,
 			   const char *dst_dir)
 {
-	struct tc_attrs attrs[count];
+	vector<struct tc_attrs> attrs(count);
 	for (int i = 0; i < count; i++) {
 		attrs[i].file = tc_file_from_path(
 		    new_cp_target_path(dirs[i], src_dir, dst_dir));
@@ -109,15 +109,13 @@ static tc_res tc_cp_mkdirs(const char *src_dir, const char **dirs, int count,
 		attrs[i].masks.has_mode = true;
 		attrs[i].mode = 0755;
 	}
-	tc_res res = tc_mkdirv(attrs, count, false);
+	tc_res res = tc_mkdirv(attrs.data(), count, false);
 	if (!tc_okay(res)) {
 		printf("mkdirv-failed: %s (%d-th %s)\n", strerror(res.err_no),
 		       res.index, attrs[res.index].file.path);
 	}
 
-	for (int i = 0; i < count; i++) {
-		free((char*)attrs[i].file.path);
-	}
+	free_attrs(&attrs);
 
 	return res;
 }
@@ -167,6 +165,10 @@ static tc_res tc_cp_files(vector<struct tc_attrs> &srcs, const char *src_dir,
 	if (!tc_okay(tcres)) {
 		fprintf(stderr, "tc_lcopyv: %s (%s)\n", strerror(tcres.err_no),
 			pairs[tcres.index].src_path);
+	}
+
+	for (auto& p : pairs) {
+		free((char *)p.dst_path);
 	}
 
 	return tcres;
@@ -258,22 +260,25 @@ static tc_res tc_dup_files(const vector<struct tc_attrs> &srcs,
 	return tcres;
 }
 
-static tc_res tc_cp_setattrs(vector<struct tc_attrs> &srcs, const char *src_dir,
-			     const char *dst_dir)
+static tc_res tc_cp_setattrs(const vector<struct tc_attrs> &srcs,
+			     const char *src_dir, const char *dst_dir)
 {
+	vector<struct tc_attrs> dsts(srcs);
 	for (int i = 0; i < srcs.size(); i++) {
 		// Workaround -- was getting invalid argument error from
 		// lsetattrsv().  The issue was that tc_listdirv() was not
 		// honoring the mask I gave it, meaning the tc_attrs in the
 		// srcs vector had incorrect masks set.  So here, we explicitly
 		// override those incorrect masks with what we want to set.
-		srcs[i].masks = TC_ATTRS_MASK_NONE;
-		srcs[i].masks.has_mode = true;
+		dsts[i].masks = TC_ATTRS_MASK_NONE;
+		dsts[i].masks.has_mode = true;
 
-		srcs[i].file = tc_file_from_path(
+		dsts[i].file = tc_file_from_path(
 		    new_cp_target_path(srcs[i].file.path, src_dir, dst_dir));
 	}
-	return tc_lsetattrsv((struct tc_attrs*)srcs.data(), srcs.size(), false);
+	tc_res tcres = tc_lsetattrsv(dsts.data(), dsts.size(), false);
+	free_attrs(&dsts);
+	return tcres;
 }
 
 tc_res tc_cp_symlinks(const vector<const char *> &links, const char *src_dir,
