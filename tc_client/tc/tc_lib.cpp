@@ -271,6 +271,7 @@ static tc_res tc_cp_setattrs(const vector<struct tc_attrs> &srcs,
 		// srcs vector had incorrect masks set.  So here, we explicitly
 		// override those incorrect masks with what we want to set.
 		dsts[i].masks = TC_ATTRS_MASK_NONE;
+		dsts[i].mode &= ~(S_IFMT);  // TODO: do this in tc_lsetattrsv()
 		dsts[i].masks.has_mode = true;
 
 		dsts[i].file = tc_file_from_path(
@@ -377,7 +378,7 @@ tc_res tc_cp_recursive(const char *src_dir, const char *dst, bool symlink,
 		free_attrs(&files_to_copy);
 	}
 
-	if (tc_okay(tcres)) {
+	if (tc_okay(tcres) && !symlinks.empty()) {
 		if (symlink) {
 			tcres = tc_symlink_objs(symlinks, src_dir, dst);
 		} else {
