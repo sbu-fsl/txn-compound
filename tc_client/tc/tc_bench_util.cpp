@@ -152,7 +152,6 @@ std::vector<tc_extent_pair> NewFilePairsToCopy(const char *src_format,
 					       size_t nfiles, size_t start)
 {
 	auto srcs = NewPaths(src_format, nfiles, start);
-	CreateFiles(srcs);
 	auto dsts = NewPaths(dst_format, nfiles, start);
 	vector<tc_extent_pair> pairs(nfiles);
 	for (size_t i = 0; i < nfiles; ++i) {
@@ -160,7 +159,7 @@ std::vector<tc_extent_pair> NewFilePairsToCopy(const char *src_format,
 		pairs[i].dst_path = dsts[i];
 		pairs[i].src_offset = 0;
 		pairs[i].dst_offset = 0;
-		pairs[i].length = BUFSIZE;
+		pairs[i].length = 0;
 	}
 	return pairs;
 }
