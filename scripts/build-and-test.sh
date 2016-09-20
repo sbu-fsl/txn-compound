@@ -28,6 +28,10 @@ git submodule update --init
 echo "using config file at $TC_ROOT/config/tc.ganesha.conf"
 cat "config/tc.ganesha.conf"
 
+
+# Fix the building failure of Google Bench
+sed -i -e 's/LINK_LIBRARIES.*)/)/' tc_client/gbench/cmake/CXXFeatureCheck.cmake
+
 #ps aux | grep ganesha
 #tail -n 50 /var/log/tcserver.ganesha.log
 
