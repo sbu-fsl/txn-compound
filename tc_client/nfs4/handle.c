@@ -1469,37 +1469,19 @@ static int fs_create_session()
 static void *fs_clientid_renewer(void *Arg)
 {
 	int rc;
-	int needed = 1;
-	uint32_t lease_time = 60;
+	uint32_t lease_time = 40;
 
 	while (1) {
-		clientid4 newcid = 0;
-
-		if (!needed && fs_rpc_renewer_wait(lease_time - 5)) {
+		if (fs_rpc_renewer_wait(lease_time)) {
 			/* Simply renew the client id you've got */
-			LogDebug(COMPONENT_FSAL, "Renewing client id %lx",
-				 fs_clientid);
-                        tc_reset_compound(false);
-			argoparray->argop = NFS4_OP_RENEW;
-			argoparray->nfs_argop4_u.oprenew.clientid = fs_clientid;
-                        ++opcnt;
-			rc = fs_nfsv4_call(NULL, NULL);
+			LogDebug(COMPONENT_FSAL, "Renewing session");
+                        tc_reset_compound(true);
+			rc = fs_nfsv4_call(op_ctx->creds, NULL);
 			if (rc == NFS4_OK) {
 				LogDebug(COMPONENT_FSAL,
-					 "Renewed client id %lx", fs_clientid);
+					 "Renewed session");
 				continue;
 			}
-		}
-
-		/* We've either failed to renew or rpc socket has been
-		 * reconnected and we need new client id */
-		LogDebug(COMPONENT_FSAL, "Need %d new client id", needed);
-		fs_rpc_need_sock();
-		needed = fs_setclientid(&newcid, &lease_time);
-		if (!needed) {
-			pthread_mutex_lock(&fs_clientid_mutex);
-			fs_clientid = newcid;
-			pthread_mutex_unlock(&fs_clientid_mutex);
 		}
 	}
 	return NULL;
@@ -1566,21 +1548,20 @@ int fs_init_rpc(const struct fs_fsal_module *pm)
 		return rc;
 	}
 
-        /*
+	fs_rpc_need_sock();
+	rc = fs_create_session();
+	if (rc) {
+		NFS4_ERR("Cannot create session - %s", strerror(rc));
+		free_io_contexts();
+	}
+
+	
 	rc = pthread_create(&fs_renewer_thread, NULL, fs_clientid_renewer,
 			    NULL);
 	if (rc) {
 		LogCrit(COMPONENT_FSAL,
 			"Cannot create kern clientid renewer thread - %s",
 			strerror(rc));
-		free_io_contexts();
-	}
-        */
-
-	fs_rpc_need_sock();
-	rc = fs_create_session();
-	if (rc) {
-		NFS4_ERR("Cannot create session - %s", strerror(rc));
 		free_io_contexts();
 	}
 
