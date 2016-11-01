@@ -911,6 +911,26 @@ TYPED_TEST_P(TcTest, SuccessiveWrites)
 	free(readbuf);
 }
 
+TYPED_TEST_P(TcTest, SessionTimeout)
+{
+	const char *path = "SessionTimeout.dat";
+	struct tc_iovec iov;
+	int size = 4096;
+	char *data1 = getRandomBytes(size);
+
+	tc_iov4creation(&iov, path, size, data1);
+
+	EXPECT_OK(tc_writev(&iov, 1, false));
+
+	sleep(80);
+
+	tc_iov2path(&iov, path, 0, size, data1);
+
+	EXPECT_OK(tc_readv(&iov, 1, false));
+
+	free(data1);
+}
+
 static char *getRandomBytes(int N)
 {
 	int fd;
@@ -1604,6 +1624,7 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   Append,
 			   SuccessiveReads,
 			   SuccessiveWrites,
+			   SessionTimeout,
 			   CopyFiles,
 			   DupFiles,
 			   CopyFirstHalfAsSecondHalf,
