@@ -9,6 +9,12 @@ procedures, which is currently under-utilized as we found in our SIGMETRICS'15
 paper "Newer Is Sometimes Better: An Evaluation of NFSv4.1". Available at
 https://www.fsl.cs.sunysb.edu/docs/nfs4perf/nfs4perf-sigm15.pdf
 
+This project exposes a vectorized file-system API that is discussed in a
+FAST2017 paper entitled "vNFS: Maximizing NFS Performance with Compounds and
+Vectorized I/O".  In the vNFS paper, the names of the API functions are in the
+form of ``vread`` instead of ``tc_readv`` (as in this repository) to avoid
+discussion of transaction (which is not part of the vNFS paper).
+
 In a nutshell, the biggest reason why compound procedures are practically
 ineffective is the lower-level nature of POSIX file-system API.  Therefore, in
 this project, we will supplement POSIX with higher-level APIs that can take
