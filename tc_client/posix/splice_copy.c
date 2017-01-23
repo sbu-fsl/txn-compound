@@ -23,6 +23,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <stdint.h>
 #include <errno.h>
 
 ssize_t splice_copy_file(const char *src, size_t offset, size_t count,
