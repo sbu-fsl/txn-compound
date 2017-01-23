@@ -37,7 +37,7 @@ ssize_t splice_copy_file(const char *src, size_t offset, size_t count,
 	if (srcfd < 0) {
 		return -errno;
 	}
-	if (count == 0) {
+	if (count == UINT64_MAX) {
 		if (fstat(srcfd, &st) < 0) {
 			close(srcfd);
 			return -errno;
@@ -77,7 +77,7 @@ ssize_t splice_copy(const char *src, size_t src_offset, const char *dst,
 		return -errno;
 	}
 
-	if (count == 0) {
+	if (count == UINT64_MAX) {
 		if (fstat(srcfd, &st) < 0) {
 			close(srcfd);
 			return -errno;

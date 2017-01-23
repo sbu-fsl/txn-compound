@@ -742,8 +742,8 @@ struct tc_extent_pair
 	size_t src_offset;
 	size_t dst_offset;
 	/**
-	 * When length is 0, it means the effective length is current file size
-	 * of the source file substracted by src_offset.
+	 * When length is UINT64_MAX, it means the effective length is current
+	 * file size of the source file substracted by src_offset.
 	 */
 	size_t length;
 };

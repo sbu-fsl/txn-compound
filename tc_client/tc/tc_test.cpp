@@ -1159,7 +1159,8 @@ TYPED_TEST_P(TcTest, CopyManyFilesDontFitInOneCompound)
 
 		char *dest_file = (char *)alloca(PATH_MAX);
 		snprintf(dest_file, PATH_MAX, "CopyMany/foo%d", i);
-		tc_fill_extent_pair(&pairs[i], path, 0, dest_file, 0, 0);
+		tc_fill_extent_pair(&pairs[i], path, 0, dest_file, 0,
+				    UINT64_MAX);
 	}
 
 	EXPECT_OK(tc_copyv(pairs, NFILES, false));
