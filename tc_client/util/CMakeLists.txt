@@ -34,12 +34,12 @@ include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 include_directories("${CMAKE_SOURCE_DIR}")
 
 set(test_LIB
-  pthread
   gtest
   gtest_main
   gmock
   path_utils
   tc_helper
+  pthread
 )
 
 function (add_unittest TestName LibName)
