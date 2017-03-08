@@ -30,12 +30,6 @@ git submodule update --init --recursive
 # obsolete headers, if any
 #sudo yum clean all
 
-#######################################################
-#NOTE: You must manually install gflags.
-#Type "git clone https://github.com/gflags/gflags.git".
-#Follow instructions in the readme to install it.
-#######################################################
-
 sudo apt-get install -y cmake
 sudo apt-get install -y libgoogle-glog-dev libgflags-dev libgssglue-dev
 sudo apt-get install -y libssl-dev
@@ -69,12 +63,26 @@ sudo apt-get install -y libcap-dev
 sudo apt-get install -y libwbclient-dev
 sudo apt-get install -y uuid-dev
 sudo apt-get install -y libblkid-dev
+sudo apt-get install -y libkrb5-dev
+sudo apt-get install -y libgss-dev
 
 # To resolve https://github.com/nfs-ganesha/nfs-ganesha/issues/67
 #yum install -y libtirpc
 
 mkdir -p /opt
 cd /opt
+
+# This will install gflags and put the cmake rule file at
+# /usr/local/lib/cmake/gflags/gflags-config.cmake
+if [ ! -d gflags ]; then
+  git clone https://github.com/gflags/gflags.git
+  cd gflags
+  mkdir build
+  cd build
+  cmake -DCMAKE_BUILD_TYPE=Release ../src/
+  make
+  sudo make install
+fi
 
 # setup gmock and gtest
 if [ ! -d gmock-1.7.0 ]; then
