@@ -732,6 +732,7 @@ set(GANESHA_CORE
   log
   uid2grp
   fsalpseudo
+  fsaltcnfs
   )
 
 if(USE_DBUS)

@@ -3745,7 +3745,7 @@ static bool tc_open_file_if_necessary(const tc_file *tcf, int flags,
 	}
 
 	if (flags & O_CREAT) {
-		attrs.masks = TC_ATTRS_MASK_NONE;
+		memset(&attrs.masks, sizeof(attrs.masks), 0);
 		tc_attrs_set_mode(&attrs, 0644);
 		tc_attrs_set_uid(&attrs, getuid());
 		tc_attrs_set_gid(&attrs, getgid());

@@ -193,7 +193,7 @@ static fsal_status_t fs_init_config(struct fsal_module *fsal_hdl,
 
 static struct fs_fsal_module TCNFS;
 
-MODULE_INIT void fs_init(void)
+void fs_init(void)
 {
 	if (register_fsal(&TCNFS.module, "TCNFS", FSAL_MAJOR_VERSION,
 			  FSAL_MINOR_VERSION, FSAL_ID_NO_PNFS) != 0)
@@ -202,7 +202,7 @@ MODULE_INIT void fs_init(void)
 	TCNFS.module.ops->create_export = fs_create_export;
 }
 
-MODULE_FINI void fs_unload(void)
+void fs_unload(void)
 {
 	int retval;
 

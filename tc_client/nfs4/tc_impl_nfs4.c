@@ -48,6 +48,7 @@ void *nfs4_init(const char *config_path, const char *log_path,
 	struct config_error_type err_type;
 	struct gsh_export *exp = NULL;
 	int rc;
+	fsal_status_t st;
 	config_file_t config_struct;
 	nfs_start_info_t my_nfs_start_info = { .dump_default_config = false,
 					       .lw_mark_trigger = false };
@@ -117,6 +118,17 @@ void *nfs4_init(const char *config_path, const char *log_path,
                 LogFatal(COMPONENT_INIT,
                          "Failed to initialize server packages");
 
+	new_module = lookup_fsal("TCNFS");
+	if (new_module == NULL) {
+		LogDebug(COMPONENT_FSAL, "TCNFS Module Not found\n");
+		return NULL;
+	}
+
+	st = new_module->ops->init_config(new_module, config_struct);
+	if (FSAL_IS_ERROR(st)) {
+		LogFatal(COMPONENT_INIT, "failed to init TCNFS module");
+	}
+
         /* Load export entries from parsed file
          * returns the number of export entries.
          */
@@ -129,14 +141,7 @@ void *nfs4_init(const char *config_path, const char *log_path,
                         "No export entries found in configuration file !!!");
 
         /* freeing syntax tree : */
-
         config_Free(config_struct);
-
-	new_module = lookup_fsal("TCNFS");
-	if (new_module == NULL) {
-		LogDebug(COMPONENT_FSAL, "TCNFS Module Not found\n");
-		return NULL;
-	}
 
 	exp = get_gsh_export(export_id);
 	if (exp == NULL) {

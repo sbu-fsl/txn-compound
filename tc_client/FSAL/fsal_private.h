@@ -44,5 +44,6 @@ extern struct glist_head fsal_list;
 
 /* Definitions for Pseudo FSAL */
 void pseudo_fsal_init(void);
+void fs_init(void);
 
 #endif /* FSAL_PRIVATE_H */
