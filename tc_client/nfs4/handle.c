@@ -1,7 +1,7 @@
 /*
  * vim:expandtab:shiftwidth=8:tabstop=8:
  *
- * Copyright (C) Stony Brook University 2014
+ * Copyright (C) Stony Brook University 2014-2017
  * by Ming Chen <v.mingchen@gmail.com>
  *
  * Copyright (C) Max Matveev, 2012
@@ -72,6 +72,7 @@ static pthread_mutex_t fs_clientid_mutex = PTHREAD_MUTEX_INITIALIZER;
 static char fs_hostname[MAXNAMLEN + 1];
 static pthread_t fs_recv_thread;
 static pthread_t fs_renewer_thread;
+static uint8_t fs_session_valid;
 static struct glist_head rpc_calls;
 static struct glist_head free_contexts;
 static int rpc_sock = -1;
@@ -1299,6 +1300,7 @@ static fsal_status_t fs_destroy_session()
 		return nfsstat4_to_fsal(rc);
 	}
 
+	atomic_store_uint8_t(&fs_session_valid, 0);
 	del_session_slot_table(&sess_slot_tbl);
 
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
@@ -1466,13 +1468,15 @@ static int fs_create_session()
 	return 0;
 }
 
-static void *fs_clientid_renewer(void *Arg)
+static void *fs_clientid_renewer(void *arg)
 {
 	int rc;
+	/* TODO: make this configurable */
 	uint32_t lease_time = 40;
 
-	while (1) {
-		if (fs_rpc_renewer_wait(lease_time)) {
+	while (true) {
+		fs_rpc_renewer_wait(lease_time);
+		if (atomic_fetch_uint8_t(&fs_session_valid)) {
 			/* Simply renew the client id you've got */
 			LogDebug(COMPONENT_FSAL, "Renewing session");
                         tc_reset_compound(true);
@@ -1482,6 +1486,8 @@ static void *fs_clientid_renewer(void *Arg)
 					 "Renewed session");
 				continue;
 			}
+		} else {
+			break;
 		}
 	}
 	return NULL;
@@ -1554,7 +1560,7 @@ int fs_init_rpc(const struct fs_fsal_module *pm)
 		NFS4_ERR("Cannot create session - %s", strerror(rc));
 		free_io_contexts();
 	}
-
+	fs_session_valid = 1;
 	
 	rc = pthread_create(&fs_renewer_thread, NULL, fs_clientid_renewer,
 			    NULL);
