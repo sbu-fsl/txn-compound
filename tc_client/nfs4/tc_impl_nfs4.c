@@ -481,8 +481,8 @@ tc_file *nfs4_openv(const char **paths, int count, int *flags, mode_t *modes)
 		return NULL;
 	}
 
-	attrs = alloca(count * sizeof(*attrs));
-	sids = alloca(count * sizeof(*sids));
+	attrs = calloc(count, sizeof(*attrs));
+	sids = calloc(count, sizeof(*sids));
 	for (i = 0; i < count; ++i) {
 		if (flags[i] & O_CREAT) {
 			tc_set_up_creation(attrs + i, paths[i],
@@ -524,6 +524,8 @@ exit:
 		}
 	}
 
+	free(sids);
+	free(attrs);
 	return tcfs;
 }
 
@@ -554,9 +556,9 @@ tc_res nfs4_closev(tc_file *files, int count)
 	struct tc_kfd *tcfd;
 	int finished;
 
-	fh4s = alloca(count * sizeof(*fh4s));
-	sids = alloca(count * sizeof(*sids));
-	seqs = alloca(count * sizeof(*seqs));
+	fh4s = calloc(count, sizeof(*fh4s));
+	sids = calloc(count, sizeof(*sids));
+	seqs = calloc(count, sizeof(*seqs));
 
 	n = 0;
 	for (i = 0; i < count; ++i) {
@@ -593,6 +595,9 @@ tc_res nfs4_closev(tc_file *files, int count)
 	if (tc_okay(tcres)) {
 		free(files);
 	}
+	free(seqs);
+	free(sids);
+	free(fh4s);
 	return tcres;
 }
 

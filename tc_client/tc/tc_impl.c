@@ -140,14 +140,20 @@ tc_file *tc_openv(const char **paths, int count, int *flags, mode_t *modes)
 
 tc_file *tc_openv_simple(const char **paths, int count, int flags, mode_t mode)
 {
+	tc_file *tcfs;
 	int i;
-	int *flag_array = alloca(count * sizeof(int));
-	mode_t *mode_array = alloca(count * sizeof(mode_t));
+	int *flag_array = calloc(count, sizeof(int));
+	mode_t *mode_array = calloc(count, sizeof(mode_t));
+
 	for (i = 0; i < count; ++i) {
 		flag_array[i] = flags;
 		mode_array[i] = mode;
 	}
-	return tc_openv(paths, count, flag_array, mode_array);
+	tcfs = tc_openv(paths, count, flag_array, mode_array);
+
+	free(mode_array);
+	free(flag_array);
+	return tcfs;
 }
 
 tc_res tc_closev(tc_file *tcfs, int count)
@@ -253,6 +259,7 @@ bool resolve_symlinks(struct syminfo *syms, int count, tc_res *err) {
 	int path_count = 0;
 	char **bufs;
 	size_t *bufsizes;
+	bool res = true;
 
 	*err = TC_OKAY;
 
@@ -280,12 +287,10 @@ bool resolve_symlinks(struct syminfo *syms, int count, tc_res *err) {
 		return false;
 	}
 
-	paths = alloca(sizeof(char *) * attrs_count);
-
-	bufs = alloca(sizeof(char *) * attrs_count);
-	bufsizes = alloca(sizeof(size_t) * attrs_count);
-
-	paths_original_indices = alloca(sizeof(int) * attrs_count);
+	paths = calloc(attrs_count, sizeof(char *));
+	bufs = calloc(attrs_count, sizeof(char *));
+	bufsizes = calloc(attrs_count, sizeof(size_t));
+	paths_original_indices = calloc(attrs_count, sizeof(int));
 
 	for (i = 0; i < attrs_count; i++) {
 		if (S_ISLNK(attrs[i].mode))	{
@@ -303,7 +308,8 @@ bool resolve_symlinks(struct syminfo *syms, int count, tc_res *err) {
 	}
 
 	if (path_count == 0) {
-		return false;
+		res = false;
+		goto exit;
 	}
 
 	*err = tc_readlinkv(paths, bufs, bufsizes, path_count, false);
@@ -311,7 +317,8 @@ bool resolve_symlinks(struct syminfo *syms, int count, tc_res *err) {
 	if (!tc_okay(*err)) {
 		err->index =
 		    paths_original_indices[attrs_original_indices[err->index]];
-		return false;
+		res = false;
+		goto exit;
 	}
 
 	for (i = 0; i < path_count; i++) {
@@ -330,7 +337,12 @@ bool resolve_symlinks(struct syminfo *syms, int count, tc_res *err) {
 		}
 	}
 
-	return true;
+exit:
+	free(paths_original_indices);
+	free(bufsizes);
+	free(bufs);
+	free(paths);
+	return res;
 }
 
 void free_syminfo(struct syminfo *syminfo, int count) {
@@ -381,7 +393,7 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 
 			paths[link_count] = file.path;
 
-			bufs[link_count] = alloca(sizeof(char) * PATH_MAX);
+			bufs[link_count] = malloc(sizeof(char) * PATH_MAX);
 			bufsizes[link_count] = PATH_MAX;
 			original_indices[link_count] = i;
 
@@ -397,7 +409,7 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 	// if nothing was a symlink, then our prior call to tc_lgetattrsv()
 	// sufficed, so we're done
 	if (!tc_okay(res) || link_count == 0) {
-		return res;
+		goto exit;
 	}
 
 
@@ -407,7 +419,7 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 
 	if (!tc_okay(res)) {
 		res.index = original_indices[res.index];
-		return res;
+		goto exit;
 	}
 
 	for (i = 0; i < link_count; i++) {
@@ -425,6 +437,10 @@ tc_res tc_getattrsv(struct tc_attrs *attrs, int count, bool is_transaction)
 		attrs[original_indices[i]].file = original_files[i];
 	}
 
+exit:
+	for (i = 0; i < link_count; ++i) {
+		free(bufs[i]);
+	}
 	return res;
 }
 
@@ -692,13 +708,17 @@ tc_res tc_unlinkv(const char **paths, int count)
 {
 	int i = 0, r = 0;
 	tc_file *files;
+	tc_res tcres;
 
-	files = (tc_file *)alloca(count * sizeof(tc_file));
+	files = (tc_file *)calloc(count, sizeof(tc_file));
 	for (i = 0; i < count; ++i) {
 		files[i] = tc_file_from_path(paths[i]);
 	}
 
-	return tc_removev(files, count, false);
+	tcres = tc_removev(files, count, false);
+
+	free(files);
+	return tcres;
 }
 
 tc_res tc_mkdirv(struct tc_attrs *dirs, int count, bool is_transaction)
@@ -759,7 +779,7 @@ static tc_res nfs4_ensure_dir(slice_t *comps, int n, mode_t mode)
 	int absent;
 	int i;
 
-	dirs = alloca(n * sizeof(*dirs));
+	dirs = calloc(n, sizeof(*dirs));
 	dirs[0].file = tc_file_from_path(new_auto_str(comps[0]));
 	dirs[0].masks = TC_ATTRS_MASK_NONE;
 	dirs[0].masks.has_mode = true;
@@ -770,7 +790,7 @@ static tc_res nfs4_ensure_dir(slice_t *comps, int n, mode_t mode)
 
 	tcres = tc_getattrsv(dirs, n, false);
 	if (tc_okay(tcres) || tcres.err_no != ENOENT) {
-		return tcres;
+		goto exit;
 	}
 
 	path = new_auto_buf(PATH_MAX + 1);
@@ -791,10 +811,12 @@ static tc_res nfs4_ensure_dir(slice_t *comps, int n, mode_t mode)
 	}
 
 	if (absent == 0)
-		return tcres;
+		goto exit;
 
 	tcres = tc_mkdirv(dirs, absent, false);
 
+exit:
+	free(dirs);
 	return tcres;
 }
 
