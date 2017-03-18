@@ -392,24 +392,21 @@ static inline struct timespec totimespec(long sec, long nsec)
 static tc_attrs *set_tc_attrs(struct tc_attrs *attrs, int count)
 {
 	int i = 0;
-	uid_t uid[] = { 2711, 456, 789 };
-	gid_t gid[] = { 87, 4566, 2311 };
-	mode_t mode[] = { S_IRUSR | S_IRGRP | S_IROTH,
+	const int N = 3;
+	uid_t uid[N] = { 2711, 456, 789 };
+	gid_t gid[N] = { 87, 4566, 2311 };
+	mode_t mode[N] = { S_IRUSR | S_IRGRP | S_IROTH,
 			  S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH, S_IRWXU };
-	size_t size[] = { 256, 56, 125 };
-	time_t atime[] = { time(NULL), 1234, 567 };
-
-	if (count > 3) {
-		TCTEST_WARN("count should be less than 4\n");
-		return NULL;
-	}
+	size_t size[N] = { 256, 56, 125 };
+	time_t atime[N] = { time(NULL), 1234, 567 };
 
 	for (i = 0; i < count; ++i) {
-		tc_attrs_set_mode(attrs + i, mode[i]);
-		tc_attrs_set_size(attrs + i, size[i]);
-		tc_attrs_set_uid(attrs + i, uid[i]);
-		tc_attrs_set_gid(attrs + i, gid[i]);
-		tc_attrs_set_atime(attrs + i, totimespec(atime[i], 0));
+		int j = i % N;
+		tc_attrs_set_mode(attrs + i, mode[j]);
+		tc_attrs_set_size(attrs + i, size[j]);
+		tc_attrs_set_uid(attrs + i, uid[j]);
+		tc_attrs_set_gid(attrs + i, gid[j]);
+		tc_attrs_set_atime(attrs + i, totimespec(atime[j], 0));
 		tc_attrs_set_atime(attrs + i, totimespec(time(NULL), 0));
 	}
 
@@ -485,7 +482,7 @@ TYPED_TEST_P(TcTest, TestHardLinks)
 
 	tc_touchv(files.data(), files.size(), false);
 	EXPECT_OK(tc_readv(olddata.data(), olddata.size(), false));
-	
+
 	EXPECT_OK(tc_hardlinkv(files.data(), links.data(), files.size(), false));
 	EXPECT_OK(tc_unlinkv(files.data(), files.size()));
 
@@ -561,7 +558,7 @@ TYPED_TEST_P(TcTest, AttrsTestSymlinks)
  */
 TYPED_TEST_P(TcTest, AttrsTestFileDesc)
 {
-	const char *PATH[] = { "WritevCanCreateFiles4.txt",
+	const char *PATHS[] = { "WritevCanCreateFiles4.txt",
 			       "WritevCanCreateFiles5.txt",
 			       "WritevCanCreateFiles6.txt" };
 	int i = 0;
@@ -573,8 +570,8 @@ TYPED_TEST_P(TcTest, AttrsTestFileDesc)
 	EXPECT_NOTNULL(attrs1);
 	EXPECT_NOTNULL(attrs2);
 
-	Removev(PATH, count);
-	tcfs = tc_openv_simple(PATH, count, O_RDWR | O_CREAT, 0);
+	Removev(PATHS, count);
+	tcfs = tc_openv_simple(PATHS, count, O_RDWR | O_CREAT, 0);
 	EXPECT_NOTNULL(tcfs);
 
 	for (int i = 0; i < count; ++i) {
@@ -1169,8 +1166,9 @@ TYPED_TEST_P(TcTest, CopyManyFilesDontFitInOneCompound)
 {
 	const int NFILES = 64;
 	struct tc_extent_pair pairs[NFILES];
+	char path[PATH_MAX];
+
 	for (int i = 0; i < NFILES; ++i) {
-		char *path = (char *)alloca(PATH_MAX);
 		snprintf(path, PATH_MAX, "CopyMany/a%d/b/c/d/e/f/g/h", i);
 		tc_ensure_dir(path, 0755, NULL);
 
