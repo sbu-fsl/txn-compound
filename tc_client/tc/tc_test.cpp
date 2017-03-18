@@ -594,6 +594,50 @@ TYPED_TEST_P(TcTest, AttrsTestFileDesc)
 	free(attrs2);
 }
 
+/*
+ * Set attributes of many files.
+ */
+TYPED_TEST_P(TcTest, SetAttrsOfManyFiles)
+{
+	const int N = 32;
+	const char *PATHS[N];
+
+	for (int i = 0; i < N; ++i) {
+		char *p = (char *)malloc(64);
+		snprintf(p, 64, "SetAttrsOfFile-%03d", i);
+		PATHS[i] = p;
+	}
+	struct tc_attrs *attrs1 = (tc_attrs *)calloc(N, sizeof(struct tc_attrs));
+	struct tc_attrs *attrs2 = (tc_attrs *)calloc(N, sizeof(struct tc_attrs));
+	EXPECT_NOTNULL(attrs1);
+	EXPECT_NOTNULL(attrs2);
+
+	tc_file *tcfs = tc_openv_simple(PATHS, N, O_RDWR | O_CREAT, 0);
+	EXPECT_NOTNULL(tcfs);
+
+	for (int i = 0; i < N; ++i) {
+		attrs2[i].file = attrs1[i].file = tcfs[i];
+	}
+
+	set_tc_attrs(attrs1, N);
+	EXPECT_OK(tc_setattrsv(attrs1, N, false));
+
+	for (int i = 0; i < N; ++i) {
+		attrs2[i].masks = attrs1[i].masks;
+	}
+	EXPECT_OK(tc_getattrsv(attrs2, N, false));
+
+	EXPECT_TRUE(compare_attrs(attrs1, attrs2, N));
+
+	tc_closev(tcfs, N);
+
+	for (int i = 0; i < N; ++i) {
+		free((void *)PATHS[i]);
+	}
+	free(attrs1);
+	free(attrs2);
+}
+
 static int tc_cmp_attrs_by_name(const void *a, const void *b)
 {
 	const tc_attrs *attrs1 = (const tc_attrs *)a;
@@ -919,7 +963,7 @@ TYPED_TEST_P(TcTest, SessionTimeout)
 
 	EXPECT_OK(tc_writev(&iov, 1, false));
 
-	sleep(80);
+	sleep(60);
 
 	tc_iov2path(&iov, path, 0, size, data1);
 
@@ -1613,6 +1657,7 @@ REGISTER_TYPED_TEST_CASE_P(TcTest,
 			   AttrsTestPath,
 			   AttrsTestFileDesc,
 			   AttrsTestSymlinks,
+			   SetAttrsOfManyFiles,
 			   ListDirContents,
 			   ListLargeDir,
 			   ListDirRecursively,

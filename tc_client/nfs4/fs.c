@@ -170,6 +170,8 @@ static fsal_status_t fs_init_config(struct fsal_module *fsal_hdl,
 	struct fs_fsal_module *fs =
 	    container_of(fsal_hdl, struct fs_fsal_module, module);
 
+	LogEvent(COMPONENT_INIT, "initializing TC configuration");
+
 	fs->fsinfo = kern_info;
 	(void) load_config_from_parse(config_struct,
 				      &kern_param,
