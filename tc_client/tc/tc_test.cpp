@@ -1181,7 +1181,7 @@ TYPED_TEST_P(TcTest, CopyFirstHalfAsSecondHalf)
 	pairs[1].src_offset = N / 2;
 	pairs[1].dst_path = "ReversedFile.txt";
 	pairs[1].dst_offset = 0;
-	pairs[1].length = 0;  // 0 means from src_offset to EOF, i.e., N/2
+	pairs[1].length = UINT64_MAX;  // from src_offset to EOF, i.e., N/2
 
 	// create source files
 	tc_iov4creation(&iov, pairs[0].src_path, N, getRandomBytes(N));
