@@ -101,7 +101,7 @@ static enum load_state {
  * @param[in] init  Initilization function for FSAL
  */
 
-static void load_fsal_static(const char *name, void *(init)(void))
+static void load_fsal_static(const char *name, void (*init)(void))
 {
 	char pname[24];
 	char *dl_path;

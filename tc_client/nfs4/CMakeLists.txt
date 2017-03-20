@@ -29,6 +29,7 @@ SET(tc_impl_nfs4_SRCS
 )
 
 add_library(tc_impl_nfs4 STATIC ${tc_impl_nfs4_SRCS})
+target_link_libraries(tc_impl_nfs4 fsaltcnfs)
 
 
 ########### install files ###############
